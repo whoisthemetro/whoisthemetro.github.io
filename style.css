@@ -39,7 +39,7 @@ body {
   width: 100%;
   max-width: 250px;
   border-radius: 50%;
-  border: 2px solid #00fff7;
+  border: 2px solid #4A2C59;
   margin-bottom: 1rem;
   transition: filter 0.3s ease;
 }
@@ -61,14 +61,14 @@ body {
   padding: 1.5rem;
   width: 100%;
   max-width: 400px;
-  box-shadow: 0 0 15px rgba(0,255,247,0.2);
+  box-shadow: 0 0 15px rgba(74,44,89,0.2);
   text-align: center;
 }
 
 #song-title {
   margin-bottom: 1rem;
   font-size: 1.1rem;
-  color: #00fff7;
+  color: #4A2C59;
 }
 
 .volume-control {
@@ -94,7 +94,7 @@ body {
 .tracklist div {
   padding: 0.3rem;
   cursor: pointer;
-  color: #00fff7;
+  color: #4A2C59;
 }
 
 .tracklist div:hover {
@@ -107,7 +107,7 @@ body {
 }
 
 h2 {
-  border-bottom: 2px solid #00fff7;
+  border-bottom: 2px solid #4A2C59;
   display: inline-block;
   padding-bottom: 0.5rem;
   margin-bottom: 1rem;
@@ -123,7 +123,7 @@ h2 {
 video {
   width: 100%;
   max-width: 300px;
-  border: 2px solid #00fff7;
+  border: 2px solid #4A2C59;
   border-radius: 8px;
 }
 
@@ -142,7 +142,7 @@ video {
 
 .contact label {
   text-align: left;
-  color: #00fff7;
+  color: #4A2C59;
 }
 
 .contact input,
@@ -150,7 +150,7 @@ video {
   width: 100%;
   padding: 0.5rem;
   background: #1c1c1c;
-  border: 1px solid #00fff7;
+  border: 1px solid #4A2C59;
   border-radius: 8px;
   color: #fff;
 }
@@ -161,9 +161,9 @@ video {
 }
 
 .contact button {
-  background: #00fff7;
+  background: #4A2C59;
   border: none;
-  color: #0f0f0f;
+  color: #fff;
   padding: 0.5rem 1rem;
   border-radius: 12px;
   cursor: pointer;
@@ -171,7 +171,7 @@ video {
 }
 
 .contact button:hover {
-  background: #02d0c7;
+  background: #5A3C69;
 }
 
 @media (max-width: 768px) {
