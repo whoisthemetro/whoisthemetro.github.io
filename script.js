@@ -5,7 +5,7 @@ const volume = document.getElementById("volume");
 const songs = [
   { title: "Signs", file: "assets/songs/signs.mp3", artist: "whoistheMETRO feat. Jacqueline Van Bierk", credits: "Produced, Mixed, Mastered" },
   { title: "Beat Monster", file: "assets/songs/beatmonster.mp3", artist: "Spesh to Death", credits: "Produced, Mixed, Mastered" },
-  { title: "Song 3", file: "assets/songs/song3.mp3", artist: "Metro", credits: "Produced by Metro, Mastered by Studio Z" },
+  { title: "I Wanna Fall", file: "assets/songs/song3.mp3", artist: "Drea", credits: "Produced, Mixed, Mastered" },
 ];
 
 let index = 0;
