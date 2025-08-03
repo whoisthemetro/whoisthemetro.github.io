@@ -13,7 +13,7 @@ let index = 0;
 function loadSong(i) {
   audio.src = songs[i].file;
   title.textContent = songs[i].title;
-  artistCredits.textContent = `Artist: ${songs[i].artist} | Credits: ${songs[i].credits}`;
+  artistCredits.innerHTML = `Artist: <span class="artist-bold">${songs[i].artist}</span> | Credits: ${songs[i].credits}`;
   audio.play();
 }
 
