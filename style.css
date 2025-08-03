@@ -68,7 +68,7 @@ body {
 #song-title {
   margin-bottom: 1rem;
   font-size: 1.1rem;
-  color: #4A2C59;
+  color: #fff;
 }
 
 .volume-control {
@@ -94,7 +94,7 @@ body {
 .tracklist div {
   padding: 0.3rem;
   cursor: pointer;
-  color: #4A2C59;
+  color: #fff;
 }
 
 .tracklist div:hover {
@@ -142,7 +142,7 @@ video {
 
 .contact label {
   text-align: left;
-  color: #4A2C59;
+  color: #fff;
 }
 
 .contact input,
