@@ -13,20 +13,7 @@ function loadSong(i) {
   audio.src = songs[i].file;
   title.textContent = songs[i].title;
   audio.play();
-  pauseAllVideos();
 }
-
-function pauseAllVideos() {
-  document.querySelectorAll("video").forEach(v => v.pause());
-}
-
-document.querySelectorAll("video").forEach(video => {
-  video.addEventListener("play", () => {
-    pauseAllVideos();
-    video.play();
-    audio.pause();
-  });
-});
 
 function generateTracklist() {
   const container = document.getElementById("tracklist");
