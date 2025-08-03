@@ -68,7 +68,8 @@ body {
 #song-title {
   margin-bottom: 1rem;
   font-size: 1.1rem;
-  color: #fff;
+  color: #FF69B4;
+  font-weight: bold;
 }
 
 #artist-credits {
@@ -79,6 +80,7 @@ body {
 
 .artist-bold {
   font-weight: bold;
+  color: #FF69B4;
 }
 
 .volume-control {
