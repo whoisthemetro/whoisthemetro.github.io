@@ -16,25 +16,6 @@ function loadSong(i) {
   pauseAllVideos();
 }
 
-function togglePlay() {
-  if (audio.paused) {
-    audio.play();
-    pauseAllVideos();
-  } else {
-    audio.pause();
-  }
-}
-
-function prevSong() {
-  index = (index - 1 + songs.length) % songs.length;
-  loadSong(index);
-}
-
-function nextSong() {
-  index = (index + 1) % songs.length;
-  loadSong(index);
-}
-
 function pauseAllVideos() {
   document.querySelectorAll("video").forEach(v => v.pause());
 }
