@@ -75,5 +75,5 @@ titleEl.addEventListener("mouseover", () => {
   }).join('');
 });
 titleEl.addEventListener("mouseout", () => {
-  titleEl.innerText = "whoistheMETRO?";
+  titleEl.innerText = "whoistheMETRO";
 });
