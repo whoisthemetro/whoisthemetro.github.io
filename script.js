@@ -1,5 +1,6 @@
 const audio = document.getElementById("audio");
 const title = document.getElementById("song-title");
+const volume = document.getElementById("volume");
 const songs = [
   { title: "Song 1", file: "assets/songs/song1.mp3" },
   { title: "Song 2", file: "assets/songs/song2.mp3" },
@@ -58,6 +59,10 @@ function generateTracklist() {
     container.appendChild(div);
   });
 }
+
+volume.addEventListener("input", () => {
+  audio.volume = volume.value;
+});
 
 generateTracklist();
 
