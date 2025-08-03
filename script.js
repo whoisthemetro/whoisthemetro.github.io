@@ -1,10 +1,11 @@
 const audio = document.getElementById("audio");
 const title = document.getElementById("song-title");
+const artistCredits = document.getElementById("artist-credits");
 const volume = document.getElementById("volume");
 const songs = [
-  { title: "Signs", file: "assets/songs/signs.mp3" },
-  { title: "Beat Monster", file: "assets/songs/beatmonster.mp3" },
-  { title: "Song 3", file: "assets/songs/song3.mp3" },
+  { title: "Signs", file: "assets/songs/signs.mp3", artist: "Metro", credits: "Produced by Metro, Mixed by Studio X" },
+  { title: "Beat Monster", file: "assets/songs/beatmonster.mp3", artist: "Metro", credits: "Produced by Metro, Vocals by Artist Y" },
+  { title: "Song 3", file: "assets/songs/song3.mp3", artist: "Metro", credits: "Produced by Metro, Mastered by Studio Z" },
 ];
 
 let index = 0;
@@ -12,6 +13,7 @@ let index = 0;
 function loadSong(i) {
   audio.src = songs[i].file;
   title.textContent = songs[i].title;
+  artistCredits.textContent = `Artist: ${songs[i].artist} | Credits: ${songs[i].credits}`;
   audio.play();
 }
 
