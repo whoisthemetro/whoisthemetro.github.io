@@ -116,15 +116,17 @@ h2 {
 
 .video-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 0.25rem;
   justify-content: center;
+  max-width: 1200px;
+  margin: 0 auto;
 }
 
 iframe {
   width: 100%;
-  max-width: 400px;
-  height: 225px;
+  max-width: 360px;
+  height: 202.5px;
   border: 2px solid #4A2C59;
   border-radius: 8px;
 }
