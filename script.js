@@ -2,7 +2,7 @@ const audio = document.getElementById("audio");
 const title = document.getElementById("song-title");
 const volume = document.getElementById("volume");
 const songs = [
-  { title: "Song 1", file: "assets/songs/song1.mp3" },
+  { title: "Signs", file: "assets/songs/signs.mp3" },
   { title: "Song 2", file: "assets/songs/song2.mp3" },
   { title: "Song 3", file: "assets/songs/song3.mp3" },
 ];
