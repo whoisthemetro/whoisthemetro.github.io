@@ -3,40 +3,45 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>whoistheMETRO</title>
+  <title>whoistheMETRO?</title>
   <link rel="stylesheet" href="style.css" />
+  <script src="script.js" defer></script>
 </head>
 <body>
-  <header class="site-title" id="siteTitle">whoistheMETRO?</header>
-  <main class="container">
-    <section class="bio">
-      <img src="assets/images/profile.jpg" alt="My photo" />
-      <p>Hi, I’m Nathanial Peck — an artist blending music and 3D visuals to tell bold stories. Welcome to my world.</p>
-    </section>
+  <h1 id="siteTitle" class="site-title">whoistheMETRO?</h1>
 
-    <section class="player">
+  <div class="container">
+    <div class="bio">
+      <img src="assets/images/nathanial.jpg" alt="Nathanial Peck" />
+      <p>Hi, I’m Nathanial Peck — an artist blending music and 3D visuals to tell bold stories. Welcome to my world.</p>
+    </div>
+
+    <div class="player">
       <div class="player-box">
         <div id="song-title">Song 1</div>
-        <audio id="audio" src="assets/songs/song1.mp3"></audio>
+        <audio id="audio" controls>
+          <source src="assets/songs/song1.mp3" type="audio/mp3" />
+        </audio>
         <div class="controls">
           <button onclick="prevSong()">⏮️</button>
           <button onclick="togglePlay()">▶️/⏸️</button>
           <button onclick="nextSong()">⏭️</button>
         </div>
-        <div class="tracklist" id="tracklist"></div>
+        <div class="volume-control">
+          <input type="range" id="volume" min="0" max="1" step="0.01" value="1" />
+        </div>
+        <div id="tracklist" class="tracklist"></div>
       </div>
-    </section>
-  </main>
+    </div>
+  </div>
 
-  <section class="gallery">
+  <div class="gallery">
     <h2>🎥 3D Art & Video</h2>
     <div class="video-grid">
-      <video src="assets/videos/art1.mp4" controls muted></video>
-      <video src="assets/videos/art1.mp4" controls muted></video>
-      <video src="assets/videos/art1.mp4" controls muted></video>
+      <video controls><source src="assets/videos/video1.mp4" type="video/mp4" /></video>
+      <video controls><source src="assets/videos/video2.mp4" type="video/mp4" /></video>
+      <video controls><source src="assets/videos/video3.mp4" type="video/mp4" /></video>
     </div>
-  </section>
-
-  <script src="script.js"></script>
+  </div>
 </body>
 </html>
