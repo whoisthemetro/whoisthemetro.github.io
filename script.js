@@ -7,6 +7,7 @@ const songs = [
   { title: "Beat Monster", file: "assets/songs/beatmonster.mp3", artist: "Spesh to Death", credits: "Produced, Mixed, Mastered" },
   { title: "I Wanna Fall", file: "assets/songs/iwannafall.mp3", artist: "Drea", credits: "Produced, Mixed, Mastered" },
   { title: "Workin' This 9-5", file: "assets/songs/ninetofive.mp3", artist: "J-Legacy HDElite", credits: "Produced, Mixed, Mastered" },
+  { title: "Burrito", file: "assets/songs/burritosong.mp3", artist: "whoistheMETRO", credits: "Produced, Mixed, Mastered" },
 ];
 
 let index = 0;
