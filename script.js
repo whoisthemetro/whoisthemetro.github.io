@@ -1,0 +1,52 @@
+const audio = document.getElementById("audio");
+const title = document.getElementById("song-title");
+const artistCredits = document.getElementById("artist-credits");
+const volume = document.getElementById("volume");
+const songs = [
+  { title: "Signs", file: "assets/songs/signs.mp3", artist: "whoistheMETRO feat. Jacqueline Van Bierk", credits: "Produced, Mixed, Mastered" },
+  { title: "Beat Monster", file: "assets/songs/beatmonster.mp3", artist: "Spesh to Death", credits: "Produced, Mixed, Mastered" },
+  { title: "I Wanna Fall", file: "assets/songs/iwannafall.mp3", artist: "Drea", credits: "Produced, Mixed, Mastered" },
+  { title: "Workin' This 9-5", file: "assets/songs/ninetofive.mp3", artist: "J-Legacy HDElite", credits: "Produced, Mixed, Mastered" },
+  { title: "Burrito", file: "assets/songs/burritosong.mp3", artist: "whoistheMETRO", credits: "Produced, Mixed, Mastered" },
+  { title: "Oh My God, It's fartGOD", file: "assets/songs/omg.mp3", artist: "fartGOD", credits: "Produced, Mixed, Mastered" },
+];
+
+let index = 0;
+
+function loadSong(i) {
+  audio.src = songs[i].file;
+  title.textContent = songs[i].title;
+  artistCredits.innerHTML = `Artist: <span class="artist-bold">${songs[i].artist}</span> | Credits: ${songs[i].credits}`;
+  audio.play();
+}
+
+function generateTracklist() {
+  const container = document.getElementById("tracklist");
+  songs.forEach((s, i) => {
+    const div = document.createElement("div");
+    div.innerText = s.title;
+    div.onclick = () => {
+      index = i;
+      loadSong(i);
+    };
+    container.appendChild(div);
+  });
+}
+
+volume.addEventListener("input", () => {
+  audio.volume = volume.value;
+});
+
+generateTracklist();
+
+const titleEl = document.getElementById("siteTitle");
+titleEl.addEventListener("mouseover", () => {
+  const text = titleEl.innerText.split('');
+  titleEl.innerHTML = text.map(letter => {
+    const color = `hsl(${Math.random() * 360}, 100%, 70%)`;
+    return `<span style="color:${color}">${letter}</span>`;
+  }).join('');
+});
+titleEl.addEventListener("mouseout", () => {
+  titleEl.innerText = "whoistheMETRO";
+});
