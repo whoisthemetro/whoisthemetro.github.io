@@ -8,6 +8,7 @@ body {
   background-color: #000000;
   color: #fff;
   padding-top: 0;
+  position: relative;
 }
 
 .site-title {
@@ -20,6 +21,8 @@ body {
   box-shadow: 0 2px 10px rgba(0,0,0,0.5);
   letter-spacing: 2px;
   transition: color 0.3s;
+  position: relative;
+  z-index: 1;
 }
 
 .container {
@@ -28,6 +31,8 @@ body {
   align-items: center;
   padding: 2rem;
   gap: 2rem;
+  position: relative;
+  z-index: 1;
 }
 
 .bio {
@@ -63,6 +68,10 @@ body {
   max-width: 400px;
   box-shadow: 0 0 15px rgba(74,44,89,0.2);
   text-align: center;
+}
+
+#result {
+  display: none;
 }
 
 #song-title {
@@ -103,10 +112,20 @@ body {
   border-radius: 8px;
 }
 
+.tracklist::-webkit-scrollbar {
+  width: 6px;
+}
+
+.tracklist::-webkit-scrollbar-thumb {
+  background: #4A2C59;
+  border-radius: 3px;
+}
+
 .tracklist div {
   padding: 0.3rem;
   cursor: pointer;
   color: #fff;
+  transition: background-color 0.2s;
 }
 
 .tracklist div:hover {
@@ -116,6 +135,8 @@ body {
 .gallery {
   padding: 2rem;
   text-align: center;
+  position: relative;
+  z-index: 1;
 }
 
 h2 {
@@ -141,6 +162,24 @@ iframe {
   height: 202.5px;
   border: 2px solid #4A2C59;
   border-radius: 8px;
+}
+
+.parallax-layer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  will-change: transform;
+  pointer-events: none;
+  z-index: -1;
+  overflow: hidden;
+}
+
+.star {
+  position: absolute;
+  background: #fff;
+  border-radius: 50%;
 }
 
 @media (max-width: 768px) {
