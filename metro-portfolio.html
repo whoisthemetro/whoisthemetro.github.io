@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>whoistheMETRO</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Courier New', Courier, monospace;
+      background: linear-gradient(135deg, #000000 0%, #1a0a1f 100%);
+      color: #fff;
+      overflow-x: hidden;
+      position: relative;
+    }
+
+    /* Animated background */
+    .bg-animation {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: -1;
+      opacity: 0.3;
+    }
+
+    .particle {
+      position: absolute;
+      width: 3px;
+      height: 3px;
+      background: #FF69B4;
+      border-radius: 50%;
+      animation: float linear infinite;
+      box-shadow: 0 0 10px #FF69B4;
+    }
+
+    @keyframes float {
+      0% {
+        transform: translateY(100vh) rotate(0deg);
+        opacity: 0;
+      }
+      10% {
+        opacity: 1;
+      }
+      90% {
+        opacity: 1;
+      }
+      100% {
+        transform: translateY(-100px) rotate(360deg);
+        opacity: 0;
+      }
+    }
+
+    /* Hero Section */
+    .hero {
+      position: relative;
+      padding: 3rem 2rem;
+      text-align: center;
+      background: linear-gradient(180deg, rgba(74,44,89,0.2) 0%, transparent 100%);
+    }
+
+    .site-title {
+      font-size: 4rem;
+      font-weight: bold;
+      letter-spacing: 4px;
+      cursor: default;
+      margin-bottom: 1rem;
+      background: linear-gradient(90deg, #FF69B4, #9D4EDD, #FF69B4);
+      background-size: 200% auto;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      animation: shimmer 3s linear infinite;
+    }
+
+    @keyframes shimmer {
+      to {
+        background-position: 200% center;
+      }
+    }
+
+    .tagline {
+      font-size: 1.2rem;
+      color: #FF69B4;
+      margin-bottom: 2rem;
+      opacity: 0.9;
+    }
+
+    /* Main Content */
+    .main-content {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 2rem;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 3rem;
+      align-items: start;
+    }
+
+    .bio-section {
+      background: rgba(28, 28, 28, 0.6);
+      backdrop-filter: blur(10px);
+      border-radius: 20px;
+      padding: 2.5rem;
+      border: 1px solid rgba(74, 44, 89, 0.3);
+      box-shadow: 0 8px 32px rgba(74, 44, 89, 0.3);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .bio-section::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background: radial-gradient(circle, rgba(157, 78, 221, 0.1) 0%, transparent 70%);
+      animation: rotate 20s linear infinite;
+    }
+
+    @keyframes rotate {
+      100% {
+        transform: rotate(360deg);
+      }
+    }
+
+    .bio-content {
+      position: relative;
+      z-index: 1;
+      text-align: center;
+    }
+
+    .profile-image-container {
+      position: relative;
+      display: inline-block;
+      margin-bottom: 2rem;
+    }
+
+    .profile-image-container::before {
+      content: '';
+      position: absolute;
+      top: -10px;
+      left: -10px;
+      right: -10px;
+      bottom: -10px;
+      border-radius: 50%;
+      background: linear-gradient(45deg, #FF69B4, #9D4EDD, #4A2C59);
+      background-size: 300% 300%;
+      animation: gradientRotate 4s ease infinite;
+      z-index: -1;
+    }
+
+    @keyframes gradientRotate {
+      0%, 100% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+    }
+
+    .bio-section img {
+      width: 220px;
+      height: 220px;
+      border-radius: 50%;
+      border: 4px solid #000;
+      transition: transform 0.3s ease, filter 0.3s ease;
+      object-fit: cover;
+    }
+
+    .bio-section img:hover {
+      transform: scale(1.05);
+      filter: brightness(1.1);
+    }
+
+    .bio-text {
+      line-height: 1.8;
+      font-size: 1.05rem;
+      color: #e0e0e0;
+    }
+
+    .bio-text strong {
+      color: #FF69B4;
+    }
+
+    /* Music Player */
+    .player-section {
+      background: rgba(28, 28, 28, 0.6);
+      backdrop-filter: blur(10px);
+      border-radius: 20px;
+      padding: 2.5rem;
+      border: 1px solid rgba(74, 44, 89, 0.3);
+      box-shadow: 0 8px 32px rgba(74, 44, 89, 0.3);
+      position: sticky;
+      top: 2rem;
+    }
+
+    .player-header {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+
+    .player-header h2 {
+      font-size: 1.8rem;
+      color: #FF69B4;
+      margin-bottom: 0.5rem;
+      text-shadow: 0 0 20px rgba(255, 105, 180, 0.5);
+    }
+
+    .now-playing {
+      font-size: 0.9rem;
+      color: #9D4EDD;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+    }
+
+    #song-title {
+      font-size: 1.4rem;
+      color: #fff;
+      font-weight: bold;
+      margin: 1.5rem 0 0.5rem;
+      min-height: 2rem;
+      text-align: center;
+    }
+
+    #artist-credits {
+      font-size: 0.95rem;
+      color: #b0b0b0;
+      margin-bottom: 1.5rem;
+      min-height: 1.5rem;
+      text-align: center;
+    }
+
+    .artist-bold {
+      font-weight: bold;
+      color: #FF69B4;
+    }
+
+    audio {
+      width: 100%;
+      margin: 1.5rem 0;
+      border-radius: 10px;
+    }
+
+    .volume-control {
+      margin: 1.5rem 0;
+      text-align: center;
+    }
+
+    .volume-control label {
+      display: block;
+      margin-bottom: 0.5rem;
+      color: #9D4EDD;
+      font-size: 0.9rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    #volume {
+      width: 80%;
+      cursor: pointer;
+      height: 6px;
+      border-radius: 3px;
+      background: rgba(157, 78, 221, 0.2);
+      outline: none;
+      -webkit-appearance: none;
+    }
+
+    #volume::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #FF69B4;
+      cursor: pointer;
+      box-shadow: 0 0 10px rgba(255, 105, 180, 0.5);
+    }
+
+    #volume::-moz-range-thumb {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #FF69B4;
+      cursor: pointer;
+      border: none;
+      box-shadow: 0 0 10px rgba(255, 105, 180, 0.5);
+    }
+
+    .tracklist-header {
+      font-size: 1rem;
+      color: #9D4EDD;
+      margin-bottom: 0.5rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .tracklist {
+      max-height: 200px;
+      overflow-y: auto;
+      padding: 0.5rem;
+      background: rgba(0, 0, 0, 0.4);
+      border-radius: 12px;
+      border: 1px solid rgba(74, 44, 89, 0.3);
+    }
+
+    .tracklist::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    .tracklist::-webkit-scrollbar-track {
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 10px;
+    }
+
+    .tracklist::-webkit-scrollbar-thumb {
+      background: #9D4EDD;
+      border-radius: 10px;
+    }
+
+    .tracklist div {
+      padding: 0.75rem;
+      cursor: pointer;
+      color: #e0e0e0;
+      transition: all 0.3s;
+      border-radius: 8px;
+      margin-bottom: 0.25rem;
+      border-left: 3px solid transparent;
+    }
+
+    .tracklist div:hover {
+      background-color: rgba(74, 44, 89, 0.3);
+      border-left-color: #FF69B4;
+      transform: translateX(5px);
+    }
+
+    .tracklist div.active {
+      background: linear-gradient(90deg, rgba(157, 78, 221, 0.3), rgba(255, 105, 180, 0.2));
+      border-left-color: #FF69B4;
+      color: #fff;
+      font-weight: bold;
+    }
+
+    /* Gallery Section */
+    .gallery {
+      max-width: 1400px;
+      margin: 4rem auto;
+      padding: 2rem;
+    }
+
+    .gallery-header {
+      text-align: center;
+      margin-bottom: 3rem;
+    }
+
+    .gallery-header h2 {
+      font-size: 2.5rem;
+      background: linear-gradient(90deg, #FF69B4, #9D4EDD);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      display: inline-block;
+      margin-bottom: 0.5rem;
+    }
+
+    .gallery-subtitle {
+      color: #b0b0b0;
+      font-size: 1.1rem;
+    }
+
+    .video-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 1.5rem;
+    }
+
+    .video-wrapper {
+      position: relative;
+      border-radius: 16px;
+      overflow: hidden;
+      background: rgba(28, 28, 28, 0.6);
+      border: 1px solid rgba(74, 44, 89, 0.3);
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    .video-wrapper:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 12px 40px rgba(157, 78, 221, 0.4);
+    }
+
+    .video-wrapper iframe {
+      width: 100%;
+      height: 240px;
+      border: none;
+      display: block;
+    }
+
+    /* CTA Section */
+    .cta-section {
+      max-width: 800px;
+      margin: 4rem auto;
+      padding: 3rem 2rem;
+      text-align: center;
+      background: linear-gradient(135deg, rgba(157, 78, 221, 0.2), rgba(255, 105, 180, 0.2));
+      border-radius: 20px;
+      border: 1px solid rgba(74, 44, 89, 0.3);
+    }
+
+    .cta-section h2 {
+      font-size: 2rem;
+      margin-bottom: 1rem;
+      color: #FF69B4;
+    }
+
+    .cta-section p {
+      font-size: 1.1rem;
+      margin-bottom: 2rem;
+      color: #e0e0e0;
+      line-height: 1.6;
+    }
+
+    .cta-button {
+      display: inline-block;
+      padding: 1rem 3rem;
+      background: linear-gradient(90deg, #FF69B4, #9D4EDD);
+      color: #fff;
+      text-decoration: none;
+      border-radius: 50px;
+      font-weight: bold;
+      font-size: 1.1rem;
+      transition: all 0.3s ease;
+      box-shadow: 0 4px 20px rgba(255, 105, 180, 0.4);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .cta-button:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 8px 30px rgba(255, 105, 180, 0.6);
+    }
+
+    /* Footer */
+    footer {
+      text-align: center;
+      padding: 2rem;
+      color: #666;
+      font-size: 0.9rem;
+    }
+
+    /* Responsive */
+    @media (max-width: 1024px) {
+      .main-content {
+        grid-template-columns: 1fr;
+        gap: 2rem;
+      }
+
+      .player-section {
+        position: static;
+      }
+
+      .site-title {
+        font-size: 3rem;
+      }
+    }
+
+    @media (max-width: 768px) {
+      .site-title {
+        font-size: 2.5rem;
+      }
+
+      .video-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .bio-section, .player-section {
+        padding: 1.5rem;
+      }
+
+      .gallery-header h2 {
+        font-size: 2rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Animated Background -->
+  <div class="bg-animation" id="particles"></div>
+
+  <!-- Hero Section -->
+  <div class="hero">
+    <h1 id="siteTitle" class="site-title">whoistheMETRO</h1>
+    <p class="tagline">Music Producer | Audio Engineer | 3D Visual Artist</p>
+  </div>
+
+  <!-- Main Content -->
+  <div class="main-content">
+    <!-- Bio Section -->
+    <div class="bio-section">
+      <div class="bio-content">
+        <div class="profile-image-container">
+          <img src="assets/images/profile2.jpg" alt="Metro">
+        </div>
+        <div class="bio-text">
+          Yo, I'm <strong>Metro</strong> - I'm a self taught music producer | audio engineer | mastering engineer.
+          <br><br>
+          I do 3D videos using <strong>Unreal Engine</strong> and <strong>Blender</strong>.
+          <br><br>
+          Check out my work and if you like what you hear and see, consider hiring me to work on your next project!
+        </div>
+      </div>
+    </div>
+
+    <!-- Music Player Section -->
+    <div class="player-section">
+      <div class="player-header">
+        <h2>🎵 Music Player</h2>
+        <div class="now-playing">Now Playing</div>
+      </div>
+      
+      <div id="song-title"></div>
+      <div id="artist-credits"></div>
+      
+      <audio id="audio" controls>
+        <source src="assets/songs/signs.mp3" type="audio/mp3">
+      </audio>
+      
+      <div class="volume-control">
+        <label for="volume">Volume</label>
+        <input type="range" id="volume" min="0" max="1" step="0.01" value="1">
+      </div>
+      
+      <div class="tracklist-header">Tracklist</div>
+      <div id="tracklist" class="tracklist"></div>
+    </div>
+  </div>
+
+  <!-- Gallery Section -->
+  <div class="gallery">
+    <div class="gallery-header">
+      <h2>🎥 Video Portfolio</h2>
+      <p class="gallery-subtitle">Visual creations made with Unreal Engine & Blender</p>
+    </div>
+    <div class="video-grid">
+      <div class="video-wrapper">
+        <iframe src="https://www.youtube.com/embed/aT1MUHFoGBA" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe>
+      </div>
+      <div class="video-wrapper">
+        <iframe src="https://www.youtube.com/embed/RHfSjrHNht0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe>
+      </div>
+      <div class="video-wrapper">
+        <iframe src="https://www.youtube.com/embed/INeqPGSqm1Y" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe>
+      </div>
+      <div class="video-wrapper">
+        <iframe src="https://www.youtube.com/embed/U_sIVyOBKh0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe>
+      </div>
+      <div class="video-wrapper">
+        <iframe src="https://www.youtube.com/embed/O-_ZtFg6OLI" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe>
+      </div>
+      <div class="video-wrapper">
+        <iframe src="https://www.youtube.com/embed/mZCBgCShA1M" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe>
+      </div>
+      <div class="video-wrapper">
+        <iframe src="https://www.youtube.com/embed/-k8zOXswHrY" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe>
+      </div>
+      <div class="video-wrapper">
+        <iframe src="https://www.youtube.com/embed/V8unPBpvF_c" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe>
+      </div>
+      <div class="video-wrapper">
+        <iframe src="https://www.youtube.com/embed/heQlS1IsIhc" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe>
+      </div>
+      <div class="video-wrapper">
+        <iframe src="https://www.youtube.com/embed/IFIwn1Za58E" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe>
+      </div>
+    </div>
+  </div>
+
+  <!-- CTA Section -->
+  <div class="cta-section">
+    <h2>Let's Work Together</h2>
+    <p>Ready to elevate your project with professional music production, audio engineering, or stunning 3D visuals? Let's create something amazing.</p>
+    <a href="#" class="cta-button">Get In Touch</a>
+  </div>
+
+  <!-- Footer -->
+  <footer>
+    <p>&copy; 2025 whoistheMETRO. All rights reserved.</p>
+  </footer>
+
+  <script>
+    // Particle Animation
+    const particlesContainer = document.getElementById('particles');
+    for (let i = 0; i < 30; i++) {
+      const particle = document.createElement('div');
+      particle.className = 'particle';
+      particle.style.left = Math.random() * 100 + '%';
+      particle.style.animationDuration = (Math.random() * 10 + 10) + 's';
+      particle.style.animationDelay = Math.random() * 5 + 's';
+      particlesContainer.appendChild(particle);
+    }
+
+    // Music Player
+    const audio = document.getElementById("audio");
+    const title = document.getElementById("song-title");
+    const artistCredits = document.getElementById("artist-credits");
+    const volume = document.getElementById("volume");
+    const tracklist = document.getElementById("tracklist");
+    const siteTitle = document.getElementById("siteTitle");
+
+    const songs = [
+      { title: "Signs", file: "assets/songs/signs.mp3", artist: "whoistheMETRO feat. Jacqueline Van Bierk", credits: "Produced, Mixed, Mastered" },
+      { title: "Beat Monster", file: "assets/songs/beatmonster.mp3", artist: "Spesh to Death", credits: "Produced, Mixed, Mastered" },
+      { title: "I Wanna Fall", file: "assets/songs/iwannafall.mp3", artist: "Drea", credits: "Produced, Mixed, Mastered" },
+      { title: "Workin' This 9-5", file: "assets/songs/ninetofive.mp3", artist: "J-Legacy HDElite", credits: "Produced, Mixed, Mastered" },
+      { title: "Burrito", file: "assets/songs/burritosong.mp3", artist: "whoistheMETRO", credits: "Produced, Mixed, Mastered" },
+      { title: "Oh My God, It's fartGOD", file: "assets/songs/omg.mp3", artist: "fartGOD", credits: "Produced, Mixed, Mastered" }
+    ];
+
+    let currentIndex = 0;
+
+    function loadSong(index) {
+      audio.src = songs[index].file;
+      title.textContent = songs[index].title;
+      artistCredits.innerHTML = `Artist: <span class="artist-bold">${songs[index].artist}</span> | Credits: ${songs[index].credits}`;
+      
+      document.querySelectorAll('.tracklist div').forEach((div, i) => {
+        div.classList.toggle('active', i === index);
+      });
+      
+      audio.play();
+    }
+
+    songs.forEach((song, i) => {
+      const div = document.createElement("div");
+      div.textContent = `${i + 1}. ${song.title}`;
+      div.onclick = () => {
+        currentIndex = i;
+        loadSong(i);
+      };
+      tracklist.appendChild(div);
+    });
+
+    volume.addEventListener("input", () => {
+      audio.volume = volume.value;
+    });
+
+    audio.addEventListener("ended", () => {
+      currentIndex = (currentIndex + 1) % songs.length;
+      loadSong(currentIndex);
+    });
+
+    let originalTitle = "whoistheMETRO";
+    
+    siteTitle.addEventListener("mouseover", () => {
+      const letters = originalTitle.split('');
+      siteTitle.innerHTML = letters.map(letter => {
+        const hue = Math.floor(Math.random() * 360);
+        return `<span style="color:hsl(${hue}, 100%, 70%)">${letter}</span>`;
+      }).join('');
+    });
+
+    siteTitle.addEventListener("mouseout", () => {
+      siteTitle.textContent = originalTitle;
+    });
+
+    loadSong(0);
+    audio.pause();
+  </script>
+</body>
+</html>
