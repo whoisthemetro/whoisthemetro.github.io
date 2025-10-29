@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>whoistheMETRO</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Courier New', Courier, monospace;
+      background-color: #000;
+      color: #fff;
+    }
+
+    .site-title {
+      width: 100%;
+      background: #000;
+      font-size: 2.5rem;
+      font-weight: bold;
+      text-align: center;
+      padding: 1.5rem 0;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+      letter-spacing: 2px;
+      transition: color 0.3s;
+      cursor: default;
+    }
+
+    .container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem;
+      gap: 2rem;
+    }
+
+    .bio {
+      text-align: center;
+      max-width: 350px;
+    }
+
+    .bio img {
+      width: 100%;
+      max-width: 250px;
+      border-radius: 50%;
+      border: 2px solid #4A2C59;
+      margin-bottom: 1rem;
+      transition: filter 0.3s ease;
+    }
+
+    .bio img:hover {
+      filter: grayscale(100%);
+    }
+
+    .bio p {
+      line-height: 1.6;
+    }
+
+    .player {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      width: 100%;
+    }
+
+    .player-box {
+      background: #1c1c1c;
+      border-radius: 16px;
+      padding: 1.5rem;
+      width: 100%;
+      max-width: 400px;
+      box-shadow: 0 0 15px rgba(74,44,89,0.2);
+      text-align: center;
+    }
+
+    #song-title {
+      margin-bottom: 1rem;
+      font-size: 1.1rem;
+      color: #FF69B4;
+      font-weight: bold;
+      min-height: 1.5rem;
+    }
+
+    #artist-credits {
+      margin-bottom: 1rem;
+      font-size: 0.9rem;
+      color: #fff;
+      min-height: 1.5rem;
+    }
+
+    .artist-bold {
+      font-weight: bold;
+      color: #FF69B4;
+    }
+
+    audio {
+      width: 100%;
+      margin: 1rem 0;
+    }
+
+    .volume-control {
+      margin: 1rem 0;
+    }
+
+    #volume {
+      width: 100%;
+      max-width: 200px;
+      cursor: pointer;
+    }
+
+    .tracklist {
+      max-height: 150px;
+      overflow-y: auto;
+      margin-top: 1rem;
+      text-align: left;
+      padding: 0.5rem;
+      background: #111;
+      border-radius: 8px;
+    }
+
+    .tracklist div {
+      padding: 0.5rem;
+      cursor: pointer;
+      color: #fff;
+      transition: background-color 0.2s;
+      border-radius: 4px;
+    }
+
+    .tracklist div:hover {
+      background-color: #222;
+    }
+
+    .tracklist div.active {
+      background-color: #4A2C59;
+    }
+
+    .gallery {
+      padding: 2rem;
+      text-align: center;
+    }
+
+    h2 {
+      border-bottom: 2px solid #4A2C59;
+      display: inline-block;
+      padding-bottom: 0.5rem;
+      margin-bottom: 1.5rem;
+      font-size: 1.5rem;
+    }
+
+    .video-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1rem;
+      justify-content: center;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    iframe {
+      width: 100%;
+      height: 202.5px;
+      border: 2px solid #4A2C59;
+      border-radius: 8px;
+    }
+
+    @media (max-width: 768px) {
+      .site-title {
+        font-size: 2rem;
+        padding: 1rem 0;
+      }
+
+      .video-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1 id="siteTitle" class="site-title">whoistheMETRO</h1>
+
+  <div class="container">
+    <div class="bio">
+      <img src="assets/images/profile2.jpg" alt="Metro">
+      <p>
+        Yo, I'm Metro - I'm a self taught music producer | audio engineer | mastering engineer.
+        <br><br>
+        I do 3D videos using Unreal Engine and Blender.
+        <br><br>
+        Check out my work and if you like what you hear and see, consider hiring me to work on your next project!
+      </p>
+    </div>
+
+    <div class="player">
+      <div class="player-box">
+        <div id="song-title"></div>
+        <div id="artist-credits"></div>
+        <audio id="audio" controls>
+          <source src="assets/songs/signs.mp3" type="audio/mp3">
+        </audio>
+        <div class="volume-control">
+          <input type="range" id="volume" min="0" max="1" step="0.01" value="1">
+        </div>
+        <div id="tracklist" class="tracklist"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="gallery">
+    <h2>🎥 Videos</h2>
+    <div class="video-grid">
+      <iframe src="https://www.youtube.com/embed/aT1MUHFoGBA" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe>
+      <iframe src="https://www.youtube.com/embed/RHfSjrHNht0" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe>
+      <iframe src="https://www.youtube.com/embed/INeqPGSqm1Y" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe>
+      <iframe src="https://www.youtube.com/embed/U_sIVyOBKh0" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe>
+      <iframe src="https://www.youtube.com/embed/O-_ZtFg6OLI" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe>
+      <iframe src="https://www.youtube.com/embed/mZCBgCShA1M" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe>
+      <iframe src="https://www.youtube.com/embed/-k8zOXswHrY" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe>
+      <iframe src="https://www.youtube.com/embed/V8unPBpvF_c" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe>
+      <iframe src="https://www.youtube.com/embed/heQlS1IsIhc" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe>
+      <iframe src="https://www.youtube.com/embed/IFIwn1Za58E" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe>
+    </div>
+  </div>
+
+  <script>
+    const audio = document.getElementById("audio");
+    const title = document.getElementById("song-title");
+    const artistCredits = document.getElementById("artist-credits");
+    const volume = document.getElementById("volume");
+    const tracklist = document.getElementById("tracklist");
+    const siteTitle = document.getElementById("siteTitle");
+
+    const songs = [
+      { title: "Signs", file: "assets/songs/signs.mp3", artist: "whoistheMETRO feat. Jacqueline Van Bierk", credits: "Produced, Mixed, Mastered" },
+      { title: "Beat Monster", file: "assets/songs/beatmonster.mp3", artist: "Spesh to Death", credits: "Produced, Mixed, Mastered" },
+      { title: "I Wanna Fall", file: "assets/songs/iwannafall.mp3", artist: "Drea", credits: "Produced, Mixed, Mastered" },
+      { title: "Workin' This 9-5", file: "assets/songs/ninetofive.mp3", artist: "J-Legacy HDElite", credits: "Produced, Mixed, Mastered" },
+      { title: "Burrito", file: "assets/songs/burritosong.mp3", artist: "whoistheMETRO", credits: "Produced, Mixed, Mastered" },
+      { title: "Oh My God, It's fartGOD", file: "assets/songs/omg.mp3", artist: "fartGOD", credits: "Produced, Mixed, Mastered" }
+    ];
+
+    let currentIndex = 0;
+
+    function loadSong(index) {
+      audio.src = songs[index].file;
+      title.textContent = songs[index].title;
+      artistCredits.innerHTML = `Artist: <span class="artist-bold">${songs[index].artist}</span> | Credits: ${songs[index].credits}`;
+      
+      // Update active track in tracklist
+      document.querySelectorAll('.tracklist div').forEach((div, i) => {
+        div.classList.toggle('active', i === index);
+      });
+      
+      audio.play();
+    }
+
+    // Generate tracklist
+    songs.forEach((song, i) => {
+      const div = document.createElement("div");
+      div.textContent = song.title;
+      div.onclick = () => {
+        currentIndex = i;
+        loadSong(i);
+      };
+      tracklist.appendChild(div);
+    });
+
+    // Volume control
+    volume.addEventListener("input", () => {
+      audio.volume = volume.value;
+    });
+
+    // Auto-play next song
+    audio.addEventListener("ended", () => {
+      currentIndex = (currentIndex + 1) % songs.length;
+      loadSong(currentIndex);
+    });
+
+    // Site title hover effect
+    let originalTitle = "whoistheMETRO";
+    
+    siteTitle.addEventListener("mouseover", () => {
+      const letters = originalTitle.split('');
+      siteTitle.innerHTML = letters.map(letter => {
+        const hue = Math.floor(Math.random() * 360);
+        return `<span style="color:hsl(${hue}, 100%, 70%)">${letter}</span>`;
+      }).join('');
+    });
+
+    siteTitle.addEventListener("mouseout", () => {
+      siteTitle.textContent = originalTitle;
+    });
+
+    // Initialize first song display
+    loadSong(0);
+    audio.pause(); // Don't autoplay on load
+  </script>
+</body>
+</html>
