@@ -16,12 +16,14 @@
         #controls-hint kbd { background: #333; padding: 2px 8px; border-radius: 4px; margin: 0 2px; }
         
         /* Mobile Controls */
-        #mobile-controls { display: none; position: absolute; bottom: 20px; left: 0; right: 0; pointer-events: auto; z-index: 150; padding: 10px; }
-        .mobile-joystick { position: absolute; bottom: 20px; left: 20px; width: 120px; height: 120px; background: rgba(0,0,0,0.5); border: 2px solid #00ff88; border-radius: 50%; }
-        .joystick-knob { position: absolute; top: 50%; left: 50%; width: 50px; height: 50px; background: #00ff88; border-radius: 50%; transform: translate(-50%, -50%); opacity: 0.8; }
-        .mobile-buttons { position: absolute; bottom: 20px; right: 20px; display: flex; gap: 10px; }
-        .mobile-btn { width: 60px; height: 60px; border-radius: 50%; background: rgba(0,0,0,0.5); border: 2px solid #00ff88; color: #00ff88; font-size: 20px; display: flex; align-items: center; justify-content: center; }
+        #mobile-controls { display: none; position: absolute; bottom: 0; left: 0; right: 0; pointer-events: none; z-index: 150; padding: 20px; }
+        .mobile-joystick { position: absolute; bottom: 30px; left: 30px; width: 130px; height: 130px; background: rgba(0,0,0,0.6); border: 3px solid #00ff88; border-radius: 50%; pointer-events: auto; touch-action: none; }
+        .joystick-knob { position: absolute; top: 50%; left: 50%; width: 55px; height: 55px; background: #00ff88; border-radius: 50%; transform: translate(-50%, -50%); opacity: 0.9; pointer-events: none; }
+        .mobile-buttons { position: absolute; bottom: 30px; right: 30px; display: flex; flex-direction: column; gap: 15px; pointer-events: auto; }
+        .mobile-btn { width: 70px; height: 70px; border-radius: 50%; background: rgba(0,0,0,0.6); border: 3px solid #00ff88; color: #00ff88; font-size: 22px; font-weight: bold; display: flex; align-items: center; justify-content: center; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
         .mobile-btn:active { background: #00ff88; color: #000; }
+        .mobile-btn.exit-btn { border-color: #ff4757; color: #ff4757; font-size: 16px; }
+        .mobile-btn.exit-btn:active { background: #ff4757; color: #fff; }
         
         /* Computer Interface */
         #computer-interface { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 90%; max-width: 900px; height: 80%; max-height: 600px; background: linear-gradient(145deg, #1a1a2e, #16213e); border-radius: 12px; display: none; flex-direction: column; overflow: hidden; pointer-events: auto; box-shadow: 0 0 60px rgba(0,255,136,0.3), inset 0 0 60px rgba(0,0,0,0.5); border: 2px solid #00ff88; }
@@ -155,6 +157,9 @@
             #tv-interface { width: 95%; height: 85%; }
             .tv-controls { padding: 8px 10px; }
             .channel-btn { padding: 6px 10px; font-size: 11px; }
+            #drums-interface, #synth-interface { top: 10px; padding: 10px 15px; max-width: 90%; }
+            .drums-title, .synth-title { font-size: 14px; }
+            .drums-info, .synth-info { font-size: 10px; }
         }
         
         @media (max-width: 480px) {
@@ -162,6 +167,17 @@
             .playlist-item .track-info .name { font-size: 11px; }
             .control-btn { width: 36px; height: 36px; font-size: 12px; }
             .control-btn.play-pause { width: 50px; height: 50px; font-size: 18px; }
+            .mobile-joystick { bottom: 25px; left: 20px; width: 110px; height: 110px; }
+            .joystick-knob { width: 45px; height: 45px; }
+            .mobile-buttons { bottom: 25px; right: 20px; gap: 12px; }
+            .mobile-btn { width: 60px; height: 60px; font-size: 18px; }
+        }
+        
+        /* iPhone safe areas */
+        @supports (padding-bottom: env(safe-area-inset-bottom)) {
+            #mobile-controls { padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
+            .mobile-joystick { bottom: calc(30px + env(safe-area-inset-bottom)); }
+            .mobile-buttons { bottom: calc(30px + env(safe-area-inset-bottom)); }
         }
     </style>
 </head>
@@ -187,6 +203,7 @@
                 <div class="mobile-buttons">
                     <button class="mobile-btn" id="btn-jump">↑</button>
                     <button class="mobile-btn" id="btn-interact">E</button>
+                    <button class="mobile-btn exit-btn" id="btn-exit">ESC</button>
                 </div>
             </div>
         </div>
@@ -1845,14 +1862,19 @@
             const knob = document.getElementById('joystick-knob');
             const btnJump = document.getElementById('btn-jump');
             const btnInteract = document.getElementById('btn-interact');
+            const btnExit = document.getElementById('btn-exit');
             
             if (!joystick) return;
             
             let joystickActive = false;
             let joystickCenter = { x: 0, y: 0 };
             
+            // Store mobile movement values (slower than desktop)
+            window.mobileMove = { x: 0, z: 0 };
+            
             joystick.addEventListener('touchstart', (e) => {
                 e.preventDefault();
+                e.stopPropagation();
                 joystickActive = true;
                 const rect = joystick.getBoundingClientRect();
                 joystickCenter = {
@@ -1864,8 +1886,9 @@
             joystick.addEventListener('touchmove', (e) => {
                 if (!joystickActive) return;
                 e.preventDefault();
+                e.stopPropagation();
                 const touch = e.touches[0];
-                const maxDist = 40;
+                const maxDist = 45;
                 
                 let dx = touch.clientX - joystickCenter.x;
                 let dy = touch.clientY - joystickCenter.y;
@@ -1878,25 +1901,26 @@
                 
                 knob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
                 
-                // Update movement keys
-                keys['w'] = dy < -10;
-                keys['s'] = dy > 10;
-                keys['a'] = dx < -10;
-                keys['d'] = dx > 10;
+                // Store normalized movement values for smoother mobile movement
+                window.mobileMove.x = dx / maxDist;
+                window.mobileMove.z = dy / maxDist;
             }, { passive: false });
             
-            const resetJoystick = () => {
+            const resetJoystick = (e) => {
+                if (e) e.preventDefault();
                 joystickActive = false;
                 knob.style.transform = 'translate(-50%, -50%)';
-                keys['w'] = keys['a'] = keys['s'] = keys['d'] = false;
+                window.mobileMove.x = 0;
+                window.mobileMove.z = 0;
             };
             
-            joystick.addEventListener('touchend', resetJoystick);
-            joystick.addEventListener('touchcancel', resetJoystick);
+            joystick.addEventListener('touchend', resetJoystick, { passive: false });
+            joystick.addEventListener('touchcancel', resetJoystick, { passive: false });
             
             // Jump button
             btnJump.addEventListener('touchstart', (e) => {
                 e.preventDefault();
+                e.stopPropagation();
                 if (isGrounded && !currentStation && gameStarted) {
                     verticalVelocity = jumpForce;
                     isGrounded = false;
@@ -1906,11 +1930,57 @@
             // Interact button
             btnInteract.addEventListener('touchstart', (e) => {
                 e.preventDefault();
+                e.stopPropagation();
                 if (nearStation && !currentStation) {
                     enterStation(nearStation);
-                } else if (currentStation) {
+                }
+            }, { passive: false });
+            
+            // Exit button
+            btnExit.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (currentStation) {
                     exitStation();
                 }
+            }, { passive: false });
+            
+            // Tap on station indicators to enter directly
+            setupStationTapInteraction();
+        }
+        
+        function setupStationTapInteraction() {
+            const raycaster = new THREE.Raycaster();
+            const tapPosition = new THREE.Vector2();
+            
+            renderer.domElement.addEventListener('touchstart', (e) => {
+                // Don't process if touching controls
+                if (e.target.closest('#mobile-controls')) return;
+                if (currentStation) return; // Already in a station
+                
+                const touch = e.touches[0];
+                tapPosition.x = (touch.clientX / window.innerWidth) * 2 - 1;
+                tapPosition.y = -(touch.clientY / window.innerHeight) * 2 + 1;
+                
+                raycaster.setFromCamera(tapPosition, camera);
+                
+                // Check if tapped on a station indicator
+                const indicators = stations.map(s => s.indicator).filter(i => i);
+                const intersects = raycaster.intersectObjects(indicators, false);
+                
+                if (intersects.length > 0) {
+                    // Find which station this indicator belongs to
+                    const tappedIndicator = intersects[0].object;
+                    const station = stations.find(s => s.indicator === tappedIndicator);
+                    if (station) {
+                        e.preventDefault();
+                        enterStation(station);
+                        return;
+                    }
+                }
+                
+                // Also check for drum pads and synth keys when in those stations
+                // (handled separately in existing touch handlers)
             }, { passive: false });
         }
 
@@ -2652,11 +2722,23 @@
                 return;
             }
 
-            const speed = 0.04, friction = 0.88;
+            // Check if mobile
+            const isMobile = window.innerWidth <= 768;
+            const speed = isMobile ? 0.025 : 0.04; // Slower on mobile
+            const friction = 0.88;
+            
+            // Desktop keyboard controls
             if (keys['w']) playerVelocity.z -= speed;
             if (keys['s']) playerVelocity.z += speed;
             if (keys['a']) playerVelocity.x -= speed;
             if (keys['d']) playerVelocity.x += speed;
+            
+            // Mobile joystick controls (analog, smoother)
+            if (window.mobileMove && isMobile) {
+                playerVelocity.x += window.mobileMove.x * speed * 0.8;
+                playerVelocity.z += window.mobileMove.z * speed * 0.8;
+            }
+            
             playerVelocity.multiplyScalar(friction);
             
             if (!isGrounded) {
@@ -2768,15 +2850,16 @@
 
             nearStation = null;
             const prompt = document.getElementById('interaction-prompt');
+            const isMobileDevice = window.innerWidth <= 768;
             stations.forEach(station => {
                 const dist = player.position.distanceTo(station.position);
                 if (dist < station.radius) {
                     nearStation = station;
-                    prompt.textContent = `Press E - ${station.label}`;
+                    prompt.textContent = isMobileDevice ? `Tap circle or E - ${station.label}` : `Press E - ${station.label}`;
                     prompt.classList.add('visible');
                 }
                 station.indicator.rotation.z += 0.02;
-                station.indicator.material.opacity = 0.2 + Math.sin(Date.now() * 0.003) * 0.15;
+                station.indicator.material.opacity = 0.3 + Math.sin(Date.now() * 0.003) * 0.2;
             });
             if (!nearStation) prompt.classList.remove('visible');
 
