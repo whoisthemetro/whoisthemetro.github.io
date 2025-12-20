@@ -16,14 +16,13 @@
         #controls-hint kbd { background: #333; padding: 2px 8px; border-radius: 4px; margin: 0 2px; }
         
         /* Mobile Controls */
-        #mobile-controls { display: none; position: absolute; bottom: 0; left: 0; right: 0; pointer-events: none; z-index: 150; padding: 20px; }
-        .mobile-joystick { position: absolute; bottom: 30px; left: 30px; width: 130px; height: 130px; background: rgba(0,0,0,0.6); border: 3px solid #00ff88; border-radius: 50%; pointer-events: auto; touch-action: none; }
-        .joystick-knob { position: absolute; top: 50%; left: 50%; width: 55px; height: 55px; background: #00ff88; border-radius: 50%; transform: translate(-50%, -50%); opacity: 0.9; pointer-events: none; }
-        .mobile-buttons { position: absolute; bottom: 30px; right: 30px; display: flex; flex-direction: column; gap: 15px; pointer-events: auto; }
+        #mobile-controls { display: none; position: absolute; bottom: 0; left: 0; right: 0; top: 0; pointer-events: none; z-index: 150; }
+        .mobile-buttons { position: absolute; bottom: 120px; right: 20px; display: flex; flex-direction: column; gap: 15px; pointer-events: auto; }
         .mobile-btn { width: 70px; height: 70px; border-radius: 50%; background: rgba(0,0,0,0.6); border: 3px solid #00ff88; color: #00ff88; font-size: 22px; font-weight: bold; display: flex; align-items: center; justify-content: center; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
         .mobile-btn:active { background: #00ff88; color: #000; }
         .mobile-btn.exit-btn { border-color: #ff4757; color: #ff4757; font-size: 16px; }
         .mobile-btn.exit-btn:active { background: #ff4757; color: #fff; }
+        #mobile-touch-area { position: absolute; top: 0; left: 0; right: 100px; bottom: 0; pointer-events: auto; touch-action: none; }
         
         /* Computer Interface */
         #computer-interface { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 90%; max-width: 900px; height: 80%; max-height: 600px; background: linear-gradient(145deg, #1a1a2e, #16213e); border-radius: 12px; display: none; flex-direction: column; overflow: hidden; pointer-events: auto; box-shadow: 0 0 60px rgba(0,255,136,0.3), inset 0 0 60px rgba(0,0,0,0.5); border: 2px solid #00ff88; }
@@ -167,17 +166,13 @@
             .playlist-item .track-info .name { font-size: 11px; }
             .control-btn { width: 36px; height: 36px; font-size: 12px; }
             .control-btn.play-pause { width: 50px; height: 50px; font-size: 18px; }
-            .mobile-joystick { bottom: 25px; left: 20px; width: 110px; height: 110px; }
-            .joystick-knob { width: 45px; height: 45px; }
-            .mobile-buttons { bottom: 25px; right: 20px; gap: 12px; }
+            .mobile-buttons { bottom: 100px; right: 15px; gap: 12px; }
             .mobile-btn { width: 60px; height: 60px; font-size: 18px; }
         }
         
         /* iPhone safe areas */
         @supports (padding-bottom: env(safe-area-inset-bottom)) {
-            #mobile-controls { padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
-            .mobile-joystick { bottom: calc(30px + env(safe-area-inset-bottom)); }
-            .mobile-buttons { bottom: calc(30px + env(safe-area-inset-bottom)); }
+            .mobile-buttons { bottom: calc(120px + env(safe-area-inset-bottom)); }
         }
     </style>
 </head>
@@ -197,9 +192,7 @@
                 <kbd>ESC</kbd> Exit Station
             </div>
             <div id="mobile-controls">
-                <div class="mobile-joystick" id="joystick">
-                    <div class="joystick-knob" id="joystick-knob"></div>
-                </div>
+                <div id="mobile-touch-area"></div>
                 <div class="mobile-buttons">
                     <button class="mobile-btn" id="btn-jump">↑</button>
                     <button class="mobile-btn" id="btn-interact">E</button>
@@ -1858,92 +1851,96 @@
         }
         
         function setupMobileControls() {
-            const joystick = document.getElementById('joystick');
-            const knob = document.getElementById('joystick-knob');
+            const touchArea = document.getElementById('mobile-touch-area');
             const btnJump = document.getElementById('btn-jump');
             const btnInteract = document.getElementById('btn-interact');
             const btnExit = document.getElementById('btn-exit');
             
-            if (!joystick) return;
-            
-            let joystickActive = false;
-            let joystickCenter = { x: 0, y: 0 };
-            
-            // Store mobile movement values (slower than desktop)
+            // Store touch movement direction
             window.mobileMove = { x: 0, z: 0 };
             
-            joystick.addEventListener('touchstart', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                joystickActive = true;
-                const rect = joystick.getBoundingClientRect();
-                joystickCenter = {
-                    x: rect.left + rect.width / 2,
-                    y: rect.top + rect.height / 2
+            if (!touchArea) {
+                // Fallback - still set up buttons
+                window.mobileMove = { x: 0, z: 0 };
+            } else {
+                let touchActive = false;
+                let lastTouchX = 0;
+                let lastTouchY = 0;
+                
+                // Touch area for movement - drag finger to move character
+                touchArea.addEventListener('touchstart', (e) => {
+                    if (currentStation) return;
+                    e.preventDefault();
+                    touchActive = true;
+                    const touch = e.touches[0];
+                    lastTouchX = touch.clientX;
+                    lastTouchY = touch.clientY;
+                }, { passive: false });
+                
+                touchArea.addEventListener('touchmove', (e) => {
+                    if (!touchActive || currentStation) return;
+                    e.preventDefault();
+                    const touch = e.touches[0];
+                    
+                    // Calculate delta from last position
+                    const deltaX = touch.clientX - lastTouchX;
+                    const deltaY = touch.clientY - lastTouchY;
+                    
+                    lastTouchX = touch.clientX;
+                    lastTouchY = touch.clientY;
+                    
+                    // Sensitivity for movement
+                    const sensitivity = 0.012;
+                    
+                    // Apply movement based on drag direction
+                    window.mobileMove.x = deltaX * sensitivity;
+                    window.mobileMove.z = deltaY * sensitivity;
+                }, { passive: false });
+                
+                const resetTouch = (e) => {
+                    if (e) e.preventDefault();
+                    touchActive = false;
+                    window.mobileMove.x = 0;
+                    window.mobileMove.z = 0;
                 };
-            }, { passive: false });
-            
-            joystick.addEventListener('touchmove', (e) => {
-                if (!joystickActive) return;
-                e.preventDefault();
-                e.stopPropagation();
-                const touch = e.touches[0];
-                const maxDist = 45;
                 
-                let dx = touch.clientX - joystickCenter.x;
-                let dy = touch.clientY - joystickCenter.y;
-                const dist = Math.sqrt(dx * dx + dy * dy);
-                
-                if (dist > maxDist) {
-                    dx = (dx / dist) * maxDist;
-                    dy = (dy / dist) * maxDist;
-                }
-                
-                knob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
-                
-                // Store normalized movement values for smoother mobile movement
-                window.mobileMove.x = dx / maxDist;
-                window.mobileMove.z = dy / maxDist;
-            }, { passive: false });
-            
-            const resetJoystick = (e) => {
-                if (e) e.preventDefault();
-                joystickActive = false;
-                knob.style.transform = 'translate(-50%, -50%)';
-                window.mobileMove.x = 0;
-                window.mobileMove.z = 0;
-            };
-            
-            joystick.addEventListener('touchend', resetJoystick, { passive: false });
-            joystick.addEventListener('touchcancel', resetJoystick, { passive: false });
+                touchArea.addEventListener('touchend', resetTouch, { passive: false });
+                touchArea.addEventListener('touchcancel', resetTouch, { passive: false });
+            }
             
             // Jump button
-            btnJump.addEventListener('touchstart', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                if (isGrounded && !currentStation && gameStarted) {
-                    verticalVelocity = jumpForce;
-                    isGrounded = false;
-                }
-            }, { passive: false });
+            if (btnJump) {
+                btnJump.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (isGrounded && !currentStation && gameStarted) {
+                        verticalVelocity = jumpForce;
+                        isGrounded = false;
+                    }
+                }, { passive: false });
+            }
             
             // Interact button
-            btnInteract.addEventListener('touchstart', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                if (nearStation && !currentStation) {
-                    enterStation(nearStation);
-                }
-            }, { passive: false });
+            if (btnInteract) {
+                btnInteract.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (nearStation && !currentStation) {
+                        enterStation(nearStation);
+                    }
+                }, { passive: false });
+            }
             
             // Exit button
-            btnExit.addEventListener('touchstart', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                if (currentStation) {
-                    exitStation();
-                }
-            }, { passive: false });
+            if (btnExit) {
+                btnExit.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (currentStation) {
+                        exitStation();
+                    }
+                }, { passive: false });
+            }
             
             // Tap on station indicators to enter directly
             setupStationTapInteraction();
@@ -1954,9 +1951,9 @@
             const tapPosition = new THREE.Vector2();
             
             renderer.domElement.addEventListener('touchstart', (e) => {
-                // Don't process if touching controls
-                if (e.target.closest('#mobile-controls')) return;
-                if (currentStation) return; // Already in a station
+                // Don't process if touching control buttons
+                if (e.target.closest('.mobile-buttons')) return;
+                if (currentStation) return;
                 
                 const touch = e.touches[0];
                 tapPosition.x = (touch.clientX / window.innerWidth) * 2 - 1;
@@ -1969,7 +1966,6 @@
                 const intersects = raycaster.intersectObjects(indicators, false);
                 
                 if (intersects.length > 0) {
-                    // Find which station this indicator belongs to
                     const tappedIndicator = intersects[0].object;
                     const station = stations.find(s => s.indicator === tappedIndicator);
                     if (station) {
@@ -1978,9 +1974,6 @@
                         return;
                     }
                 }
-                
-                // Also check for drum pads and synth keys when in those stations
-                // (handled separately in existing touch handlers)
             }, { passive: false });
         }
 
@@ -2724,7 +2717,7 @@
 
             // Check if mobile
             const isMobile = window.innerWidth <= 768;
-            const speed = isMobile ? 0.025 : 0.04; // Slower on mobile
+            const speed = 0.04;
             const friction = 0.88;
             
             // Desktop keyboard controls
@@ -2733,10 +2726,13 @@
             if (keys['a']) playerVelocity.x -= speed;
             if (keys['d']) playerVelocity.x += speed;
             
-            // Mobile joystick controls (analog, smoother)
+            // Mobile touch-drag controls (direct position delta)
             if (window.mobileMove && isMobile) {
-                playerVelocity.x += window.mobileMove.x * speed * 0.8;
-                playerVelocity.z += window.mobileMove.z * speed * 0.8;
+                playerVelocity.x += window.mobileMove.x;
+                playerVelocity.z += window.mobileMove.z;
+                // Reset after applying so it doesn't accumulate
+                window.mobileMove.x = 0;
+                window.mobileMove.z = 0;
             }
             
             playerVelocity.multiplyScalar(friction);
