@@ -1,700 +1,2798 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>whoistheMETRO</title>
-  <style>
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
-
-    body {
-      font-family: 'Courier New', Courier, monospace;
-      background: linear-gradient(135deg, #000000 0%, #1a0a1f 100%);
-      color: #fff;
-      overflow-x: hidden;
-      position: relative;
-    }
-
-    /* Animated background */
-    .bg-animation {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      z-index: 1;
-      opacity: 0.5;
-      pointer-events: none;
-    }
-
-    .hero, .main-content, .gallery, .cta-section, footer {
-      position: relative;
-      z-index: 2;
-    }
-
-    /* Hero Section */
-    .hero {
-      position: relative;
-      padding: 3rem 2rem;
-      text-align: center;
-      background: linear-gradient(180deg, rgba(74,44,89,0.2) 0%, transparent 100%);
-    }
-
-    .site-title {
-      font-size: 4rem;
-      font-weight: bold;
-      letter-spacing: 4px;
-      cursor: default;
-      margin-bottom: 1rem;
-      background: linear-gradient(90deg, #FF69B4, #9D4EDD, #FF69B4);
-      background-size: 200% auto;
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-      animation: shimmer 3s linear infinite;
-    }
-
-    @keyframes shimmer {
-      to {
-        background-position: 200% center;
-      }
-    }
-
-    .tagline {
-      font-size: 1.2rem;
-      color: #FF69B4;
-      margin-bottom: 2rem;
-      opacity: 0.9;
-    }
-
-    /* Main Content */
-    .main-content {
-      max-width: 1400px;
-      margin: 0 auto;
-      padding: 2rem;
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 3rem;
-      align-items: start;
-    }
-
-    .bio-section {
-      background: rgba(28, 28, 28, 0.6);
-      backdrop-filter: blur(10px);
-      border-radius: 20px;
-      padding: 2.5rem;
-      border: 1px solid rgba(74, 44, 89, 0.3);
-      box-shadow: 0 8px 32px rgba(74, 44, 89, 0.3);
-      position: relative;
-      overflow: hidden;
-      height: 100%;
-      display: flex;
-      align-items: center;
-    }
-
-    .bio-section::before {
-      content: '';
-      position: absolute;
-      top: -50%;
-      left: -50%;
-      width: 200%;
-      height: 200%;
-      background: radial-gradient(circle, rgba(157, 78, 221, 0.1) 0%, transparent 70%);
-      animation: rotate 20s linear infinite;
-    }
-
-    @keyframes rotate {
-      100% {
-        transform: rotate(360deg);
-      }
-    }
-
-    .bio-content {
-      position: relative;
-      z-index: 1;
-      text-align: center;
-    }
-
-    .profile-image-container {
-      position: relative;
-      display: inline-block;
-      margin-bottom: 2rem;
-    }
-
-    .profile-image-container::before {
-      content: '';
-      position: absolute;
-      top: -10px;
-      left: -10px;
-      right: -10px;
-      bottom: -10px;
-      border-radius: 50%;
-      background: linear-gradient(45deg, #FF69B4, #9D4EDD, #4A2C59);
-      background-size: 300% 300%;
-      animation: gradientRotate 4s ease infinite;
-      z-index: -1;
-    }
-
-    @keyframes gradientRotate {
-      0%, 100% { background-position: 0% 50%; }
-      50% { background-position: 100% 50%; }
-    }
-
-    .bio-section img {
-      width: 220px;
-      height: 220px;
-      border-radius: 50%;
-      border: 4px solid #000;
-      transition: transform 0.3s ease, filter 0.3s ease;
-      object-fit: cover;
-    }
-
-    .bio-section img:hover {
-      transform: scale(1.05);
-      filter: brightness(1.1);
-    }
-
-    .bio-text {
-      line-height: 1.8;
-      font-size: 1.05rem;
-      color: #e0e0e0;
-    }
-
-    .bio-text strong {
-      color: #FF69B4;
-    }
-
-    /* Music Player */
-    .player-section {
-      background: rgba(28, 28, 28, 0.6);
-      backdrop-filter: blur(10px);
-      border-radius: 20px;
-      padding: 2.5rem;
-      border: 1px solid rgba(74, 44, 89, 0.3);
-      box-shadow: 0 8px 32px rgba(74, 44, 89, 0.3);
-      position: sticky;
-      top: 2rem;
-    }
-
-    .player-header {
-      text-align: center;
-      margin-bottom: 2rem;
-    }
-
-    .player-header h2 {
-      font-size: 1.8rem;
-      color: #FF69B4;
-      margin-bottom: 0.5rem;
-      text-shadow: 0 0 20px rgba(255, 105, 180, 0.5);
-    }
-
-    .now-playing {
-      font-size: 0.9rem;
-      color: #9D4EDD;
-      text-transform: uppercase;
-      letter-spacing: 2px;
-    }
-
-    #song-title {
-      font-size: 1.4rem;
-      color: #fff;
-      font-weight: bold;
-      margin: 1.5rem 0 0.5rem;
-      min-height: 2rem;
-      text-align: center;
-    }
-
-    #artist-credits {
-      font-size: 0.95rem;
-      color: #b0b0b0;
-      margin-bottom: 1.5rem;
-      min-height: 1.5rem;
-      text-align: center;
-    }
-
-    .artist-bold {
-      font-weight: bold;
-      color: #FF69B4;
-    }
-
-    audio {
-      width: 100%;
-      margin: 1.5rem 0;
-      border-radius: 10px;
-    }
-
-    .volume-control {
-      margin: 1.5rem 0;
-      text-align: center;
-    }
-
-    .volume-control label {
-      display: block;
-      margin-bottom: 0.5rem;
-      color: #9D4EDD;
-      font-size: 0.9rem;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-    }
-
-    #volume {
-      width: 80%;
-      cursor: pointer;
-      height: 6px;
-      border-radius: 3px;
-      background: rgba(157, 78, 221, 0.2);
-      outline: none;
-      -webkit-appearance: none;
-    }
-
-    #volume::-webkit-slider-thumb {
-      -webkit-appearance: none;
-      width: 16px;
-      height: 16px;
-      border-radius: 50%;
-      background: #FF69B4;
-      cursor: pointer;
-      box-shadow: 0 0 10px rgba(255, 105, 180, 0.5);
-    }
-
-    #volume::-moz-range-thumb {
-      width: 16px;
-      height: 16px;
-      border-radius: 50%;
-      background: #FF69B4;
-      cursor: pointer;
-      border: none;
-      box-shadow: 0 0 10px rgba(255, 105, 180, 0.5);
-    }
-
-    .tracklist-header {
-      font-size: 1rem;
-      color: #9D4EDD;
-      margin-bottom: 0.5rem;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-    }
-
-    .tracklist {
-      max-height: 200px;
-      overflow-y: auto;
-      padding: 0.5rem;
-      background: rgba(0, 0, 0, 0.4);
-      border-radius: 12px;
-      border: 1px solid rgba(74, 44, 89, 0.3);
-    }
-
-    .tracklist::-webkit-scrollbar {
-      width: 8px;
-    }
-
-    .tracklist::-webkit-scrollbar-track {
-      background: rgba(0, 0, 0, 0.2);
-      border-radius: 10px;
-    }
-
-    .tracklist::-webkit-scrollbar-thumb {
-      background: #9D4EDD;
-      border-radius: 10px;
-    }
-
-    .tracklist div {
-      padding: 0.75rem;
-      cursor: pointer;
-      color: #e0e0e0;
-      transition: all 0.3s;
-      border-radius: 8px;
-      margin-bottom: 0.25rem;
-      border-left: 3px solid transparent;
-    }
-
-    .tracklist div:hover {
-      background-color: rgba(74, 44, 89, 0.3);
-      border-left-color: #FF69B4;
-      transform: translateX(5px);
-    }
-
-    .tracklist div.active {
-      background: linear-gradient(90deg, rgba(157, 78, 221, 0.3), rgba(255, 105, 180, 0.2));
-      border-left-color: #FF69B4;
-      color: #fff;
-      font-weight: bold;
-    }
-
-    /* Gallery Section */
-    .gallery {
-      max-width: 1400px;
-      margin: 4rem auto;
-      padding: 2rem;
-    }
-
-    .gallery-header {
-      text-align: center;
-      margin-bottom: 3rem;
-    }
-
-    .gallery-header h2 {
-      font-size: 2.5rem;
-      background: linear-gradient(90deg, #FF69B4, #9D4EDD);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-      display: inline-block;
-      margin-bottom: 0.5rem;
-    }
-
-    .gallery-subtitle {
-      color: #b0b0b0;
-      font-size: 1.1rem;
-    }
-
-    .video-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-      gap: 1.5rem;
-    }
-
-    .video-wrapper {
-      position: relative;
-      border-radius: 16px;
-      overflow: hidden;
-      background: rgba(28, 28, 28, 0.6);
-      border: 1px solid rgba(74, 44, 89, 0.3);
-      transition: transform 0.3s ease, box-shadow 0.3s ease;
-    }
-
-    .video-wrapper:hover {
-      transform: translateY(-5px);
-      box-shadow: 0 12px 40px rgba(157, 78, 221, 0.4);
-    }
-
-    .video-wrapper iframe {
-      width: 100%;
-      height: 240px;
-      border: none;
-      display: block;
-    }
-
-    /* CTA Section */
-    .cta-section {
-      max-width: 800px;
-      margin: 4rem auto;
-      padding: 3rem 2rem;
-      text-align: center;
-      background: linear-gradient(135deg, rgba(157, 78, 221, 0.2), rgba(255, 105, 180, 0.2));
-      border-radius: 20px;
-      border: 1px solid rgba(74, 44, 89, 0.3);
-    }
-
-    .cta-section h2 {
-      font-size: 2rem;
-      margin-bottom: 1rem;
-      color: #FF69B4;
-    }
-
-    .cta-section p {
-      font-size: 1.1rem;
-      margin-bottom: 2rem;
-      color: #e0e0e0;
-      line-height: 1.6;
-    }
-
-    .cta-button {
-      display: inline-block;
-      padding: 1rem 3rem;
-      background: linear-gradient(90deg, #FF69B4, #9D4EDD);
-      color: #fff;
-      text-decoration: none;
-      border-radius: 50px;
-      font-weight: bold;
-      font-size: 1.1rem;
-      transition: all 0.3s ease;
-      box-shadow: 0 4px 20px rgba(255, 105, 180, 0.4);
-      text-transform: uppercase;
-      letter-spacing: 1px;
-    }
-
-    .cta-button:hover {
-      transform: translateY(-3px);
-      box-shadow: 0 8px 30px rgba(255, 105, 180, 0.6);
-    }
-
-    /* Footer */
-    footer {
-      text-align: center;
-      padding: 2rem;
-      color: #666;
-      font-size: 0.9rem;
-    }
-
-    /* Responsive */
-    @media (max-width: 1024px) {
-      .main-content {
-        grid-template-columns: 1fr;
-        gap: 2rem;
-      }
-
-      .player-section {
-        position: static;
-      }
-
-      .site-title {
-        font-size: 3rem;
-      }
-    }
-
-    @media (max-width: 768px) {
-      .site-title {
-        font-size: 2.5rem;
-      }
-
-      .video-grid {
-        grid-template-columns: 1fr;
-      }
-
-      .bio-section, .player-section {
-        padding: 1.5rem;
-      }
-
-      .gallery-header h2 {
-        font-size: 2rem;
-      }
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Metro's Studio</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { overflow: hidden; font-family: 'Courier New', monospace; background: #0a0a0a; touch-action: none; }
+        #game-container { width: 100vw; height: 100vh; position: relative; }
+        canvas { display: block; touch-action: none; }
+        #ui-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 100; }
+        #interaction-prompt { position: absolute; bottom: 100px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.8); color: #00ff88; padding: 15px 30px; border-radius: 8px; font-size: 18px; opacity: 0; transition: opacity 0.3s; border: 1px solid #00ff88; text-shadow: 0 0 10px #00ff88; }
+        #interaction-prompt.visible { opacity: 1; }
+        #controls-hint { position: absolute; bottom: 20px; left: 20px; background: rgba(0,0,0,0.7); color: #888; padding: 15px; border-radius: 8px; font-size: 12px; line-height: 1.8; }
+        #controls-hint kbd { background: #333; padding: 2px 8px; border-radius: 4px; margin: 0 2px; }
+        
+        /* Mobile Controls */
+        #mobile-controls { display: none; position: absolute; bottom: 20px; left: 0; right: 0; pointer-events: auto; z-index: 150; padding: 10px; }
+        .mobile-joystick { position: absolute; bottom: 20px; left: 20px; width: 120px; height: 120px; background: rgba(0,0,0,0.5); border: 2px solid #00ff88; border-radius: 50%; }
+        .joystick-knob { position: absolute; top: 50%; left: 50%; width: 50px; height: 50px; background: #00ff88; border-radius: 50%; transform: translate(-50%, -50%); opacity: 0.8; }
+        .mobile-buttons { position: absolute; bottom: 20px; right: 20px; display: flex; gap: 10px; }
+        .mobile-btn { width: 60px; height: 60px; border-radius: 50%; background: rgba(0,0,0,0.5); border: 2px solid #00ff88; color: #00ff88; font-size: 20px; display: flex; align-items: center; justify-content: center; }
+        .mobile-btn:active { background: #00ff88; color: #000; }
+        
+        /* Computer Interface */
+        #computer-interface { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 90%; max-width: 900px; height: 80%; max-height: 600px; background: linear-gradient(145deg, #1a1a2e, #16213e); border-radius: 12px; display: none; flex-direction: column; overflow: hidden; pointer-events: auto; box-shadow: 0 0 60px rgba(0,255,136,0.3), inset 0 0 60px rgba(0,0,0,0.5); border: 2px solid #00ff88; }
+        #computer-interface.active { display: flex; }
+        .screen-header { background: linear-gradient(90deg, #0d0d0d, #1a1a1a); padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; flex-shrink: 0; }
+        .screen-title { color: #00ff88; font-size: 14px; text-transform: uppercase; letter-spacing: 2px; }
+        .close-btn { background: #ff4757; border: none; width: 30px; height: 30px; border-radius: 50%; cursor: pointer; transition: all 0.3s; }
+        .close-btn:hover { background: #ff6b7a; transform: scale(1.1); }
+        
+        /* Music Player Layout */
+        #music-player { flex: 1; display: flex; gap: 15px; padding: 15px; overflow: hidden; }
+        .player-left { width: 160px; flex-shrink: 0; overflow-y: auto; }
+        .player-right { flex: 1; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+        
+        /* Playlist Folders */
+        .playlist-folders { background: rgba(0,0,0,0.3); border-radius: 8px; padding: 10px; }
+        .folder-item { display: flex; align-items: center; padding: 10px 12px; border-radius: 6px; cursor: pointer; transition: all 0.3s; margin-bottom: 5px; gap: 8px; }
+        .folder-item:hover { background: rgba(0,255,136,0.1); }
+        .folder-item.active { background: rgba(0,255,136,0.2); border-left: 3px solid #00ff88; }
+        .folder-item .folder-icon { font-size: 18px; }
+        .folder-item .folder-name { color: #fff; font-size: 13px; }
+        .folder-item.locked { opacity: 0.6; }
+        .folder-item.locked:hover { background: rgba(255,100,100,0.1); }
+        
+        /* Track Playlist */
+        .playlist { overflow-y: auto; background: rgba(0,0,0,0.3); border-radius: 8px; padding: 8px; flex: 1; min-height: 80px; }
+        .playlist-item { display: flex; align-items: center; padding: 8px 10px; border-radius: 6px; cursor: pointer; transition: all 0.3s; margin-bottom: 4px; }
+        .playlist-item:hover { background: rgba(0,255,136,0.1); }
+        .playlist-item.active { background: rgba(0,255,136,0.2); border-left: 3px solid #00ff88; }
+        .playlist-item .track-num { color: #555; width: 25px; font-size: 11px; }
+        .playlist-item .track-info { flex: 1; }
+        .playlist-item .track-info .name { color: #fff; font-size: 12px; }
+        .playlist-empty { color: #666; text-align: center; padding: 20px; font-style: italic; }
+        
+        /* Now Playing */
+        .now-playing { display: flex; align-items: center; gap: 12px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 8px; flex-shrink: 0; }
+        .now-playing .album-art { width: 50px; height: 50px; flex-shrink: 0; background: linear-gradient(45deg, #ff6b6b, #4ecdc4, #45b7d1, #96ceb4); background-size: 400% 400%; animation: gradientShift 8s ease infinite; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 24px; }
+        .now-playing .album-art.playing { animation: gradientShift 2s ease infinite, pulse 1s ease infinite; }
+        @keyframes gradientShift { 0%, 100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
+        @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.02); } }
+        .track-info-main { flex: 1; min-width: 0; }
+        .track-info-main .track-title { font-size: 14px; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .track-info-main .track-artist { font-size: 11px; color: #888; }
+        
+        /* Progress Bar */
+        .progress-container { flex-shrink: 0; }
+        .progress-bar { width: 100%; height: 6px; background: #333; border-radius: 3px; cursor: pointer; overflow: hidden; }
+        .progress-fill { height: 100%; background: linear-gradient(90deg, #00ff88, #00d4ff); width: 0%; transition: width 0.1s linear; }
+        .time-display { display: flex; justify-content: space-between; color: #666; font-size: 11px; margin-top: 5px; }
+        
+        /* Player Controls - ALWAYS VISIBLE */
+        .player-controls { display: flex !important; justify-content: center; align-items: center; gap: 15px; padding: 10px 0; flex-shrink: 0; visibility: visible !important; opacity: 1 !important; min-height: 80px; }
+        .control-btn { background: transparent; border: 2px solid #00ff88; color: #00ff88; width: 45px; height: 45px; border-radius: 50%; cursor: pointer; transition: all 0.3s; display: flex !important; align-items: center; justify-content: center; font-size: 16px; visibility: visible !important; opacity: 1 !important; flex-shrink: 0; }
+        .control-btn:hover, .control-btn:active { background: #00ff88; color: #000; box-shadow: 0 0 20px rgba(0,255,136,0.5); }
+        .control-btn.play-pause { width: 60px; height: 60px; font-size: 22px; }
+        
+        /* Secret Modal */
+        #secret-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: none; align-items: center; justify-content: center; z-index: 200; }
+        #secret-modal.active { display: flex; }
+        .secret-content { background: linear-gradient(145deg, #1a1a2e, #16213e); padding: 30px; border-radius: 16px; text-align: center; border: 2px solid #ff6600; box-shadow: 0 0 40px rgba(255,102,0,0.3); max-width: 90%; width: 350px; }
+        .secret-icon { font-size: 40px; margin-bottom: 15px; }
+        .secret-title { color: #ff6600; font-size: 20px; margin-bottom: 15px; letter-spacing: 2px; }
+        .secret-question { color: #fff; font-size: 14px; margin-bottom: 15px; }
+        #secret-answer { width: 100%; padding: 12px; border: 2px solid #333; background: #0a0a0a; color: #fff; border-radius: 8px; font-size: 16px; text-align: center; margin-bottom: 15px; }
+        #secret-answer:focus { outline: none; border-color: #ff6600; }
+        .secret-buttons { display: flex; gap: 10px; justify-content: center; }
+        .secret-buttons button { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-family: inherit; font-size: 14px; transition: all 0.3s; }
+        .secret-buttons button:first-child { background: #ff6600; color: #fff; }
+        .secret-buttons button:first-child:hover { background: #ff8833; }
+        .secret-buttons button:last-child { background: #333; color: #fff; }
+        .secret-buttons button:last-child:hover { background: #444; }
+        .secret-error { color: #ff3333; margin-top: 10px; font-size: 13px; min-height: 18px; }
+        
+        /* TV Interface */
+        #tv-interface { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 90%; max-width: 1000px; height: 80%; background: #000; border-radius: 8px; display: none; flex-direction: column; overflow: hidden; pointer-events: auto; box-shadow: 0 0 80px rgba(100,100,255,0.3); border: 3px solid #333; }
+        #tv-interface.active { display: flex; }
+        .tv-screen { flex: 1; background: #111; position: relative; }
+        .tv-screen iframe { width: 100%; height: 100%; border: none; }
+        .tv-controls { background: #1a1a1a; padding: 10px 15px; display: flex; align-items: center; gap: 10px; border-top: 1px solid #333; flex-wrap: wrap; }
+        .channel-btn { background: #333; border: none; color: #fff; padding: 8px 15px; border-radius: 6px; cursor: pointer; transition: all 0.3s; font-family: inherit; font-size: 12px; }
+        .channel-btn:hover, .channel-btn:active { background: #4a4a4a; }
+        .channel-btn.active { background: #6366f1; }
+        .tv-close { margin-left: auto; }
+        
+        /* Drums Interface */
+        #drums-interface { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.8); border-radius: 12px; padding: 15px 25px; display: none; pointer-events: auto; border: 2px solid #ff6600; box-shadow: 0 0 30px rgba(255,102,0,0.3); }
+        #drums-interface.active { display: block; }
+        .drums-header { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 10px; }
+        .drums-title { color: #ff6600; font-size: 18px; letter-spacing: 2px; }
+        .drums-info { color: #888; font-size: 12px; }
+        
+        /* Synth Interface */
+        #synth-interface { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.8); border-radius: 12px; padding: 15px 25px; display: none; pointer-events: auto; border: 2px solid #ff00ff; box-shadow: 0 0 30px rgba(255,0,255,0.3); }
+        #synth-interface.active { display: block; }
+        .synth-header { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 10px; }
+        .synth-title { color: #ff00ff; font-size: 18px; letter-spacing: 2px; }
+        .synth-info { color: #888; font-size: 12px; }
+        
+        /* Loading Screen */
+        #loading-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #0a0a0a; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; transition: opacity 0.5s; }
+        #loading-screen.hidden { opacity: 0; pointer-events: none; }
+        .loading-text { color: #00ff88; font-size: 24px; margin-bottom: 30px; letter-spacing: 4px; }
+        .loading-bar { width: 300px; max-width: 80%; height: 4px; background: #333; border-radius: 2px; overflow: hidden; }
+        .loading-progress { height: 100%; background: #00ff88; width: 0%; animation: loading 2s ease-out forwards; }
+        @keyframes loading { to { width: 100%; } }
+        .enter-btn { margin-top: 40px; background: transparent; border: 2px solid #00ff88; color: #00ff88; padding: 15px 50px; font-size: 16px; letter-spacing: 3px; cursor: pointer; transition: all 0.3s; opacity: 0; animation: fadeIn 0.5s ease 2s forwards; font-family: inherit; }
+        .enter-btn:hover, .enter-btn:active { background: #00ff88; color: #000; box-shadow: 0 0 30px rgba(0,255,136,0.5); }
+        @keyframes fadeIn { to { opacity: 1; } }
+        
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #1a1a1a; }
+        ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+        
+        /* Mobile Responsive */
+        @media (max-width: 768px) {
+            #controls-hint { display: none; }
+            #mobile-controls { display: block; }
+            #computer-interface { width: 95%; height: 85%; max-height: none; }
+            #music-player { flex-direction: column; padding: 10px; gap: 10px; }
+            .player-left { width: 100%; max-height: 120px; overflow-x: auto; overflow-y: hidden; }
+            .playlist-folders { display: flex; gap: 8px; padding: 8px; white-space: nowrap; }
+            .folder-item { flex-shrink: 0; padding: 8px 12px; }
+            .player-right { flex: 1; }
+            .playlist { max-height: 120px; }
+            .now-playing .album-art { width: 40px; height: 40px; font-size: 18px; }
+            .track-info-main .track-title { font-size: 13px; }
+            .player-controls { gap: 12px; min-height: 70px; }
+            .control-btn { width: 40px; height: 40px; font-size: 14px; }
+            .control-btn.play-pause { width: 55px; height: 55px; font-size: 20px; }
+            #tv-interface { width: 95%; height: 85%; }
+            .tv-controls { padding: 8px 10px; }
+            .channel-btn { padding: 6px 10px; font-size: 11px; }
+        }
+        
+        @media (max-width: 480px) {
+            .folder-item .folder-name { font-size: 11px; }
+            .playlist-item .track-info .name { font-size: 11px; }
+            .control-btn { width: 36px; height: 36px; font-size: 12px; }
+            .control-btn.play-pause { width: 50px; height: 50px; font-size: 18px; }
+        }
+    </style>
 </head>
 <body>
-  <!-- Animated Background -->
-  <canvas id="particles" class="bg-animation"></canvas>
-
-  <!-- Hero Section -->
-  <div class="hero">
-    <h1 id="siteTitle" class="site-title">whoistheMETRO</h1>
-    <p class="tagline">Music Producer | Audio Engineer | 3D Visual Artist</p>
-  </div>
-
-  <!-- Main Content -->
-  <div class="main-content">
-    <!-- Bio Section -->
-    <div class="bio-section">
-      <div class="bio-content">
-        <div class="profile-image-container">
-          <img src="assets/images/profile2.jpg" alt="Metro">
+    <div id="loading-screen">
+        <div class="loading-text">METRO'S STUDIO</div>
+        <div class="loading-bar"><div class="loading-progress"></div></div>
+        <button class="enter-btn" onclick="enterStudio()">ENTER</button>
+    </div>
+    <div id="game-container">
+        <div id="ui-overlay">
+            <div id="interaction-prompt">Press E to interact</div>
+            <div id="controls-hint">
+                <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Move<br>
+                <kbd>Space</kbd> Jump<br>
+                <kbd>E</kbd> Interact<br>
+                <kbd>ESC</kbd> Exit Station
+            </div>
+            <div id="mobile-controls">
+                <div class="mobile-joystick" id="joystick">
+                    <div class="joystick-knob" id="joystick-knob"></div>
+                </div>
+                <div class="mobile-buttons">
+                    <button class="mobile-btn" id="btn-jump">↑</button>
+                    <button class="mobile-btn" id="btn-interact">E</button>
+                </div>
+            </div>
         </div>
-        <div class="bio-text">
-          Yo, I'm <strong>Metro</strong> I do 3D videos using <strong>Unreal Engine</strong> and <strong>Blender</strong>.
-          <br><br>
-          If you wanna work together, hit me up on the gram.
+        <div id="computer-interface">
+            <div class="screen-header">
+                <span class="screen-title">◉ Music Player</span>
+                <button class="close-btn" onclick="exitStation()"></button>
+            </div>
+            <div id="music-player">
+                <div class="player-left">
+                    <div class="playlist-folders" id="playlist-folders"></div>
+                </div>
+                <div class="player-right">
+                    <div class="playlist" id="playlist"></div>
+                    <div class="now-playing">
+                        <div class="album-art" id="album-art"><span style="font-size: 48px;">♪</span></div>
+                        <div class="track-info-main">
+                            <div class="track-title" id="track-title">Select a track</div>
+                            <div class="track-artist" id="track-artist">Metro</div>
+                        </div>
+                    </div>
+                    <div class="progress-container">
+                        <div class="progress-bar" id="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+                        <div class="time-display"><span id="current-time">0:00</span><span id="total-time">0:00</span></div>
+                    </div>
+                    <div class="player-controls">
+                        <button class="control-btn" onclick="prevTrack()">⏮</button>
+                        <button class="control-btn play-pause" id="play-pause-btn" onclick="togglePlay()">▶</button>
+                        <button class="control-btn" onclick="nextTrack()">⏭</button>
+                    </div>
+                </div>
+            </div>
         </div>
-      </div>
+        <div id="secret-modal">
+            <div class="secret-content">
+                <div class="secret-icon">🔒</div>
+                <div class="secret-title">Secret Vault</div>
+                <div class="secret-question" id="secret-question"></div>
+                <input type="text" id="secret-answer" placeholder="Enter answer..." autocomplete="off">
+                <div class="secret-buttons">
+                    <button onclick="checkSecretAnswer()">Submit</button>
+                    <button onclick="closeSecretModal()">Cancel</button>
+                </div>
+                <div class="secret-error" id="secret-error"></div>
+            </div>
+        </div>
+        <div id="tv-interface">
+            <div class="tv-screen"><iframe id="tv-video" src="" allow="autoplay; encrypted-media" allowfullscreen></iframe></div>
+            <div class="tv-controls">
+                <span style="color: #666;">CHANNELS:</span>
+                <div id="channel-buttons"></div>
+                <button class="channel-btn tv-close" onclick="exitStation()">✕ EXIT</button>
+            </div>
+        </div>
+        <div id="drums-interface">
+            <div class="drums-header">
+                <span class="drums-title">🥁 Drum Kit</span>
+                <button class="close-btn" onclick="exitStation()"></button>
+            </div>
+            <div class="drums-info">Click on the drums to play! Use your mouse to hit different pads and cymbals.</div>
+        </div>
+        <div id="synth-interface">
+            <div class="synth-header">
+                <span class="synth-title">🎹 Synthesizer</span>
+                <button class="close-btn" onclick="exitStation()"></button>
+            </div>
+            <div class="synth-info">Click the keys to play! Left button changes sound, right button toggles arpeggio.</div>
+        </div>
     </div>
-
-    <!-- Music Player Section -->
-    <div class="player-section">
-      <div class="player-header">
-        <h2>🎵 Music Player</h2>
-        <div class="now-playing">Now Playing</div>
-      </div>
-      
-      <div id="song-title"></div>
-      <div id="artist-credits"></div>
-      
-      <audio id="audio" controls>
-        <source src="assets/songs/signs.mp3" type="audio/mp3">
-      </audio>
-      
-      <div class="volume-control">
-        <label for="volume">Volume</label>
-        <input type="range" id="volume" min="0" max="1" step="0.01" value="1">
-      </div>
-      
-      <div class="tracklist-header">Tracklist</div>
-      <div id="tracklist" class="tracklist"></div>
-    </div>
-  </div>
-
-  <!-- Gallery Section -->
-  <div class="gallery">
-    <div class="gallery-header">
-      <h2>🎥 Videos</h2>
-      <p class="gallery-subtitle">Virtual Production using Unreal Engine & Blender</p>
-    </div>
-    <div class="video-grid">
-      <div class="video-wrapper">
-        <iframe src="https://www.youtube.com/embed/aT1MUHFoGBA" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe>
-      </div>
-      <div class="video-wrapper">
-        <iframe src="https://www.youtube.com/embed/RHfSjrHNht0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe>
-      </div>
-      <div class="video-wrapper">
-        <iframe src="https://www.youtube.com/embed/INeqPGSqm1Y" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe>
-      </div>
-      <div class="video-wrapper">
-        <iframe src="https://www.youtube.com/embed/U_sIVyOBKh0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe>
-      </div>
-      <div class="video-wrapper">
-        <iframe src="https://www.youtube.com/embed/O-_ZtFg6OLI" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe>
-      </div>
-      <div class="video-wrapper">
-        <iframe src="https://www.youtube.com/embed/mZCBgCShA1M" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe>
-      </div>
-      <div class="video-wrapper">
-        <iframe src="https://www.youtube.com/embed/-k8zOXswHrY" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe>
-      </div>
-      <div class="video-wrapper">
-        <iframe src="https://www.youtube.com/embed/V8unPBpvF_c" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe>
-      </div>
-      <div class="video-wrapper">
-        <iframe src="https://www.youtube.com/embed/heQlS1IsIhc" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe>
-      </div>
-      <div class="video-wrapper">
-        <iframe src="https://www.youtube.com/embed/IFIwn1Za58E" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe>
-      </div>
-    </div>
-  </div>
-
-  <!-- CTA Section -->
-  <div class="cta-section">
-    <h2>Let's Work Together</h2>
-    <a href="#" class="cta-button">Hit Me Up</a>
-  </div>
-
-  <!-- Footer -->
-  <footer>
-    <p>&copy; 2025 whoistheMETRO. All rights reserved.</p>
-  </footer>
-
-  <script>
-    // Canvas Particle Animation
-    const canvas = document.getElementById('particles');
-    const ctx = canvas.getContext('2d');
-    
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-    
-    window.addEventListener('resize', () => {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-    });
-    
-    const particles = [];
-    
-    class Particle {
-      constructor() {
-        this.x = Math.random() * canvas.width;
-        this.y = canvas.height + 10;
-        this.size = Math.random() * 3 + 2;
-        this.speedY = Math.random() * 1 + 0.5;
-        this.speedX = Math.random() * 0.5 - 0.25;
-        this.opacity = Math.random() * 0.5 + 0.5;
-      }
-      
-      update() {
-        this.y -= this.speedY;
-        this.x += this.speedX;
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // ============================================
+        // CONFIGURATION
+        // ============================================
+        const CONFIG = {
+            playlists: [
+                {
+                    name: "Productions",
+                    icon: "🎵",
+                    locked: false,
+                    tracks: [
+                        { title: "Beat Monster", file: "https://raw.githubusercontent.com/whoisthemetro/whoisthemetro.github.io/main/assets/songs/beatmonster.mp3" },
+                        { title: "Burrito Song", file: "https://raw.githubusercontent.com/whoisthemetro/whoisthemetro.github.io/main/assets/songs/burritosong.mp3" },
+                        { title: "I Wanna Fall", file: "https://raw.githubusercontent.com/whoisthemetro/whoisthemetro.github.io/main/assets/songs/iwannafall.mp3" },
+                        { title: "OMG", file: "https://raw.githubusercontent.com/whoisthemetro/whoisthemetro.github.io/main/assets/songs/omg.mp3" },
+                        { title: "Signs", file: "https://raw.githubusercontent.com/whoisthemetro/whoisthemetro.github.io/main/assets/songs/signs.mp3" },
+                    ]
+                },
+                {
+                    name: "Sound Design",
+                    icon: "🔊",
+                    locked: false,
+                    tracks: []
+                },
+                {
+                    name: "Originals",
+                    icon: "✨",
+                    locked: false,
+                    tracks: []
+                },
+                {
+                    name: "🔒 Secret Vault",
+                    icon: "🔒",
+                    locked: true,
+                    question: "What is fartGOD's favorite food?",
+                    answer: "burrito",
+                    tracks: [
+                        { title: "Hidden Track 1", file: "https://raw.githubusercontent.com/whoisthemetro/whoisthemetro.github.io/main/assets/songs/song1.mp3" },
+                    ]
+                }
+            ],
+            photos: [
+                "https://raw.githubusercontent.com/whoisthemetro/whoisthemetro.github.io/main/assets/images/2025-08-28%2014.18.19.jpg",
+                "https://raw.githubusercontent.com/whoisthemetro/whoisthemetro.github.io/main/assets/images/FARTGOD.png",
+                "https://raw.githubusercontent.com/whoisthemetro/whoisthemetro.github.io/main/assets/images/metro%20duuude.png"
+            ],
+            catPhotos: [
+                "https://placekitten.com/200/200",
+                "https://placekitten.com/201/201",
+                "https://placekitten.com/202/202",
+                "https://placekitten.com/203/203"
+            ],
+            videos: [
+                { title: "Video 1", id: "aT1MUHFoGBA" },
+                { title: "Video 2", id: "RHfSjrHNht0" },
+                { title: "Video 3", id: "INeqPGSqm1Y" },
+                { title: "Video 4", id: "U_sIVyOBKh0" },
+                { title: "Video 5", id: "O-_ZtFg6OLI" },
+                { title: "Video 6", id: "mZCBgCShA1M" },
+                { title: "Video 7", id: "-k8zOXswHrY" },
+                { title: "Video 8", id: "V8unPBpvF_c" },
+                { title: "Video 9", id: "heQlS1IsIhc" },
+                { title: "Video 10", id: "IFIwn1Za58E" },
+            ]
+        };
         
-        if (this.y < -10) {
-          this.y = canvas.height + 10;
-          this.x = Math.random() * canvas.width;
+        // Current playlist state
+        let currentPlaylist = 0;
+        let currentPhotoIndex = 0;
+        let photoChangeTimer = 0;
+        
+        // Bed physics
+        let bedMattress = null;
+        let bedBounceVelocity = 0;
+        let bedBaseY = 0.58;
+        let isOnBed = false;
+
+        // ============================================
+        // GAME STATE
+        // ============================================
+        let scene, camera, renderer, player;
+        let playerVelocity = new THREE.Vector3();
+        let keys = {}, currentStation = null, nearStation = null, stations = [];
+        let isPlaying = false, currentTrack = 0, gameStarted = false;
+        let verticalVelocity = 0, isGrounded = true;
+        const gravity = 0.015, jumpForce = 0.25;
+        let cat = null, catBreathTime = 0;
+        let drumPads = [], synthKeys = [];
+        let playerEmissiveParts = [];
+        let acousticPanels = [];
+        let cornerLights = [];
+        let cornerPillars = [];
+        let monitorScreen = null;
+        let screensaverTime = 0;
+        
+        // TV photo slideshow
+        let tvScreen = null;
+        let tvDisplayCanvas = null;
+        let tvDisplayTexture = null;
+        let tvPhotoImages = [];
+        let tvPhotosLoaded = false;
+        
+        // Audio
+        let audioElement = null;
+        let audioContext = null;
+        let analyser = null;
+        let audioDataArray = null;
+        
+        // Key detection for synth
+        let detectedKey = 0; // 0 = C, 1 = C#, 2 = D, etc.
+        let keyScales = {
+            // Major scales - semitone offsets from root
+            major: [0, 2, 4, 5, 7, 9, 11],
+            minor: [0, 2, 3, 5, 7, 8, 10]
+        };
+        let currentScale = keyScales.major;
+        
+        // Synth controls
+        let synthSoundType = 0; // 0 = saw, 1 = square, 2 = sine, 3 = triangle
+        const synthSoundNames = ['SAW', 'SQUARE', 'SINE', 'TRI'];
+        let arpeggioEnabled = false;
+        let arpeggioInterval = null;
+        let arpeggioBaseNote = 0;
+        let arpeggioCtx = null;
+        let synthSoundButton = null;
+        let arpeggioButton = null;
+        let soundButtonLight = null;
+        let arpButtonLight = null;
+        let synthDisplay = null;
+        let synthDisplayCanvas = null;
+        let synthDisplayTexture = null;
+        
+        // Drum reverb
+        let drumReverbCtx = null;
+        let drumConvolver = null;
+        
+        // Monitor display for music
+        let monitorDisplayCanvas = null;
+        let monitorDisplayTexture = null;
+        let songTextOffset = 0;
+
+        // ============================================
+        // INITIALIZATION
+        // ============================================
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0a0a0a);
+            scene.fog = new THREE.Fog(0x0a0a0a, 15, 40);
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 8, 12);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.shadowMap.enabled = true;
+            document.getElementById('game-container').insertBefore(renderer.domElement, document.getElementById('ui-overlay'));
+
+            setupLighting();
+            createRoom();
+            createPlayer();
+            createStations();
+            setupPlaylist();
+            setupChannels();
+            setupEvents();
+            setupAudio();
+            animate();
         }
-      }
-      
-      draw() {
-        ctx.fillStyle = `rgba(255, 105, 180, ${this.opacity})`;
-        ctx.shadowBlur = 10;
-        ctx.shadowColor = '#FF69B4';
-        ctx.beginPath();
-        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-    
-    for (let i = 0; i < 50; i++) {
-      particles.push(new Particle());
-    }
-    
-    function animate() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      
-      particles.forEach(particle => {
-        particle.update();
-        particle.draw();
-      });
-      
-      requestAnimationFrame(animate);
-    }
-    
-    animate();
 
-    // Music Player
-    const audio = document.getElementById("audio");
-    const title = document.getElementById("song-title");
-    const artistCredits = document.getElementById("artist-credits");
-    const volume = document.getElementById("volume");
-    const tracklist = document.getElementById("tracklist");
-    const siteTitle = document.getElementById("siteTitle");
+        function setupAudio() {
+            audioElement = new Audio();
+            audioElement.crossOrigin = "anonymous";
+            audioElement.preload = "auto";
+            
+            audioElement.addEventListener('ended', () => nextTrack());
+            audioElement.addEventListener('timeupdate', updateProgress);
+            audioElement.addEventListener('loadedmetadata', () => {
+                document.getElementById('total-time').textContent = formatTime(audioElement.duration);
+            });
+            audioElement.addEventListener('canplaythrough', () => {
+                if (isPlaying) {
+                    audioElement.play().catch(e => console.log('Playback error:', e));
+                }
+            });
+            audioElement.addEventListener('error', (e) => {
+                console.log('Audio error, skipping to next track:', e);
+                // Keep the play button visible and functional
+                document.getElementById('play-pause-btn').textContent = '▶';
+                // Skip to next track if current one fails to load
+                const tracks = CONFIG.playlists[currentPlaylist].tracks;
+                if (tracks.length > 1) {
+                    setTimeout(() => nextTrack(), 500);
+                }
+            });
+        }
 
-    const songs = [
-      { title: "Signs", file: "assets/songs/signs.mp3", artist: "whoistheMETRO feat. Jacqueline Van Bierk", credits: "Produced, Mixed, Mastered" },
-      { title: "Beat Monster", file: "assets/songs/beatmonster.mp3", artist: "Spesh to Death", credits: "Produced, Mixed, Mastered" },
-      { title: "I Wanna Fall", file: "assets/songs/iwannafall.mp3", artist: "Drea", credits: "Produced, Mixed, Mastered" },
-      { title: "Workin' This 9-5", file: "assets/songs/ninetofive.mp3", artist: "J-Legacy HDElite", credits: "Produced, Mixed, Mastered" },
-      { title: "Burrito", file: "assets/songs/burritosong.mp3", artist: "whoistheMETRO", credits: "Produced, Mixed, Mastered" },
-      { title: "Oh My God, It's fartGOD", file: "assets/songs/omg.mp3", artist: "fartGOD", credits: "Produced, Mixed, Mastered" }
-    ];
+        function setupLighting() {
+            scene.add(new THREE.AmbientLight(0x404040, 0.4));
+            
+            const mainLight = new THREE.PointLight(0xffffff, 0.6, 25);
+            mainLight.position.set(0, 6.5, 0);
+            scene.add(mainLight);
 
-    let currentIndex = 0;
+            const monitorGlow = new THREE.PointLight(0x00ff88, 0.8, 8);
+            monitorGlow.position.set(-0.5, 3, -5);
+            scene.add(monitorGlow);
 
-    function loadSong(index) {
-      audio.src = songs[index].file;
-      title.textContent = songs[index].title;
-      artistCredits.innerHTML = `Artist: <span class="artist-bold">${songs[index].artist}</span> | Credits: ${songs[index].credits}`;
-      
-      document.querySelectorAll('.tracklist div').forEach((div, i) => {
-        div.classList.toggle('active', i === index);
-      });
-      
-      audio.play();
-    }
+            const tvGlow = new THREE.PointLight(0x6366f1, 0.6, 8);
+            tvGlow.position.set(5.5, 3, -5);
+            scene.add(tvGlow);
 
-    songs.forEach((song, i) => {
-      const div = document.createElement("div");
-      div.textContent = `${i + 1}. ${song.title}`;
-      div.onclick = () => {
-        currentIndex = i;
-        loadSong(i);
-      };
-      tracklist.appendChild(div);
-    });
+            const warmLight = new THREE.PointLight(0xffaa55, 0.4, 6);
+            warmLight.position.set(5, 2, 2);
+            scene.add(warmLight);
 
-    volume.addEventListener("input", () => {
-      audio.volume = volume.value;
-    });
+            // Corner lights that react to audio (invisible - just lights, no fixtures)
+            const cornerPositions = [
+                [-7.5, 0.5, -6.5],
+                [7.5, 0.5, -6.5],
+                [-7.5, 0.5, 6],
+                [7.5, 0.5, 6]
+            ];
+            
+            cornerPositions.forEach((pos, i) => {
+                const light = new THREE.PointLight([0xff0066, 0x00ffff, 0xff00ff, 0x00ff88][i], 0.3, 8);
+                light.position.set(...pos);
+                scene.add(light);
+                
+                cornerLights.push({ light, baseIntensity: 0.3, color: [0xff0066, 0x00ffff, 0xff00ff, 0x00ff88][i] });
+            });
+        }
 
-    audio.addEventListener("ended", () => {
-      currentIndex = (currentIndex + 1) % songs.length;
-      loadSong(currentIndex);
-    });
+        function createRoom() {
+            const roomWidth = 16, roomDepth = 14, roomHeight = 7;
 
-    let originalTitle = "whoistheMETRO";
-    
-    siteTitle.addEventListener("mouseover", () => {
-      const letters = originalTitle.split('');
-      siteTitle.innerHTML = letters.map(letter => {
-        const hue = Math.floor(Math.random() * 360);
-        return `<span style="color:hsl(${hue}, 100%, 70%)">${letter}</span>`;
-      }).join('');
-    });
+            const floor = new THREE.Mesh(
+                new THREE.PlaneGeometry(roomWidth, roomDepth),
+                new THREE.MeshStandardMaterial({ color: 0x1a1512, roughness: 0.7 })
+            );
+            floor.rotation.x = -Math.PI / 2;
+            floor.receiveShadow = true;
+            scene.add(floor);
 
-    siteTitle.addEventListener("mouseout", () => {
-      siteTitle.textContent = originalTitle;
-    });
+            const wallMat = new THREE.MeshStandardMaterial({ color: 0x12151a, roughness: 0.9 });
 
-    loadSong(0);
-    audio.pause();
-  </script>
+            const backWall = new THREE.Mesh(new THREE.PlaneGeometry(roomWidth, roomHeight), wallMat);
+            backWall.position.set(0, roomHeight/2, -roomDepth/2);
+            scene.add(backWall);
+
+            const leftWall = new THREE.Mesh(new THREE.PlaneGeometry(roomDepth, roomHeight), wallMat);
+            leftWall.position.set(-roomWidth/2, roomHeight/2, 0);
+            leftWall.rotation.y = Math.PI / 2;
+            scene.add(leftWall);
+
+            const rightWall = new THREE.Mesh(new THREE.PlaneGeometry(roomDepth, roomHeight), wallMat);
+            rightWall.position.set(roomWidth/2, roomHeight/2, 0);
+            rightWall.rotation.y = -Math.PI / 2;
+            scene.add(rightWall);
+
+            const ceiling = new THREE.Mesh(
+                new THREE.PlaneGeometry(roomWidth, roomDepth),
+                new THREE.MeshStandardMaterial({ color: 0x0d0d0d })
+            );
+            ceiling.rotation.x = Math.PI / 2;
+            ceiling.position.y = roomHeight;
+            scene.add(ceiling);
+
+            createCornerPillars();
+            createAcousticPanels();
+            createStudioDesk();
+            createStudioGear();
+            createWallArt();
+            createCouch();
+            createCat();
+            createLEDStrips();
+            createBed();
+        }
+
+        function createCornerPillars() {
+            // Create two corner pillars with screensaver emissive material
+            const pillarPositions = [
+                [-7.2, 0, -6.2],  // Left back corner
+                [7.2, 0, -6.2]    // Right back corner
+            ];
+            
+            pillarPositions.forEach((pos, i) => {
+                const group = new THREE.Group();
+                
+                // Main pillar body
+                const pillarMat = new THREE.MeshStandardMaterial({ 
+                    color: 0x1a1a2a,
+                    emissive: 0x00ff88,
+                    emissiveIntensity: 0.2
+                });
+                const pillar = new THREE.Mesh(new THREE.BoxGeometry(0.5, 5, 0.5), pillarMat);
+                pillar.position.y = 2.5;
+                group.add(pillar);
+                
+                // Glowing panel on front of pillar (screensaver surface)
+                const screenMat = new THREE.MeshBasicMaterial({ 
+                    color: 0x00ff88,
+                    transparent: true,
+                    opacity: 0.8
+                });
+                const screen = new THREE.Mesh(new THREE.BoxGeometry(0.4, 4, 0.05), screenMat);
+                screen.position.set(0, 2.5, 0.26);
+                group.add(screen);
+                
+                // Top cap
+                const capMat = new THREE.MeshStandardMaterial({ color: 0x2a2a3a });
+                const cap = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.1, 0.6), capMat);
+                cap.position.y = 5.05;
+                group.add(cap);
+                
+                // Base
+                const base = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.1, 0.6), capMat);
+                base.position.y = 0.05;
+                group.add(base);
+                
+                group.position.set(...pos);
+                scene.add(group);
+                
+                cornerPillars.push({ pillar, screen, baseMat: pillarMat });
+            });
+        }
+
+        function createAcousticPanels() {
+            const letters = ['M', 'E', 'T', 'R', 'O'];
+            const panelColor = 0x1a1a2a;
+            const letterColor = 0x00ff88;
+            
+            // 5 panels evenly spaced across the back wall (wall is 16 units wide)
+            // Start at -6, end at 6, spacing of 3 units
+            for (let i = 0; i < 5; i++) {
+                const group = new THREE.Group();
+                
+                // Panel background
+                const panelMat = new THREE.MeshStandardMaterial({ 
+                    color: panelColor, 
+                    emissive: panelColor,
+                    emissiveIntensity: 0.1,
+                    roughness: 0.95 
+                });
+                const panel = new THREE.Mesh(new THREE.BoxGeometry(2.2, 2.8, 0.15), panelMat);
+                group.add(panel);
+                
+                // Letter - create using simple 3D text geometry alternative (box-based letters)
+                const letterMat = new THREE.MeshBasicMaterial({ 
+                    color: letterColor,
+                    transparent: true,
+                    opacity: 0.9
+                });
+                
+                const letterGroup = createLetter(letters[i], letterMat);
+                letterGroup.position.z = 0.08;
+                group.add(letterGroup);
+                
+                // Position panel on wall
+                const xPos = -6 + i * 3;
+                group.position.set(xPos, 4.5, -6.95);
+                scene.add(group);
+                
+                acousticPanels.push({ panel, letterGroup, basePanelIntensity: 0.1 });
+            }
+
+            // Bass traps in corners
+            const trapGeo = new THREE.CylinderGeometry(0.4, 0.4, 6, 8, 1, false, 0, Math.PI/2);
+            const trapMat = new THREE.MeshStandardMaterial({ color: 0x1a1a2a, roughness: 0.9 });
+            
+            const trap1 = new THREE.Mesh(trapGeo, trapMat);
+            trap1.position.set(-7.6, 3, -6.6);
+            trap1.rotation.y = Math.PI;
+            scene.add(trap1);
+
+            const trap2 = new THREE.Mesh(trapGeo, trapMat);
+            trap2.position.set(7.6, 3, -6.6);
+            trap2.rotation.y = -Math.PI/2;
+            scene.add(trap2);
+        }
+        
+        function createLetter(letter, material) {
+            const group = new THREE.Group();
+            const t = 0.08; // thickness
+            const h = 1.2; // height
+            const w = 0.8; // width
+            
+            const box = (sx, sy, sz, px, py, pz) => {
+                const mesh = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), material);
+                mesh.position.set(px, py, pz);
+                return mesh;
+            };
+            
+            switch(letter) {
+                case 'M':
+                    group.add(box(t, h, t, -w/2, 0, 0)); // left vertical
+                    group.add(box(t, h, t, w/2, 0, 0));  // right vertical
+                    group.add(box(t, h/2, t, -w/4, h/4, 0)); // left diagonal approx
+                    group.add(box(t, h/2, t, w/4, h/4, 0));  // right diagonal approx
+                    group.add(box(t, t, t, 0, 0, 0));  // center bottom
+                    break;
+                case 'E':
+                    group.add(box(t, h, t, -w/3, 0, 0)); // vertical
+                    group.add(box(w*0.6, t, t, 0, h/2-t/2, 0)); // top
+                    group.add(box(w*0.5, t, t, -0.05, 0, 0)); // middle
+                    group.add(box(w*0.6, t, t, 0, -h/2+t/2, 0)); // bottom
+                    break;
+                case 'T':
+                    group.add(box(t, h, t, 0, 0, 0)); // vertical
+                    group.add(box(w, t, t, 0, h/2-t/2, 0)); // top horizontal
+                    break;
+                case 'R':
+                    group.add(box(t, h, t, -w/3, 0, 0)); // vertical
+                    group.add(box(w*0.5, t, t, 0, h/2-t/2, 0)); // top
+                    group.add(box(t, h/4, t, w/4, h/4, 0)); // right top vertical
+                    group.add(box(w*0.5, t, t, 0, 0, 0)); // middle
+                    group.add(box(t, h/2, t, w/4, -h/4, 0)); // right leg
+                    break;
+                case 'O':
+                    group.add(box(t, h, t, -w/3, 0, 0)); // left
+                    group.add(box(t, h, t, w/3, 0, 0));  // right
+                    group.add(box(w*0.5, t, t, 0, h/2-t/2, 0)); // top
+                    group.add(box(w*0.5, t, t, 0, -h/2+t/2, 0)); // bottom
+                    break;
+            }
+            
+            return group;
+        }
+
+        function createStudioDesk() {
+            const deskMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a });
+            
+            const deskTop = new THREE.Mesh(new THREE.BoxGeometry(7, 0.08, 2.5), deskMat);
+            deskTop.position.set(-0.5, 1.5, -5.5);
+            scene.add(deskTop);
+
+            [[-3.9, -6.6], [-3.9, -4.4], [2.9, -6.6], [2.9, -4.4]].forEach(([x, z]) => {
+                const leg = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.5, 0.1), deskMat);
+                leg.position.set(x, 0.75, z);
+                scene.add(leg);
+            });
+
+            const shelf = new THREE.Mesh(new THREE.BoxGeometry(5, 0.06, 0.8), deskMat);
+            shelf.position.set(-0.5, 1.8, -6.2);
+            scene.add(shelf);
+
+            // Speaker stands behind desk (not blocking anything)
+            const standMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
+            [-4.5, 3.5].forEach(x => {
+                const stand = new THREE.Mesh(new THREE.BoxGeometry(0.4, 3, 0.4), standMat);
+                stand.position.set(x, 1.5, -6.5);
+                scene.add(stand);
+
+                const speaker = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.8, 0.5), new THREE.MeshStandardMaterial({ color: 0x0a0a0a }));
+                speaker.position.set(x, 3.4, -6.5);
+                scene.add(speaker);
+
+                const woofer = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.18, 0.08, 16), new THREE.MeshStandardMaterial({ color: 0x222222 }));
+                woofer.rotation.x = Math.PI / 2;
+                woofer.position.set(x, 3.25, -6.24);
+                scene.add(woofer);
+
+                const tweeter = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.04, 16), new THREE.MeshStandardMaterial({ color: 0xdddddd }));
+                tweeter.rotation.x = Math.PI / 2;
+                tweeter.position.set(x, 3.55, -6.24);
+                scene.add(tweeter);
+            });
+        }
+
+        function createStudioGear() {
+            // Monitor - wall mounted
+            const monitorBody = new THREE.Mesh(new THREE.BoxGeometry(2.8, 1.6, 0.08), new THREE.MeshStandardMaterial({ color: 0x0a0a0a }));
+            monitorBody.position.set(-0.5, 2.8, -6.9);
+            scene.add(monitorBody);
+
+            // Monitor screen with canvas texture for music display
+            monitorDisplayCanvas = document.createElement('canvas');
+            monitorDisplayCanvas.width = 512;
+            monitorDisplayCanvas.height = 256;
+            monitorDisplayTexture = new THREE.CanvasTexture(monitorDisplayCanvas);
+            monitorDisplayTexture.minFilter = THREE.LinearFilter;
+            
+            const screenMat = new THREE.MeshBasicMaterial({ map: monitorDisplayTexture });
+            monitorScreen = new THREE.Mesh(new THREE.BoxGeometry(2.6, 1.4, 0.02), screenMat);
+            monitorScreen.position.set(-0.5, 2.8, -6.85);
+            scene.add(monitorScreen);
+            
+            // Initial screen update
+            updateMonitorDisplay();
+
+            // Keyboard
+            const keyboard = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.04, 0.6), new THREE.MeshStandardMaterial({ color: 0x1a1a1a }));
+            keyboard.position.set(-0.5, 1.56, -5.2);
+            scene.add(keyboard);
+
+            const kbLed = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.02, 0.02), new THREE.MeshBasicMaterial({ color: 0x00ffff }));
+            kbLed.position.set(-0.5, 1.58, -4.9);
+            scene.add(kbLed);
+
+            // Mouse
+            const mouse = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.05, 0.25), new THREE.MeshStandardMaterial({ color: 0x1a1a1a }));
+            mouse.position.set(1.2, 1.55, -5.2);
+            scene.add(mouse);
+
+            // MIDI Keyboard
+            createSynth(-2.5, 1.58, -4.8);
+
+            // Audio Interface
+            const audioInterface = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.15, 0.5), new THREE.MeshStandardMaterial({ color: 0x2a2a2a }));
+            audioInterface.position.set(1.8, 1.58, -5);
+            scene.add(audioInterface);
+
+            for (let i = 0; i < 4; i++) {
+                const led = new THREE.Mesh(new THREE.SphereGeometry(0.02, 8, 8), new THREE.MeshBasicMaterial({ color: i < 2 ? 0x00ff00 : 0xff0000 }));
+                led.position.set(1.5 + i * 0.15, 1.68, -4.76);
+                scene.add(led);
+            }
+
+            createHeadphones(2.5, 1.6, -5.5);
+            createDrumKit(-6, 0, -3);
+            createTV(5.5, 1.5, -6.9);
+        }
+
+        function createSynth(x, y, z) {
+            const group = new THREE.Group();
+            const body = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.08, 0.5), new THREE.MeshStandardMaterial({ color: 0x0a0a0a }));
+            body.userData.isSynth = true;
+            group.add(body);
+
+            for (let i = 0; i < 25; i++) {
+                const isBlack = [1,3,6,8,10,13,15,18,20,22].includes(i % 24);
+                const key = new THREE.Mesh(
+                    new THREE.BoxGeometry(0.05, isBlack ? 0.04 : 0.02, isBlack ? 0.25 : 0.35),
+                    new THREE.MeshStandardMaterial({ color: isBlack ? 0x0a0a0a : 0xeeeeee })
+                );
+                key.position.set(-0.7 + i * 0.058, isBlack ? 0.06 : 0.04, isBlack ? -0.05 : 0.05);
+                key.userData.isSynthKey = true;
+                key.userData.noteIndex = i;
+                group.add(key);
+                synthKeys.push(key);
+            }
+
+            for (let i = 0; i < 8; i++) {
+                const knob = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.03, 16), new THREE.MeshStandardMaterial({ color: 0x333333 }));
+                knob.position.set(-0.55 + i * 0.16, 0.06, -0.18);
+                group.add(knob);
+            }
+            
+            // Left button - Sound Type change (BIGGER for easier clicking)
+            const soundBtnMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
+            synthSoundButton = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.08, 0.2), soundBtnMat);
+            synthSoundButton.position.set(-0.85, 0.06, 0);
+            synthSoundButton.userData.isSoundButton = true;
+            group.add(synthSoundButton);
+            
+            // Sound button LED indicator
+            soundButtonLight = new THREE.Mesh(
+                new THREE.BoxGeometry(0.15, 0.025, 0.03),
+                new THREE.MeshBasicMaterial({ color: 0xff6600 })
+            );
+            soundButtonLight.position.set(-0.85, 0.105, 0);
+            group.add(soundButtonLight);
+            
+            // Right button - Arpeggio toggle (BIGGER for easier clicking)
+            const arpBtnMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
+            arpeggioButton = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.08, 0.2), arpBtnMat);
+            arpeggioButton.position.set(0.85, 0.06, 0);
+            arpeggioButton.userData.isArpButton = true;
+            group.add(arpeggioButton);
+            
+            // Arp button LED indicator (off by default)
+            arpButtonLight = new THREE.Mesh(
+                new THREE.BoxGeometry(0.15, 0.025, 0.03),
+                new THREE.MeshBasicMaterial({ color: 0x333333 })
+            );
+            arpButtonLight.position.set(0.85, 0.105, 0);
+            group.add(arpButtonLight);
+            
+            // Display screen above keyboard at 45 degree angle
+            synthDisplayCanvas = document.createElement('canvas');
+            synthDisplayCanvas.width = 256;
+            synthDisplayCanvas.height = 64;
+            synthDisplayTexture = new THREE.CanvasTexture(synthDisplayCanvas);
+            synthDisplayTexture.minFilter = THREE.LinearFilter;
+            
+            const displayMat = new THREE.MeshBasicMaterial({ map: synthDisplayTexture });
+            synthDisplay = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.02, 0.2), displayMat);
+            synthDisplay.position.set(0, 0.15, -0.22);
+            synthDisplay.rotation.x = -Math.PI / 4; // 45 degree angle
+            group.add(synthDisplay);
+            
+            // Display frame
+            const frameMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a });
+            const displayFrame = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.03, 0.25), frameMat);
+            displayFrame.position.set(0, 0.14, -0.22);
+            displayFrame.rotation.x = -Math.PI / 4;
+            group.add(displayFrame);
+            
+            // Initial display update
+            updateSynthDisplay();
+
+            group.position.set(x, y, z);
+            scene.add(group);
+        }
+        
+        function updateSynthDisplay() {
+            if (!synthDisplayCanvas) return;
+            
+            const ctx = synthDisplayCanvas.getContext('2d');
+            ctx.fillStyle = '#0a0a0a';
+            ctx.fillRect(0, 0, 256, 64);
+            
+            // Sound type
+            ctx.fillStyle = '#ff6600';
+            ctx.font = 'bold 16px monospace';
+            ctx.fillText('SOUND:', 10, 25);
+            ctx.fillStyle = '#00ff88';
+            ctx.font = 'bold 20px monospace';
+            ctx.fillText(synthSoundNames[synthSoundType], 80, 25);
+            
+            // Arpeggio status
+            ctx.fillStyle = '#00ffff';
+            ctx.font = 'bold 16px monospace';
+            ctx.fillText('ARP:', 10, 50);
+            ctx.fillStyle = arpeggioEnabled ? '#00ff88' : '#ff3333';
+            ctx.font = 'bold 20px monospace';
+            ctx.fillText(arpeggioEnabled ? 'ON' : 'OFF', 60, 50);
+            
+            // Border
+            ctx.strokeStyle = '#00ff88';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(2, 2, 252, 60);
+            
+            if (synthDisplayTexture) {
+                synthDisplayTexture.needsUpdate = true;
+            }
+        }
+        
+        function updateMonitorDisplay() {
+            if (!monitorDisplayCanvas) return;
+            
+            const ctx = monitorDisplayCanvas.getContext('2d');
+            
+            // Background gradient
+            const gradient = ctx.createLinearGradient(0, 0, 0, 256);
+            gradient.addColorStop(0, '#0a1520');
+            gradient.addColorStop(1, '#051010');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, 512, 256);
+            
+            // Get current track info from playlist
+            const tracks = CONFIG.playlists[currentPlaylist].tracks;
+            const track = tracks[currentTrack];
+            const trackName = track ? track.title : 'No Track';
+            
+            // Header
+            ctx.fillStyle = '#00ff88';
+            ctx.font = 'bold 18px monospace';
+            ctx.fillText('♪ NOW PLAYING', 20, 35);
+            
+            // Animated song title (scrolling if too long)
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(20, 50, 472, 60);
+            ctx.clip();
+            
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 36px monospace';
+            const textWidth = ctx.measureText(trackName).width;
+            
+            if (textWidth > 450) {
+                // Scroll text
+                const scrollX = 20 - songTextOffset;
+                ctx.fillText(trackName + '     ' + trackName, scrollX, 95);
+            } else {
+                // Center text
+                ctx.fillText(trackName, (512 - textWidth) / 2, 95);
+            }
+            ctx.restore();
+            
+            // Artist
+            ctx.fillStyle = '#888888';
+            ctx.font = '20px monospace';
+            ctx.fillText('Metro', 20, 140);
+            
+            // Progress bar background
+            ctx.fillStyle = '#333333';
+            ctx.fillRect(20, 165, 472, 8);
+            
+            // Progress bar fill
+            if (audioElement && audioElement.duration) {
+                const progress = (audioElement.currentTime / audioElement.duration) * 472;
+                ctx.fillStyle = '#00ff88';
+                ctx.fillRect(20, 165, progress, 8);
+            }
+            
+            // Time
+            const currentTime = audioElement ? formatTime(audioElement.currentTime) : '0:00';
+            const totalTime = audioElement && audioElement.duration ? formatTime(audioElement.duration) : '0:00';
+            ctx.fillStyle = '#666666';
+            ctx.font = '14px monospace';
+            ctx.fillText(currentTime, 20, 195);
+            ctx.fillText(totalTime, 460, 195);
+            
+            // Play status indicator
+            ctx.fillStyle = isPlaying ? '#00ff88' : '#ff6600';
+            ctx.font = 'bold 24px monospace';
+            ctx.fillText(isPlaying ? '▶ PLAYING' : '⏸ PAUSED', 180, 230);
+            
+            // Border
+            ctx.strokeStyle = '#00ff88';
+            ctx.lineWidth = 3;
+            ctx.strokeRect(5, 5, 502, 246);
+            
+            // Corner accents
+            ctx.fillStyle = '#00ff88';
+            ctx.fillRect(5, 5, 20, 3);
+            ctx.fillRect(5, 5, 3, 20);
+            ctx.fillRect(487, 5, 20, 3);
+            ctx.fillRect(504, 5, 3, 20);
+            ctx.fillRect(5, 248, 20, 3);
+            ctx.fillRect(5, 231, 3, 20);
+            ctx.fillRect(487, 248, 20, 3);
+            ctx.fillRect(504, 231, 3, 20);
+            
+            if (monitorDisplayTexture) {
+                monitorDisplayTexture.needsUpdate = true;
+            }
+        }
+
+        function createHeadphones(x, y, z) {
+            const group = new THREE.Group();
+            const band = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.015, 8, 16, Math.PI), new THREE.MeshStandardMaterial({ color: 0x1a1a1a }));
+            band.rotation.x = Math.PI / 2;
+            band.position.y = 0.1;
+            group.add(band);
+
+            [-0.12, 0.12].forEach(xOff => {
+                const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.04, 16), new THREE.MeshStandardMaterial({ color: 0x0a0a0a }));
+                cup.rotation.z = Math.PI / 2;
+                cup.position.set(xOff, 0, 0);
+                group.add(cup);
+            });
+
+            group.position.set(x, y, z);
+            group.rotation.z = 0.3;
+            scene.add(group);
+        }
+
+        function createDrumKit(x, y, z) {
+            const group = new THREE.Group();
+            const frameMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, metalness: 0.8 });
+            const chromeMat = new THREE.MeshStandardMaterial({ color: 0x444444, metalness: 0.9, roughness: 0.2 });
+            const padMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
+            const headMat = new THREE.MeshStandardMaterial({ color: 0xdddddd, metalness: 0.1 });
+            const cymbalMat = new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.7, roughness: 0.4 });
+            
+            // Main rack/frame - 4 vertical posts
+            const postPositions = [[-1.1, -0.5], [1.1, -0.5], [-1.1, 0.7], [1.1, 0.7]];
+            postPositions.forEach(([fx, fz]) => {
+                const post = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.03, 1.6, 8), frameMat);
+                post.position.set(fx, 0.8, fz);
+                group.add(post);
+            });
+            
+            // Horizontal bars connecting posts
+            const hBar1 = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 2.2, 8), frameMat);
+            hBar1.rotation.z = Math.PI / 2;
+            hBar1.position.set(0, 1.5, -0.5);
+            group.add(hBar1);
+            
+            const hBar2 = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 1.2, 8), frameMat);
+            hBar2.rotation.x = Math.PI / 2;
+            hBar2.position.set(-0.9, 1.5, 0.1);
+            group.add(hBar2);
+            
+            const hBar3 = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 1.2, 8), frameMat);
+            hBar3.rotation.x = Math.PI / 2;
+            hBar3.position.set(0.9, 1.5, 0.1);
+            group.add(hBar3);
+            
+            // Helper function to create a drum pad with mesh head
+            function createPad(px, py, pz, radius, drumType, tilt = 0) {
+                const rim = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, 0.06, 24), padMat);
+                rim.position.set(px, py, pz);
+                rim.rotation.x = tilt;
+                rim.userData.drumType = drumType;
+                rim.userData.isDrumPad = true;
+                group.add(rim);
+                
+                const head = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.85, radius * 0.85, 0.02, 24), headMat);
+                head.position.set(px, py + 0.04 * Math.cos(tilt), pz - 0.04 * Math.sin(tilt));
+                head.rotation.x = tilt;
+                head.userData.drumType = drumType;
+                head.userData.isDrumPad = true;
+                group.add(head);
+                
+                return { rim, head };
+            }
+            
+            // Helper function to create cymbal
+            function createCymbal(px, py, pz, radius, drumType, tilt = 0.1) {
+                // Stand
+                const stand = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.025, py, 8), chromeMat);
+                stand.position.set(px, py / 2, pz);
+                group.add(stand);
+                
+                // Cymbal
+                const cymbal = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.9, radius, 0.015, 32), cymbalMat);
+                cymbal.position.set(px, py, pz);
+                cymbal.rotation.x = tilt;
+                cymbal.userData.drumType = drumType;
+                cymbal.userData.isDrumPad = true;
+                group.add(cymbal);
+                
+                // Bell
+                const bell = new THREE.Mesh(new THREE.SphereGeometry(0.04, 16, 8), cymbalMat);
+                bell.position.set(px, py + 0.02, pz);
+                bell.scale.y = 0.5;
+                group.add(bell);
+                
+                return cymbal;
+            }
+            
+            // KICK DRUM - Electronic bass drum tower (vertical design like Roland/Alesis)
+            const kickTowerMat = new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.3 });
+            const kickPadMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a });
+            
+            // Main tower body
+            const kickTower = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.5, 0.15), kickTowerMat);
+            kickTower.position.set(0, 0.35, 0.1);
+            group.add(kickTower);
+            
+            // Kick pad (the hitting surface) - vertical
+            const kickPad = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.08, 24), kickPadMat);
+            kickPad.rotation.x = Math.PI / 2;
+            kickPad.position.set(0, 0.35, 0.2);
+            kickPad.userData.drumType = 'kick';
+            kickPad.userData.isDrumPad = true;
+            group.add(kickPad);
+            
+            // Kick pad mesh head
+            const kickHead = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.02, 24), headMat);
+            kickHead.rotation.x = Math.PI / 2;
+            kickHead.position.set(0, 0.35, 0.25);
+            kickHead.userData.drumType = 'kick';
+            kickHead.userData.isDrumPad = true;
+            group.add(kickHead);
+            
+            // Tower base plate
+            const kickBase = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.05, 0.3), kickTowerMat);
+            kickBase.position.set(0, 0.025, 0.15);
+            group.add(kickBase);
+            
+            // Kick pedal
+            const kickPedal = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.03, 0.35), chromeMat);
+            kickPedal.position.set(0, 0.02, 0.55);
+            group.add(kickPedal);
+            
+            // SNARE DRUM - left side, near hi-hat
+            createPad(-0.4, 0.9, 0.4, 0.18, 'snare', 0.15);
+            
+            // HI-HAT - far left
+            const hihatStand = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.025, 1.1, 8), chromeMat);
+            hihatStand.position.set(-0.8, 0.55, 0.35);
+            group.add(hihatStand);
+            
+            const hihatBottom = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.2, 0.015, 24), cymbalMat);
+            hihatBottom.position.set(-0.8, 1.05, 0.35);
+            group.add(hihatBottom);
+            
+            const hihatTop = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.2, 0.015, 24), cymbalMat);
+            hihatTop.position.set(-0.8, 1.1, 0.35);
+            hihatTop.userData.drumType = 'hihat';
+            hihatTop.userData.isDrumPad = true;
+            group.add(hihatTop);
+            
+            const hihatPedal = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.02, 0.25), chromeMat);
+            hihatPedal.position.set(-0.8, 0.01, 0.6);
+            group.add(hihatPedal);
+            
+            // HI TOM - left of center, mounted high
+            createPad(-0.25, 1.15, -0.2, 0.14, 'hitom', 0.25);
+            
+            // MID TOM - center, mounted high
+            createPad(0.15, 1.15, -0.25, 0.15, 'midtom', 0.25);
+            
+            // LOW TOM (Floor tom) - far right, lower
+            createPad(0.75, 0.7, 0.1, 0.2, 'lowtom', 0.1);
+            
+            // Floor tom legs
+            for (let i = 0; i < 3; i++) {
+                const angle = (i * 2 * Math.PI / 3) + Math.PI / 6;
+                const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.5, 8), chromeMat);
+                leg.position.set(0.75 + Math.cos(angle) * 0.15, 0.25, 0.1 + Math.sin(angle) * 0.15);
+                leg.rotation.x = 0.1;
+                group.add(leg);
+            }
+            
+            // CRASH 1 - left side
+            createCymbal(-0.65, 1.4, -0.35, 0.22, 'crash1', 0.15);
+            
+            // CRASH 2 - right side (tilted down toward drummer)
+            createCymbal(0.7, 1.45, -0.4, 0.24, 'crash2', -0.35);
+            
+            // Drum module/brain - mounted on left
+            const module = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.4, 0.05), new THREE.MeshStandardMaterial({ color: 0x0a0a0a }));
+            module.position.set(-1.0, 1.2, 0.2);
+            module.rotation.y = 0.3;
+            group.add(module);
+
+            const moduleScreen = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.25, 0.01), new THREE.MeshBasicMaterial({ color: 0x0066ff, transparent: true, opacity: 0.7 }));
+            moduleScreen.position.set(-0.98, 1.22, 0.22);
+            moduleScreen.rotation.y = 0.3;
+            group.add(moduleScreen);
+            
+            // Throne/stool
+            const thronePost = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.06, 0.5, 8), chromeMat);
+            thronePost.position.set(0, 0.25, 1.0);
+            group.add(thronePost);
+            
+            const throneBase = new THREE.Group();
+            for (let i = 0; i < 5; i++) {
+                const angle = (i * 2 * Math.PI / 5);
+                const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.3, 8), chromeMat);
+                leg.position.set(Math.cos(angle) * 0.2, 0.05, Math.sin(angle) * 0.2);
+                leg.rotation.z = Math.PI / 2;
+                leg.rotation.y = angle;
+                throneBase.add(leg);
+            }
+            throneBase.position.set(0, 0, 1.0);
+            group.add(throneBase);
+            
+            const throneSeat = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.08, 16), new THREE.MeshStandardMaterial({ color: 0x1a1a1a }));
+            throneSeat.position.set(0, 0.55, 1.0);
+            group.add(throneSeat);
+
+            group.position.set(x, y, z);
+            scene.add(group);
+            
+            group.traverse((child) => {
+                if (child.userData.isDrumPad) drumPads.push(child);
+            });
+        }
+
+        function createTV(x, y, z) {
+            const tvBody = new THREE.Mesh(new THREE.BoxGeometry(2.5, 1.5, 0.1), new THREE.MeshStandardMaterial({ color: 0x0a0a0a }));
+            tvBody.position.set(x, y + 1.2, z);
+            scene.add(tvBody);
+
+            // TV screen with canvas texture for photo slideshow
+            tvDisplayCanvas = document.createElement('canvas');
+            tvDisplayCanvas.width = 512;
+            tvDisplayCanvas.height = 288;
+            tvDisplayTexture = new THREE.CanvasTexture(tvDisplayCanvas);
+            tvDisplayTexture.minFilter = THREE.LinearFilter;
+            
+            const screenMat = new THREE.MeshBasicMaterial({ map: tvDisplayTexture });
+            tvScreen = new THREE.Mesh(new THREE.BoxGeometry(2.3, 1.3, 0.02), screenMat);
+            tvScreen.position.set(x, y + 1.2, z + 0.06);
+            scene.add(tvScreen);
+            
+            // Load photos
+            loadTVPhotos();
+        }
+        
+        function loadTVPhotos() {
+            CONFIG.photos.forEach((url, i) => {
+                const img = new Image();
+                img.crossOrigin = "anonymous";
+                img.onload = () => {
+                    tvPhotoImages[i] = img;
+                    if (tvPhotoImages.filter(Boolean).length === CONFIG.photos.length) {
+                        tvPhotosLoaded = true;
+                    }
+                };
+                img.src = url;
+            });
+        }
+        
+        function updateTVDisplay() {
+            if (!tvDisplayCanvas || !tvPhotosLoaded) return;
+            
+            const ctx = tvDisplayCanvas.getContext('2d');
+            
+            // Black background
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, 512, 288);
+            
+            // Draw current photo
+            const img = tvPhotoImages[currentPhotoIndex];
+            if (img) {
+                // Calculate aspect ratio to fit
+                const imgAspect = img.width / img.height;
+                const canvasAspect = 512 / 288;
+                
+                let drawWidth, drawHeight, drawX, drawY;
+                
+                if (imgAspect > canvasAspect) {
+                    // Image is wider - fit to width
+                    drawWidth = 512;
+                    drawHeight = 512 / imgAspect;
+                    drawX = 0;
+                    drawY = (288 - drawHeight) / 2;
+                } else {
+                    // Image is taller - fit to height
+                    drawHeight = 288;
+                    drawWidth = 288 * imgAspect;
+                    drawX = (512 - drawWidth) / 2;
+                    drawY = 0;
+                }
+                
+                ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
+            }
+            
+            if (tvDisplayTexture) {
+                tvDisplayTexture.needsUpdate = true;
+            }
+        }
+
+        function createLEDStrips() {
+            const underDesk = new THREE.Mesh(new THREE.BoxGeometry(6.5, 0.02, 0.02), new THREE.MeshBasicMaterial({ color: 0xff00ff }));
+            underDesk.position.set(-0.5, 1.45, -4.3);
+            scene.add(underDesk);
+
+            const ceilingLed = new THREE.Mesh(new THREE.BoxGeometry(15, 0.05, 0.05), new THREE.MeshBasicMaterial({ color: 0x00ffff }));
+            ceilingLed.position.set(0, 6.9, -6.9);
+            scene.add(ceilingLed);
+        }
+
+        function createWallArt() {
+            // Cat paintings on side walls with actual cat images
+            const catImageIndexes = [0, 1, 2, 3];
+            
+            // Left wall - 2 paintings
+            catImageIndexes.slice(0, 2).forEach((imgIndex, i) => createCatPainting(-7.85, 3, -2 + i * 3, imgIndex, 'left'));
+            // Right wall - 2 paintings  
+            catImageIndexes.slice(2, 4).forEach((imgIndex, i) => createCatPainting(7.85, 3, -2 + i * 3, imgIndex, 'right'));
+        }
+
+        function createCatPainting(x, y, z, imageIndex, wall) {
+            const group = new THREE.Group();
+            
+            // Frame
+            const frame = new THREE.Mesh(
+                new THREE.BoxGeometry(wall === 'left' || wall === 'right' ? 0.08 : 1.2, 1.4, wall === 'left' || wall === 'right' ? 1.2 : 0.08),
+                new THREE.MeshStandardMaterial({ color: 0x3a3a3a })
+            );
+            group.add(frame);
+
+            // Load cat image texture
+            const loader = new THREE.TextureLoader();
+            const catUrl = CONFIG.catPhotos[imageIndex % CONFIG.catPhotos.length];
+            
+            loader.load(catUrl, (texture) => {
+                const canvasMat = new THREE.MeshBasicMaterial({ map: texture });
+                const canvas = new THREE.Mesh(
+                    new THREE.BoxGeometry(wall === 'left' || wall === 'right' ? 0.02 : 1, 1.1, wall === 'left' || wall === 'right' ? 1 : 0.02),
+                    canvasMat
+                );
+                canvas.position.x = wall === 'left' ? 0.04 : wall === 'right' ? -0.04 : 0;
+                group.add(canvas);
+            }, undefined, () => {
+                // Fallback if image fails to load - show colored rectangle
+                const colors = [0xff6b9d, 0x6bffb8, 0xffb86b, 0xb86bff];
+                const canvas = new THREE.Mesh(
+                    new THREE.BoxGeometry(wall === 'left' || wall === 'right' ? 0.02 : 1, 1.1, wall === 'left' || wall === 'right' ? 1 : 0.02),
+                    new THREE.MeshStandardMaterial({ color: colors[imageIndex % colors.length] })
+                );
+                canvas.position.x = wall === 'left' ? 0.04 : wall === 'right' ? -0.04 : 0;
+                group.add(canvas);
+            });
+
+            group.position.set(x, y, z);
+            scene.add(group);
+        }
+
+        function createCouch() {
+            const group = new THREE.Group();
+            const couchMat = new THREE.MeshStandardMaterial({ color: 0x2d1f3d });
+            const cushionMat = new THREE.MeshStandardMaterial({ color: 0x3d2f4d });
+
+            const base = new THREE.Mesh(new THREE.BoxGeometry(3, 0.4, 1.2), couchMat);
+            base.position.y = 0.2;
+            group.add(base);
+
+            const back = new THREE.Mesh(new THREE.BoxGeometry(3, 1, 0.3), couchMat);
+            back.position.set(0, 0.9, 0.45);
+            group.add(back);
+
+            [-1.35, 1.35].forEach(xPos => {
+                const arm = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.6, 1.2), couchMat);
+                arm.position.set(xPos, 0.7, 0);
+                group.add(arm);
+            });
+
+            [-0.55, 0.55].forEach(xPos => {
+                const cushion = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.15, 0.9), cushionMat);
+                cushion.position.set(xPos, 0.48, -0.1);
+                group.add(cushion);
+            });
+
+            const pillow = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 0.15), new THREE.MeshStandardMaterial({ color: 0x00ff88 }));
+            pillow.position.set(-0.9, 0.6, 0);
+            pillow.rotation.z = 0.2;
+            group.add(pillow);
+
+            // Move couch further back from TV
+            group.position.set(5.5, 0, -1);
+            scene.add(group);
+        }
+
+        function createCat() {
+            cat = new THREE.Group();
+            const bodyMat = new THREE.MeshStandardMaterial({ color: 0x4a4a4a });
+
+            const body = new THREE.Mesh(new THREE.SphereGeometry(0.25, 16, 16), bodyMat);
+            body.scale.set(1.5, 0.7, 1);
+            body.position.y = 0.15;
+            cat.add(body);
+
+            const head = new THREE.Mesh(new THREE.SphereGeometry(0.15, 16, 16), bodyMat);
+            head.position.set(0.3, 0.2, 0);
+            cat.add(head);
+
+            [-0.08, 0.08].forEach(zOff => {
+                const ear = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.1, 4), bodyMat);
+                ear.position.set(0.35, 0.35, zOff);
+                ear.rotation.z = -0.3;
+                cat.add(ear);
+
+                const eye = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.01, 0.02), new THREE.MeshBasicMaterial({ color: 0x111111 }));
+                eye.position.set(0.42, 0.22, zOff);
+                cat.add(eye);
+            });
+
+            const nose = new THREE.Mesh(new THREE.SphereGeometry(0.02, 8, 8), new THREE.MeshStandardMaterial({ color: 0xffaaaa }));
+            nose.position.set(0.44, 0.17, 0);
+            cat.add(nose);
+
+            const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.02, 0.4, 8), bodyMat);
+            tail.position.set(-0.35, 0.12, 0.15);
+            tail.rotation.z = Math.PI / 2;
+            tail.rotation.y = 0.5;
+            cat.add(tail);
+
+            cat.position.set(6, 0.55, -0.9);
+            cat.rotation.y = -0.3;
+            scene.add(cat);
+        }
+        
+        function createBed() {
+            const group = new THREE.Group();
+            
+            // Bed frame
+            const frameMat = new THREE.MeshStandardMaterial({ color: 0x2a2a2a });
+            const woodMat = new THREE.MeshStandardMaterial({ color: 0x4a3728 });
+            
+            // Base/box spring
+            const base = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.3, 3.5), frameMat);
+            base.position.y = 0.3;
+            group.add(base);
+            
+            // Mattress - store reference for bounce physics
+            const mattressMat = new THREE.MeshStandardMaterial({ color: 0xeeeeee });
+            bedMattress = new THREE.Mesh(new THREE.BoxGeometry(2, 0.25, 3.3), mattressMat);
+            bedMattress.position.y = bedBaseY;
+            group.add(bedMattress);
+            
+            // Headboard
+            const headboard = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.2, 0.1), woodMat);
+            headboard.position.set(0, 1, -1.75);
+            group.add(headboard);
+            
+            // Pillows
+            const pillowMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
+            
+            const pillow1 = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.15, 0.5), pillowMat);
+            pillow1.position.set(-0.5, 0.78, -1.3);
+            pillow1.rotation.x = 0.1;
+            group.add(pillow1);
+            
+            const pillow2 = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.15, 0.5), pillowMat);
+            pillow2.position.set(0.5, 0.78, -1.3);
+            pillow2.rotation.x = 0.1;
+            group.add(pillow2);
+            
+            // Blanket/comforter
+            const blanketMat = new THREE.MeshStandardMaterial({ color: 0x1a365d }); // Dark blue
+            const blanket = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.15, 2.5), blanketMat);
+            blanket.position.set(0, 0.78, 0.2);
+            group.add(blanket);
+            
+            // Blanket fold at top
+            const blanketFold = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.2, 0.4), blanketMat);
+            blanketFold.position.set(0, 0.82, -0.95);
+            blanketFold.rotation.x = 0.2;
+            group.add(blanketFold);
+            
+            // Bed legs
+            const legPositions = [[-1, -1.6], [1, -1.6], [-1, 1.6], [1, 1.6]];
+            legPositions.forEach(([lx, lz]) => {
+                const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.15, 8), frameMat);
+                leg.position.set(lx, 0.075, lz);
+                group.add(leg);
+            });
+            
+            // Position in back right corner
+            group.position.set(5.5, 0, 4);
+            group.rotation.y = Math.PI; // Face toward room
+            scene.add(group);
+        }
+
+        function createPlayer() {
+            player = new THREE.Group();
+            
+            const hoodieMat = new THREE.MeshStandardMaterial({ color: 0x6b21a8, emissive: 0x6b21a8, emissiveIntensity: 0.15 });
+            const pantsMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a });
+            const beanieMat = new THREE.MeshStandardMaterial({ color: 0x0a0a0a });
+            const skinMat = new THREE.MeshStandardMaterial({ color: 0xd4a574 });
+            
+            // Legs
+            const leftLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.1, 0.8, 8), pantsMat);
+            leftLeg.position.set(-0.12, 0.4, 0);
+            player.add(leftLeg);
+            
+            const rightLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.1, 0.8, 8), pantsMat);
+            rightLeg.position.set(0.12, 0.4, 0);
+            player.add(rightLeg);
+            
+            // Shoes
+            const shoeMat = new THREE.MeshStandardMaterial({ color: 0x333333 });
+            const leftShoe = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.08, 0.25), shoeMat);
+            leftShoe.position.set(-0.12, 0.04, 0.03);
+            player.add(leftShoe);
+            
+            const rightShoe = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.08, 0.25), shoeMat);
+            rightShoe.position.set(0.12, 0.04, 0.03);
+            player.add(rightShoe);
+            
+            // Torso
+            const torso = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.6, 0.3), hoodieMat);
+            torso.position.set(0, 1.1, 0);
+            player.add(torso);
+            playerEmissiveParts.push(torso);
+            
+            // Arms
+            const leftArm = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.5, 8), hoodieMat);
+            leftArm.position.set(-0.32, 1.05, 0);
+            leftArm.rotation.z = 0.2;
+            player.add(leftArm);
+            playerEmissiveParts.push(leftArm);
+            
+            const rightArm = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.5, 8), hoodieMat);
+            rightArm.position.set(0.32, 1.05, 0);
+            rightArm.rotation.z = -0.2;
+            player.add(rightArm);
+            playerEmissiveParts.push(rightArm);
+            
+            // Hands
+            const leftHand = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), skinMat);
+            leftHand.position.set(-0.38, 0.78, 0);
+            player.add(leftHand);
+            
+            const rightHand = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), skinMat);
+            rightHand.position.set(0.38, 0.78, 0);
+            player.add(rightHand);
+            
+            // Head
+            const head = new THREE.Mesh(new THREE.SphereGeometry(0.18, 16, 16), skinMat);
+            head.position.set(0, 1.58, 0);
+            player.add(head);
+            
+            // Eyes
+            const eyeMat = new THREE.MeshBasicMaterial({ color: 0x222222 });
+            const leftEye = new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 8), eyeMat);
+            leftEye.position.set(-0.06, 1.6, 0.15);
+            player.add(leftEye);
+            
+            const rightEye = new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 8), eyeMat);
+            rightEye.position.set(0.06, 1.6, 0.15);
+            player.add(rightEye);
+            
+            // Beanie
+            const beanie = new THREE.Mesh(new THREE.SphereGeometry(0.2, 16, 16, 0, Math.PI * 2, 0, Math.PI * 0.6), beanieMat);
+            beanie.position.set(0, 1.65, 0);
+            player.add(beanie);
+            
+            const beanieRim = new THREE.Mesh(new THREE.TorusGeometry(0.18, 0.03, 8, 16), beanieMat);
+            beanieRim.position.set(0, 1.52, 0);
+            beanieRim.rotation.x = Math.PI / 2;
+            player.add(beanieRim);
+            
+            // Hood
+            const hood = new THREE.Mesh(new THREE.SphereGeometry(0.22, 16, 16, 0, Math.PI * 2, Math.PI * 0.3, Math.PI * 0.5), hoodieMat);
+            hood.position.set(0, 1.45, -0.1);
+            hood.rotation.x = 0.3;
+            player.add(hood);
+            playerEmissiveParts.push(hood);
+            
+            // Glow
+            const glow = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.4, 0.4, 0.05, 16),
+                new THREE.MeshBasicMaterial({ color: 0x6b21a8, transparent: true, opacity: 0.3 })
+            );
+            glow.position.y = 0.02;
+            player.add(glow);
+            
+            player.position.set(0, 0, 3);
+            scene.add(player);
+        }
+
+        function createStations() {
+            const indicatorGeo = new THREE.RingGeometry(0.8, 1, 32);
+            const indicatorMat = new THREE.MeshBasicMaterial({ color: 0x00ff88, transparent: true, opacity: 0.3, side: THREE.DoubleSide });
+
+            const computerStation = { position: new THREE.Vector3(-0.5, 0, -4), radius: 2, type: 'computer', label: 'Computer - Music Player' };
+            const indicator1 = new THREE.Mesh(indicatorGeo, indicatorMat);
+            indicator1.rotation.x = -Math.PI / 2;
+            indicator1.position.copy(computerStation.position);
+            indicator1.position.y = 0.05;
+            scene.add(indicator1);
+            computerStation.indicator = indicator1;
+            stations.push(computerStation);
+
+            const tvStation = { position: new THREE.Vector3(5.5, 0, -4), radius: 2, type: 'tv', label: 'TV - Video Gallery' };
+            const indicator2 = new THREE.Mesh(indicatorGeo, indicatorMat.clone());
+            indicator2.rotation.x = -Math.PI / 2;
+            indicator2.position.copy(tvStation.position);
+            indicator2.position.y = 0.05;
+            scene.add(indicator2);
+            tvStation.indicator = indicator2;
+            stations.push(tvStation);
+            
+            // Drum station - near the drum throne
+            const drumStation = { position: new THREE.Vector3(-6, 0, -2), radius: 1.5, type: 'drums', label: 'Drums - Play Beats' };
+            const indicator3 = new THREE.Mesh(indicatorGeo.clone(), indicatorMat.clone());
+            indicator3.material.color.setHex(0xff6600);
+            indicator3.rotation.x = -Math.PI / 2;
+            indicator3.position.copy(drumStation.position);
+            indicator3.position.y = 0.05;
+            scene.add(indicator3);
+            drumStation.indicator = indicator3;
+            stations.push(drumStation);
+            
+            // Synth station - in front of the keyboard
+            const synthStation = { position: new THREE.Vector3(-2.5, 0, -3.5), radius: 1.5, type: 'synth', label: 'Synth - Play Keys' };
+            const indicator4 = new THREE.Mesh(indicatorGeo.clone(), indicatorMat.clone());
+            indicator4.material.color.setHex(0xff00ff); // Purple for synth
+            indicator4.rotation.x = -Math.PI / 2;
+            indicator4.position.copy(synthStation.position);
+            indicator4.position.y = 0.05;
+            scene.add(indicator4);
+            synthStation.indicator = indicator4;
+            stations.push(synthStation);
+        }
+
+        function setupPlaylist() {
+            setupPlaylistFolders();
+            selectPlaylist(0);
+        }
+        
+        function setupPlaylistFolders() {
+            const foldersContainer = document.getElementById('playlist-folders');
+            foldersContainer.innerHTML = '';
+            
+            CONFIG.playlists.forEach((playlist, i) => {
+                const item = document.createElement('div');
+                item.className = 'folder-item' + (i === currentPlaylist ? ' active' : '') + (playlist.locked ? ' locked' : '');
+                item.innerHTML = `<span class="folder-icon">${playlist.icon}</span><span class="folder-name">${playlist.name}</span>`;
+                item.onclick = () => {
+                    if (playlist.locked) {
+                        showSecretModal(i);
+                    } else {
+                        selectPlaylist(i);
+                    }
+                };
+                foldersContainer.appendChild(item);
+            });
+        }
+        
+        function selectPlaylist(index) {
+            currentPlaylist = index;
+            currentTrack = 0;
+            
+            // Update folder highlights
+            document.querySelectorAll('.folder-item').forEach((item, i) => {
+                item.classList.toggle('active', i === index);
+            });
+            
+            // Update tracks
+            const playlist = document.getElementById('playlist');
+            playlist.innerHTML = '';
+            
+            const tracks = CONFIG.playlists[index].tracks;
+            if (tracks.length === 0) {
+                playlist.innerHTML = '<div class="playlist-empty">No tracks yet</div>';
+            } else {
+                tracks.forEach((track, i) => {
+                    const item = document.createElement('div');
+                    item.className = 'playlist-item' + (i === 0 ? ' active' : '');
+                    item.innerHTML = `<span class="track-num">${i + 1}</span><div class="track-info"><div class="name">${track.title}</div></div>`;
+                    item.onclick = () => selectTrack(i);
+                    // Double click to play immediately
+                    item.ondblclick = () => {
+                        selectTrack(i);
+                        if (!isPlaying) {
+                            audioElement.play().then(() => {
+                                isPlaying = true;
+                                document.getElementById('play-pause-btn').textContent = '⏸';
+                                document.getElementById('album-art').classList.add('playing');
+                                setupAudioAnalyser();
+                            }).catch(e => console.log('Play error:', e));
+                        }
+                    };
+                    playlist.appendChild(item);
+                });
+            }
+        }
+        
+        function showSecretModal(playlistIndex) {
+            const playlist = CONFIG.playlists[playlistIndex];
+            document.getElementById('secret-question').textContent = playlist.question;
+            document.getElementById('secret-answer').value = '';
+            document.getElementById('secret-error').textContent = '';
+            document.getElementById('secret-modal').classList.add('active');
+            document.getElementById('secret-modal').dataset.playlistIndex = playlistIndex;
+            document.getElementById('secret-answer').focus();
+        }
+        
+        function closeSecretModal() {
+            document.getElementById('secret-modal').classList.remove('active');
+        }
+        
+        function checkSecretAnswer() {
+            const playlistIndex = parseInt(document.getElementById('secret-modal').dataset.playlistIndex);
+            const playlist = CONFIG.playlists[playlistIndex];
+            const answer = document.getElementById('secret-answer').value.toLowerCase().trim();
+            
+            if (answer === playlist.answer.toLowerCase()) {
+                // Correct! Unlock the playlist
+                playlist.locked = false;
+                closeSecretModal();
+                setupPlaylistFolders();
+                selectPlaylist(playlistIndex);
+            } else {
+                // Wrong answer
+                document.getElementById('secret-error').textContent = '❌ Wrong answer! Try again...';
+                document.getElementById('secret-answer').value = '';
+                document.getElementById('secret-answer').focus();
+            }
+        }
+
+        function setupChannels() {
+            const container = document.getElementById('channel-buttons');
+            CONFIG.videos.forEach((video, i) => {
+                const btn = document.createElement('button');
+                btn.className = 'channel-btn' + (i === 0 ? ' active' : '');
+                btn.textContent = video.title;
+                btn.onclick = () => selectChannel(i);
+                container.appendChild(btn);
+            });
+        }
+
+        function setupEvents() {
+            document.addEventListener('keydown', (e) => {
+                keys[e.key.toLowerCase()] = true;
+                if (e.key.toLowerCase() === 'e' && nearStation && !currentStation) enterStation(nearStation);
+                if (e.key === 'Escape' && currentStation) exitStation();
+                if (e.key === ' ' && isGrounded && !currentStation && gameStarted) {
+                    verticalVelocity = jumpForce;
+                    isGrounded = false;
+                    e.preventDefault();
+                }
+            });
+            document.addEventListener('keyup', (e) => keys[e.key.toLowerCase()] = false);
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+            document.getElementById('progress-bar').addEventListener('click', (e) => {
+                const rect = e.target.getBoundingClientRect();
+                const percent = (e.clientX - rect.left) / rect.width;
+                if (audioElement.duration) {
+                    audioElement.currentTime = percent * audioElement.duration;
+                }
+            });
+            
+            const raycaster = new THREE.Raycaster();
+            const mouse = new THREE.Vector2();
+            
+            renderer.domElement.addEventListener('click', (e) => {
+                mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+                mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+                
+                raycaster.setFromCamera(mouse, camera);
+                
+                const drumIntersects = raycaster.intersectObjects(drumPads, false);
+                if (drumIntersects.length > 0) {
+                    const drumType = drumIntersects[0].object.userData.drumType;
+                    if (drumType) {
+                        playDrumSound(drumType);
+                        return;
+                    }
+                }
+                
+                // Check synth buttons
+                if (synthSoundButton && arpeggioButton) {
+                    const buttonIntersects = raycaster.intersectObjects([synthSoundButton, arpeggioButton], false);
+                    if (buttonIntersects.length > 0) {
+                        const btn = buttonIntersects[0].object;
+                        if (btn.userData.isSoundButton) {
+                            // Cycle through sound types
+                            synthSoundType = (synthSoundType + 1) % 4;
+                            // Update LED color based on sound type
+                            const colors = [0xff6600, 0x00ff66, 0x6600ff, 0xff0066];
+                            soundButtonLight.material.color.setHex(colors[synthSoundType]);
+                            updateSynthDisplay();
+                            return;
+                        }
+                        if (btn.userData.isArpButton) {
+                            // Toggle arpeggio
+                            arpeggioEnabled = !arpeggioEnabled;
+                            arpButtonLight.material.color.setHex(arpeggioEnabled ? 0x00ffff : 0x333333);
+                            // Stop arpeggio if turned off
+                            if (!arpeggioEnabled) {
+                                stopArpeggio();
+                            }
+                            updateSynthDisplay();
+                            return;
+                        }
+                    }
+                }
+                
+                const synthIntersects = raycaster.intersectObjects(synthKeys, false);
+                if (synthIntersects.length > 0) {
+                    const obj = synthIntersects[0].object;
+                    if (obj.userData.isSynthKey) {
+                        playSynthSound(obj.userData.noteIndex);
+                    }
+                }
+            });
+            
+            renderer.domElement.addEventListener('mousemove', (e) => {
+                mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+                mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+                
+                raycaster.setFromCamera(mouse, camera);
+                const drumIntersects = raycaster.intersectObjects(drumPads, false);
+                const synthIntersects = raycaster.intersectObjects(synthKeys, false);
+                const buttonObjects = synthSoundButton && arpeggioButton ? [synthSoundButton, arpeggioButton] : [];
+                const buttonIntersects = raycaster.intersectObjects(buttonObjects, false);
+                
+                renderer.domElement.style.cursor = (drumIntersects.length > 0 || synthIntersects.length > 0 || buttonIntersects.length > 0) ? 'pointer' : 'default';
+            });
+            
+            // Touch events for canvas (drums, synth)
+            renderer.domElement.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                const touch = e.touches[0];
+                mouse.x = (touch.clientX / window.innerWidth) * 2 - 1;
+                mouse.y = -(touch.clientY / window.innerHeight) * 2 + 1;
+                
+                raycaster.setFromCamera(mouse, camera);
+                
+                const drumIntersects = raycaster.intersectObjects(drumPads, false);
+                if (drumIntersects.length > 0) {
+                    const drumType = drumIntersects[0].object.userData.drumType;
+                    if (drumType) playDrumSound(drumType);
+                    return;
+                }
+                
+                const synthIntersects = raycaster.intersectObjects(synthKeys, false);
+                if (synthIntersects.length > 0) {
+                    const obj = synthIntersects[0].object;
+                    if (obj.userData.isSynthKey) playSynthSound(obj.userData.noteIndex);
+                }
+            }, { passive: false });
+            
+            // Mobile joystick controls
+            setupMobileControls();
+        }
+        
+        function setupMobileControls() {
+            const joystick = document.getElementById('joystick');
+            const knob = document.getElementById('joystick-knob');
+            const btnJump = document.getElementById('btn-jump');
+            const btnInteract = document.getElementById('btn-interact');
+            
+            if (!joystick) return;
+            
+            let joystickActive = false;
+            let joystickCenter = { x: 0, y: 0 };
+            
+            joystick.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                joystickActive = true;
+                const rect = joystick.getBoundingClientRect();
+                joystickCenter = {
+                    x: rect.left + rect.width / 2,
+                    y: rect.top + rect.height / 2
+                };
+            }, { passive: false });
+            
+            joystick.addEventListener('touchmove', (e) => {
+                if (!joystickActive) return;
+                e.preventDefault();
+                const touch = e.touches[0];
+                const maxDist = 40;
+                
+                let dx = touch.clientX - joystickCenter.x;
+                let dy = touch.clientY - joystickCenter.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                
+                if (dist > maxDist) {
+                    dx = (dx / dist) * maxDist;
+                    dy = (dy / dist) * maxDist;
+                }
+                
+                knob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+                
+                // Update movement keys
+                keys['w'] = dy < -10;
+                keys['s'] = dy > 10;
+                keys['a'] = dx < -10;
+                keys['d'] = dx > 10;
+            }, { passive: false });
+            
+            const resetJoystick = () => {
+                joystickActive = false;
+                knob.style.transform = 'translate(-50%, -50%)';
+                keys['w'] = keys['a'] = keys['s'] = keys['d'] = false;
+            };
+            
+            joystick.addEventListener('touchend', resetJoystick);
+            joystick.addEventListener('touchcancel', resetJoystick);
+            
+            // Jump button
+            btnJump.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                if (isGrounded && !currentStation && gameStarted) {
+                    verticalVelocity = jumpForce;
+                    isGrounded = false;
+                }
+            }, { passive: false });
+            
+            // Interact button
+            btnInteract.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                if (nearStation && !currentStation) {
+                    enterStation(nearStation);
+                } else if (currentStation) {
+                    exitStation();
+                }
+            }, { passive: false });
+        }
+
+        // ============================================
+        // AUDIO REACTIVE FUNCTIONS
+        // ============================================
+        
+        function flashAllLights() {
+            // Flash player - stronger
+            playerEmissiveParts.forEach(part => {
+                if (part.material) part.material.emissiveIntensity = 2.0;
+            });
+            
+            // Flash acoustic panels and letters - much stronger
+            acousticPanels.forEach(p => {
+                if (p.panel && p.panel.material) p.panel.material.emissiveIntensity = 1.5;
+                if (p.letterGroup) {
+                    p.letterGroup.children.forEach(mesh => {
+                        if (mesh.material) mesh.material.opacity = 1.0;
+                    });
+                }
+            });
+            
+            // Flash corner lights - stronger
+            cornerLights.forEach(cl => {
+                cl.light.intensity = 3.0;
+            });
+            
+            // Flash corner pillars
+            cornerPillars.forEach(cp => {
+                cp.pillar.material.emissiveIntensity = 1.5;
+                cp.screen.material.color.setRGB(1, 1, 1);
+            });
+            
+            // Fade back
+            const startTime = Date.now();
+            const duration = 250;
+            
+            function fade() {
+                const progress = Math.min((Date.now() - startTime) / duration, 1);
+                const playerIntensity = 2.0 - (progress * 1.85);
+                const panelIntensity = 1.5 - (progress * 1.4);
+                const lightIntensity = 3.0 - (progress * 2.7);
+                const letterOpacity = 1.0 - (progress * 0.3);
+                const pillarIntensity = 1.5 - (progress * 1.3);
+                
+                playerEmissiveParts.forEach(part => {
+                    if (part.material) part.material.emissiveIntensity = playerIntensity;
+                });
+                
+                acousticPanels.forEach(p => {
+                    if (p.panel && p.panel.material) p.panel.material.emissiveIntensity = panelIntensity;
+                    if (p.letterGroup) {
+                        p.letterGroup.children.forEach(mesh => {
+                            if (mesh.material) mesh.material.opacity = letterOpacity;
+                        });
+                    }
+                });
+                
+                cornerLights.forEach(cl => {
+                    cl.light.intensity = lightIntensity;
+                });
+                
+                cornerPillars.forEach(cp => {
+                    cp.pillar.material.emissiveIntensity = pillarIntensity;
+                });
+                
+                if (progress < 1) requestAnimationFrame(fade);
+            }
+            fade();
+        }
+
+        function updateAudioReactiveLights() {
+            if (!analyser || !isPlaying) return;
+            
+            analyser.getByteFrequencyData(audioDataArray);
+            
+            // Get average of bass frequencies (more sensitive)
+            let bass = 0;
+            for (let i = 0; i < 15; i++) bass += audioDataArray[i];
+            bass = bass / 15 / 255;
+            bass = Math.pow(bass, 0.8); // Boost sensitivity
+            
+            // Get average of mid frequencies
+            let mid = 0;
+            for (let i = 15; i < 80; i++) mid += audioDataArray[i];
+            mid = mid / 65 / 255;
+            mid = Math.pow(mid, 0.8); // Boost sensitivity
+            
+            // Get high frequencies
+            let high = 0;
+            for (let i = 80; i < 128; i++) high += audioDataArray[i];
+            high = high / 48 / 255;
+            
+            // Detect dominant frequency for key estimation
+            detectKey();
+            
+            // Update acoustic panels - much stronger reaction
+            acousticPanels.forEach((p, i) => {
+                if (p.panel && p.panel.material) {
+                    p.panel.material.emissiveIntensity = 0.1 + mid * 1.5 + bass * 0.8;
+                }
+                // Make letters pulse strongly with bass
+                if (p.letterGroup) {
+                    p.letterGroup.children.forEach(mesh => {
+                        if (mesh.material) mesh.material.opacity = 0.5 + bass * 0.5 + high * 0.2;
+                    });
+                }
+            });
+            
+            // Update corner lights - much stronger bass reaction
+            cornerLights.forEach((cl, i) => {
+                cl.light.intensity = cl.baseIntensity + bass * 4.0 + mid * 1.5;
+            });
+            
+            // Update corner pillars
+            cornerPillars.forEach((cp, i) => {
+                cp.pillar.material.emissiveIntensity = 0.2 + bass * 1.2 + mid * 0.6;
+            });
+            
+            // Player glow - stronger reaction
+            playerEmissiveParts.forEach(part => {
+                if (part.material) {
+                    part.material.emissiveIntensity = 0.15 + bass * 1.0 + mid * 0.5;
+                }
+            });
+        }
+        
+        function detectKey() {
+            if (!analyser || !audioDataArray) return;
+            
+            // Simple key detection based on prominent frequency bins
+            // Map FFT bins to musical notes (approximate)
+            // At 44100Hz sample rate with 256 FFT size, each bin = ~172Hz
+            // We'll look at the lower frequencies where most melodic content is
+            
+            let maxVal = 0;
+            let maxBin = 0;
+            
+            // Look at bins 1-30 (roughly 170Hz - 5100Hz, covering most melodic range)
+            for (let i = 1; i < 30; i++) {
+                if (audioDataArray[i] > maxVal) {
+                    maxVal = audioDataArray[i];
+                    maxBin = i;
+                }
+            }
+            
+            // Convert bin to approximate note (very rough estimation)
+            // This maps the dominant frequency to a key (0-11)
+            if (maxVal > 100) { // Only update if there's significant audio
+                detectedKey = (maxBin * 3) % 12; // Rough mapping
+            }
+        }
+
+        // ============================================
+        // SYNTH WITH DELAY AND REVERB
+        // ============================================
+        
+        function playSynthSound(noteIndex) {
+            flashAllLights();
+            
+            // Base frequency for C4
+            const baseFreq = 261.63;
+            
+            // Map the clicked key to the detected scale
+            const scaleNotes = currentScale.map(n => (n + detectedKey) % 12);
+            
+            // Find the closest note in the scale
+            const octave = Math.floor(noteIndex / 12);
+            const noteInOctave = noteIndex % 12;
+            
+            // Find closest scale note
+            let closestNoteIndex = 0;
+            let closestNote = scaleNotes[0];
+            let minDist = 12;
+            scaleNotes.forEach((n, idx) => {
+                const dist = Math.min(Math.abs(n - noteInOctave), 12 - Math.abs(n - noteInOctave));
+                if (dist < minDist) {
+                    minDist = dist;
+                    closestNote = n;
+                    closestNoteIndex = idx;
+                }
+            });
+            
+            if (arpeggioEnabled) {
+                // Stop existing arpeggio if running
+                if (arpeggioInterval) {
+                    clearInterval(arpeggioInterval);
+                }
+                
+                // Create new audio context for arpeggio
+                arpeggioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                arpeggioBaseNote = closestNoteIndex;
+                
+                // Build arpeggio notes
+                const arpNotes = [];
+                for (let i = 0; i < 4; i++) {
+                    const scaleIdx = (closestNoteIndex + i) % scaleNotes.length;
+                    const noteOctave = octave + Math.floor((closestNoteIndex + i) / scaleNotes.length);
+                    const note = noteOctave * 12 + scaleNotes[scaleIdx];
+                    arpNotes.push(note);
+                }
+                
+                // Play persistent arpeggio
+                let arpIndex = 0;
+                const playArpNote = () => {
+                    if (!arpeggioEnabled || !arpeggioCtx) return;
+                    
+                    const note = arpNotes[arpIndex % arpNotes.length];
+                    const freq = baseFreq * Math.pow(2, note / 12);
+                    playSynthNote(arpeggioCtx, freq, arpeggioCtx.currentTime, 0.4);
+                    flashAllLights();
+                    arpIndex++;
+                };
+                
+                // Play first note immediately
+                playArpNote();
+                
+                // Continue arpeggio indefinitely
+                arpeggioInterval = setInterval(playArpNote, 120);
+            } else {
+                // Single note in key
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                const quantizedNote = octave * 12 + closestNote;
+                const freq = baseFreq * Math.pow(2, quantizedNote / 12);
+                playSynthNote(ctx, freq, ctx.currentTime, 0.6);
+            }
+        }
+        
+        function stopArpeggio() {
+            if (arpeggioInterval) {
+                clearInterval(arpeggioInterval);
+                arpeggioInterval = null;
+            }
+            if (arpeggioCtx) {
+                arpeggioCtx.close();
+                arpeggioCtx = null;
+            }
+        }
+        
+        function playSynthNote(ctx, freq, startTime, volume) {
+            // Get waveform based on selected sound type
+            const waveforms = ['sawtooth', 'square', 'sine', 'triangle'];
+            const mainWave = waveforms[synthSoundType];
+            
+            // Main oscillators (detuned for thickness)
+            const osc1 = ctx.createOscillator();
+            const osc2 = ctx.createOscillator();
+            const osc3 = ctx.createOscillator();
+            
+            osc1.type = mainWave;
+            osc2.type = mainWave;
+            osc3.type = synthSoundType === 2 ? 'sine' : 'square'; // Sub oscillator
+            
+            osc1.frequency.setValueAtTime(freq, startTime);
+            osc2.frequency.setValueAtTime(freq * 1.005, startTime); // Slight detune
+            osc3.frequency.setValueAtTime(freq * 0.5, startTime); // Sub octave
+            
+            // Filter - different settings per sound type
+            const filter = ctx.createBiquadFilter();
+            filter.type = 'lowpass';
+            
+            if (synthSoundType === 0) { // Saw - brighter
+                filter.frequency.setValueAtTime(4000, startTime);
+                filter.frequency.exponentialRampToValueAtTime(1000, startTime + 0.5);
+                filter.Q.value = 2;
+            } else if (synthSoundType === 1) { // Square - resonant
+                filter.frequency.setValueAtTime(2500, startTime);
+                filter.frequency.exponentialRampToValueAtTime(600, startTime + 0.4);
+                filter.Q.value = 4;
+            } else if (synthSoundType === 2) { // Sine - warm, open filter
+                filter.frequency.setValueAtTime(8000, startTime);
+                filter.frequency.exponentialRampToValueAtTime(2000, startTime + 0.8);
+                filter.Q.value = 0.5;
+            } else { // Triangle - mellow
+                filter.frequency.setValueAtTime(3000, startTime);
+                filter.frequency.exponentialRampToValueAtTime(800, startTime + 0.6);
+                filter.Q.value = 1;
+            }
+            
+            // Gain envelope
+            const gain = ctx.createGain();
+            gain.gain.setValueAtTime(0, startTime);
+            gain.gain.linearRampToValueAtTime(volume * 0.4, startTime + 0.02);
+            gain.gain.exponentialRampToValueAtTime(volume * 0.2, startTime + 0.2);
+            gain.gain.exponentialRampToValueAtTime(0.001, startTime + 1.5);
+            
+            // Delay
+            const delay = ctx.createDelay();
+            delay.delayTime.value = 0.3;
+            const delayGain = ctx.createGain();
+            delayGain.gain.value = 0.3;
+            const feedback = ctx.createGain();
+            feedback.gain.value = 0.4;
+            
+            // Reverb (convolver with impulse response)
+            const convolver = ctx.createConvolver();
+            const reverbGain = ctx.createGain();
+            reverbGain.gain.value = 0.3;
+            
+            // Create impulse response for reverb
+            const sampleRate = ctx.sampleRate;
+            const length = sampleRate * 2;
+            const impulse = ctx.createBuffer(2, length, sampleRate);
+            for (let channel = 0; channel < 2; channel++) {
+                const data = impulse.getChannelData(channel);
+                for (let i = 0; i < length; i++) {
+                    data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, 2);
+                }
+            }
+            convolver.buffer = impulse;
+            
+            // Connect oscillators
+            osc1.connect(filter);
+            osc2.connect(filter);
+            osc3.connect(filter);
+            
+            // Dry path
+            filter.connect(gain);
+            gain.connect(ctx.destination);
+            
+            // Delay path
+            gain.connect(delay);
+            delay.connect(delayGain);
+            delayGain.connect(ctx.destination);
+            delay.connect(feedback);
+            feedback.connect(delay);
+            
+            // Reverb path
+            gain.connect(convolver);
+            convolver.connect(reverbGain);
+            reverbGain.connect(ctx.destination);
+            
+            osc1.start(startTime);
+            osc2.start(startTime);
+            osc3.start(startTime);
+            osc1.stop(startTime + 2);
+            osc2.stop(startTime + 2);
+            osc3.stop(startTime + 2);
+        }
+        
+        function playDrumSound(type) {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const now = ctx.currentTime;
+            
+            flashAllLights();
+            
+            // Create reverb convolver
+            const convolver = ctx.createConvolver();
+            const reverbTime = 0.8;
+            const sampleRate = ctx.sampleRate;
+            const reverbLength = sampleRate * reverbTime;
+            const impulse = ctx.createBuffer(2, reverbLength, sampleRate);
+            for (let channel = 0; channel < 2; channel++) {
+                const channelData = impulse.getChannelData(channel);
+                for (let i = 0; i < reverbLength; i++) {
+                    channelData[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / reverbLength, 2.5);
+                }
+            }
+            convolver.buffer = impulse;
+            
+            // Dry/wet mix
+            const dryGain = ctx.createGain();
+            const wetGain = ctx.createGain();
+            dryGain.gain.value = 0.85; // Mostly dry
+            wetGain.gain.value = 0.25; // Subtle reverb
+            
+            convolver.connect(wetGain);
+            wetGain.connect(ctx.destination);
+            
+            if (type === 'kick') {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(150, now);
+                osc.frequency.exponentialRampToValueAtTime(30, now + 0.15);
+                gain.gain.setValueAtTime(1, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+                osc.connect(gain);
+                gain.connect(dryGain);
+                gain.connect(convolver);
+                dryGain.connect(ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.3);
+            } else if (type === 'snare') {
+                const noise = ctx.createBufferSource();
+                const noiseBuffer = ctx.createBuffer(1, ctx.sampleRate * 0.2, ctx.sampleRate);
+                const output = noiseBuffer.getChannelData(0);
+                for (let i = 0; i < noiseBuffer.length; i++) output[i] = Math.random() * 2 - 1;
+                noise.buffer = noiseBuffer;
+                
+                const noiseGain = ctx.createGain();
+                const noiseFilter = ctx.createBiquadFilter();
+                noiseFilter.type = 'highpass';
+                noiseFilter.frequency.value = 1000;
+                noiseGain.gain.setValueAtTime(0.8, now);
+                noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+                noise.connect(noiseFilter);
+                noiseFilter.connect(noiseGain);
+                noiseGain.connect(dryGain);
+                noiseGain.connect(convolver);
+                dryGain.connect(ctx.destination);
+                
+                const osc = ctx.createOscillator();
+                const oscGain = ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(200, now);
+                oscGain.gain.setValueAtTime(0.7, now);
+                oscGain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+                osc.connect(oscGain);
+                oscGain.connect(dryGain);
+                oscGain.connect(convolver);
+                
+                noise.start(now);
+                osc.start(now);
+                osc.stop(now + 0.2);
+            } else if (type === 'hihat') {
+                const noise = ctx.createBufferSource();
+                const noiseBuffer = ctx.createBuffer(1, ctx.sampleRate * 0.1, ctx.sampleRate);
+                const output = noiseBuffer.getChannelData(0);
+                for (let i = 0; i < noiseBuffer.length; i++) output[i] = Math.random() * 2 - 1;
+                noise.buffer = noiseBuffer;
+                
+                const filter = ctx.createBiquadFilter();
+                filter.type = 'highpass';
+                filter.frequency.value = 7000;
+                
+                const gain = ctx.createGain();
+                gain.gain.setValueAtTime(0.4, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+                
+                noise.connect(filter);
+                filter.connect(gain);
+                gain.connect(dryGain);
+                gain.connect(convolver);
+                dryGain.connect(ctx.destination);
+                noise.start(now);
+            } else if (type === 'hitom') {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(300, now);
+                osc.frequency.exponentialRampToValueAtTime(180, now + 0.15);
+                gain.gain.setValueAtTime(0.8, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
+                osc.connect(gain);
+                gain.connect(dryGain);
+                gain.connect(convolver);
+                dryGain.connect(ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.25);
+            } else if (type === 'midtom') {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(220, now);
+                osc.frequency.exponentialRampToValueAtTime(130, now + 0.18);
+                gain.gain.setValueAtTime(0.8, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+                osc.connect(gain);
+                gain.connect(dryGain);
+                gain.connect(convolver);
+                dryGain.connect(ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.3);
+            } else if (type === 'lowtom') {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(150, now);
+                osc.frequency.exponentialRampToValueAtTime(80, now + 0.2);
+                gain.gain.setValueAtTime(0.9, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+                osc.connect(gain);
+                gain.connect(dryGain);
+                gain.connect(convolver);
+                dryGain.connect(ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.4);
+            } else if (type === 'crash1' || type === 'crash2') {
+                // Crash cymbals with pitch variation
+                const noise = ctx.createBufferSource();
+                const noiseBuffer = ctx.createBuffer(1, ctx.sampleRate * 1.5, ctx.sampleRate);
+                const output = noiseBuffer.getChannelData(0);
+                for (let i = 0; i < noiseBuffer.length; i++) output[i] = Math.random() * 2 - 1;
+                noise.buffer = noiseBuffer;
+                
+                // Different pitch for each cymbal + slight random variation
+                const basePitch = type === 'crash1' ? 5500 : 4500;
+                const pitchVariation = (Math.random() - 0.5) * 400; // ±200Hz variation
+                
+                const filter = ctx.createBiquadFilter();
+                filter.type = 'highpass';
+                filter.frequency.value = basePitch + pitchVariation;
+                
+                // Add a bandpass for more tonal character
+                const bandpass = ctx.createBiquadFilter();
+                bandpass.type = 'bandpass';
+                bandpass.frequency.value = (basePitch + pitchVariation) * 1.2;
+                bandpass.Q.value = 0.5;
+                
+                const gain = ctx.createGain();
+                gain.gain.setValueAtTime(0.55, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 1.4);
+                
+                noise.connect(filter);
+                filter.connect(bandpass);
+                bandpass.connect(gain);
+                gain.connect(dryGain);
+                gain.connect(convolver);
+                dryGain.connect(ctx.destination);
+                noise.start(now);
+            }
+        }
+
+        // ============================================
+        // MUSIC PLAYER
+        // ============================================
+        
+        function selectTrack(index) {
+            const tracks = CONFIG.playlists[currentPlaylist].tracks;
+            if (tracks.length === 0) return;
+            
+            currentTrack = index;
+            const track = tracks[index];
+            document.getElementById('track-title').textContent = track.title;
+            document.querySelectorAll('.playlist-item').forEach((item, i) => item.classList.toggle('active', i === index));
+            
+            if (track.file) {
+                audioElement.src = track.file;
+                audioElement.load();
+                if (isPlaying) {
+                    audioElement.play().then(() => {
+                        setupAudioAnalyser();
+                    }).catch(e => console.log('Play error:', e));
+                }
+            }
+        }
+
+        function togglePlay() {
+            const tracks = CONFIG.playlists[currentPlaylist].tracks;
+            if (tracks.length === 0) return;
+            
+            if (!audioElement.src || audioElement.src === '') {
+                selectTrack(0);
+            }
+            
+            if (isPlaying) {
+                audioElement.pause();
+                isPlaying = false;
+                document.getElementById('play-pause-btn').textContent = '▶';
+                document.getElementById('album-art').classList.remove('playing');
+            } else {
+                audioElement.play().then(() => {
+                    isPlaying = true;
+                    document.getElementById('play-pause-btn').textContent = '⏸';
+                    document.getElementById('album-art').classList.add('playing');
+                    setupAudioAnalyser();
+                }).catch(e => {
+                    console.log('Play error:', e);
+                    isPlaying = false;
+                    document.getElementById('play-pause-btn').textContent = '▶';
+                    document.getElementById('album-art').classList.remove('playing');
+                });
+            }
+        }
+
+        function setupAudioAnalyser() {
+            if (!audioContext) {
+                try {
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    const source = audioContext.createMediaElementSource(audioElement);
+                    analyser = audioContext.createAnalyser();
+                    analyser.fftSize = 256;
+                    audioDataArray = new Uint8Array(analyser.frequencyBinCount);
+                    source.connect(analyser);
+                    analyser.connect(audioContext.destination);
+                } catch (e) {
+                    console.log('Analyser setup error:', e);
+                }
+            }
+            if (audioContext && audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
+        }
+
+        function updateProgress() {
+            if (audioElement.duration) {
+                const percent = (audioElement.currentTime / audioElement.duration) * 100;
+                document.getElementById('progress-fill').style.width = percent + '%';
+                document.getElementById('current-time').textContent = formatTime(audioElement.currentTime);
+            }
+        }
+
+        function formatTime(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${mins}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        function prevTrack() { 
+            const tracks = CONFIG.playlists[currentPlaylist].tracks;
+            if (tracks.length === 0) return;
+            selectTrack((currentTrack - 1 + tracks.length) % tracks.length); 
+        }
+        function nextTrack() { 
+            const tracks = CONFIG.playlists[currentPlaylist].tracks;
+            if (tracks.length === 0) return;
+            selectTrack((currentTrack + 1) % tracks.length); 
+        }
+
+        function selectChannel(index) {
+            document.getElementById('tv-video').src = `https://www.youtube.com/embed/${CONFIG.videos[index].id}?autoplay=1&rel=0`;
+            document.querySelectorAll('#channel-buttons .channel-btn').forEach((btn, i) => btn.classList.toggle('active', i === index));
+        }
+
+        // ============================================
+        // STATIONS
+        // ============================================
+        
+        function enterStation(station) {
+            currentStation = station;
+            if (station.type === 'computer') {
+                document.getElementById('computer-interface').classList.add('active');
+                gsapLike(camera.position, { x: -0.5, y: 3, z: -2 }, 500);
+            } else if (station.type === 'tv') {
+                document.getElementById('tv-interface').classList.add('active');
+                selectChannel(0);
+                gsapLike(camera.position, { x: 5.5, y: 2.5, z: -2 }, 500);
+            } else if (station.type === 'drums') {
+                document.getElementById('drums-interface').classList.add('active');
+                // Hide player when at drums
+                if (player) player.visible = false;
+                // Camera positioned behind the drums, looking at them like sitting at the throne
+                gsapLike(camera.position, { x: -6, y: 1.8, z: 0.8 }, 500);
+                gsapLike(camera.rotation, { x: -0.2, y: 0, z: 0 }, 500);
+            } else if (station.type === 'synth') {
+                document.getElementById('synth-interface').classList.add('active');
+                // Hide player when at synth
+                if (player) player.visible = false;
+                // Camera positioned behind the synth, looking down at keyboard
+                gsapLike(camera.position, { x: -2.5, y: 2.2, z: -3.8 }, 500);
+                gsapLike(camera.rotation, { x: -0.4, y: 0, z: 0 }, 500);
+            }
+            document.getElementById('interaction-prompt').classList.remove('visible');
+        }
+
+        function exitStation() {
+            if (!currentStation) return;
+            if (currentStation.type === 'tv') document.getElementById('tv-video').src = '';
+            // Show player again when leaving drums or synth
+            if ((currentStation.type === 'drums' || currentStation.type === 'synth') && player) {
+                player.visible = true;
+            }
+            // Stop arpeggio when leaving synth
+            if (currentStation.type === 'synth') {
+                stopArpeggio();
+            }
+            document.getElementById('computer-interface').classList.remove('active');
+            document.getElementById('tv-interface').classList.remove('active');
+            document.getElementById('drums-interface').classList.remove('active');
+            document.getElementById('synth-interface').classList.remove('active');
+            gsapLike(camera.position, { x: 0, y: 8, z: 12 }, 500);
+            gsapLike(camera.rotation, { x: -0.5, y: 0, z: 0 }, 500);
+            currentStation = null;
+        }
+
+        function gsapLike(obj, target, duration) {
+            const start = {}, startTime = Date.now();
+            for (let key in target) start[key] = obj[key];
+            function update() {
+                const progress = Math.min((Date.now() - startTime) / duration, 1);
+                const eased = 1 - Math.pow(1 - progress, 3);
+                for (let key in target) obj[key] = start[key] + (target[key] - start[key]) * eased;
+                if (progress < 1) requestAnimationFrame(update);
+            }
+            update();
+        }
+
+        // ============================================
+        // GAME LOOP
+        // ============================================
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            // Cat breathing
+            if (cat) {
+                catBreathTime += 0.03;
+                cat.scale.y = 1 + Math.sin(catBreathTime) * 0.03;
+                cat.position.y = 0.55 + Math.sin(catBreathTime) * 0.01;
+            }
+            
+            // Update monitor display with music info when not at station
+            screensaverTime += 0.02;
+            if (monitorScreen && !currentStation) {
+                // Update scrolling text offset
+                const tracks = CONFIG.playlists[currentPlaylist].tracks;
+                const track = tracks[currentTrack];
+                if (track) {
+                    const ctx = monitorDisplayCanvas.getContext('2d');
+                    ctx.font = 'bold 36px monospace';
+                    const textWidth = ctx.measureText(track.title).width;
+                    if (textWidth > 450) {
+                        songTextOffset += 1;
+                        if (songTextOffset > textWidth + 50) {
+                            songTextOffset = 0;
+                        }
+                    }
+                }
+                updateMonitorDisplay();
+            }
+            
+            // TV photo slideshow (change every 5 seconds)
+            if (tvScreen && !currentStation) {
+                photoChangeTimer++;
+                if (photoChangeTimer > 300) { // ~5 seconds at 60fps
+                    photoChangeTimer = 0;
+                    currentPhotoIndex = (currentPhotoIndex + 1) % CONFIG.photos.length;
+                }
+                updateTVDisplay();
+            }
+            
+            // Corner pillars screensaver effect
+            cornerPillars.forEach((cp, i) => {
+                const offset = i * 2;
+                const r = Math.sin(screensaverTime * 1.2 + offset) * 0.5 + 0.5;
+                const g = Math.sin(screensaverTime * 0.8 + offset + 2) * 0.5 + 0.5;
+                const b = Math.sin(screensaverTime * 1.5 + offset + 4) * 0.5 + 0.5;
+                cp.screen.material.color.setRGB(r, g, b);
+                cp.pillar.material.emissive.setRGB(r * 0.3, g * 0.5, b * 0.3);
+            });
+            
+            // Audio reactive lights
+            updateAudioReactiveLights();
+            
+            if (!gameStarted || currentStation) {
+                renderer.render(scene, camera);
+                return;
+            }
+
+            const speed = 0.04, friction = 0.88;
+            if (keys['w']) playerVelocity.z -= speed;
+            if (keys['s']) playerVelocity.z += speed;
+            if (keys['a']) playerVelocity.x -= speed;
+            if (keys['d']) playerVelocity.x += speed;
+            playerVelocity.multiplyScalar(friction);
+            
+            if (!isGrounded) {
+                verticalVelocity -= gravity;
+                player.position.y += verticalVelocity;
+                
+                // Check if landing on bed
+                const bedHeight = 0.7; // Height of bed surface
+                const onBedX = player.position.x > 4.4 && player.position.x < 6.6;
+                const onBedZ = player.position.z > 2.25 && player.position.z < 5.75;
+                
+                if (onBedX && onBedZ && player.position.y <= bedHeight && verticalVelocity < 0) {
+                    // Landing on bed - bounce the player!
+                    player.position.y = bedHeight;
+                    // Bounce player back up (lose some energy each bounce)
+                    const bounceStrength = Math.abs(verticalVelocity) * 0.65;
+                    verticalVelocity = Math.max(bounceStrength, 0.12); // Minimum bounce
+                    isGrounded = false; // Keep in air for bounce
+                    isOnBed = true;
+                    // Trigger mattress bounce
+                    bedBounceVelocity = -0.15;
+                } else if (player.position.y <= 0) {
+                    player.position.y = 0;
+                    verticalVelocity = 0;
+                    isGrounded = true;
+                    isOnBed = false;
+                }
+            } else {
+                // Check if we walked off the bed
+                const onBedX = player.position.x > 4.4 && player.position.x < 6.6;
+                const onBedZ = player.position.z > 2.25 && player.position.z < 5.75;
+                
+                if (isOnBed && (!onBedX || !onBedZ)) {
+                    // Walked off bed, start falling
+                    isGrounded = false;
+                    isOnBed = false;
+                }
+                
+                // If on bed and pressing jump, do a bigger bounce
+                if (isOnBed && keys[' ']) {
+                    verticalVelocity = jumpForce * 1.3; // Extra bounce on bed
+                    isGrounded = false;
+                    bedBounceVelocity = -0.2;
+                }
+            }
+            
+            const newX = player.position.x + playerVelocity.x;
+            const newZ = player.position.z + playerVelocity.z;
+            const playerRadius = 0.5;
+            
+            // Bed collision - only block at ground level, not when on bed or jumping over
+            const bedCollider = { minX: 4.4, maxX: 6.6, minZ: 2.25, maxZ: 5.75 };
+            const bedHeight = 0.7;
+            
+            // Regular colliders (furniture that blocks at all heights)
+            const colliders = [
+                { minX: -4, maxX: 3, minZ: -6.8, maxZ: -4.2 },
+                { minX: 3.8, maxX: 7.2, minZ: -2.2, maxZ: 0.2 },
+                { minX: -7, maxX: -5, minZ: -4, maxZ: -2 },
+            ];
+            
+            let canMoveX = true, canMoveZ = true;
+            
+            // Check regular colliders
+            for (const col of colliders) {
+                if (newX + playerRadius > col.minX && newX - playerRadius < col.maxX &&
+                    player.position.z + playerRadius > col.minZ && player.position.z - playerRadius < col.maxZ) {
+                    canMoveX = false;
+                }
+                if (player.position.x + playerRadius > col.minX && player.position.x - playerRadius < col.maxX &&
+                    newZ + playerRadius > col.minZ && newZ - playerRadius < col.maxZ) {
+                    canMoveZ = false;
+                }
+            }
+            
+            // Bed collision - only blocks if player is at ground level (not on bed or jumping)
+            if (player.position.y < bedHeight - 0.1) {
+                if (newX + playerRadius > bedCollider.minX && newX - playerRadius < bedCollider.maxX &&
+                    player.position.z + playerRadius > bedCollider.minZ && player.position.z - playerRadius < bedCollider.maxZ) {
+                    canMoveX = false;
+                }
+                if (player.position.x + playerRadius > bedCollider.minX && player.position.x - playerRadius < bedCollider.maxX &&
+                    newZ + playerRadius > bedCollider.minZ && newZ - playerRadius < bedCollider.maxZ) {
+                    canMoveZ = false;
+                }
+            }
+            
+            if (newX > -7 && newX < 7 && canMoveX) player.position.x = newX;
+            if (newZ > -5.5 && newZ < 6 && canMoveZ) player.position.z = newZ;
+            
+            // Mattress bounce physics
+            if (bedMattress) {
+                // Spring physics for mattress
+                const displacement = bedMattress.position.y - bedBaseY;
+                const springForce = -displacement * 0.15; // Spring constant
+                const damping = -bedBounceVelocity * 0.1; // Damping
+                bedBounceVelocity += springForce + damping;
+                bedMattress.position.y += bedBounceVelocity;
+                
+                // Clamp mattress position
+                if (bedMattress.position.y < bedBaseY - 0.15) {
+                    bedMattress.position.y = bedBaseY - 0.15;
+                    bedBounceVelocity *= -0.6; // Bounce back
+                }
+                if (bedMattress.position.y > bedBaseY + 0.08) {
+                    bedMattress.position.y = bedBaseY + 0.08;
+                }
+            }
+
+            nearStation = null;
+            const prompt = document.getElementById('interaction-prompt');
+            stations.forEach(station => {
+                const dist = player.position.distanceTo(station.position);
+                if (dist < station.radius) {
+                    nearStation = station;
+                    prompt.textContent = `Press E - ${station.label}`;
+                    prompt.classList.add('visible');
+                }
+                station.indicator.rotation.z += 0.02;
+                station.indicator.material.opacity = 0.2 + Math.sin(Date.now() * 0.003) * 0.15;
+            });
+            if (!nearStation) prompt.classList.remove('visible');
+
+            camera.position.x += (player.position.x - camera.position.x) * 0.05;
+            camera.position.z += (player.position.z + 9 - camera.position.z) * 0.05;
+            camera.lookAt(player.position.x, 1, player.position.z - 2);
+
+            renderer.render(scene, camera);
+        }
+
+        function enterStudio() {
+            document.getElementById('loading-screen').classList.add('hidden');
+            gameStarted = true;
+        }
+
+        init();
+    </script>
 </body>
 </html>
