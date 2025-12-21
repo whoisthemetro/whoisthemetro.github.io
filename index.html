@@ -15,14 +15,39 @@
         #controls-hint { position: absolute; bottom: 20px; left: 20px; background: rgba(0,0,0,0.7); color: #888; padding: 15px; border-radius: 8px; font-size: 12px; line-height: 1.8; }
         #controls-hint kbd { background: #333; padding: 2px 8px; border-radius: 4px; margin: 0 2px; }
         
-        /* Mobile Controls */
-        #mobile-controls { display: none; position: absolute; bottom: 0; left: 0; right: 0; top: 0; pointer-events: none; z-index: 150; }
-        .mobile-buttons { position: absolute; bottom: 200px; right: 15px; display: flex; flex-direction: column; gap: 12px; pointer-events: auto; z-index: 200; }
-        .mobile-btn { width: 65px; height: 65px; border-radius: 50%; background: rgba(0,0,0,0.85); border: 3px solid #00ff88; color: #00ff88; font-size: 20px; font-weight: bold; display: flex; align-items: center; justify-content: center; touch-action: manipulation; -webkit-tap-highlight-color: transparent; user-select: none; cursor: pointer; }
+        /* Mobile Controls - Complete Rewrite */
+        #mobile-controls { display: none; }
+        #mobile-touch-area { display: none; }
+        
+        /* Mobile Action Buttons - Fixed position, always visible */
+        .mobile-buttons { 
+            display: none;
+            position: fixed; 
+            right: 10px; 
+            top: 50%;
+            transform: translateY(-50%);
+            flex-direction: column; 
+            gap: 15px; 
+            z-index: 9999;
+        }
+        .mobile-btn { 
+            width: 60px; 
+            height: 60px; 
+            border-radius: 50%; 
+            background: rgba(0,0,0,0.9); 
+            border: 3px solid #00ff88; 
+            color: #00ff88; 
+            font-size: 18px; 
+            font-weight: bold; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
+        }
         .mobile-btn:active { background: #00ff88; color: #000; }
-        .mobile-btn.exit-btn { border-color: #ff4757; color: #ff4757; font-size: 14px; }
+        .mobile-btn.exit-btn { border-color: #ff4757; color: #ff4757; }
         .mobile-btn.exit-btn:active { background: #ff4757; color: #fff; }
-        #mobile-touch-area { position: absolute; top: 0; left: 0; right: 80px; bottom: 0; pointer-events: auto; touch-action: none; }
         
         /* Computer Interface */
         #computer-interface { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 90%; max-width: 900px; height: 80%; max-height: 600px; background: linear-gradient(145deg, #1a1a2e, #16213e); border-radius: 12px; display: none; flex-direction: column; overflow: hidden; pointer-events: auto; box-shadow: 0 0 60px rgba(0,255,136,0.3), inset 0 0 60px rgba(0,0,0,0.5); border: 2px solid #00ff88; }
@@ -137,238 +162,164 @@
         ::-webkit-scrollbar-track { background: #1a1a1a; }
         ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
         
-        /* Mobile Responsive - Portrait */
-        @media (max-width: 768px) {
-            #controls-hint { display: none; }
-            #mobile-controls { display: block; }
+        /* ==========================================
+           MOBILE - Complete Rewrite
+           ========================================== */
+        
+        @media (max-width: 900px), (pointer: coarse) {
+            /* Hide desktop controls */
+            #controls-hint { display: none !important; }
             
-            /* Music Player - 30% smaller for portrait */
+            /* Show mobile buttons - centered vertically on right */
+            .mobile-buttons { 
+                display: flex !important;
+            }
+            
+            /* Music Player Mobile */
             #computer-interface { 
-                width: 92%; 
-                height: 70%; 
-                max-height: 500px;
+                width: 94%; 
+                height: 65%; 
+                max-height: 450px;
                 top: 50%;
+                left: 50%;
                 transform: translate(-50%, -50%);
             }
             #music-player { 
                 flex-direction: column; 
-                padding: 6px; 
-                gap: 5px; 
+                padding: 8px; 
+                gap: 6px; 
             }
-            .screen-header { padding: 8px 10px; }
-            .screen-title { font-size: 10px; letter-spacing: 1px; }
-            .close-btn { width: 24px; height: 24px; }
+            .screen-header { padding: 10px 12px; }
+            .screen-title { font-size: 11px; }
+            .close-btn { width: 28px; height: 28px; }
+            
+            /* Folders horizontal scroll */
             .player-left { 
                 width: 100%; 
-                max-height: 55px; 
+                max-height: 50px; 
                 overflow-x: auto; 
                 overflow-y: hidden; 
             }
             .playlist-folders { 
                 display: flex; 
-                gap: 4px; 
-                padding: 4px; 
+                flex-direction: row;
+                gap: 6px; 
+                padding: 6px; 
                 white-space: nowrap; 
             }
             .folder-item { 
                 flex-shrink: 0; 
-                padding: 4px 8px; 
+                padding: 6px 10px; 
             }
-            .folder-item .folder-name { font-size: 9px; }
-            .folder-item .folder-icon { font-size: 12px; }
+            .folder-item .folder-name { font-size: 10px; }
+            .folder-item .folder-icon { font-size: 14px; }
+            
+            /* Tracks list */
             .player-right { flex: 1; min-height: 0; overflow: hidden; }
             .playlist { 
                 flex: 1;
-                max-height: 100px; 
-                min-height: 40px;
+                max-height: 90px; 
+                min-height: 50px;
                 overflow-y: auto;
             }
-            .playlist-item { padding: 5px 6px; }
-            .playlist-item .track-num { font-size: 9px; width: 18px; }
-            .playlist-item .track-info .name { font-size: 10px; }
-            .now-playing { padding: 5px; gap: 8px; }
-            .now-playing .album-art { width: 35px; height: 35px; font-size: 16px; border-radius: 4px; }
-            .track-info-main .track-title { font-size: 11px; }
-            .track-info-main .track-artist { font-size: 9px; }
-            .progress-container { margin: 3px 0; }
-            .progress-bar { height: 6px; }
-            .time-display { font-size: 8px; margin-top: 2px; }
+            .playlist-item { padding: 8px; }
+            .playlist-item .track-num { font-size: 10px; width: 20px; }
+            .playlist-item .track-info .name { font-size: 11px; }
+            
+            /* Now playing */
+            .now-playing { padding: 8px; gap: 10px; }
+            .now-playing .album-art { width: 40px; height: 40px; font-size: 18px; }
+            .track-info-main .track-title { font-size: 12px; }
+            .track-info-main .track-artist { font-size: 10px; }
+            
+            /* Progress */
+            .progress-container { margin: 4px 0; }
+            .progress-bar { height: 8px; }
+            .time-display { font-size: 9px; margin-top: 3px; }
+            
+            /* Transport controls - bigger for touch */
             .player-controls { 
-                gap: 12px; 
-                min-height: 45px; 
-                padding: 3px 0;
+                gap: 20px; 
+                min-height: 60px; 
+                padding: 8px 0;
             }
             .control-btn { 
-                width: 35px; 
-                height: 35px; 
-                font-size: 12px; 
-                border-width: 2px;
+                width: 44px; 
+                height: 44px; 
+                font-size: 16px; 
             }
             .control-btn.play-pause { 
-                width: 42px; 
-                height: 42px; 
-                font-size: 16px; 
+                width: 54px; 
+                height: 54px; 
+                font-size: 20px; 
             }
             
-            /* TV Interface - Portrait */
+            /* TV Interface */
             #tv-interface { 
-                width: 92%; 
-                height: 55%; 
-                max-height: 400px;
+                width: 94%; 
+                height: 50%; 
+                max-height: 350px;
                 top: 50%;
                 transform: translate(-50%, -50%);
             }
-            .tv-controls { 
-                padding: 6px; 
-                gap: 4px;
-            }
-            .channel-btn { 
-                padding: 5px 8px; 
-                font-size: 9px; 
-            }
+            .tv-controls { padding: 8px; gap: 6px; }
+            .channel-btn { padding: 8px 12px; font-size: 10px; }
             
-            /* Drums/Synth Interface - smaller */
+            /* Drums/Synth headers */
             #drums-interface, #synth-interface { 
-                top: 5px; 
-                padding: 6px 10px; 
-                max-width: 80%; 
+                top: 10px; 
+                padding: 8px 12px; 
+                max-width: 85%; 
             }
-            .drums-title, .synth-title { font-size: 12px; }
-            .drums-info, .synth-info { font-size: 8px; }
-            .drums-header, .synth-header { gap: 8px; margin-bottom: 4px; }
+            .drums-title, .synth-title { font-size: 14px; }
+            .drums-info, .synth-info { font-size: 9px; }
+            .drums-header, .synth-header { gap: 10px; }
             
-            /* Secret Modal - smaller */
+            /* Secret Modal */
             .secret-content { 
-                padding: 15px; 
-                width: 85%;
-                max-width: 280px;
+                padding: 18px; 
+                width: 88%;
+                max-width: 300px;
             }
-            .secret-icon { font-size: 28px; margin-bottom: 8px; }
-            .secret-title { font-size: 16px; margin-bottom: 10px; }
-            .secret-question { font-size: 11px; margin-bottom: 10px; }
-            #secret-answer { padding: 8px; font-size: 12px; }
-            .secret-buttons button { padding: 8px 14px; font-size: 11px; }
-            .secret-error { font-size: 10px; }
-            
-            /* Mobile buttons - portrait - much higher up */
-            .mobile-buttons { 
-                bottom: 220px; 
-                right: 12px; 
-                gap: 10px; 
-            }
-            .mobile-btn { 
-                width: 55px; 
-                height: 55px; 
-                font-size: 16px; 
-            }
+            .secret-icon { font-size: 30px; margin-bottom: 10px; }
+            .secret-title { font-size: 17px; margin-bottom: 12px; }
+            .secret-question { font-size: 12px; margin-bottom: 12px; }
+            #secret-answer { padding: 10px; font-size: 14px; }
+            .secret-buttons button { padding: 10px 16px; font-size: 12px; }
         }
         
-        /* Landscape mode */
-        @media (max-width: 900px) and (orientation: landscape) {
-            #mobile-controls { display: block; }
-            #controls-hint { display: none; }
-            
-            /* Music Player - Landscape */
+        /* Portrait specific */
+        @media (max-width: 500px) and (orientation: portrait) {
             #computer-interface { 
-                width: 85%; 
-                height: 88%; 
+                height: 60%; 
+                max-height: 400px;
+            }
+            .playlist { max-height: 70px; }
+            .player-controls { gap: 15px; min-height: 50px; }
+            .control-btn { width: 40px; height: 40px; font-size: 14px; }
+            .control-btn.play-pause { width: 50px; height: 50px; font-size: 18px; }
+        }
+        
+        /* Landscape specific */
+        @media (orientation: landscape) and (max-height: 500px) {
+            #computer-interface { 
+                height: 85%; 
                 max-height: none;
-                top: 50%;
-                transform: translate(-50%, -50%);
             }
-            #music-player { 
-                flex-direction: row; 
-                padding: 8px; 
-                gap: 8px; 
-            }
-            .screen-header { padding: 6px 10px; }
-            .screen-title { font-size: 10px; }
-            .close-btn { width: 22px; height: 22px; }
+            #music-player { flex-direction: row; }
             .player-left { 
-                width: 120px; 
+                width: 100px; 
                 max-height: none;
                 overflow-y: auto;
+                overflow-x: hidden;
             }
-            .playlist-folders { 
-                flex-direction: column; 
-                gap: 4px; 
-                padding: 4px;
-            }
-            .folder-item { padding: 5px 8px; }
-            .folder-item .folder-name { font-size: 9px; }
-            .folder-item .folder-icon { font-size: 11px; }
-            .player-right { flex: 1; }
-            .playlist { max-height: 80px; }
-            .playlist-item { padding: 4px 6px; }
-            .playlist-item .track-info .name { font-size: 9px; }
-            .now-playing { padding: 5px; gap: 6px; }
-            .now-playing .album-art { width: 32px; height: 32px; font-size: 14px; }
-            .track-info-main .track-title { font-size: 10px; }
-            .track-info-main .track-artist { font-size: 8px; }
-            .progress-bar { height: 5px; }
-            .time-display { font-size: 8px; }
-            .player-controls { gap: 10px; min-height: 35px; padding: 2px 0; }
-            .control-btn { width: 30px; height: 30px; font-size: 11px; }
-            .control-btn.play-pause { width: 38px; height: 38px; font-size: 14px; }
+            .playlist-folders { flex-direction: column; }
+            .playlist { max-height: 60px; }
+            .player-controls { gap: 10px; min-height: 40px; }
+            .control-btn { width: 32px; height: 32px; font-size: 12px; }
+            .control-btn.play-pause { width: 40px; height: 40px; font-size: 16px; }
             
-            /* TV Interface - Landscape */
-            #tv-interface { 
-                width: 80%; 
-                height: 85%;
-                top: 50%;
-                transform: translate(-50%, -50%);
-            }
-            .tv-controls { padding: 5px; gap: 4px; }
-            .channel-btn { padding: 4px 8px; font-size: 9px; }
-            
-            /* Drums/Synth - Landscape */
-            #drums-interface, #synth-interface { 
-                top: 3px; 
-                padding: 4px 10px; 
-            }
-            .drums-title, .synth-title { font-size: 11px; }
-            .drums-info, .synth-info { font-size: 8px; }
-            
-            /* Mobile buttons - landscape (on right side) */
-            .mobile-buttons { 
-                bottom: auto;
-                top: 50%;
-                right: 8px;
-                transform: translateY(-50%);
-                gap: 8px;
-            }
-            .mobile-btn { 
-                width: 45px; 
-                height: 45px; 
-                font-size: 14px; 
-            }
-            
-            /* Touch area - landscape */
-            #mobile-touch-area {
-                right: 60px;
-            }
-        }
-        
-        /* Very small screens */
-        @media (max-width: 400px) {
-            #computer-interface { width: 95%; height: 75%; }
-            .player-controls { gap: 8px; }
-            .control-btn { width: 32px; height: 32px; font-size: 11px; }
-            .control-btn.play-pause { width: 40px; height: 40px; font-size: 14px; }
-            .mobile-buttons { bottom: 60px; right: 8px; gap: 8px; }
-            .mobile-btn { width: 48px; height: 48px; font-size: 14px; }
-        }
-        
-        /* iPhone safe areas */
-        @supports (padding-bottom: env(safe-area-inset-bottom)) {
-            .mobile-buttons { 
-                bottom: calc(80px + env(safe-area-inset-bottom)); 
-            }
-            @media (orientation: landscape) {
-                .mobile-buttons {
-                    right: calc(8px + env(safe-area-inset-right));
-                }
-            }
+            #tv-interface { height: 80%; max-height: none; }
         }
     </style>
 </head>
@@ -388,18 +339,17 @@
                 <kbd>ESC</kbd> Exit Station
             </div>
             <div id="mobile-controls">
-                <div id="mobile-touch-area"></div>
-                <div class="mobile-buttons">
+                <div class="mobile-buttons" id="mobile-buttons">
                     <button class="mobile-btn" id="btn-jump">↑</button>
                     <button class="mobile-btn" id="btn-interact">E</button>
-                    <button class="mobile-btn exit-btn" id="btn-exit">ESC</button>
+                    <button class="mobile-btn exit-btn" id="btn-exit">X</button>
                 </div>
             </div>
         </div>
         <div id="computer-interface">
             <div class="screen-header">
                 <span class="screen-title">◉ Music Player</span>
-                <button class="close-btn" id="computer-close-btn" onclick="exitStation()" ontouchend="exitStation()"></button>
+                <button class="close-btn" id="computer-close-btn"></button>
             </div>
             <div id="music-player">
                 <div class="player-left">
@@ -419,9 +369,9 @@
                         <div class="time-display"><span id="current-time">0:00</span><span id="total-time">0:00</span></div>
                     </div>
                     <div class="player-controls">
-                        <button class="control-btn" id="prev-btn" onclick="prevTrack()" ontouchend="prevTrack()">⏮</button>
-                        <button class="control-btn play-pause" id="play-pause-btn" onclick="togglePlay()" ontouchend="togglePlay()">▶</button>
-                        <button class="control-btn" id="next-btn" onclick="nextTrack()" ontouchend="nextTrack()">⏭</button>
+                        <button class="control-btn" id="prev-btn">⏮</button>
+                        <button class="control-btn play-pause" id="play-pause-btn">▶</button>
+                        <button class="control-btn" id="next-btn">⏭</button>
                     </div>
                 </div>
             </div>
@@ -444,20 +394,20 @@
             <div class="tv-controls">
                 <span style="color: #666;">CHANNELS:</span>
                 <div id="channel-buttons"></div>
-                <button class="channel-btn tv-close" id="tv-close-btn" onclick="exitStation()" ontouchend="exitStation()">✕ EXIT</button>
+                <button class="channel-btn tv-close" id="tv-close-btn">✕ EXIT</button>
             </div>
         </div>
         <div id="drums-interface">
             <div class="drums-header">
                 <span class="drums-title">🥁 Drum Kit</span>
-                <button class="close-btn" id="drums-close-btn" onclick="exitStation()" ontouchend="exitStation()"></button>
+                <button class="close-btn" id="drums-close-btn"></button>
             </div>
             <div class="drums-info">Tap the drums to play!</div>
         </div>
         <div id="synth-interface">
             <div class="synth-header">
                 <span class="synth-title">🎹 Synthesizer</span>
-                <button class="close-btn" id="synth-close-btn" onclick="exitStation()" ontouchend="exitStation()"></button>
+                <button class="close-btn" id="synth-close-btn"></button>
             </div>
             <div class="synth-info">Tap the keys to play!</div>
         </div>
@@ -1844,16 +1794,24 @@
                 item.className = 'folder-item' + (i === currentPlaylist ? ' active' : '') + (playlist.locked ? ' locked' : '');
                 item.innerHTML = `<span class="folder-icon">${playlist.icon}</span><span class="folder-name">${playlist.name}</span>`;
                 
-                // Simple click/tap handler
-                item.onclick = item.ontouchend = function(e) {
-                    e.preventDefault();
-                    e.stopPropagation();
+                const action = () => {
                     if (playlist.locked) {
                         showSecretModal(i);
                     } else {
                         selectPlaylist(i);
                     }
                 };
+                
+                item.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    action();
+                }, { passive: false });
+                
+                item.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    action();
+                });
                 
                 foldersContainer.appendChild(item);
             });
@@ -1881,12 +1839,9 @@
                     item.className = 'playlist-item' + (i === 0 ? ' active' : '');
                     item.innerHTML = `<span class="track-num">${i + 1}</span><div class="track-info"><div class="name">${track.title}</div></div>`;
                     
-                    // Simple click/tap - select and play
-                    item.onclick = item.ontouchend = function(e) {
-                        e.preventDefault();
-                        e.stopPropagation();
+                    const playTrack = () => {
                         selectTrack(i);
-                        // Auto play on tap
+                        // Auto play
                         if (!isPlaying) {
                             audioElement.play().then(() => {
                                 isPlaying = true;
@@ -1896,6 +1851,17 @@
                             }).catch(err => console.log('Play error:', err));
                         }
                     };
+                    
+                    item.addEventListener('touchstart', (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        playTrack();
+                    }, { passive: false });
+                    
+                    item.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        playTrack();
+                    });
                     
                     playlist.appendChild(item);
                 });
@@ -1942,12 +1908,18 @@
                 btn.className = 'channel-btn' + (i === 0 ? ' active' : '');
                 btn.textContent = video.title;
                 
-                // Simple click/tap handler
-                btn.onclick = btn.ontouchend = function(e) {
+                const action = () => selectChannel(i);
+                
+                btn.addEventListener('touchstart', (e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    selectChannel(i);
-                };
+                    action();
+                }, { passive: false });
+                
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    action();
+                });
                 
                 container.appendChild(btn);
             });
@@ -1974,33 +1946,6 @@
                 camera.updateProjectionMatrix();
                 renderer.setSize(window.innerWidth, window.innerHeight);
             });
-            
-            // Progress bar - click/touch to seek
-            const progressBar = document.getElementById('progress-bar');
-            if (progressBar) {
-                progressBar.onclick = progressBar.ontouchend = function(e) {
-                    e.preventDefault();
-                    const rect = progressBar.getBoundingClientRect();
-                    let clientX;
-                    if (e.changedTouches && e.changedTouches[0]) {
-                        clientX = e.changedTouches[0].clientX;
-                    } else if (e.touches && e.touches[0]) {
-                        clientX = e.touches[0].clientX;
-                    } else {
-                        clientX = e.clientX;
-                    }
-                    const percent = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-                    if (audioElement.duration) {
-                        audioElement.currentTime = percent * audioElement.duration;
-                    }
-                };
-            }
-            
-            // Secret modal buttons
-            const secretSubmit = document.getElementById('secret-submit-btn');
-            const secretCancel = document.getElementById('secret-cancel-btn');
-            if (secretSubmit) secretSubmit.onclick = secretSubmit.ontouchend = function(e) { e.preventDefault(); checkSecretAnswer(); };
-            if (secretCancel) secretCancel.onclick = secretCancel.ontouchend = function(e) { e.preventDefault(); closeSecretModal(); };
             
             // 3D Raycasting for drums/synth
             const raycaster = new THREE.Raycaster();
@@ -2123,104 +2068,168 @@
         }
         
         function setupMobileControls() {
-            const touchArea = document.getElementById('mobile-touch-area');
+            // Detect mobile
+            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) 
+                || ('ontouchstart' in window) 
+                || (window.innerWidth <= 900);
+            
+            window.mobileMove = { x: 0, z: 0 };
+            window.isMobileDevice = isMobile;
+            
+            // ========================================
+            // MOBILE MOVEMENT - Touch and drag anywhere
+            // ========================================
+            let moveTouch = null;
+            let lastX = 0, lastY = 0;
+            
+            document.addEventListener('touchstart', (e) => {
+                // Don't start movement if touching UI elements
+                if (e.target.closest('#computer-interface') || 
+                    e.target.closest('#tv-interface') || 
+                    e.target.closest('#secret-modal') ||
+                    e.target.closest('.mobile-buttons') ||
+                    e.target.closest('#drums-interface') ||
+                    e.target.closest('#synth-interface')) {
+                    return;
+                }
+                if (currentStation) return;
+                
+                moveTouch = e.touches[0].identifier;
+                lastX = e.touches[0].clientX;
+                lastY = e.touches[0].clientY;
+            }, { passive: true });
+            
+            document.addEventListener('touchmove', (e) => {
+                if (moveTouch === null || currentStation) return;
+                
+                for (let touch of e.touches) {
+                    if (touch.identifier === moveTouch) {
+                        const dx = touch.clientX - lastX;
+                        const dy = touch.clientY - lastY;
+                        lastX = touch.clientX;
+                        lastY = touch.clientY;
+                        
+                        window.mobileMove.x = dx * 0.015;
+                        window.mobileMove.z = dy * 0.015;
+                        break;
+                    }
+                }
+            }, { passive: true });
+            
+            document.addEventListener('touchend', (e) => {
+                for (let touch of e.changedTouches) {
+                    if (touch.identifier === moveTouch) {
+                        moveTouch = null;
+                        window.mobileMove.x = 0;
+                        window.mobileMove.z = 0;
+                        break;
+                    }
+                }
+            }, { passive: true });
+            
+            // ========================================
+            // MOBILE BUTTONS - Jump, Interact, Exit
+            // ========================================
             const btnJump = document.getElementById('btn-jump');
             const btnInteract = document.getElementById('btn-interact');
             const btnExit = document.getElementById('btn-exit');
             
-            // Store touch movement direction
-            window.mobileMove = { x: 0, z: 0 };
-            window.isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth <= 900;
-            
-            // Global touch movement on canvas (not just touch area)
-            let touchActive = false;
-            let lastTouchX = 0;
-            let lastTouchY = 0;
-            let touchStartTime = 0;
-            
-            const handleTouchStart = (e) => {
-                if (currentStation) return;
-                if (e.target.closest('.mobile-buttons')) return;
-                if (e.target.closest('#mobile-controls .mobile-btn')) return;
+            function setupButton(btn, action) {
+                if (!btn) return;
                 
-                touchActive = true;
-                touchStartTime = Date.now();
-                const touch = e.touches[0];
-                lastTouchX = touch.clientX;
-                lastTouchY = touch.clientY;
-            };
-            
-            const handleTouchMove = (e) => {
-                if (!touchActive || currentStation) return;
-                
-                const touch = e.touches[0];
-                const deltaX = touch.clientX - lastTouchX;
-                const deltaY = touch.clientY - lastTouchY;
-                
-                lastTouchX = touch.clientX;
-                lastTouchY = touch.clientY;
-                
-                // Sensitivity for movement
-                const sensitivity = 0.015;
-                window.mobileMove.x = deltaX * sensitivity;
-                window.mobileMove.z = deltaY * sensitivity;
-            };
-            
-            const handleTouchEnd = (e) => {
-                touchActive = false;
-                window.mobileMove.x = 0;
-                window.mobileMove.z = 0;
-            };
-            
-            // Add to canvas/document for wider touch area
-            document.addEventListener('touchstart', handleTouchStart, { passive: true });
-            document.addEventListener('touchmove', handleTouchMove, { passive: true });
-            document.addEventListener('touchend', handleTouchEnd, { passive: true });
-            document.addEventListener('touchcancel', handleTouchEnd, { passive: true });
-            
-            // Jump button
-            if (btnJump) {
-                const jumpHandler = (e) => {
+                const handler = (e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    if (isGrounded && !currentStation && gameStarted) {
-                        verticalVelocity = jumpForce;
-                        isGrounded = false;
-                        playJumpSound();
-                    }
+                    action();
                 };
-                btnJump.addEventListener('touchstart', jumpHandler, { passive: false });
-                btnJump.addEventListener('click', jumpHandler);
+                
+                btn.addEventListener('touchstart', handler, { passive: false });
+                btn.addEventListener('mousedown', handler);
             }
             
-            // Interact button
-            if (btnInteract) {
-                const interactHandler = (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    if (nearStation && !currentStation) {
-                        enterStation(nearStation);
-                    }
-                };
-                btnInteract.addEventListener('touchstart', interactHandler, { passive: false });
-                btnInteract.addEventListener('click', interactHandler);
-            }
+            setupButton(btnJump, () => {
+                if (isGrounded && !currentStation && gameStarted) {
+                    verticalVelocity = jumpForce;
+                    isGrounded = false;
+                    playJumpSound();
+                }
+            });
             
-            // Exit button
-            if (btnExit) {
-                const exitHandler = (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    if (currentStation) {
-                        exitStation();
-                    }
-                };
-                btnExit.addEventListener('touchstart', exitHandler, { passive: false });
-                btnExit.addEventListener('click', exitHandler);
-            }
+            setupButton(btnInteract, () => {
+                if (nearStation && !currentStation) {
+                    enterStation(nearStation);
+                }
+            });
             
-            // Tap on station indicators to enter directly
+            setupButton(btnExit, () => {
+                if (currentStation) {
+                    exitStation();
+                }
+            });
+            
+            // ========================================
+            // TAP ON STATION CIRCLES
+            // ========================================
             setupStationTapInteraction();
+            
+            // ========================================
+            // MUSIC PLAYER CONTROLS - Add touch handlers
+            // ========================================
+            setupMusicPlayerTouch();
+        }
+        
+        function setupMusicPlayerTouch() {
+            // Helper to make any element tappable
+            function makeTappable(element, action) {
+                if (!element) return;
+                
+                element.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    action();
+                }, { passive: false });
+                
+                element.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    action();
+                });
+            }
+            
+            // Transport buttons
+            makeTappable(document.getElementById('prev-btn'), prevTrack);
+            makeTappable(document.getElementById('play-pause-btn'), togglePlay);
+            makeTappable(document.getElementById('next-btn'), nextTrack);
+            
+            // Close buttons
+            makeTappable(document.getElementById('computer-close-btn'), exitStation);
+            makeTappable(document.getElementById('tv-close-btn'), exitStation);
+            makeTappable(document.getElementById('drums-close-btn'), exitStation);
+            makeTappable(document.getElementById('synth-close-btn'), exitStation);
+            
+            // Secret modal
+            makeTappable(document.getElementById('secret-submit-btn'), checkSecretAnswer);
+            makeTappable(document.getElementById('secret-cancel-btn'), closeSecretModal);
+            
+            // Progress bar
+            const progressBar = document.getElementById('progress-bar');
+            if (progressBar) {
+                const seek = (clientX) => {
+                    const rect = progressBar.getBoundingClientRect();
+                    const percent = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+                    if (audioElement && audioElement.duration) {
+                        audioElement.currentTime = percent * audioElement.duration;
+                    }
+                };
+                
+                progressBar.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    seek(e.touches[0].clientX);
+                }, { passive: false });
+                
+                progressBar.addEventListener('click', (e) => {
+                    seek(e.clientX);
+                });
+            }
         }
         
         function playJumpSound() {
