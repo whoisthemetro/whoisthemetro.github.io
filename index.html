@@ -17,8 +17,8 @@
         
         /* Mobile Controls */
         #mobile-controls { display: none; position: absolute; bottom: 0; left: 0; right: 0; top: 0; pointer-events: none; z-index: 150; }
-        .mobile-buttons { position: absolute; bottom: 100px; right: 15px; display: flex; flex-direction: column; gap: 12px; pointer-events: auto; }
-        .mobile-btn { width: 65px; height: 65px; border-radius: 50%; background: rgba(0,0,0,0.7); border: 3px solid #00ff88; color: #00ff88; font-size: 20px; font-weight: bold; display: flex; align-items: center; justify-content: center; touch-action: manipulation; -webkit-tap-highlight-color: transparent; user-select: none; }
+        .mobile-buttons { position: absolute; bottom: 140px; right: 15px; display: flex; flex-direction: column; gap: 12px; pointer-events: auto; z-index: 200; }
+        .mobile-btn { width: 65px; height: 65px; border-radius: 50%; background: rgba(0,0,0,0.85); border: 3px solid #00ff88; color: #00ff88; font-size: 20px; font-weight: bold; display: flex; align-items: center; justify-content: center; touch-action: manipulation; -webkit-tap-highlight-color: transparent; user-select: none; cursor: pointer; }
         .mobile-btn:active { background: #00ff88; color: #000; }
         .mobile-btn.exit-btn { border-color: #ff4757; color: #ff4757; font-size: 14px; }
         .mobile-btn.exit-btn:active { background: #ff4757; color: #fff; }
@@ -250,9 +250,9 @@
             .secret-buttons button { padding: 8px 14px; font-size: 11px; }
             .secret-error { font-size: 10px; }
             
-            /* Mobile buttons - portrait */
+            /* Mobile buttons - portrait - higher up */
             .mobile-buttons { 
-                bottom: 80px; 
+                bottom: 160px; 
                 right: 12px; 
                 gap: 10px; 
             }
@@ -1844,18 +1844,36 @@
                 item.className = 'folder-item' + (i === currentPlaylist ? ' active' : '') + (playlist.locked ? ' locked' : '');
                 item.innerHTML = `<span class="folder-icon">${playlist.icon}</span><span class="folder-name">${playlist.name}</span>`;
                 
-                const handleFolderTap = (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    if (playlist.locked) {
-                        showSecretModal(i);
-                    } else {
-                        selectPlaylist(i);
-                    }
-                };
+                let folderTouchStarted = false;
                 
-                item.addEventListener('click', handleFolderTap);
-                item.addEventListener('touchend', handleFolderTap, { passive: false });
+                item.addEventListener('touchstart', (e) => {
+                    folderTouchStarted = true;
+                    e.stopPropagation();
+                }, { passive: true });
+                
+                item.addEventListener('touchend', (e) => {
+                    if (folderTouchStarted) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (playlist.locked) {
+                            showSecretModal(i);
+                        } else {
+                            selectPlaylist(i);
+                        }
+                        folderTouchStarted = false;
+                    }
+                }, { passive: false });
+                
+                item.addEventListener('click', (e) => {
+                    if (!folderTouchStarted) {
+                        e.stopPropagation();
+                        if (playlist.locked) {
+                            showSecretModal(i);
+                        } else {
+                            selectPlaylist(i);
+                        }
+                    }
+                });
                 
                 foldersContainer.appendChild(item);
             });
@@ -1883,34 +1901,50 @@
                     item.className = 'playlist-item' + (i === 0 ? ' active' : '');
                     item.innerHTML = `<span class="track-num">${i + 1}</span><div class="track-info"><div class="name">${track.title}</div></div>`;
                     
-                    // Track tap count for double-tap detection on mobile
+                    let trackTouchStarted = false;
                     let lastTap = 0;
                     
-                    const handleTap = (e) => {
-                        e.preventDefault();
-                        const now = Date.now();
-                        const timeDiff = now - lastTap;
-                        
-                        if (timeDiff < 300 && timeDiff > 0) {
-                            // Double tap - play immediately
-                            selectTrack(i);
-                            if (!isPlaying) {
-                                audioElement.play().then(() => {
-                                    isPlaying = true;
-                                    document.getElementById('play-pause-btn').textContent = '⏸';
-                                    document.getElementById('album-art').classList.add('playing');
-                                    setupAudioAnalyser();
-                                }).catch(e => console.log('Play error:', e));
-                            }
-                        } else {
-                            // Single tap - just select
-                            selectTrack(i);
+                    const playTrack = () => {
+                        selectTrack(i);
+                        // Auto-play on mobile single tap
+                        if (!isPlaying) {
+                            audioElement.play().then(() => {
+                                isPlaying = true;
+                                document.getElementById('play-pause-btn').textContent = '⏸';
+                                document.getElementById('album-art').classList.add('playing');
+                                setupAudioAnalyser();
+                            }).catch(e => console.log('Play error:', e));
                         }
-                        lastTap = now;
                     };
                     
-                    item.addEventListener('click', handleTap);
-                    item.addEventListener('touchend', handleTap, { passive: false });
+                    item.addEventListener('touchstart', (e) => {
+                        trackTouchStarted = true;
+                        e.stopPropagation();
+                    }, { passive: true });
+                    
+                    item.addEventListener('touchend', (e) => {
+                        if (trackTouchStarted) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            playTrack();
+                            trackTouchStarted = false;
+                        }
+                    }, { passive: false });
+                    
+                    item.addEventListener('click', (e) => {
+                        if (!trackTouchStarted) {
+                            e.stopPropagation();
+                            const now = Date.now();
+                            if (now - lastTap < 300) {
+                                // Double click - play
+                                playTrack();
+                            } else {
+                                // Single click - just select
+                                selectTrack(i);
+                            }
+                            lastTap = now;
+                        }
+                    });
                     
                     playlist.appendChild(item);
                 });
@@ -1957,14 +1991,28 @@
                 btn.className = 'channel-btn' + (i === 0 ? ' active' : '');
                 btn.textContent = video.title;
                 
-                const handleChannelTap = (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    selectChannel(i);
-                };
+                let channelTouchStarted = false;
                 
-                btn.addEventListener('click', handleChannelTap);
-                btn.addEventListener('touchend', handleChannelTap, { passive: false });
+                btn.addEventListener('touchstart', (e) => {
+                    channelTouchStarted = true;
+                    e.stopPropagation();
+                }, { passive: true });
+                
+                btn.addEventListener('touchend', (e) => {
+                    if (channelTouchStarted) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        selectChannel(i);
+                        channelTouchStarted = false;
+                    }
+                }, { passive: false });
+                
+                btn.addEventListener('click', (e) => {
+                    if (!channelTouchStarted) {
+                        e.stopPropagation();
+                        selectChannel(i);
+                    }
+                });
                 
                 container.appendChild(btn);
             });
@@ -1992,15 +2040,34 @@
                 renderer.setSize(window.innerWidth, window.innerHeight);
             });
             
-            // Helper function to add both click and touch events
-            function addTapHandler(element, handler) {
+            // Universal tap handler that works on mobile
+            function addMobileTap(element, handler) {
                 if (!element) return;
-                element.addEventListener('click', handler);
-                element.addEventListener('touchend', (e) => {
-                    e.preventDefault();
+                
+                let touchStarted = false;
+                
+                // Touch events
+                element.addEventListener('touchstart', (e) => {
+                    touchStarted = true;
                     e.stopPropagation();
-                    handler(e);
+                }, { passive: true });
+                
+                element.addEventListener('touchend', (e) => {
+                    if (touchStarted) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handler(e);
+                        touchStarted = false;
+                    }
                 }, { passive: false });
+                
+                // Click for desktop
+                element.addEventListener('click', (e) => {
+                    if (!touchStarted) {
+                        e.stopPropagation();
+                        handler(e);
+                    }
+                });
             }
             
             // Progress bar - click/touch to seek
@@ -2008,33 +2075,36 @@
             if (progressBar) {
                 const seekHandler = (e) => {
                     const rect = progressBar.getBoundingClientRect();
-                    const clientX = e.clientX || (e.changedTouches && e.changedTouches[0].clientX);
-                    const percent = (clientX - rect.left) / rect.width;
+                    let clientX;
+                    if (e.changedTouches && e.changedTouches[0]) {
+                        clientX = e.changedTouches[0].clientX;
+                    } else if (e.touches && e.touches[0]) {
+                        clientX = e.touches[0].clientX;
+                    } else {
+                        clientX = e.clientX;
+                    }
+                    const percent = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
                     if (audioElement.duration) {
                         audioElement.currentTime = percent * audioElement.duration;
                     }
                 };
-                progressBar.addEventListener('click', seekHandler);
-                progressBar.addEventListener('touchend', (e) => {
-                    e.preventDefault();
-                    seekHandler(e);
-                }, { passive: false });
+                addMobileTap(progressBar, seekHandler);
             }
             
             // Music player controls
-            addTapHandler(document.getElementById('prev-btn'), () => prevTrack());
-            addTapHandler(document.getElementById('play-pause-btn'), () => togglePlay());
-            addTapHandler(document.getElementById('next-btn'), () => nextTrack());
+            addMobileTap(document.getElementById('prev-btn'), () => { console.log('prev'); prevTrack(); });
+            addMobileTap(document.getElementById('play-pause-btn'), () => { console.log('play/pause'); togglePlay(); });
+            addMobileTap(document.getElementById('next-btn'), () => { console.log('next'); nextTrack(); });
             
             // Close buttons
-            addTapHandler(document.getElementById('computer-close-btn'), () => exitStation());
-            addTapHandler(document.getElementById('tv-close-btn'), () => exitStation());
-            addTapHandler(document.getElementById('drums-close-btn'), () => exitStation());
-            addTapHandler(document.getElementById('synth-close-btn'), () => exitStation());
+            addMobileTap(document.getElementById('computer-close-btn'), () => exitStation());
+            addMobileTap(document.getElementById('tv-close-btn'), () => exitStation());
+            addMobileTap(document.getElementById('drums-close-btn'), () => exitStation());
+            addMobileTap(document.getElementById('synth-close-btn'), () => exitStation());
             
             // Secret modal buttons
-            addTapHandler(document.getElementById('secret-submit-btn'), () => checkSecretAnswer());
-            addTapHandler(document.getElementById('secret-cancel-btn'), () => closeSecretModal());
+            addMobileTap(document.getElementById('secret-submit-btn'), () => checkSecretAnswer());
+            addMobileTap(document.getElementById('secret-cancel-btn'), () => closeSecretModal());
             
             // 3D Raycasting for drums/synth
             const raycaster = new THREE.Raycaster();
@@ -2093,7 +2163,9 @@
             
             // Desktop click for 3D objects
             renderer.domElement.addEventListener('click', (e) => {
-                handle3DInteraction(e.clientX, e.clientY);
+                if (currentStation && (currentStation.type === 'drums' || currentStation.type === 'synth')) {
+                    handle3DInteraction(e.clientX, e.clientY);
+                }
             });
             
             // Mouse cursor change
@@ -2110,35 +2182,43 @@
             
             // Touch for 3D objects (drums, synth) - handles taps and swipes
             let lastSynthTouchX = 0;
+            let lastDrumTouch = 0;
             
             renderer.domElement.addEventListener('touchstart', (e) => {
                 if (currentStation && (currentStation.type === 'drums' || currentStation.type === 'synth')) {
                     const touch = e.touches[0];
                     lastSynthTouchX = touch.clientX;
                     
-                    // Immediate tap handling for drums
-                    if (currentStation.type === 'drums') {
+                    // Immediate tap handling for drums and synth
+                    const now = Date.now();
+                    if (now - lastDrumTouch > 50) { // Debounce
                         handle3DInteraction(touch.clientX, touch.clientY);
+                        lastDrumTouch = now;
                     }
+                    e.preventDefault();
                 }
-            }, { passive: true });
+            }, { passive: false });
             
             renderer.domElement.addEventListener('touchmove', (e) => {
                 // Swipe across synth keys
                 if (currentStation && currentStation.type === 'synth') {
                     const touch = e.touches[0];
-                    // Only trigger if moved enough horizontally
-                    if (Math.abs(touch.clientX - lastSynthTouchX) > 20) {
+                    // Trigger on horizontal movement
+                    if (Math.abs(touch.clientX - lastSynthTouchX) > 15) {
                         handle3DInteraction(touch.clientX, touch.clientY);
                         lastSynthTouchX = touch.clientX;
                     }
+                    e.preventDefault();
                 }
-            }, { passive: true });
+            }, { passive: false });
             
             renderer.domElement.addEventListener('touchend', (e) => {
+                // Also trigger on touch end for better responsiveness
                 if (currentStation && (currentStation.type === 'drums' || currentStation.type === 'synth')) {
-                    const touch = e.changedTouches[0];
-                    handle3DInteraction(touch.clientX, touch.clientY);
+                    if (e.changedTouches && e.changedTouches[0]) {
+                        const touch = e.changedTouches[0];
+                        handle3DInteraction(touch.clientX, touch.clientY);
+                    }
                 }
             }, { passive: true });
             
