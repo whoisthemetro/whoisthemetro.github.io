@@ -137,131 +137,238 @@
         ::-webkit-scrollbar-track { background: #1a1a1a; }
         ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
         
-        /* Mobile Responsive */
+        /* Mobile Responsive - Portrait */
         @media (max-width: 768px) {
             #controls-hint { display: none; }
             #mobile-controls { display: block; }
             
-            /* Music Player - Portrait optimized */
+            /* Music Player - 30% smaller for portrait */
             #computer-interface { 
-                width: 96%; 
-                height: 90%; 
-                max-height: none; 
-                top: 5%;
-                transform: translate(-50%, 0);
+                width: 92%; 
+                height: 70%; 
+                max-height: 500px;
+                top: 50%;
+                transform: translate(-50%, -50%);
             }
             #music-player { 
                 flex-direction: column; 
-                padding: 8px; 
-                gap: 8px; 
+                padding: 6px; 
+                gap: 5px; 
             }
+            .screen-header { padding: 8px 10px; }
+            .screen-title { font-size: 10px; letter-spacing: 1px; }
+            .close-btn { width: 24px; height: 24px; }
             .player-left { 
                 width: 100%; 
-                max-height: 80px; 
+                max-height: 55px; 
                 overflow-x: auto; 
                 overflow-y: hidden; 
             }
             .playlist-folders { 
                 display: flex; 
-                gap: 6px; 
-                padding: 6px; 
+                gap: 4px; 
+                padding: 4px; 
                 white-space: nowrap; 
             }
             .folder-item { 
                 flex-shrink: 0; 
-                padding: 6px 10px; 
+                padding: 4px 8px; 
             }
-            .folder-item .folder-name { font-size: 11px; }
-            .folder-item .folder-icon { font-size: 14px; }
-            .player-right { flex: 1; min-height: 0; }
+            .folder-item .folder-name { font-size: 9px; }
+            .folder-item .folder-icon { font-size: 12px; }
+            .player-right { flex: 1; min-height: 0; overflow: hidden; }
             .playlist { 
                 flex: 1;
-                max-height: none; 
-                min-height: 60px;
+                max-height: 100px; 
+                min-height: 40px;
+                overflow-y: auto;
             }
-            .playlist-item { padding: 6px 8px; }
-            .playlist-item .track-info .name { font-size: 12px; }
-            .now-playing { padding: 8px; gap: 10px; }
-            .now-playing .album-art { width: 45px; height: 45px; font-size: 20px; border-radius: 6px; }
-            .track-info-main .track-title { font-size: 14px; }
-            .track-info-main .track-artist { font-size: 11px; }
-            .progress-container { margin: 5px 0; }
-            .progress-bar { height: 8px; }
-            .time-display { font-size: 10px; margin-top: 4px; }
+            .playlist-item { padding: 5px 6px; }
+            .playlist-item .track-num { font-size: 9px; width: 18px; }
+            .playlist-item .track-info .name { font-size: 10px; }
+            .now-playing { padding: 5px; gap: 8px; }
+            .now-playing .album-art { width: 35px; height: 35px; font-size: 16px; border-radius: 4px; }
+            .track-info-main .track-title { font-size: 11px; }
+            .track-info-main .track-artist { font-size: 9px; }
+            .progress-container { margin: 3px 0; }
+            .progress-bar { height: 6px; }
+            .time-display { font-size: 8px; margin-top: 2px; }
             .player-controls { 
-                gap: 15px; 
-                min-height: 60px; 
-                padding: 5px 0;
+                gap: 12px; 
+                min-height: 45px; 
+                padding: 3px 0;
             }
             .control-btn { 
-                width: 45px; 
-                height: 45px; 
-                font-size: 16px; 
+                width: 35px; 
+                height: 35px; 
+                font-size: 12px; 
                 border-width: 2px;
             }
             .control-btn.play-pause { 
-                width: 55px; 
-                height: 55px; 
-                font-size: 20px; 
+                width: 42px; 
+                height: 42px; 
+                font-size: 16px; 
             }
             
             /* TV Interface - Portrait */
             #tv-interface { 
-                width: 96%; 
-                height: 60%; 
-                top: 5%;
-                transform: translate(-50%, 0);
+                width: 92%; 
+                height: 55%; 
+                max-height: 400px;
+                top: 50%;
+                transform: translate(-50%, -50%);
             }
             .tv-controls { 
-                padding: 8px; 
-                gap: 6px;
+                padding: 6px; 
+                gap: 4px;
             }
             .channel-btn { 
-                padding: 8px 12px; 
-                font-size: 11px; 
+                padding: 5px 8px; 
+                font-size: 9px; 
             }
             
-            /* Drums/Synth Interface */
+            /* Drums/Synth Interface - smaller */
             #drums-interface, #synth-interface { 
-                top: 8px; 
-                padding: 8px 12px; 
-                max-width: 85%; 
+                top: 5px; 
+                padding: 6px 10px; 
+                max-width: 80%; 
             }
-            .drums-title, .synth-title { font-size: 14px; }
-            .drums-info, .synth-info { font-size: 10px; }
-            .drums-header, .synth-header { gap: 10px; }
-            .close-btn { width: 25px; height: 25px; }
+            .drums-title, .synth-title { font-size: 12px; }
+            .drums-info, .synth-info { font-size: 8px; }
+            .drums-header, .synth-header { gap: 8px; margin-bottom: 4px; }
             
-            /* Secret Modal */
+            /* Secret Modal - smaller */
             .secret-content { 
-                padding: 20px; 
-                width: 90%;
-                max-width: 320px;
+                padding: 15px; 
+                width: 85%;
+                max-width: 280px;
             }
-            .secret-icon { font-size: 32px; margin-bottom: 10px; }
-            .secret-title { font-size: 18px; margin-bottom: 12px; }
-            .secret-question { font-size: 13px; margin-bottom: 12px; }
-            #secret-answer { padding: 10px; font-size: 14px; }
-            .secret-buttons button { padding: 10px 18px; font-size: 13px; }
+            .secret-icon { font-size: 28px; margin-bottom: 8px; }
+            .secret-title { font-size: 16px; margin-bottom: 10px; }
+            .secret-question { font-size: 11px; margin-bottom: 10px; }
+            #secret-answer { padding: 8px; font-size: 12px; }
+            .secret-buttons button { padding: 8px 14px; font-size: 11px; }
+            .secret-error { font-size: 10px; }
             
-            /* Screen header */
-            .screen-header { padding: 10px 12px; }
-            .screen-title { font-size: 12px; letter-spacing: 1px; }
+            /* Mobile buttons - portrait */
+            .mobile-buttons { 
+                bottom: 80px; 
+                right: 12px; 
+                gap: 10px; 
+            }
+            .mobile-btn { 
+                width: 55px; 
+                height: 55px; 
+                font-size: 16px; 
+            }
         }
         
-        @media (max-width: 400px) {
-            #computer-interface { height: 92%; top: 4%; }
+        /* Landscape mode */
+        @media (max-width: 900px) and (orientation: landscape) {
+            #mobile-controls { display: block; }
+            #controls-hint { display: none; }
+            
+            /* Music Player - Landscape */
+            #computer-interface { 
+                width: 85%; 
+                height: 88%; 
+                max-height: none;
+                top: 50%;
+                transform: translate(-50%, -50%);
+            }
+            #music-player { 
+                flex-direction: row; 
+                padding: 8px; 
+                gap: 8px; 
+            }
+            .screen-header { padding: 6px 10px; }
+            .screen-title { font-size: 10px; }
+            .close-btn { width: 22px; height: 22px; }
+            .player-left { 
+                width: 120px; 
+                max-height: none;
+                overflow-y: auto;
+            }
+            .playlist-folders { 
+                flex-direction: column; 
+                gap: 4px; 
+                padding: 4px;
+            }
             .folder-item { padding: 5px 8px; }
-            .folder-item .folder-name { font-size: 10px; }
-            .control-btn { width: 40px; height: 40px; font-size: 14px; }
-            .control-btn.play-pause { width: 50px; height: 50px; font-size: 18px; }
-            .mobile-buttons { bottom: 80px; right: 10px; gap: 10px; }
-            .mobile-btn { width: 55px; height: 55px; font-size: 16px; }
+            .folder-item .folder-name { font-size: 9px; }
+            .folder-item .folder-icon { font-size: 11px; }
+            .player-right { flex: 1; }
+            .playlist { max-height: 80px; }
+            .playlist-item { padding: 4px 6px; }
+            .playlist-item .track-info .name { font-size: 9px; }
+            .now-playing { padding: 5px; gap: 6px; }
+            .now-playing .album-art { width: 32px; height: 32px; font-size: 14px; }
+            .track-info-main .track-title { font-size: 10px; }
+            .track-info-main .track-artist { font-size: 8px; }
+            .progress-bar { height: 5px; }
+            .time-display { font-size: 8px; }
+            .player-controls { gap: 10px; min-height: 35px; padding: 2px 0; }
+            .control-btn { width: 30px; height: 30px; font-size: 11px; }
+            .control-btn.play-pause { width: 38px; height: 38px; font-size: 14px; }
+            
+            /* TV Interface - Landscape */
+            #tv-interface { 
+                width: 80%; 
+                height: 85%;
+                top: 50%;
+                transform: translate(-50%, -50%);
+            }
+            .tv-controls { padding: 5px; gap: 4px; }
+            .channel-btn { padding: 4px 8px; font-size: 9px; }
+            
+            /* Drums/Synth - Landscape */
+            #drums-interface, #synth-interface { 
+                top: 3px; 
+                padding: 4px 10px; 
+            }
+            .drums-title, .synth-title { font-size: 11px; }
+            .drums-info, .synth-info { font-size: 8px; }
+            
+            /* Mobile buttons - landscape (on right side) */
+            .mobile-buttons { 
+                bottom: auto;
+                top: 50%;
+                right: 8px;
+                transform: translateY(-50%);
+                gap: 8px;
+            }
+            .mobile-btn { 
+                width: 45px; 
+                height: 45px; 
+                font-size: 14px; 
+            }
+            
+            /* Touch area - landscape */
+            #mobile-touch-area {
+                right: 60px;
+            }
+        }
+        
+        /* Very small screens */
+        @media (max-width: 400px) {
+            #computer-interface { width: 95%; height: 75%; }
+            .player-controls { gap: 8px; }
+            .control-btn { width: 32px; height: 32px; font-size: 11px; }
+            .control-btn.play-pause { width: 40px; height: 40px; font-size: 14px; }
+            .mobile-buttons { bottom: 60px; right: 8px; gap: 8px; }
+            .mobile-btn { width: 48px; height: 48px; font-size: 14px; }
         }
         
         /* iPhone safe areas */
         @supports (padding-bottom: env(safe-area-inset-bottom)) {
-            .mobile-buttons { bottom: calc(100px + env(safe-area-inset-bottom)); }
+            .mobile-buttons { 
+                bottom: calc(80px + env(safe-area-inset-bottom)); 
+            }
+            @media (orientation: landscape) {
+                .mobile-buttons {
+                    right: calc(8px + env(safe-area-inset-right));
+                }
+            }
         }
     </style>
 </head>
@@ -1872,6 +1979,7 @@
                 if (e.key === ' ' && isGrounded && !currentStation && gameStarted) {
                     verticalVelocity = jumpForce;
                     isGrounded = false;
+                    playJumpSound();
                     e.preventDefault();
                 }
             });
@@ -2000,16 +2108,39 @@
                 renderer.domElement.style.cursor = (drumIntersects.length > 0 || synthIntersects.length > 0 || buttonIntersects.length > 0) ? 'pointer' : 'default';
             });
             
-            // Touch for 3D objects (drums, synth) - separate from movement
-            renderer.domElement.addEventListener('touchend', (e) => {
-                // Only handle if we're in a station that needs 3D interaction
+            // Touch for 3D objects (drums, synth) - handles taps and swipes
+            let lastSynthTouchX = 0;
+            
+            renderer.domElement.addEventListener('touchstart', (e) => {
                 if (currentStation && (currentStation.type === 'drums' || currentStation.type === 'synth')) {
-                    const touch = e.changedTouches[0];
-                    if (handle3DInteraction(touch.clientX, touch.clientY)) {
-                        e.preventDefault();
+                    const touch = e.touches[0];
+                    lastSynthTouchX = touch.clientX;
+                    
+                    // Immediate tap handling for drums
+                    if (currentStation.type === 'drums') {
+                        handle3DInteraction(touch.clientX, touch.clientY);
                     }
                 }
-            }, { passive: false });
+            }, { passive: true });
+            
+            renderer.domElement.addEventListener('touchmove', (e) => {
+                // Swipe across synth keys
+                if (currentStation && currentStation.type === 'synth') {
+                    const touch = e.touches[0];
+                    // Only trigger if moved enough horizontally
+                    if (Math.abs(touch.clientX - lastSynthTouchX) > 20) {
+                        handle3DInteraction(touch.clientX, touch.clientY);
+                        lastSynthTouchX = touch.clientX;
+                    }
+                }
+            }, { passive: true });
+            
+            renderer.domElement.addEventListener('touchend', (e) => {
+                if (currentStation && (currentStation.type === 'drums' || currentStation.type === 'synth')) {
+                    const touch = e.changedTouches[0];
+                    handle3DInteraction(touch.clientX, touch.clientY);
+                }
+            }, { passive: true });
             
             // Mobile controls setup
             setupMobileControls();
@@ -2023,92 +2154,123 @@
             
             // Store touch movement direction
             window.mobileMove = { x: 0, z: 0 };
+            window.isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth <= 900;
             
-            if (!touchArea) {
-                // Fallback - still set up buttons
-                window.mobileMove = { x: 0, z: 0 };
-            } else {
-                let touchActive = false;
-                let lastTouchX = 0;
-                let lastTouchY = 0;
+            // Global touch movement on canvas (not just touch area)
+            let touchActive = false;
+            let lastTouchX = 0;
+            let lastTouchY = 0;
+            let touchStartTime = 0;
+            
+            const handleTouchStart = (e) => {
+                if (currentStation) return;
+                if (e.target.closest('.mobile-buttons')) return;
+                if (e.target.closest('#mobile-controls .mobile-btn')) return;
                 
-                // Touch area for movement - drag finger to move character
-                touchArea.addEventListener('touchstart', (e) => {
-                    if (currentStation) return;
-                    e.preventDefault();
-                    touchActive = true;
-                    const touch = e.touches[0];
-                    lastTouchX = touch.clientX;
-                    lastTouchY = touch.clientY;
-                }, { passive: false });
+                touchActive = true;
+                touchStartTime = Date.now();
+                const touch = e.touches[0];
+                lastTouchX = touch.clientX;
+                lastTouchY = touch.clientY;
+            };
+            
+            const handleTouchMove = (e) => {
+                if (!touchActive || currentStation) return;
                 
-                touchArea.addEventListener('touchmove', (e) => {
-                    if (!touchActive || currentStation) return;
-                    e.preventDefault();
-                    const touch = e.touches[0];
-                    
-                    // Calculate delta from last position
-                    const deltaX = touch.clientX - lastTouchX;
-                    const deltaY = touch.clientY - lastTouchY;
-                    
-                    lastTouchX = touch.clientX;
-                    lastTouchY = touch.clientY;
-                    
-                    // Sensitivity for movement
-                    const sensitivity = 0.012;
-                    
-                    // Apply movement based on drag direction
-                    window.mobileMove.x = deltaX * sensitivity;
-                    window.mobileMove.z = deltaY * sensitivity;
-                }, { passive: false });
+                const touch = e.touches[0];
+                const deltaX = touch.clientX - lastTouchX;
+                const deltaY = touch.clientY - lastTouchY;
                 
-                const resetTouch = (e) => {
-                    if (e) e.preventDefault();
-                    touchActive = false;
-                    window.mobileMove.x = 0;
-                    window.mobileMove.z = 0;
-                };
+                lastTouchX = touch.clientX;
+                lastTouchY = touch.clientY;
                 
-                touchArea.addEventListener('touchend', resetTouch, { passive: false });
-                touchArea.addEventListener('touchcancel', resetTouch, { passive: false });
-            }
+                // Sensitivity for movement
+                const sensitivity = 0.015;
+                window.mobileMove.x = deltaX * sensitivity;
+                window.mobileMove.z = deltaY * sensitivity;
+            };
+            
+            const handleTouchEnd = (e) => {
+                touchActive = false;
+                window.mobileMove.x = 0;
+                window.mobileMove.z = 0;
+            };
+            
+            // Add to canvas/document for wider touch area
+            document.addEventListener('touchstart', handleTouchStart, { passive: true });
+            document.addEventListener('touchmove', handleTouchMove, { passive: true });
+            document.addEventListener('touchend', handleTouchEnd, { passive: true });
+            document.addEventListener('touchcancel', handleTouchEnd, { passive: true });
             
             // Jump button
             if (btnJump) {
-                btnJump.addEventListener('touchstart', (e) => {
+                const jumpHandler = (e) => {
                     e.preventDefault();
                     e.stopPropagation();
                     if (isGrounded && !currentStation && gameStarted) {
                         verticalVelocity = jumpForce;
                         isGrounded = false;
+                        playJumpSound();
                     }
-                }, { passive: false });
+                };
+                btnJump.addEventListener('touchstart', jumpHandler, { passive: false });
+                btnJump.addEventListener('click', jumpHandler);
             }
             
             // Interact button
             if (btnInteract) {
-                btnInteract.addEventListener('touchstart', (e) => {
+                const interactHandler = (e) => {
                     e.preventDefault();
                     e.stopPropagation();
                     if (nearStation && !currentStation) {
                         enterStation(nearStation);
                     }
-                }, { passive: false });
+                };
+                btnInteract.addEventListener('touchstart', interactHandler, { passive: false });
+                btnInteract.addEventListener('click', interactHandler);
             }
             
             // Exit button
             if (btnExit) {
-                btnExit.addEventListener('touchstart', (e) => {
+                const exitHandler = (e) => {
                     e.preventDefault();
                     e.stopPropagation();
                     if (currentStation) {
                         exitStation();
                     }
-                }, { passive: false });
+                };
+                btnExit.addEventListener('touchstart', exitHandler, { passive: false });
+                btnExit.addEventListener('click', exitHandler);
             }
             
             // Tap on station indicators to enter directly
             setupStationTapInteraction();
+        }
+        
+        function playJumpSound() {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const now = ctx.currentTime;
+            
+            // Random variation for each jump
+            const baseFreq = 280 + Math.random() * 60; // 280-340 Hz range
+            const duration = 0.12 + Math.random() * 0.04; // 0.12-0.16s
+            
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(baseFreq, now);
+            osc.frequency.exponentialRampToValueAtTime(baseFreq * 1.5, now + duration * 0.3);
+            osc.frequency.exponentialRampToValueAtTime(baseFreq * 0.8, now + duration);
+            
+            gain.gain.setValueAtTime(0.15, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + duration);
+            
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            
+            osc.start(now);
+            osc.stop(now + duration);
         }
         
         function setupStationTapInteraction() {
@@ -2779,9 +2941,9 @@
                 document.getElementById('synth-interface').classList.add('active');
                 // Hide player when at synth
                 if (player) player.visible = false;
-                // Camera positioned behind the synth, looking down at keyboard
-                gsapLike(camera.position, { x: -2.5, y: 2.2, z: -3.8 }, 500);
-                gsapLike(camera.rotation, { x: -0.4, y: 0, z: 0 }, 500);
+                // Camera positioned behind the synth, zoomed out to see full keyboard
+                gsapLike(camera.position, { x: -2.5, y: 2.8, z: -2.5 }, 500);
+                gsapLike(camera.rotation, { x: -0.5, y: 0, z: 0 }, 500);
             }
             document.getElementById('interaction-prompt').classList.remove('visible');
         }
