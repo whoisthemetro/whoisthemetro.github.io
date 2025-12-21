@@ -17,12 +17,12 @@
         
         /* Mobile Controls */
         #mobile-controls { display: none; position: absolute; bottom: 0; left: 0; right: 0; top: 0; pointer-events: none; z-index: 150; }
-        .mobile-buttons { position: absolute; bottom: 120px; right: 20px; display: flex; flex-direction: column; gap: 15px; pointer-events: auto; }
-        .mobile-btn { width: 70px; height: 70px; border-radius: 50%; background: rgba(0,0,0,0.6); border: 3px solid #00ff88; color: #00ff88; font-size: 22px; font-weight: bold; display: flex; align-items: center; justify-content: center; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+        .mobile-buttons { position: absolute; bottom: 100px; right: 15px; display: flex; flex-direction: column; gap: 12px; pointer-events: auto; }
+        .mobile-btn { width: 65px; height: 65px; border-radius: 50%; background: rgba(0,0,0,0.7); border: 3px solid #00ff88; color: #00ff88; font-size: 20px; font-weight: bold; display: flex; align-items: center; justify-content: center; touch-action: manipulation; -webkit-tap-highlight-color: transparent; user-select: none; }
         .mobile-btn:active { background: #00ff88; color: #000; }
-        .mobile-btn.exit-btn { border-color: #ff4757; color: #ff4757; font-size: 16px; }
+        .mobile-btn.exit-btn { border-color: #ff4757; color: #ff4757; font-size: 14px; }
         .mobile-btn.exit-btn:active { background: #ff4757; color: #fff; }
-        #mobile-touch-area { position: absolute; top: 0; left: 0; right: 100px; bottom: 0; pointer-events: auto; touch-action: none; }
+        #mobile-touch-area { position: absolute; top: 0; left: 0; right: 80px; bottom: 0; pointer-events: auto; touch-action: none; }
         
         /* Computer Interface */
         #computer-interface { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 90%; max-width: 900px; height: 80%; max-height: 600px; background: linear-gradient(145deg, #1a1a2e, #16213e); border-radius: 12px; display: none; flex-direction: column; overflow: hidden; pointer-events: auto; box-shadow: 0 0 60px rgba(0,255,136,0.3), inset 0 0 60px rgba(0,0,0,0.5); border: 2px solid #00ff88; }
@@ -141,38 +141,127 @@
         @media (max-width: 768px) {
             #controls-hint { display: none; }
             #mobile-controls { display: block; }
-            #computer-interface { width: 95%; height: 85%; max-height: none; }
-            #music-player { flex-direction: column; padding: 10px; gap: 10px; }
-            .player-left { width: 100%; max-height: 120px; overflow-x: auto; overflow-y: hidden; }
-            .playlist-folders { display: flex; gap: 8px; padding: 8px; white-space: nowrap; }
-            .folder-item { flex-shrink: 0; padding: 8px 12px; }
-            .player-right { flex: 1; }
-            .playlist { max-height: 120px; }
-            .now-playing .album-art { width: 40px; height: 40px; font-size: 18px; }
-            .track-info-main .track-title { font-size: 13px; }
-            .player-controls { gap: 12px; min-height: 70px; }
-            .control-btn { width: 40px; height: 40px; font-size: 14px; }
-            .control-btn.play-pause { width: 55px; height: 55px; font-size: 20px; }
-            #tv-interface { width: 95%; height: 85%; }
-            .tv-controls { padding: 8px 10px; }
-            .channel-btn { padding: 6px 10px; font-size: 11px; }
-            #drums-interface, #synth-interface { top: 10px; padding: 10px 15px; max-width: 90%; }
+            
+            /* Music Player - Portrait optimized */
+            #computer-interface { 
+                width: 96%; 
+                height: 90%; 
+                max-height: none; 
+                top: 5%;
+                transform: translate(-50%, 0);
+            }
+            #music-player { 
+                flex-direction: column; 
+                padding: 8px; 
+                gap: 8px; 
+            }
+            .player-left { 
+                width: 100%; 
+                max-height: 80px; 
+                overflow-x: auto; 
+                overflow-y: hidden; 
+            }
+            .playlist-folders { 
+                display: flex; 
+                gap: 6px; 
+                padding: 6px; 
+                white-space: nowrap; 
+            }
+            .folder-item { 
+                flex-shrink: 0; 
+                padding: 6px 10px; 
+            }
+            .folder-item .folder-name { font-size: 11px; }
+            .folder-item .folder-icon { font-size: 14px; }
+            .player-right { flex: 1; min-height: 0; }
+            .playlist { 
+                flex: 1;
+                max-height: none; 
+                min-height: 60px;
+            }
+            .playlist-item { padding: 6px 8px; }
+            .playlist-item .track-info .name { font-size: 12px; }
+            .now-playing { padding: 8px; gap: 10px; }
+            .now-playing .album-art { width: 45px; height: 45px; font-size: 20px; border-radius: 6px; }
+            .track-info-main .track-title { font-size: 14px; }
+            .track-info-main .track-artist { font-size: 11px; }
+            .progress-container { margin: 5px 0; }
+            .progress-bar { height: 8px; }
+            .time-display { font-size: 10px; margin-top: 4px; }
+            .player-controls { 
+                gap: 15px; 
+                min-height: 60px; 
+                padding: 5px 0;
+            }
+            .control-btn { 
+                width: 45px; 
+                height: 45px; 
+                font-size: 16px; 
+                border-width: 2px;
+            }
+            .control-btn.play-pause { 
+                width: 55px; 
+                height: 55px; 
+                font-size: 20px; 
+            }
+            
+            /* TV Interface - Portrait */
+            #tv-interface { 
+                width: 96%; 
+                height: 60%; 
+                top: 5%;
+                transform: translate(-50%, 0);
+            }
+            .tv-controls { 
+                padding: 8px; 
+                gap: 6px;
+            }
+            .channel-btn { 
+                padding: 8px 12px; 
+                font-size: 11px; 
+            }
+            
+            /* Drums/Synth Interface */
+            #drums-interface, #synth-interface { 
+                top: 8px; 
+                padding: 8px 12px; 
+                max-width: 85%; 
+            }
             .drums-title, .synth-title { font-size: 14px; }
             .drums-info, .synth-info { font-size: 10px; }
+            .drums-header, .synth-header { gap: 10px; }
+            .close-btn { width: 25px; height: 25px; }
+            
+            /* Secret Modal */
+            .secret-content { 
+                padding: 20px; 
+                width: 90%;
+                max-width: 320px;
+            }
+            .secret-icon { font-size: 32px; margin-bottom: 10px; }
+            .secret-title { font-size: 18px; margin-bottom: 12px; }
+            .secret-question { font-size: 13px; margin-bottom: 12px; }
+            #secret-answer { padding: 10px; font-size: 14px; }
+            .secret-buttons button { padding: 10px 18px; font-size: 13px; }
+            
+            /* Screen header */
+            .screen-header { padding: 10px 12px; }
+            .screen-title { font-size: 12px; letter-spacing: 1px; }
         }
         
-        @media (max-width: 480px) {
-            .folder-item .folder-name { font-size: 11px; }
-            .playlist-item .track-info .name { font-size: 11px; }
-            .control-btn { width: 36px; height: 36px; font-size: 12px; }
+        @media (max-width: 400px) {
+            #computer-interface { height: 92%; top: 4%; }
+            .folder-item { padding: 5px 8px; }
+            .folder-item .folder-name { font-size: 10px; }
+            .control-btn { width: 40px; height: 40px; font-size: 14px; }
             .control-btn.play-pause { width: 50px; height: 50px; font-size: 18px; }
-            .mobile-buttons { bottom: 100px; right: 15px; gap: 12px; }
-            .mobile-btn { width: 60px; height: 60px; font-size: 18px; }
+            .mobile-buttons { bottom: 80px; right: 10px; gap: 10px; }
+            .mobile-btn { width: 55px; height: 55px; font-size: 16px; }
         }
         
         /* iPhone safe areas */
         @supports (padding-bottom: env(safe-area-inset-bottom)) {
-            .mobile-buttons { bottom: calc(120px + env(safe-area-inset-bottom)); }
+            .mobile-buttons { bottom: calc(100px + env(safe-area-inset-bottom)); }
         }
     </style>
 </head>
@@ -180,7 +269,7 @@
     <div id="loading-screen">
         <div class="loading-text">METRO'S STUDIO</div>
         <div class="loading-bar"><div class="loading-progress"></div></div>
-        <button class="enter-btn" onclick="enterStudio()">ENTER</button>
+        <button class="enter-btn" id="enter-btn">ENTER</button>
     </div>
     <div id="game-container">
         <div id="ui-overlay">
@@ -203,7 +292,7 @@
         <div id="computer-interface">
             <div class="screen-header">
                 <span class="screen-title">◉ Music Player</span>
-                <button class="close-btn" onclick="exitStation()"></button>
+                <button class="close-btn" id="computer-close-btn"></button>
             </div>
             <div id="music-player">
                 <div class="player-left">
@@ -223,9 +312,9 @@
                         <div class="time-display"><span id="current-time">0:00</span><span id="total-time">0:00</span></div>
                     </div>
                     <div class="player-controls">
-                        <button class="control-btn" onclick="prevTrack()">⏮</button>
-                        <button class="control-btn play-pause" id="play-pause-btn" onclick="togglePlay()">▶</button>
-                        <button class="control-btn" onclick="nextTrack()">⏭</button>
+                        <button class="control-btn" id="prev-btn">⏮</button>
+                        <button class="control-btn play-pause" id="play-pause-btn">▶</button>
+                        <button class="control-btn" id="next-btn">⏭</button>
                     </div>
                 </div>
             </div>
@@ -237,8 +326,8 @@
                 <div class="secret-question" id="secret-question"></div>
                 <input type="text" id="secret-answer" placeholder="Enter answer..." autocomplete="off">
                 <div class="secret-buttons">
-                    <button onclick="checkSecretAnswer()">Submit</button>
-                    <button onclick="closeSecretModal()">Cancel</button>
+                    <button id="secret-submit-btn">Submit</button>
+                    <button id="secret-cancel-btn">Cancel</button>
                 </div>
                 <div class="secret-error" id="secret-error"></div>
             </div>
@@ -248,22 +337,22 @@
             <div class="tv-controls">
                 <span style="color: #666;">CHANNELS:</span>
                 <div id="channel-buttons"></div>
-                <button class="channel-btn tv-close" onclick="exitStation()">✕ EXIT</button>
+                <button class="channel-btn tv-close" id="tv-close-btn">✕ EXIT</button>
             </div>
         </div>
         <div id="drums-interface">
             <div class="drums-header">
                 <span class="drums-title">🥁 Drum Kit</span>
-                <button class="close-btn" onclick="exitStation()"></button>
+                <button class="close-btn" id="drums-close-btn"></button>
             </div>
-            <div class="drums-info">Click on the drums to play! Use your mouse to hit different pads and cymbals.</div>
+            <div class="drums-info">Tap the drums to play!</div>
         </div>
         <div id="synth-interface">
             <div class="synth-header">
                 <span class="synth-title">🎹 Synthesizer</span>
-                <button class="close-btn" onclick="exitStation()"></button>
+                <button class="close-btn" id="synth-close-btn"></button>
             </div>
-            <div class="synth-info">Click the keys to play! Left button changes sound, right button toggles arpeggio.</div>
+            <div class="synth-info">Tap the keys to play!</div>
         </div>
     </div>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -433,6 +522,17 @@
             setupChannels();
             setupEvents();
             setupAudio();
+            
+            // Enter button with touch support
+            const enterBtn = document.getElementById('enter-btn');
+            if (enterBtn) {
+                enterBtn.addEventListener('click', enterStudio);
+                enterBtn.addEventListener('touchend', (e) => {
+                    e.preventDefault();
+                    enterStudio();
+                }, { passive: false });
+            }
+            
             animate();
         }
 
@@ -1636,13 +1736,20 @@
                 const item = document.createElement('div');
                 item.className = 'folder-item' + (i === currentPlaylist ? ' active' : '') + (playlist.locked ? ' locked' : '');
                 item.innerHTML = `<span class="folder-icon">${playlist.icon}</span><span class="folder-name">${playlist.name}</span>`;
-                item.onclick = () => {
+                
+                const handleFolderTap = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
                     if (playlist.locked) {
                         showSecretModal(i);
                     } else {
                         selectPlaylist(i);
                     }
                 };
+                
+                item.addEventListener('click', handleFolderTap);
+                item.addEventListener('touchend', handleFolderTap, { passive: false });
+                
                 foldersContainer.appendChild(item);
             });
         }
@@ -1668,19 +1775,36 @@
                     const item = document.createElement('div');
                     item.className = 'playlist-item' + (i === 0 ? ' active' : '');
                     item.innerHTML = `<span class="track-num">${i + 1}</span><div class="track-info"><div class="name">${track.title}</div></div>`;
-                    item.onclick = () => selectTrack(i);
-                    // Double click to play immediately
-                    item.ondblclick = () => {
-                        selectTrack(i);
-                        if (!isPlaying) {
-                            audioElement.play().then(() => {
-                                isPlaying = true;
-                                document.getElementById('play-pause-btn').textContent = '⏸';
-                                document.getElementById('album-art').classList.add('playing');
-                                setupAudioAnalyser();
-                            }).catch(e => console.log('Play error:', e));
+                    
+                    // Track tap count for double-tap detection on mobile
+                    let lastTap = 0;
+                    
+                    const handleTap = (e) => {
+                        e.preventDefault();
+                        const now = Date.now();
+                        const timeDiff = now - lastTap;
+                        
+                        if (timeDiff < 300 && timeDiff > 0) {
+                            // Double tap - play immediately
+                            selectTrack(i);
+                            if (!isPlaying) {
+                                audioElement.play().then(() => {
+                                    isPlaying = true;
+                                    document.getElementById('play-pause-btn').textContent = '⏸';
+                                    document.getElementById('album-art').classList.add('playing');
+                                    setupAudioAnalyser();
+                                }).catch(e => console.log('Play error:', e));
+                            }
+                        } else {
+                            // Single tap - just select
+                            selectTrack(i);
                         }
+                        lastTap = now;
                     };
+                    
+                    item.addEventListener('click', handleTap);
+                    item.addEventListener('touchend', handleTap, { passive: false });
+                    
                     playlist.appendChild(item);
                 });
             }
@@ -1725,12 +1849,22 @@
                 const btn = document.createElement('button');
                 btn.className = 'channel-btn' + (i === 0 ? ' active' : '');
                 btn.textContent = video.title;
-                btn.onclick = () => selectChannel(i);
+                
+                const handleChannelTap = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    selectChannel(i);
+                };
+                
+                btn.addEventListener('click', handleChannelTap);
+                btn.addEventListener('touchend', handleChannelTap, { passive: false });
+                
                 container.appendChild(btn);
             });
         }
 
         function setupEvents() {
+            // Keyboard events
             document.addEventListener('keydown', (e) => {
                 keys[e.key.toLowerCase()] = true;
                 if (e.key.toLowerCase() === 'e' && nearStation && !currentStation) enterStation(nearStation);
@@ -1742,34 +1876,75 @@
                 }
             });
             document.addEventListener('keyup', (e) => keys[e.key.toLowerCase()] = false);
+            
+            // Resize handler
             window.addEventListener('resize', () => {
                 camera.aspect = window.innerWidth / window.innerHeight;
                 camera.updateProjectionMatrix();
                 renderer.setSize(window.innerWidth, window.innerHeight);
             });
-            document.getElementById('progress-bar').addEventListener('click', (e) => {
-                const rect = e.target.getBoundingClientRect();
-                const percent = (e.clientX - rect.left) / rect.width;
-                if (audioElement.duration) {
-                    audioElement.currentTime = percent * audioElement.duration;
-                }
-            });
             
+            // Helper function to add both click and touch events
+            function addTapHandler(element, handler) {
+                if (!element) return;
+                element.addEventListener('click', handler);
+                element.addEventListener('touchend', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handler(e);
+                }, { passive: false });
+            }
+            
+            // Progress bar - click/touch to seek
+            const progressBar = document.getElementById('progress-bar');
+            if (progressBar) {
+                const seekHandler = (e) => {
+                    const rect = progressBar.getBoundingClientRect();
+                    const clientX = e.clientX || (e.changedTouches && e.changedTouches[0].clientX);
+                    const percent = (clientX - rect.left) / rect.width;
+                    if (audioElement.duration) {
+                        audioElement.currentTime = percent * audioElement.duration;
+                    }
+                };
+                progressBar.addEventListener('click', seekHandler);
+                progressBar.addEventListener('touchend', (e) => {
+                    e.preventDefault();
+                    seekHandler(e);
+                }, { passive: false });
+            }
+            
+            // Music player controls
+            addTapHandler(document.getElementById('prev-btn'), () => prevTrack());
+            addTapHandler(document.getElementById('play-pause-btn'), () => togglePlay());
+            addTapHandler(document.getElementById('next-btn'), () => nextTrack());
+            
+            // Close buttons
+            addTapHandler(document.getElementById('computer-close-btn'), () => exitStation());
+            addTapHandler(document.getElementById('tv-close-btn'), () => exitStation());
+            addTapHandler(document.getElementById('drums-close-btn'), () => exitStation());
+            addTapHandler(document.getElementById('synth-close-btn'), () => exitStation());
+            
+            // Secret modal buttons
+            addTapHandler(document.getElementById('secret-submit-btn'), () => checkSecretAnswer());
+            addTapHandler(document.getElementById('secret-cancel-btn'), () => closeSecretModal());
+            
+            // 3D Raycasting for drums/synth
             const raycaster = new THREE.Raycaster();
             const mouse = new THREE.Vector2();
             
-            renderer.domElement.addEventListener('click', (e) => {
-                mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
-                mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+            function handle3DInteraction(clientX, clientY) {
+                mouse.x = (clientX / window.innerWidth) * 2 - 1;
+                mouse.y = -(clientY / window.innerHeight) * 2 + 1;
                 
                 raycaster.setFromCamera(mouse, camera);
                 
+                // Check drums
                 const drumIntersects = raycaster.intersectObjects(drumPads, false);
                 if (drumIntersects.length > 0) {
                     const drumType = drumIntersects[0].object.userData.drumType;
                     if (drumType) {
                         playDrumSound(drumType);
-                        return;
+                        return true;
                     }
                 }
                 
@@ -1779,74 +1954,64 @@
                     if (buttonIntersects.length > 0) {
                         const btn = buttonIntersects[0].object;
                         if (btn.userData.isSoundButton) {
-                            // Cycle through sound types
                             synthSoundType = (synthSoundType + 1) % 4;
-                            // Update LED color based on sound type
                             const colors = [0xff6600, 0x00ff66, 0x6600ff, 0xff0066];
                             soundButtonLight.material.color.setHex(colors[synthSoundType]);
                             updateSynthDisplay();
-                            return;
+                            return true;
                         }
                         if (btn.userData.isArpButton) {
-                            // Toggle arpeggio
                             arpeggioEnabled = !arpeggioEnabled;
                             arpButtonLight.material.color.setHex(arpeggioEnabled ? 0x00ffff : 0x333333);
-                            // Stop arpeggio if turned off
-                            if (!arpeggioEnabled) {
-                                stopArpeggio();
-                            }
+                            if (!arpeggioEnabled) stopArpeggio();
                             updateSynthDisplay();
-                            return;
+                            return true;
                         }
                     }
                 }
                 
+                // Check synth keys
                 const synthIntersects = raycaster.intersectObjects(synthKeys, false);
                 if (synthIntersects.length > 0) {
                     const obj = synthIntersects[0].object;
                     if (obj.userData.isSynthKey) {
                         playSynthSound(obj.userData.noteIndex);
+                        return true;
                     }
                 }
+                
+                return false;
+            }
+            
+            // Desktop click for 3D objects
+            renderer.domElement.addEventListener('click', (e) => {
+                handle3DInteraction(e.clientX, e.clientY);
             });
             
+            // Mouse cursor change
             renderer.domElement.addEventListener('mousemove', (e) => {
                 mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
                 mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
-                
                 raycaster.setFromCamera(mouse, camera);
                 const drumIntersects = raycaster.intersectObjects(drumPads, false);
                 const synthIntersects = raycaster.intersectObjects(synthKeys, false);
                 const buttonObjects = synthSoundButton && arpeggioButton ? [synthSoundButton, arpeggioButton] : [];
                 const buttonIntersects = raycaster.intersectObjects(buttonObjects, false);
-                
                 renderer.domElement.style.cursor = (drumIntersects.length > 0 || synthIntersects.length > 0 || buttonIntersects.length > 0) ? 'pointer' : 'default';
             });
             
-            // Touch events for canvas (drums, synth)
-            renderer.domElement.addEventListener('touchstart', (e) => {
-                e.preventDefault();
-                const touch = e.touches[0];
-                mouse.x = (touch.clientX / window.innerWidth) * 2 - 1;
-                mouse.y = -(touch.clientY / window.innerHeight) * 2 + 1;
-                
-                raycaster.setFromCamera(mouse, camera);
-                
-                const drumIntersects = raycaster.intersectObjects(drumPads, false);
-                if (drumIntersects.length > 0) {
-                    const drumType = drumIntersects[0].object.userData.drumType;
-                    if (drumType) playDrumSound(drumType);
-                    return;
-                }
-                
-                const synthIntersects = raycaster.intersectObjects(synthKeys, false);
-                if (synthIntersects.length > 0) {
-                    const obj = synthIntersects[0].object;
-                    if (obj.userData.isSynthKey) playSynthSound(obj.userData.noteIndex);
+            // Touch for 3D objects (drums, synth) - separate from movement
+            renderer.domElement.addEventListener('touchend', (e) => {
+                // Only handle if we're in a station that needs 3D interaction
+                if (currentStation && (currentStation.type === 'drums' || currentStation.type === 'synth')) {
+                    const touch = e.changedTouches[0];
+                    if (handle3DInteraction(touch.clientX, touch.clientY)) {
+                        e.preventDefault();
+                    }
                 }
             }, { passive: false });
             
-            // Mobile joystick controls
+            // Mobile controls setup
             setupMobileControls();
         }
         
