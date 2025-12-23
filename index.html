@@ -57,52 +57,100 @@
         .close-btn { background: #ff4757; border: none; width: 30px; height: 30px; border-radius: 50%; cursor: pointer; transition: all 0.3s; }
         .close-btn:hover { background: #ff6b7a; transform: scale(1.1); }
         
-        /* Music Player Layout */
-        #music-player { flex: 1; display: flex; gap: 15px; padding: 15px; overflow: hidden; }
-        .player-left { width: 160px; flex-shrink: 0; overflow-y: auto; }
-        .player-right { flex: 1; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+        /* Desktop Computer Interface */
+        #desktop-view { display: flex; flex-direction: column; height: 100%; background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); }
+        .desktop-header { display: flex; justify-content: space-between; align-items: center; padding: 10px 15px; background: rgba(0,0,0,0.5); border-bottom: 1px solid #333; }
+        .desktop-title { color: #00ff88; font-size: 14px; letter-spacing: 2px; }
+        .desktop-time { color: #888; font-size: 12px; }
+        .desktop-icons { flex: 1; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 30px; padding: 20px; }
+        .desktop-icon { display: flex; flex-direction: column; align-items: center; gap: 8px; cursor: pointer; padding: 15px; border-radius: 12px; transition: all 0.3s; }
+        .desktop-icon:hover { background: rgba(0,255,136,0.1); transform: scale(1.05); }
+        .desktop-icon:active { transform: scale(0.95); }
+        .icon-img { font-size: 48px; }
+        .icon-label { color: #fff; font-size: 12px; text-shadow: 0 1px 3px rgba(0,0,0,0.8); }
+        .desktop-taskbar { background: rgba(0,0,0,0.7); padding: 8px 15px; color: #666; font-size: 11px; border-top: 1px solid #333; }
         
-        /* Playlist Folders */
-        .playlist-folders { background: rgba(0,0,0,0.3); border-radius: 8px; padding: 10px; }
-        .folder-item { display: flex; align-items: center; padding: 10px 12px; border-radius: 6px; cursor: pointer; transition: all 0.3s; margin-bottom: 5px; gap: 8px; }
-        .folder-item:hover { background: rgba(0,255,136,0.1); }
-        .folder-item.active { background: rgba(0,255,136,0.2); border-left: 3px solid #00ff88; }
-        .folder-item .folder-icon { font-size: 18px; }
-        .folder-item .folder-name { color: #fff; font-size: 13px; }
-        .folder-item.locked { opacity: 0.6; }
-        .folder-item.locked:hover { background: rgba(255,100,100,0.1); }
+        /* Desktop Apps */
+        .desktop-app { display: none; flex-direction: column; height: 100%; background: #0a0a0a; }
+        .desktop-app.active { display: flex; }
+        .app-header { display: flex; align-items: center; gap: 15px; padding: 12px 15px; background: #1a1a1a; border-bottom: 1px solid #333; }
+        .back-btn { background: #333; border: none; color: #fff; padding: 8px 15px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+        .back-btn:hover { background: #444; }
+        .app-title { color: #00ff88; font-size: 14px; }
         
-        /* Track Playlist */
-        .playlist { overflow-y: auto; background: rgba(0,0,0,0.3); border-radius: 8px; padding: 8px; flex: 1; min-height: 80px; }
-        .playlist-item { display: flex; align-items: center; padding: 8px 10px; border-radius: 6px; cursor: pointer; transition: all 0.3s; margin-bottom: 4px; }
+        /* Music Player - Simplified */
+        #music-player { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+        .playlist-container { flex: 1; display: flex; flex-direction: column; overflow: hidden; padding: 10px; gap: 10px; }
+        .playlist-folders { display: flex; gap: 8px; flex-wrap: wrap; padding: 8px; background: rgba(0,0,0,0.3); border-radius: 8px; }
+        .folder-item { display: flex; align-items: center; padding: 8px 12px; border-radius: 6px; cursor: pointer; transition: all 0.3s; gap: 6px; background: #1a1a1a; }
+        .folder-item:hover { background: rgba(0,255,136,0.2); }
+        .folder-item.active { background: rgba(0,255,136,0.3); border: 1px solid #00ff88; }
+        .folder-item .folder-icon { font-size: 16px; }
+        .folder-item .folder-name { color: #fff; font-size: 12px; }
+        .folder-item.locked { opacity: 0.5; }
+        
+        .playlist-scroll { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+        .playlist { background: rgba(0,0,0,0.3); border-radius: 8px; padding: 8px; }
+        .playlist-item { display: flex; align-items: center; padding: 12px; border-radius: 6px; cursor: pointer; transition: all 0.3s; margin-bottom: 4px; }
         .playlist-item:hover { background: rgba(0,255,136,0.1); }
         .playlist-item.active { background: rgba(0,255,136,0.2); border-left: 3px solid #00ff88; }
         .playlist-item .track-num { color: #555; width: 25px; font-size: 11px; }
         .playlist-item .track-info { flex: 1; }
-        .playlist-item .track-info .name { color: #fff; font-size: 12px; }
+        .playlist-item .track-info .name { color: #fff; font-size: 13px; }
         .playlist-empty { color: #666; text-align: center; padding: 20px; font-style: italic; }
         
-        /* Now Playing */
-        .now-playing { display: flex; align-items: center; gap: 12px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 8px; flex-shrink: 0; }
-        .now-playing .album-art { width: 50px; height: 50px; flex-shrink: 0; background: linear-gradient(45deg, #ff6b6b, #4ecdc4, #45b7d1, #96ceb4); background-size: 400% 400%; animation: gradientShift 8s ease infinite; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 24px; }
-        .now-playing .album-art.playing { animation: gradientShift 2s ease infinite, pulse 1s ease infinite; }
-        @keyframes gradientShift { 0%, 100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
-        @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.02); } }
-        .track-info-main { flex: 1; min-width: 0; }
-        .track-info-main .track-title { font-size: 14px; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .track-info-main .track-artist { font-size: 11px; color: #888; }
+        /* Now Playing Bar */
+        .player-bottom { background: #1a1a1a; padding: 10px 15px; border-top: 1px solid #333; }
+        .now-playing-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+        .album-art-small { width: 45px; height: 45px; background: linear-gradient(45deg, #ff6b6b, #4ecdc4); border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+        .album-art-small.playing { animation: pulse 1s ease infinite; }
+        .track-info-compact { flex: 1; min-width: 0; }
+        .track-info-compact .track-title { font-size: 13px; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .track-info-compact .track-artist { font-size: 11px; color: #666; }
+        .player-controls-compact { display: flex; gap: 8px; }
+        .ctrl-btn { background: transparent; border: 2px solid #00ff88; color: #00ff88; width: 40px; height: 40px; border-radius: 50%; cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; }
+        .ctrl-btn:hover, .ctrl-btn:active { background: #00ff88; color: #000; }
+        .ctrl-btn.play-btn { width: 50px; height: 50px; font-size: 18px; }
         
-        /* Progress Bar */
-        .progress-container { flex-shrink: 0; }
-        .progress-bar { width: 100%; height: 6px; background: #333; border-radius: 3px; cursor: pointer; overflow: hidden; }
-        .progress-fill { height: 100%; background: linear-gradient(90deg, #00ff88, #00d4ff); width: 0%; transition: width 0.1s linear; }
-        .time-display { display: flex; justify-content: space-between; color: #666; font-size: 11px; margin-top: 5px; }
+        .progress-container { display: flex; align-items: center; gap: 10px; }
+        .progress-container span { color: #666; font-size: 11px; min-width: 35px; }
+        .progress-bar { flex: 1; height: 6px; background: #333; border-radius: 3px; cursor: pointer; overflow: hidden; }
+        .progress-fill { height: 100%; background: linear-gradient(90deg, #00ff88, #00d4ff); width: 0%; }
         
-        /* Player Controls - ALWAYS VISIBLE */
-        .player-controls { display: flex !important; justify-content: center; align-items: center; gap: 15px; padding: 10px 0; flex-shrink: 0; visibility: visible !important; opacity: 1 !important; min-height: 80px; }
-        .control-btn { background: transparent; border: 2px solid #00ff88; color: #00ff88; width: 45px; height: 45px; border-radius: 50%; cursor: pointer; transition: all 0.3s; display: flex !important; align-items: center; justify-content: center; font-size: 16px; visibility: visible !important; opacity: 1 !important; flex-shrink: 0; }
-        .control-btn:hover, .control-btn:active { background: #00ff88; color: #000; box-shadow: 0 0 20px rgba(0,255,136,0.5); }
-        .control-btn.play-pause { width: 60px; height: 60px; font-size: 22px; }
+        /* Game Interface */
+        #game-container-inner { flex: 1; display: flex; flex-direction: column; position: relative; background: #000; }
+        #game-canvas { width: 100%; height: 100%; display: block; }
+        #game-ui { position: absolute; top: 10px; left: 10px; right: 10px; display: flex; justify-content: space-between; pointer-events: none; }
+        #game-score, #game-lives { background: rgba(0,0,0,0.7); padding: 8px 15px; border-radius: 20px; color: #fff; font-size: 14px; }
+        #game-start-screen, #game-over-screen { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(0,0,0,0.9); }
+        #game-over-screen { display: none; }
+        .game-title, .game-over-title { font-size: 28px; color: #00ff88; margin-bottom: 15px; }
+        .game-desc { color: #888; text-align: center; margin-bottom: 20px; line-height: 1.6; }
+        .final-score { color: #fff; font-size: 20px; margin-bottom: 20px; }
+        #start-game-btn, #restart-game-btn { background: #00ff88; color: #000; border: none; padding: 15px 40px; font-size: 16px; border-radius: 30px; cursor: pointer; font-weight: bold; }
+        
+        /* Video Gallery */
+        #video-gallery { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+        .video-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 15px; padding: 15px; overflow-y: auto; }
+        .video-thumb { background: #1a1a1a; border-radius: 8px; overflow: hidden; cursor: pointer; transition: transform 0.3s; }
+        .video-thumb:hover { transform: scale(1.05); }
+        .video-thumb img { width: 100%; aspect-ratio: 16/9; object-fit: cover; }
+        .video-thumb-title { padding: 8px; color: #fff; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .video-player-container { display: none; position: absolute; inset: 0; background: #000; flex-direction: column; }
+        .video-player-container.active { display: flex; }
+        #video-player { flex: 1; width: 100%; }
+        #close-video-btn { background: #ff4444; color: #fff; border: none; padding: 12px; font-size: 14px; cursor: pointer; }
+        
+        /* TV/Couch Interface */
+        #tv-interface { position: fixed; inset: 0; background: rgba(0,0,0,0.95); display: none; align-items: center; justify-content: center; z-index: 100; }
+        #tv-interface.active { display: flex; }
+        .couch-view { width: 90%; max-width: 900px; display: flex; flex-direction: column; gap: 15px; }
+        .tv-frame { aspect-ratio: 16/9; background: #000; border-radius: 8px; overflow: hidden; border: 4px solid #333; box-shadow: 0 0 50px rgba(100,100,255,0.3); }
+        .tv-frame iframe { width: 100%; height: 100%; border: none; }
+        .couch-remote { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; align-items: center; padding: 10px; background: rgba(30,30,30,0.8); border-radius: 8px; }
+        .channel-btn { background: #333; border: none; color: #fff; padding: 10px 15px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+        .channel-btn:hover, .channel-btn.active { background: #00ff88; color: #000; }
+        .remote-btn.exit-couch { background: #ff4444; margin-left: auto; }
         
         /* Secret Modal */
         #secret-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: none; align-items: center; justify-content: center; z-index: 200; }
@@ -116,18 +164,7 @@
         .secret-buttons { display: flex; gap: 10px; justify-content: center; }
         .secret-buttons button { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-family: inherit; font-size: 14px; transition: all 0.3s; }
         .secret-buttons button:first-child { background: #ff6600; color: #fff; }
-        .secret-buttons button:first-child:hover { background: #ff8833; }
         .secret-buttons button:last-child { background: #333; color: #fff; }
-        .secret-buttons button:last-child:hover { background: #444; }
-        .secret-error { color: #ff3333; margin-top: 10px; font-size: 13px; min-height: 18px; }
-        
-        /* TV Interface */
-        #tv-interface { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 90%; max-width: 1000px; height: 80%; background: #000; border-radius: 8px; display: none; flex-direction: column; overflow: hidden; pointer-events: auto; box-shadow: 0 0 80px rgba(100,100,255,0.3); border: 3px solid #333; }
-        #tv-interface.active { display: flex; }
-        .tv-screen { flex: 1; background: #111; position: relative; }
-        .tv-screen iframe { width: 100%; height: 100%; border: none; }
-        .tv-controls { background: #1a1a1a; padding: 10px 15px; display: flex; align-items: center; gap: 10px; border-top: 1px solid #333; flex-wrap: wrap; }
-        .channel-btn { background: #333; border: none; color: #fff; padding: 8px 15px; border-radius: 6px; cursor: pointer; transition: all 0.3s; font-family: inherit; font-size: 12px; }
         .channel-btn:hover, .channel-btn:active { background: #4a4a4a; }
         .channel-btn.active { background: #6366f1; }
         .tv-close { margin-left: auto; }
@@ -553,39 +590,107 @@
                 <kbd>ESC</kbd> Exit Station
             </div>
             <div id="mobile-controls">
-                <div class="mobile-buttons" id="mobile-buttons">
-                    <button class="mobile-btn" id="btn-jump">↑</button>
-                    <button class="mobile-btn" id="btn-interact">E</button>
-                    <button class="mobile-btn exit-btn" id="btn-exit">X</button>
-                </div>
+                <!-- Mobile joystick area - keep for movement -->
             </div>
         </div>
         <div id="computer-interface">
-            <div class="screen-header">
-                <span class="screen-title">◉ Music Player</span>
-                <button class="close-btn" id="computer-close-btn"></button>
-            </div>
-            <div id="music-player">
-                <div class="player-left">
-                    <div class="playlist-folders" id="playlist-folders"></div>
+            <!-- Desktop View -->
+            <div id="desktop-view">
+                <div class="desktop-header">
+                    <span class="desktop-title">Metro OS</span>
+                    <span class="desktop-time" id="desktop-time">12:00</span>
+                    <button class="close-btn" id="computer-close-btn"></button>
                 </div>
-                <div class="player-right">
-                    <div class="playlist" id="playlist"></div>
-                    <div class="now-playing">
-                        <div class="album-art" id="album-art"><span style="font-size: 48px;">♪</span></div>
-                        <div class="track-info-main">
-                            <div class="track-title" id="track-title">Select a track</div>
-                            <div class="track-artist" id="track-artist">Metro</div>
+                <div class="desktop-icons">
+                    <div class="desktop-icon" data-app="music">
+                        <div class="icon-img">🎵</div>
+                        <div class="icon-label">Music</div>
+                    </div>
+                    <div class="desktop-icon" data-app="games">
+                        <div class="icon-img">🎮</div>
+                        <div class="icon-label">Games</div>
+                    </div>
+                    <div class="desktop-icon" data-app="videos">
+                        <div class="icon-img">📺</div>
+                        <div class="icon-label">Videos</div>
+                    </div>
+                </div>
+                <div class="desktop-taskbar">
+                    <span>💻 Metro OS v1.0</span>
+                </div>
+            </div>
+            
+            <!-- Music App -->
+            <div id="music-app" class="desktop-app">
+                <div class="app-header">
+                    <button class="back-btn" id="music-back-btn">← Back</button>
+                    <span class="app-title">🎵 Music Player</span>
+                </div>
+                <div id="music-player">
+                    <div class="playlist-container">
+                        <div class="playlist-folders" id="playlist-folders"></div>
+                        <div class="playlist-scroll">
+                            <div class="playlist" id="playlist"></div>
                         </div>
                     </div>
-                    <div class="progress-container">
-                        <div class="progress-bar" id="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
-                        <div class="time-display"><span id="current-time">0:00</span><span id="total-time">0:00</span></div>
+                    <div class="player-bottom">
+                        <div class="now-playing-bar">
+                            <div class="album-art-small" id="album-art"><span>♪</span></div>
+                            <div class="track-info-compact">
+                                <div class="track-title" id="track-title">Select a track</div>
+                                <div class="track-artist" id="track-artist">Metro</div>
+                            </div>
+                            <div class="player-controls-compact">
+                                <button class="ctrl-btn" id="prev-btn">⏮</button>
+                                <button class="ctrl-btn play-btn" id="play-pause-btn">▶</button>
+                                <button class="ctrl-btn" id="next-btn">⏭</button>
+                            </div>
+                        </div>
+                        <div class="progress-container">
+                            <span id="current-time">0:00</span>
+                            <div class="progress-bar" id="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+                            <span id="total-time">0:00</span>
+                        </div>
                     </div>
-                    <div class="player-controls">
-                        <button class="control-btn" id="prev-btn">⏮</button>
-                        <button class="control-btn play-pause" id="play-pause-btn">▶</button>
-                        <button class="control-btn" id="next-btn">⏭</button>
+                </div>
+            </div>
+            
+            <!-- Games App -->
+            <div id="games-app" class="desktop-app">
+                <div class="app-header">
+                    <button class="back-btn" id="games-back-btn">← Back</button>
+                    <span class="app-title">🎮 Catch the Beat</span>
+                </div>
+                <div id="game-container-inner">
+                    <canvas id="game-canvas"></canvas>
+                    <div id="game-ui">
+                        <div id="game-score">Score: <span id="score-value">0</span></div>
+                        <div id="game-lives">Lives: <span id="lives-value">❤️❤️❤️</span></div>
+                    </div>
+                    <div id="game-start-screen">
+                        <div class="game-title">🎵 Catch the Beat 🎵</div>
+                        <div class="game-desc">Catch falling music notes!<br>Tap or use ← → to move</div>
+                        <button id="start-game-btn">START</button>
+                    </div>
+                    <div id="game-over-screen">
+                        <div class="game-over-title">GAME OVER</div>
+                        <div class="final-score">Score: <span id="final-score">0</span></div>
+                        <button id="restart-game-btn">PLAY AGAIN</button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Videos App -->
+            <div id="videos-app" class="desktop-app">
+                <div class="app-header">
+                    <button class="back-btn" id="videos-back-btn">← Back</button>
+                    <span class="app-title">📺 Videos</span>
+                </div>
+                <div id="video-gallery">
+                    <div class="video-grid" id="video-grid"></div>
+                    <div class="video-player-container" id="video-player-container">
+                        <iframe id="video-player" src="" frameborder="0" allowfullscreen allow="autoplay"></iframe>
+                        <button id="close-video-btn">✕ Close</button>
                     </div>
                 </div>
             </div>
@@ -604,11 +709,14 @@
             </div>
         </div>
         <div id="tv-interface">
-            <div class="tv-screen"><iframe id="tv-video" src="" allow="autoplay; encrypted-media" allowfullscreen></iframe></div>
-            <div class="tv-controls">
-                <span style="color: #666;">CHANNELS:</span>
-                <div id="channel-buttons"></div>
-                <button class="channel-btn tv-close" id="tv-close-btn">✕ EXIT</button>
+            <div class="couch-view">
+                <div class="tv-frame">
+                    <iframe id="tv-video" src="" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+                </div>
+                <div class="couch-remote">
+                    <div id="channel-buttons"></div>
+                    <button class="remote-btn exit-couch" id="tv-close-btn">Stand Up</button>
+                </div>
             </div>
         </div>
         <div id="drums-interface">
@@ -3001,7 +3109,8 @@
             stations.push(computerStation);
 
             // TV station - right in front of the TV
-            const tvStation = { position: new THREE.Vector3(5.5, 0, -3), radius: 1.5, type: 'tv', label: 'TV - Video Gallery' };
+            // Couch station - sit and watch TV
+            const tvStation = { position: new THREE.Vector3(5.5, 0, 1), radius: 1.5, type: 'tv', label: 'Couch - Watch TV' };
             const indicator2 = new THREE.Mesh(indicatorGeo.clone(), indicatorMat.clone());
             indicator2.material.color.setHex(0x00aaff);
             indicator2.rotation.x = -Math.PI / 2;
@@ -3588,6 +3697,276 @@
             // ========================================
             setupMusicPlayerTouch();
             setupMobileInstrumentControls();
+            setupDesktopApps();
+            setupCatchTheGame();
+            setupVideoGallery();
+        }
+        
+        // ============================================
+        // DESKTOP APPS
+        // ============================================
+        function setupDesktopApps() {
+            // Desktop icons
+            document.querySelectorAll('.desktop-icon').forEach(icon => {
+                icon.addEventListener('click', () => openDesktopApp(icon.dataset.app));
+                icon.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    openDesktopApp(icon.dataset.app);
+                });
+            });
+            
+            // Back buttons
+            document.getElementById('music-back-btn')?.addEventListener('click', closeDesktopApp);
+            document.getElementById('games-back-btn')?.addEventListener('click', closeDesktopApp);
+            document.getElementById('videos-back-btn')?.addEventListener('click', closeDesktopApp);
+            
+            // Update time
+            updateDesktopTime();
+            setInterval(updateDesktopTime, 1000);
+        }
+        
+        function openDesktopApp(appName) {
+            document.getElementById('desktop-view').style.display = 'none';
+            document.getElementById('music-app')?.classList.remove('active');
+            document.getElementById('games-app')?.classList.remove('active');
+            document.getElementById('videos-app')?.classList.remove('active');
+            
+            if (appName === 'music') {
+                document.getElementById('music-app').classList.add('active');
+            } else if (appName === 'games') {
+                document.getElementById('games-app').classList.add('active');
+            } else if (appName === 'videos') {
+                document.getElementById('videos-app').classList.add('active');
+            }
+        }
+        
+        function closeDesktopApp() {
+            document.getElementById('music-app')?.classList.remove('active');
+            document.getElementById('games-app')?.classList.remove('active');
+            document.getElementById('videos-app')?.classList.remove('active');
+            document.getElementById('desktop-view').style.display = 'flex';
+            
+            // Stop video if playing
+            document.getElementById('video-player').src = '';
+            document.getElementById('video-player-container')?.classList.remove('active');
+        }
+        
+        function updateDesktopTime() {
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const timeEl = document.getElementById('desktop-time');
+            if (timeEl) timeEl.textContent = timeStr;
+        }
+        
+        // ============================================
+        // CATCH THE BEAT GAME
+        // ============================================
+        let gameCanvas, gameCtx;
+        let gameRunning = false;
+        let gameScore = 0;
+        let gameLives = 3;
+        let catcher = { x: 0, width: 80, height: 20 };
+        let notes = [];
+        let gameAnimationId;
+        
+        function setupCatchTheGame() {
+            gameCanvas = document.getElementById('game-canvas');
+            if (!gameCanvas) return;
+            
+            gameCtx = gameCanvas.getContext('2d');
+            
+            document.getElementById('start-game-btn')?.addEventListener('click', startGame);
+            document.getElementById('restart-game-btn')?.addEventListener('click', restartGame);
+            
+            // Touch/mouse controls
+            gameCanvas.addEventListener('touchmove', (e) => {
+                if (!gameRunning) return;
+                e.preventDefault();
+                const rect = gameCanvas.getBoundingClientRect();
+                const touch = e.touches[0];
+                catcher.x = ((touch.clientX - rect.left) / rect.width) * gameCanvas.width - catcher.width / 2;
+                catcher.x = Math.max(0, Math.min(gameCanvas.width - catcher.width, catcher.x));
+            }, { passive: false });
+            
+            gameCanvas.addEventListener('mousemove', (e) => {
+                if (!gameRunning) return;
+                const rect = gameCanvas.getBoundingClientRect();
+                catcher.x = ((e.clientX - rect.left) / rect.width) * gameCanvas.width - catcher.width / 2;
+                catcher.x = Math.max(0, Math.min(gameCanvas.width - catcher.width, catcher.x));
+            });
+            
+            // Keyboard controls
+            document.addEventListener('keydown', (e) => {
+                if (!gameRunning) return;
+                if (e.key === 'ArrowLeft') catcher.x = Math.max(0, catcher.x - 30);
+                if (e.key === 'ArrowRight') catcher.x = Math.min(gameCanvas.width - catcher.width, catcher.x + 30);
+            });
+        }
+        
+        function startGame() {
+            resizeGameCanvas();
+            gameScore = 0;
+            gameLives = 3;
+            notes = [];
+            gameRunning = true;
+            catcher.x = gameCanvas.width / 2 - catcher.width / 2;
+            
+            document.getElementById('game-start-screen').style.display = 'none';
+            document.getElementById('game-over-screen').style.display = 'none';
+            updateGameUI();
+            
+            gameLoop();
+            spawnNotes();
+        }
+        
+        function restartGame() {
+            startGame();
+        }
+        
+        function resizeGameCanvas() {
+            const container = document.getElementById('game-container-inner');
+            if (!container || !gameCanvas) return;
+            gameCanvas.width = container.clientWidth;
+            gameCanvas.height = container.clientHeight - 50;
+        }
+        
+        function gameLoop() {
+            if (!gameRunning) return;
+            
+            gameCtx.fillStyle = '#0a0a15';
+            gameCtx.fillRect(0, 0, gameCanvas.width, gameCanvas.height);
+            
+            // Draw starfield background
+            for (let i = 0; i < 50; i++) {
+                gameCtx.fillStyle = `rgba(255,255,255,${Math.random() * 0.5})`;
+                gameCtx.fillRect(
+                    (Math.sin(i * 100 + Date.now() * 0.0001) + 1) * gameCanvas.width / 2,
+                    (i * 20) % gameCanvas.height,
+                    2, 2
+                );
+            }
+            
+            // Draw catcher
+            const gradient = gameCtx.createLinearGradient(catcher.x, 0, catcher.x + catcher.width, 0);
+            gradient.addColorStop(0, '#00ff88');
+            gradient.addColorStop(1, '#00d4ff');
+            gameCtx.fillStyle = gradient;
+            gameCtx.beginPath();
+            gameCtx.roundRect(catcher.x, gameCanvas.height - 40, catcher.width, catcher.height, 10);
+            gameCtx.fill();
+            
+            // Update and draw notes
+            notes.forEach((note, i) => {
+                note.y += note.speed;
+                
+                // Draw note
+                gameCtx.font = '30px Arial';
+                gameCtx.fillText(note.emoji, note.x, note.y);
+                
+                // Check collision with catcher
+                if (note.y > gameCanvas.height - 50 && note.y < gameCanvas.height - 20) {
+                    if (note.x > catcher.x - 20 && note.x < catcher.x + catcher.width) {
+                        // Caught!
+                        gameScore += note.points;
+                        notes.splice(i, 1);
+                        updateGameUI();
+                        playGameSound(true);
+                    }
+                }
+                
+                // Missed
+                if (note.y > gameCanvas.height) {
+                    if (!note.isBad) {
+                        gameLives--;
+                        updateGameUI();
+                        playGameSound(false);
+                        if (gameLives <= 0) {
+                            endGame();
+                        }
+                    }
+                    notes.splice(i, 1);
+                }
+            });
+            
+            gameAnimationId = requestAnimationFrame(gameLoop);
+        }
+        
+        function spawnNotes() {
+            if (!gameRunning) return;
+            
+            const noteTypes = [
+                { emoji: '🎵', points: 10, isBad: false },
+                { emoji: '🎶', points: 15, isBad: false },
+                { emoji: '🎤', points: 20, isBad: false },
+                { emoji: '💿', points: 25, isBad: false },
+                { emoji: '💀', points: -20, isBad: true }
+            ];
+            
+            const type = noteTypes[Math.floor(Math.random() * noteTypes.length)];
+            notes.push({
+                x: Math.random() * (gameCanvas.width - 40) + 20,
+                y: -30,
+                speed: 2 + Math.random() * 2 + gameScore / 200,
+                ...type
+            });
+            
+            const spawnRate = Math.max(500, 1500 - gameScore * 2);
+            setTimeout(spawnNotes, spawnRate);
+        }
+        
+        function updateGameUI() {
+            document.getElementById('score-value').textContent = gameScore;
+            document.getElementById('lives-value').textContent = '❤️'.repeat(Math.max(0, gameLives));
+        }
+        
+        function endGame() {
+            gameRunning = false;
+            cancelAnimationFrame(gameAnimationId);
+            document.getElementById('final-score').textContent = gameScore;
+            document.getElementById('game-over-screen').style.display = 'flex';
+        }
+        
+        function playGameSound(success) {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.value = success ? 880 : 220;
+            gain.gain.setValueAtTime(0.1, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start();
+            osc.stop(ctx.currentTime + 0.1);
+        }
+        
+        // ============================================
+        // VIDEO GALLERY
+        // ============================================
+        function setupVideoGallery() {
+            const videoGrid = document.getElementById('video-grid');
+            if (!videoGrid) return;
+            
+            CONFIG.videos.forEach((video, i) => {
+                const thumb = document.createElement('div');
+                thumb.className = 'video-thumb';
+                thumb.innerHTML = `
+                    <img src="https://img.youtube.com/vi/${video.id}/mqdefault.jpg" alt="${video.title}">
+                    <div class="video-thumb-title">${video.title}</div>
+                `;
+                thumb.addEventListener('click', () => playVideo(video.id));
+                videoGrid.appendChild(thumb);
+            });
+            
+            document.getElementById('close-video-btn')?.addEventListener('click', () => {
+                document.getElementById('video-player').src = '';
+                document.getElementById('video-player-container').classList.remove('active');
+            });
+        }
+        
+        function playVideo(videoId) {
+            document.getElementById('video-player').src = `https://www.youtube.com/embed/${videoId}?autoplay=1`;
+            document.getElementById('video-player-container').classList.add('active');
         }
         
         function setupMusicPlayerTouch() {
@@ -4636,12 +5015,18 @@
             
             if (station.type === 'computer') {
                 document.getElementById('computer-interface').classList.add('active');
+                // Reset to desktop view
+                closeDesktopApp();
                 gsapLike(camera.position, { x: 0, y: 3, z: -1.5 }, 500);
                 showMobileInstrumentControls('computer');
             } else if (station.type === 'tv') {
+                // Sit on couch - POV looking at TV
+                if (player) player.visible = false;
                 document.getElementById('tv-interface').classList.add('active');
                 selectChannel(0);
-                gsapLike(camera.position, { x: 5.5, y: 2.5, z: 1.5 }, 500);
+                // Camera at head height on couch, looking forward at TV
+                gsapLike(camera.position, { x: 5.5, y: 1.2, z: 1.5 }, 500);
+                gsapLike(camera.rotation, { x: 0, y: -Math.PI / 2, z: 0 }, 500);
                 showMobileInstrumentControls('tv');
             } else if (station.type === 'drums') {
                 document.getElementById('drums-interface').classList.add('active');
@@ -4666,8 +5051,9 @@
                 gsapLike(camera.position, { x: 0, y: 0.8, z: 0 }, 500);
                 setTimeout(() => {
                     camera.rotation.set(Math.PI / 2, 0, 0);
-                }, 400);
-                startStargazing();
+                    // Start stargazing after camera is positioned
+                    startStargazing();
+                }, 500);
                 showMobileInstrumentControls('bed');
             }
             document.getElementById('interaction-prompt').classList.remove('visible');
@@ -4677,7 +5063,10 @@
             if (!currentStation) return;
             document.body.classList.remove('in-station');
             
-            if (currentStation.type === 'tv') document.getElementById('tv-video').src = '';
+            if (currentStation.type === 'tv') {
+                document.getElementById('tv-video').src = '';
+                if (player) player.visible = true;
+            }
             if ((currentStation.type === 'drums' || currentStation.type === 'synth' || currentStation.type === 'bed') && player) {
                 player.visible = true;
             }
@@ -4687,6 +5076,9 @@
             if (currentStation.type === 'bed') {
                 stopStargazing();
                 document.getElementById('bed-interface').classList.remove('active');
+            }
+            if (currentStation.type === 'computer') {
+                closeDesktopApp();
             }
             document.getElementById('computer-interface').classList.remove('active');
             document.getElementById('tv-interface').classList.remove('active');
