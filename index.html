@@ -146,6 +146,13 @@
         .synth-title { color: #ff00ff; font-size: 18px; letter-spacing: 2px; }
         .synth-info { color: #888; font-size: 12px; }
         
+        /* Bed Interface */
+        #bed-interface { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); background: rgba(0,0,20,0.7); border-radius: 12px; padding: 15px 25px; display: none; pointer-events: auto; border: 2px solid #4444ff; box-shadow: 0 0 30px rgba(100,100,255,0.3); }
+        #bed-interface.active { display: block; }
+        .bed-header { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 10px; }
+        .bed-title { color: #aaaaff; font-size: 18px; letter-spacing: 2px; }
+        .bed-info { color: #666688; font-size: 12px; }
+        
         /* Loading Screen */
         #loading-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #0a0a0a; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; transition: opacity 0.5s; }
         #loading-screen.hidden { opacity: 0; pointer-events: none; }
@@ -402,14 +409,21 @@
                 <span class="drums-title">🥁 Drum Kit</span>
                 <button class="close-btn" id="drums-close-btn"></button>
             </div>
-            <div class="drums-info">Tap the drums to play!</div>
+            <div class="drums-info">A=Kick S=Snare D=HiHat F=Tom1 G=Tom2 H/J=Crash K=Ride | 1-4=Preset (Acoustic/Electronic/808/LoFi)</div>
         </div>
         <div id="synth-interface">
             <div class="synth-header">
                 <span class="synth-title">🎹 Synthesizer</span>
                 <button class="close-btn" id="synth-close-btn"></button>
             </div>
-            <div class="synth-info">Tap the keys to play!</div>
+            <div class="synth-info">A-L=Notes | Z/X=Octave Down/Up | 1-4=Sound | Space=Arp | BPM syncs to music!</div>
+        </div>
+        <div id="bed-interface">
+            <div class="bed-header">
+                <span class="bed-title">✨ Stargazing</span>
+                <button class="close-btn" id="bed-close-btn"></button>
+            </div>
+            <div class="bed-info">Relax and watch the stars... Press ESC to get up</div>
         </div>
     </div>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -544,6 +558,70 @@
         let synthDisplay = null;
         let synthDisplayCanvas = null;
         let synthDisplayTexture = null;
+        let synthOctave = 0; // Octave offset (-2 to +2)
+        
+        // Drum presets
+        let drumPreset = 0; // 0-3
+        const drumPresetNames = ['ACOUSTIC', 'ELECTRONIC', '808', 'LOFI'];
+        
+        // BPM Detection and sync
+        let currentBPM = 120; // Default BPM
+        let lastBeatTime = 0;
+        let beatInterval = 500; // ms between beats at 120 BPM
+        let bpmAnalyser = null;
+        let bpmDataArray = null;
+        let lastPeakTime = 0;
+        let peakTimes = [];
+        
+        // Shared audio context for synth (prevents "too many AudioContexts" error)
+        let synthAudioCtx = null;
+        let drumAudioCtx = null;
+        
+        // Dance floor
+        let dancers = [];
+        let danceFloor = null;
+        let danceFloorGroup = null;
+        
+        // Bed stargazing
+        let stars = [];
+        let shootingStars = [];
+        let stargazingActive = false;
+        let relaxMusicCtx = null;
+        let relaxMusicOscillators = [];
+        
+        // Keyboard mapping for synth (A = C, W = C#, S = D, etc.)
+        const synthKeyboardMap = {
+            'a': 0,  // C
+            'w': 1,  // C#
+            's': 2,  // D
+            'e': 3,  // D#
+            'd': 4,  // E
+            'f': 5,  // F
+            't': 6,  // F#
+            'g': 7,  // G
+            'y': 8,  // G#
+            'h': 9,  // A
+            'u': 10, // A#
+            'j': 11, // B
+            'k': 12, // C (octave up)
+            'o': 13, // C#
+            'l': 14, // D
+            'p': 15, // D#
+            ';': 16, // E
+            "'": 17, // F
+        };
+        
+        // Keyboard mapping for drums
+        const drumKeyboardMap = {
+            'a': 'kick',
+            's': 'snare',
+            'd': 'hihat',
+            'f': 'tom1',
+            'g': 'tom2',
+            'h': 'crash1',
+            'j': 'crash2',
+            'k': 'ride',
+        };
         
         // Drum reverb
         let drumReverbCtx = null;
@@ -608,10 +686,27 @@
                     audioElement.play().catch(e => console.log('Playback error:', e));
                 }
             });
+            // Sync dance floor with actual audio playing state
+            audioElement.addEventListener('play', () => {
+                isPlaying = true;
+                document.getElementById('play-pause-btn').textContent = '⏸';
+                document.getElementById('album-art').classList.add('playing');
+                createDanceFloor();
+            });
+            audioElement.addEventListener('pause', () => {
+                if (!audioElement.ended) {
+                    isPlaying = false;
+                    document.getElementById('play-pause-btn').textContent = '▶';
+                    document.getElementById('album-art').classList.remove('playing');
+                    removeDanceFloor();
+                }
+            });
             audioElement.addEventListener('error', (e) => {
                 console.log('Audio error, skipping to next track:', e);
                 // Keep the play button visible and functional
                 document.getElementById('play-pause-btn').textContent = '▶';
+                isPlaying = false;
+                removeDanceFloor();
                 // Skip to next track if current one fails to load
                 const tracks = CONFIG.playlists[currentPlaylist].tracks;
                 if (tracks.length > 1) {
@@ -948,60 +1043,179 @@
 
         function createSynth(x, y, z) {
             const group = new THREE.Group();
-            const body = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.08, 0.5), new THREE.MeshStandardMaterial({ color: 0x0a0a0a }));
+            
+            // Key dimensions
+            const whiteKeyWidth = 0.075;
+            const blackKeyWidth = 0.045;
+            const whiteKeyDepth = 0.35;
+            const blackKeyDepth = 0.20;
+            const whiteKeyHeight = 0.025;
+            const blackKeyHeight = 0.045;
+            const keyGap = 0.006;
+            
+            // Calculate total width based on 15 white keys (2 octaves + 1)
+            const numWhiteKeys = 15;
+            const keysWidth = numWhiteKeys * (whiteKeyWidth + keyGap);
+            const controlsWidth = 0.5; // Space for buttons/controls on left
+            const totalWidth = keysWidth + controlsWidth + 0.1; // Small padding
+            
+            // Main body - sized to fit keys exactly
+            const body = new THREE.Mesh(
+                new THREE.BoxGeometry(totalWidth, 0.1, 0.55), 
+                new THREE.MeshStandardMaterial({ color: 0xf5f5f5 }) // White like Keystep
+            );
             body.userData.isSynth = true;
             group.add(body);
-
+            
+            // Dark top panel area
+            const topPanel = new THREE.Mesh(
+                new THREE.BoxGeometry(totalWidth - 0.1, 0.02, 0.18),
+                new THREE.MeshStandardMaterial({ color: 0x1a1a1a })
+            );
+            topPanel.position.set(0, 0.06, -0.15);
+            group.add(topPanel);
+            
+            // Key pattern: C C# D D# E F F# G G# A A# B
+            const keyPattern = [
+                { white: true },  // 0: C
+                { white: false }, // 1: C#/Db
+                { white: true },  // 2: D
+                { white: false }, // 3: D#/Eb
+                { white: true },  // 4: E
+                { white: true },  // 5: F
+                { white: false }, // 6: F#/Gb
+                { white: true },  // 7: G
+                { white: false }, // 8: G#/Ab
+                { white: true },  // 9: A
+                { white: false }, // 10: A#/Bb
+                { white: true },  // 11: B
+            ];
+            
+            let whiteKeyIndex = 0;
+            const startX = -totalWidth/2 + controlsWidth + whiteKeyWidth/2 + 0.05;
+            
+            // Create 25 keys (2 octaves + 1)
             for (let i = 0; i < 25; i++) {
-                const isBlack = [1,3,6,8,10,13,15,18,20,22].includes(i % 24);
-                const key = new THREE.Mesh(
-                    new THREE.BoxGeometry(0.05, isBlack ? 0.04 : 0.02, isBlack ? 0.25 : 0.35),
-                    new THREE.MeshStandardMaterial({ color: isBlack ? 0x0a0a0a : 0xeeeeee })
-                );
-                key.position.set(-0.7 + i * 0.058, isBlack ? 0.06 : 0.04, isBlack ? -0.05 : 0.05);
-                key.userData.isSynthKey = true;
-                key.userData.noteIndex = i;
-                group.add(key);
-                synthKeys.push(key);
-            }
-
-            for (let i = 0; i < 8; i++) {
-                const knob = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.03, 16), new THREE.MeshStandardMaterial({ color: 0x333333 }));
-                knob.position.set(-0.55 + i * 0.16, 0.06, -0.18);
-                group.add(knob);
+                const noteInOctave = i % 12;
+                const isBlack = !keyPattern[noteInOctave].white;
+                
+                if (isBlack) {
+                    // Black key (sharp/flat)
+                    const key = new THREE.Mesh(
+                        new THREE.BoxGeometry(blackKeyWidth, blackKeyHeight, blackKeyDepth),
+                        new THREE.MeshStandardMaterial({ color: 0x1a1a1a })
+                    );
+                    // Position black keys between white keys
+                    const blackKeyX = startX + (whiteKeyIndex - 0.5) * (whiteKeyWidth + keyGap);
+                    key.position.set(blackKeyX, 0.07, -0.02);
+                    key.userData.isSynthKey = true;
+                    key.userData.noteIndex = i;
+                    key.userData.isBlack = true;
+                    group.add(key);
+                    synthKeys.push(key);
+                } else {
+                    // White key (natural)
+                    const key = new THREE.Mesh(
+                        new THREE.BoxGeometry(whiteKeyWidth, whiteKeyHeight, whiteKeyDepth),
+                        new THREE.MeshStandardMaterial({ color: 0xfafafa })
+                    );
+                    key.position.set(startX + whiteKeyIndex * (whiteKeyWidth + keyGap), 0.055, 0.07);
+                    key.userData.isSynthKey = true;
+                    key.userData.noteIndex = i;
+                    key.userData.isBlack = false;
+                    group.add(key);
+                    synthKeys.push(key);
+                    whiteKeyIndex++;
+                }
             }
             
-            // Left button - Sound Type change (BIGGER for easier clicking)
-            const soundBtnMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
-            synthSoundButton = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.08, 0.2), soundBtnMat);
-            synthSoundButton.position.set(-0.85, 0.06, 0);
+            // Colorful pads (6 pads above the keys)
+            const padColors = [0xff0000, 0xff6600, 0xffcc00, 0x00ff00, 0x00aaff, 0xff00ff];
+            for (let i = 0; i < 6; i++) {
+                const pad = new THREE.Mesh(
+                    new THREE.BoxGeometry(0.1, 0.03, 0.07),
+                    new THREE.MeshStandardMaterial({ color: padColors[i], emissive: padColors[i], emissiveIntensity: 0.3 })
+                );
+                pad.position.set(startX + 0.2 + i * 0.15, 0.08, -0.1);
+                group.add(pad);
+            }
+            
+            // ==========================================
+            // SOUND BUTTON - Left side with label
+            // ==========================================
+            const btnX = -totalWidth/2 + 0.2;
+            const soundBtnMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a });
+            synthSoundButton = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.06, 0.1), soundBtnMat);
+            synthSoundButton.position.set(btnX, 0.08, 0.05);
             synthSoundButton.userData.isSoundButton = true;
             group.add(synthSoundButton);
             
             // Sound button LED indicator
             soundButtonLight = new THREE.Mesh(
-                new THREE.BoxGeometry(0.15, 0.025, 0.03),
+                new THREE.BoxGeometry(0.18, 0.015, 0.02),
                 new THREE.MeshBasicMaterial({ color: 0xff6600 })
             );
-            soundButtonLight.position.set(-0.85, 0.105, 0);
+            soundButtonLight.position.set(btnX, 0.115, 0.05);
             group.add(soundButtonLight);
             
-            // Right button - Arpeggio toggle (BIGGER for easier clicking)
-            const arpBtnMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
-            arpeggioButton = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.08, 0.2), arpBtnMat);
-            arpeggioButton.position.set(0.85, 0.06, 0);
+            // SOUND label
+            const soundLabelCanvas = document.createElement('canvas');
+            soundLabelCanvas.width = 128;
+            soundLabelCanvas.height = 32;
+            const soundLabelCtx = soundLabelCanvas.getContext('2d');
+            soundLabelCtx.fillStyle = '#1a1a1a';
+            soundLabelCtx.fillRect(0, 0, 128, 32);
+            soundLabelCtx.fillStyle = '#ffffff';
+            soundLabelCtx.font = 'bold 16px Arial';
+            soundLabelCtx.textAlign = 'center';
+            soundLabelCtx.fillText('SOUND', 64, 22);
+            const soundLabelTexture = new THREE.CanvasTexture(soundLabelCanvas);
+            const soundLabel = new THREE.Mesh(
+                new THREE.PlaneGeometry(0.18, 0.04),
+                new THREE.MeshBasicMaterial({ map: soundLabelTexture, transparent: true })
+            );
+            soundLabel.position.set(btnX, 0.07, -0.02);
+            soundLabel.rotation.x = -Math.PI / 2;
+            group.add(soundLabel);
+            
+            // ==========================================
+            // ARPEGGIO BUTTON - Below sound button
+            // ==========================================
+            const arpBtnMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a });
+            arpeggioButton = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.06, 0.1), arpBtnMat);
+            arpeggioButton.position.set(btnX, 0.08, -0.12);
             arpeggioButton.userData.isArpButton = true;
             group.add(arpeggioButton);
             
-            // Arp button LED indicator (off by default)
+            // Arp button LED indicator
             arpButtonLight = new THREE.Mesh(
-                new THREE.BoxGeometry(0.15, 0.025, 0.03),
+                new THREE.BoxGeometry(0.18, 0.015, 0.02),
                 new THREE.MeshBasicMaterial({ color: 0x333333 })
             );
-            arpButtonLight.position.set(0.85, 0.105, 0);
+            arpButtonLight.position.set(btnX, 0.115, -0.12);
             group.add(arpButtonLight);
             
-            // Display screen above keyboard at 45 degree angle
+            // ARP label
+            const arpLabelCanvas = document.createElement('canvas');
+            arpLabelCanvas.width = 128;
+            arpLabelCanvas.height = 32;
+            const arpLabelCtx = arpLabelCanvas.getContext('2d');
+            arpLabelCtx.fillStyle = '#1a1a1a';
+            arpLabelCtx.fillRect(0, 0, 128, 32);
+            arpLabelCtx.fillStyle = '#00ffff';
+            arpLabelCtx.font = 'bold 16px Arial';
+            arpLabelCtx.textAlign = 'center';
+            arpLabelCtx.fillText('ARP', 64, 22);
+            const arpLabelTexture = new THREE.CanvasTexture(arpLabelCanvas);
+            const arpLabel = new THREE.Mesh(
+                new THREE.PlaneGeometry(0.18, 0.04),
+                new THREE.MeshBasicMaterial({ map: arpLabelTexture, transparent: true })
+            );
+            arpLabel.position.set(btnX, 0.07, -0.19);
+            arpLabel.rotation.x = -Math.PI / 2;
+            group.add(arpLabel);
+            
+            // Display screen
             synthDisplayCanvas = document.createElement('canvas');
             synthDisplayCanvas.width = 256;
             synthDisplayCanvas.height = 64;
@@ -1009,17 +1223,17 @@
             synthDisplayTexture.minFilter = THREE.LinearFilter;
             
             const displayMat = new THREE.MeshBasicMaterial({ map: synthDisplayTexture });
-            synthDisplay = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.02, 0.2), displayMat);
-            synthDisplay.position.set(0, 0.15, -0.22);
-            synthDisplay.rotation.x = -Math.PI / 4; // 45 degree angle
+            synthDisplay = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.02, 0.12), displayMat);
+            synthDisplay.position.set(startX + keysWidth/2, 0.12, -0.15);
+            synthDisplay.rotation.x = -Math.PI / 6;
             group.add(synthDisplay);
             
-            // Display frame
-            const frameMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a });
-            const displayFrame = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.03, 0.25), frameMat);
-            displayFrame.position.set(0, 0.14, -0.22);
-            displayFrame.rotation.x = -Math.PI / 4;
-            group.add(displayFrame);
+            // Display bezel
+            const bezelMat = new THREE.MeshStandardMaterial({ color: 0x0a0a0a });
+            const bezel = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.025, 0.15), bezelMat);
+            bezel.position.set(startX + keysWidth/2, 0.115, -0.15);
+            bezel.rotation.x = -Math.PI / 6;
+            group.add(bezel);
             
             // Initial display update
             updateSynthDisplay();
@@ -1032,24 +1246,51 @@
             if (!synthDisplayCanvas) return;
             
             const ctx = synthDisplayCanvas.getContext('2d');
-            ctx.fillStyle = '#0a0a0a';
+            ctx.fillStyle = '#0a1a0a';
             ctx.fillRect(0, 0, 256, 64);
             
             // Sound type
             ctx.fillStyle = '#ff6600';
-            ctx.font = 'bold 16px monospace';
-            ctx.fillText('SOUND:', 10, 25);
+            ctx.font = 'bold 11px monospace';
+            ctx.fillText('SND', 8, 16);
             ctx.fillStyle = '#00ff88';
-            ctx.font = 'bold 20px monospace';
-            ctx.fillText(synthSoundNames[synthSoundType], 80, 25);
+            ctx.font = 'bold 14px monospace';
+            ctx.fillText(synthSoundNames[synthSoundType], 38, 16);
+            
+            // Octave
+            ctx.fillStyle = '#ffff00';
+            ctx.font = 'bold 11px monospace';
+            ctx.fillText('OCT', 90, 16);
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 14px monospace';
+            const octStr = synthOctave >= 0 ? '+' + synthOctave : synthOctave.toString();
+            ctx.fillText(octStr, 120, 16);
             
             // Arpeggio status
             ctx.fillStyle = '#00ffff';
-            ctx.font = 'bold 16px monospace';
-            ctx.fillText('ARP:', 10, 50);
+            ctx.font = 'bold 11px monospace';
+            ctx.fillText('ARP', 8, 38);
             ctx.fillStyle = arpeggioEnabled ? '#00ff88' : '#ff3333';
-            ctx.font = 'bold 20px monospace';
-            ctx.fillText(arpeggioEnabled ? 'ON' : 'OFF', 60, 50);
+            ctx.font = 'bold 14px monospace';
+            ctx.fillText(arpeggioEnabled ? 'ON' : 'OFF', 38, 38);
+            
+            // BPM display
+            ctx.fillStyle = '#ff00ff';
+            ctx.font = 'bold 11px monospace';
+            ctx.fillText('BPM', 90, 38);
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 14px monospace';
+            ctx.fillText(isPlaying ? currentBPM.toString() : '---', 120, 38);
+            
+            // Mode indicator
+            ctx.fillStyle = '#666666';
+            ctx.font = '9px monospace';
+            ctx.fillText(isPlaying ? 'SCALE' : 'CHROMATIC', 160, 16);
+            
+            // Controls hint
+            ctx.fillStyle = '#444444';
+            ctx.font = '8px monospace';
+            ctx.fillText('Z/X=OCT 1-4=SND', 160, 38);
             
             // Border
             ctx.strokeStyle = '#00ff88';
@@ -1635,6 +1876,759 @@
             group.rotation.y = Math.PI; // Face toward room
             scene.add(group);
         }
+        
+        // ============================================
+        // DANCE FLOOR AND DANCERS
+        // ============================================
+        function createDanceFloor() {
+            if (danceFloorGroup) return; // Already exists
+            
+            danceFloorGroup = new THREE.Group();
+            
+            // Dance floor - glowing tiles in the back of the room
+            const floorSize = 6;
+            const tileSize = 0.8;
+            const tilesPerRow = Math.floor(floorSize / tileSize);
+            
+            for (let x = 0; x < tilesPerRow; x++) {
+                for (let z = 0; z < tilesPerRow; z++) {
+                    const colors = [0xff0066, 0x00ff88, 0x00aaff, 0xff6600, 0xaa00ff, 0xffff00];
+                    const color = colors[(x + z) % colors.length];
+                    
+                    const tile = new THREE.Mesh(
+                        new THREE.BoxGeometry(tileSize - 0.05, 0.05, tileSize - 0.05),
+                        new THREE.MeshStandardMaterial({ 
+                            color: color, 
+                            emissive: color, 
+                            emissiveIntensity: 0.5,
+                            transparent: true,
+                            opacity: 0.8
+                        })
+                    );
+                    tile.position.set(
+                        -floorSize/2 + x * tileSize + tileSize/2,
+                        0.03,
+                        -floorSize/2 + z * tileSize + tileSize/2
+                    );
+                    tile.userData.baseEmissive = 0.5;
+                    tile.userData.colorIndex = (x + z) % colors.length;
+                    danceFloorGroup.add(tile);
+                }
+            }
+            
+            // Position dance floor in back center
+            danceFloorGroup.position.set(0, 0, 4);
+            scene.add(danceFloorGroup);
+            
+            // Create dancers
+            createDancers();
+        }
+        
+        function createDancers() {
+            const dancerCount = 8;
+            const colors = [
+                { hoodie: 0xff0066, pants: 0x1a1a1a },
+                { hoodie: 0x00ff88, pants: 0x2a2a3a },
+                { hoodie: 0x00aaff, pants: 0x1a1a1a },
+                { hoodie: 0xff6600, pants: 0x2a2a2a },
+                { hoodie: 0xaa00ff, pants: 0x1a2a1a },
+                { hoodie: 0xffff00, pants: 0x1a1a2a },
+                { hoodie: 0xff00ff, pants: 0x2a1a2a },
+                { hoodie: 0x00ffff, pants: 0x1a2a2a },
+            ];
+            
+            const positions = [
+                [-2, 3], [-1, 4], [0, 3.5], [1, 4.5],
+                [2, 3], [-1.5, 5], [0.5, 5.5], [1.5, 4]
+            ];
+            
+            for (let i = 0; i < dancerCount; i++) {
+                const dancer = createDancerCharacter(colors[i % colors.length]);
+                dancer.position.set(positions[i][0], 0, positions[i][1]);
+                dancer.rotation.y = Math.random() * Math.PI * 2;
+                dancer.userData.danceOffset = Math.random() * Math.PI * 2;
+                dancer.userData.danceSpeed = 0.8 + Math.random() * 0.4;
+                dancer.userData.isDancer = true;
+                scene.add(dancer);
+                dancers.push(dancer);
+            }
+        }
+        
+        function createDancerCharacter(colorScheme) {
+            const dancer = new THREE.Group();
+            
+            const hoodieMat = new THREE.MeshStandardMaterial({ 
+                color: colorScheme.hoodie, 
+                emissive: colorScheme.hoodie, 
+                emissiveIntensity: 0.2 
+            });
+            const pantsMat = new THREE.MeshStandardMaterial({ color: colorScheme.pants });
+            const beanieMat = new THREE.MeshStandardMaterial({ color: 0x0a0a0a });
+            const skinMat = new THREE.MeshStandardMaterial({ color: 0xd4a574 });
+            
+            // Legs
+            const leftLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.1, 0.8, 8), pantsMat);
+            leftLeg.position.set(-0.12, 0.4, 0);
+            leftLeg.userData.isLeftLeg = true;
+            dancer.add(leftLeg);
+            
+            const rightLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.1, 0.8, 8), pantsMat);
+            rightLeg.position.set(0.12, 0.4, 0);
+            rightLeg.userData.isRightLeg = true;
+            dancer.add(rightLeg);
+            
+            // Torso
+            const torso = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.55, 0.25), hoodieMat);
+            torso.position.y = 1.1;
+            torso.userData.isTorso = true;
+            dancer.add(torso);
+            
+            // Arms
+            const leftArm = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.06, 0.5, 8), hoodieMat);
+            leftArm.position.set(-0.32, 1.05, 0);
+            leftArm.rotation.z = 0.3;
+            leftArm.userData.isLeftArm = true;
+            dancer.add(leftArm);
+            
+            const rightArm = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.06, 0.5, 8), hoodieMat);
+            rightArm.position.set(0.32, 1.05, 0);
+            rightArm.rotation.z = -0.3;
+            rightArm.userData.isRightArm = true;
+            dancer.add(rightArm);
+            
+            // Head
+            const head = new THREE.Mesh(new THREE.SphereGeometry(0.18, 16, 12), skinMat);
+            head.position.y = 1.55;
+            head.scale.y = 1.1;
+            head.userData.isHead = true;
+            dancer.add(head);
+            
+            // Beanie
+            const beanie = new THREE.Mesh(new THREE.SphereGeometry(0.19, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), beanieMat);
+            beanie.position.y = 1.6;
+            dancer.add(beanie);
+            
+            // Simple collision box
+            dancer.userData.collisionRadius = 0.4;
+            
+            return dancer;
+        }
+        
+        function removeDanceFloor() {
+            // Remove dancers
+            dancers.forEach(dancer => {
+                scene.remove(dancer);
+            });
+            dancers = [];
+            
+            // Remove dance floor
+            if (danceFloorGroup) {
+                scene.remove(danceFloorGroup);
+                danceFloorGroup = null;
+            }
+        }
+        
+        function animateDancers(time) {
+            dancers.forEach(dancer => {
+                const offset = dancer.userData.danceOffset;
+                const speed = dancer.userData.danceSpeed;
+                const t = time * speed + offset;
+                
+                // Bounce up and down
+                dancer.position.y = Math.abs(Math.sin(t * 8)) * 0.15;
+                
+                // Sway side to side
+                dancer.rotation.z = Math.sin(t * 4) * 0.1;
+                
+                // Animate body parts
+                dancer.children.forEach(part => {
+                    if (part.userData.isLeftLeg) {
+                        part.rotation.x = Math.sin(t * 8) * 0.4;
+                    }
+                    if (part.userData.isRightLeg) {
+                        part.rotation.x = -Math.sin(t * 8) * 0.4;
+                    }
+                    if (part.userData.isLeftArm) {
+                        part.rotation.x = Math.sin(t * 8 + 1) * 0.6;
+                        part.rotation.z = 0.3 + Math.sin(t * 4) * 0.3;
+                    }
+                    if (part.userData.isRightArm) {
+                        part.rotation.x = -Math.sin(t * 8 + 1) * 0.6;
+                        part.rotation.z = -0.3 - Math.sin(t * 4) * 0.3;
+                    }
+                    if (part.userData.isHead) {
+                        part.rotation.y = Math.sin(t * 4) * 0.2;
+                    }
+                    if (part.userData.isTorso) {
+                        part.rotation.y = Math.sin(t * 4) * 0.15;
+                    }
+                });
+            });
+            
+            // Animate dance floor tiles
+            if (danceFloorGroup) {
+                const colors = [0xff0066, 0x00ff88, 0x00aaff, 0xff6600, 0xaa00ff, 0xffff00];
+                danceFloorGroup.children.forEach((tile, i) => {
+                    const pulse = Math.sin(time * 4 + i * 0.5) * 0.5 + 0.5;
+                    tile.material.emissiveIntensity = 0.3 + pulse * 0.5;
+                    
+                    // Change colors to beat
+                    if (Math.random() < 0.01) {
+                        const newColor = colors[Math.floor(Math.random() * colors.length)];
+                        tile.material.color.setHex(newColor);
+                        tile.material.emissive.setHex(newColor);
+                    }
+                });
+            }
+        }
+        
+        function checkDancerCollision(newX, newZ) {
+            const playerRadius = 0.4;
+            let collision = false;
+            
+            for (const dancer of dancers) {
+                const dx = newX - dancer.position.x;
+                const dz = newZ - dancer.position.z;
+                const dist = Math.sqrt(dx * dx + dz * dz);
+                const minDist = dancer.userData.collisionRadius + playerRadius;
+                
+                if (dist < minDist) {
+                    collision = true;
+                    
+                    // Push dancer away from player
+                    if (dist > 0.1) {
+                        const pushStrength = 0.08;
+                        const pushX = (dx / dist) * pushStrength;
+                        const pushZ = (dz / dist) * pushStrength;
+                        
+                        // Move dancer in opposite direction
+                        const newDancerX = dancer.position.x - pushX;
+                        const newDancerZ = dancer.position.z - pushZ;
+                        
+                        // Keep dancers within dance floor bounds
+                        if (newDancerX > -3.5 && newDancerX < 3.5 && 
+                            newDancerZ > 1 && newDancerZ < 6.5) {
+                            dancer.position.x = newDancerX;
+                            dancer.position.z = newDancerZ;
+                        }
+                    }
+                }
+            }
+            return collision;
+        }
+        
+        // ============================================
+        // STARGAZING / BED RELAXATION
+        // ============================================
+        function startStargazing() {
+            stargazingActive = true;
+            
+            // Create dark sky backdrop plane
+            const skyGeo = new THREE.PlaneGeometry(50, 50);
+            const skyMat = new THREE.MeshBasicMaterial({ 
+                color: 0x0a0a15, 
+                side: THREE.DoubleSide 
+            });
+            const skyPlane = new THREE.Mesh(skyGeo, skyMat);
+            skyPlane.position.set(0, 7.5, 0);
+            skyPlane.rotation.x = Math.PI / 2;
+            skyPlane.userData.isSkyPlane = true;
+            scene.add(skyPlane);
+            stars.push(skyPlane);
+            
+            // Create glowing stars spread across large area
+            for (let i = 0; i < 200; i++) {
+                const size = 0.02 + Math.random() * 0.05;
+                const starGeometry = new THREE.SphereGeometry(size, 8, 8);
+                const brightness = 0.7 + Math.random() * 0.3;
+                
+                // Create glowing star material
+                const starMat = new THREE.MeshBasicMaterial({ 
+                    color: new THREE.Color(brightness, brightness, brightness + 0.15),
+                    transparent: true,
+                    opacity: 0.6 + Math.random() * 0.4
+                });
+                const star = new THREE.Mesh(starGeometry, starMat);
+                
+                // Spread stars across very large ceiling area to fill screen
+                star.position.set(
+                    (Math.random() - 0.5) * 30,
+                    6.5 + Math.random() * 0.8,
+                    (Math.random() - 0.5) * 30
+                );
+                star.userData.twinkleSpeed = 1 + Math.random() * 3;
+                star.userData.twinkleOffset = Math.random() * Math.PI * 2;
+                star.userData.baseOpacity = star.material.opacity;
+                scene.add(star);
+                stars.push(star);
+                
+                // Add glow sprite for brighter stars
+                if (Math.random() > 0.6) {
+                    const glowCanvas = document.createElement('canvas');
+                    glowCanvas.width = 32;
+                    glowCanvas.height = 32;
+                    const ctx = glowCanvas.getContext('2d');
+                    const gradient = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
+                    gradient.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
+                    gradient.addColorStop(0.2, 'rgba(200, 200, 255, 0.4)');
+                    gradient.addColorStop(1, 'rgba(100, 100, 255, 0)');
+                    ctx.fillStyle = gradient;
+                    ctx.fillRect(0, 0, 32, 32);
+                    
+                    const glowTexture = new THREE.CanvasTexture(glowCanvas);
+                    const glowMat = new THREE.SpriteMaterial({ 
+                        map: glowTexture, 
+                        transparent: true, 
+                        opacity: 0.7,
+                        blending: THREE.AdditiveBlending
+                    });
+                    const glow = new THREE.Sprite(glowMat);
+                    glow.scale.set(0.4, 0.4, 1);
+                    glow.position.copy(star.position);
+                    scene.add(glow);
+                    stars.push(glow);
+                }
+            }
+            
+            // Start ambient music
+            startRelaxMusic();
+        }
+        
+        function stopStargazing() {
+            stargazingActive = false;
+            
+            // Remove stars
+            stars.forEach(star => scene.remove(star));
+            stars = [];
+            
+            // Remove shooting stars
+            shootingStars.forEach(ss => scene.remove(ss));
+            shootingStars = [];
+            
+            // Stop music
+            stopRelaxMusic();
+        }
+        
+        function animateStargazing(time) {
+            if (!stargazingActive) return;
+            
+            // Twinkle stars
+            stars.forEach(star => {
+                const twinkle = Math.sin(time * star.userData.twinkleSpeed + star.userData.twinkleOffset);
+                star.material.opacity = star.userData.baseOpacity * (0.5 + twinkle * 0.5);
+            });
+            
+            // Random shooting stars
+            if (Math.random() < 0.003 && shootingStars.length < 3) {
+                createShootingStar();
+            }
+            
+            // Animate shooting stars
+            shootingStars.forEach((ss, i) => {
+                ss.position.x += ss.userData.velocityX;
+                ss.position.z += ss.userData.velocityZ;
+                ss.userData.life -= 0.02;
+                ss.material.opacity = ss.userData.life;
+                
+                if (ss.userData.life <= 0) {
+                    scene.remove(ss);
+                    shootingStars.splice(i, 1);
+                }
+            });
+        }
+        
+        function createShootingStar() {
+            // Create a longer, more visible shooting star trail
+            const geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array([
+                0, 0, 0,
+                -1.2, 0, 0.5
+            ]);
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            
+            const material = new THREE.LineBasicMaterial({ 
+                color: 0xffffff, 
+                transparent: true, 
+                opacity: 1,
+                linewidth: 2
+            });
+            
+            const shootingStar = new THREE.Line(geometry, material);
+            shootingStar.position.set(
+                (Math.random() - 0.5) * 12,
+                6.7,
+                (Math.random() - 0.5) * 10
+            );
+            shootingStar.userData.velocityX = 0.2 + Math.random() * 0.15;
+            shootingStar.userData.velocityZ = 0.08 + Math.random() * 0.08;
+            shootingStar.userData.life = 1;
+            
+            scene.add(shootingStar);
+            shootingStars.push(shootingStar);
+        }
+        
+        // Stargazing music track selection
+        let stargazingTrack = 0;
+        
+        function startRelaxMusic() {
+            relaxMusicCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const now = relaxMusicCtx.currentTime;
+            
+            // Randomly select a track style
+            stargazingTrack = Math.floor(Math.random() * 5);
+            
+            if (stargazingTrack === 0) {
+                // Track 1: Ethereal pad (Am7)
+                playEtherealPad(now);
+            } else if (stargazingTrack === 1) {
+                // Track 2: Slow beat with warm chords
+                playChillBeat(now);
+            } else if (stargazingTrack === 2) {
+                // Track 3: Arpeggiated dreamscape
+                playArpDreamscape(now);
+            } else if (stargazingTrack === 3) {
+                // Track 4: Deep ambient drone
+                playDeepDrone(now);
+            } else {
+                // Track 5: Lofi beat with piano
+                playLofiBeat(now);
+            }
+            
+            // Add subtle noise texture to all tracks
+            addNoiseTexture(now);
+        }
+        
+        function playEtherealPad(now) {
+            // Dreamy Am7 chord pad
+            const notes = [220, 261.63, 329.63, 392];
+            notes.forEach((freq, i) => {
+                const osc = relaxMusicCtx.createOscillator();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq, now);
+                
+                const lfo = relaxMusicCtx.createOscillator();
+                lfo.type = 'sine';
+                lfo.frequency.setValueAtTime(0.3 + i * 0.1, now);
+                const lfoGain = relaxMusicCtx.createGain();
+                lfoGain.gain.setValueAtTime(2, now);
+                lfo.connect(lfoGain);
+                lfoGain.connect(osc.frequency);
+                
+                const gain = relaxMusicCtx.createGain();
+                gain.gain.setValueAtTime(0, now);
+                gain.gain.linearRampToValueAtTime(0.035, now + 4);
+                
+                const filter = relaxMusicCtx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(600, now);
+                
+                osc.connect(filter);
+                filter.connect(gain);
+                gain.connect(relaxMusicCtx.destination);
+                osc.start(now);
+                lfo.start(now);
+                relaxMusicOscillators.push({ osc, lfo, gain });
+            });
+        }
+        
+        function playChillBeat(now) {
+            // Warm Fmaj7 chord
+            const chordNotes = [174.61, 220, 261.63, 329.63];
+            chordNotes.forEach((freq, i) => {
+                const osc = relaxMusicCtx.createOscillator();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(freq, now);
+                
+                const gain = relaxMusicCtx.createGain();
+                gain.gain.setValueAtTime(0, now);
+                gain.gain.linearRampToValueAtTime(0.03, now + 2);
+                
+                const filter = relaxMusicCtx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(500, now);
+                
+                osc.connect(filter);
+                filter.connect(gain);
+                gain.connect(relaxMusicCtx.destination);
+                osc.start(now);
+                relaxMusicOscillators.push({ osc, gain });
+            });
+            
+            // Slow kick drum pattern
+            function scheduleKick(time) {
+                if (!relaxMusicCtx || relaxMusicCtx.state === 'closed') return;
+                const kick = relaxMusicCtx.createOscillator();
+                kick.type = 'sine';
+                kick.frequency.setValueAtTime(60, time);
+                kick.frequency.exponentialRampToValueAtTime(30, time + 0.15);
+                
+                const kickGain = relaxMusicCtx.createGain();
+                kickGain.gain.setValueAtTime(0.15, time);
+                kickGain.gain.exponentialRampToValueAtTime(0.001, time + 0.4);
+                
+                kick.connect(kickGain);
+                kickGain.connect(relaxMusicCtx.destination);
+                kick.start(time);
+                kick.stop(time + 0.5);
+            }
+            
+            // Schedule kicks every 1.5 seconds
+            for (let i = 0; i < 60; i++) {
+                scheduleKick(now + 2 + i * 1.5);
+            }
+        }
+        
+        function playArpDreamscape(now) {
+            // Cmaj7 arpeggio
+            const arpNotes = [261.63, 329.63, 392, 493.88, 392, 329.63];
+            let noteIndex = 0;
+            
+            function playArpNote() {
+                if (!relaxMusicCtx || relaxMusicCtx.state === 'closed') return;
+                
+                const osc = relaxMusicCtx.createOscillator();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(arpNotes[noteIndex] * 0.5, relaxMusicCtx.currentTime);
+                
+                const gain = relaxMusicCtx.createGain();
+                gain.gain.setValueAtTime(0.04, relaxMusicCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, relaxMusicCtx.currentTime + 0.8);
+                
+                const filter = relaxMusicCtx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(1200, relaxMusicCtx.currentTime);
+                
+                const delay = relaxMusicCtx.createDelay();
+                delay.delayTime.value = 0.3;
+                const delayGain = relaxMusicCtx.createGain();
+                delayGain.gain.value = 0.3;
+                
+                osc.connect(filter);
+                filter.connect(gain);
+                gain.connect(relaxMusicCtx.destination);
+                gain.connect(delay);
+                delay.connect(delayGain);
+                delayGain.connect(relaxMusicCtx.destination);
+                
+                osc.start();
+                osc.stop(relaxMusicCtx.currentTime + 1);
+                
+                noteIndex = (noteIndex + 1) % arpNotes.length;
+            }
+            
+            // Schedule arpeggios
+            const arpInterval = setInterval(playArpNote, 500);
+            relaxMusicOscillators.push({ interval: arpInterval });
+            
+            // Background pad (Em)
+            [164.81, 196, 246.94].forEach(freq => {
+                const pad = relaxMusicCtx.createOscillator();
+                pad.type = 'sine';
+                pad.frequency.setValueAtTime(freq, now);
+                const padGain = relaxMusicCtx.createGain();
+                padGain.gain.setValueAtTime(0, now);
+                padGain.gain.linearRampToValueAtTime(0.02, now + 3);
+                pad.connect(padGain);
+                padGain.connect(relaxMusicCtx.destination);
+                pad.start(now);
+                relaxMusicOscillators.push({ osc: pad, gain: padGain });
+            });
+        }
+        
+        function playDeepDrone(now) {
+            // Deep bass drone with harmonics
+            const droneFreq = 55; // A1
+            
+            for (let harmonic = 1; harmonic <= 4; harmonic++) {
+                const osc = relaxMusicCtx.createOscillator();
+                osc.type = harmonic === 1 ? 'sine' : 'triangle';
+                osc.frequency.setValueAtTime(droneFreq * harmonic, now);
+                
+                // Slow pitch wobble
+                const lfo = relaxMusicCtx.createOscillator();
+                lfo.type = 'sine';
+                lfo.frequency.setValueAtTime(0.1 * harmonic, now);
+                const lfoGain = relaxMusicCtx.createGain();
+                lfoGain.gain.setValueAtTime(harmonic * 0.5, now);
+                lfo.connect(lfoGain);
+                lfoGain.connect(osc.frequency);
+                
+                const gain = relaxMusicCtx.createGain();
+                gain.gain.setValueAtTime(0, now);
+                gain.gain.linearRampToValueAtTime(0.05 / harmonic, now + 5);
+                
+                osc.connect(gain);
+                gain.connect(relaxMusicCtx.destination);
+                osc.start(now);
+                lfo.start(now);
+                relaxMusicOscillators.push({ osc, lfo, gain });
+            }
+            
+            // High shimmer
+            const shimmer = relaxMusicCtx.createOscillator();
+            shimmer.type = 'sine';
+            shimmer.frequency.setValueAtTime(880, now);
+            const shimmerGain = relaxMusicCtx.createGain();
+            shimmerGain.gain.setValueAtTime(0, now);
+            shimmerGain.gain.linearRampToValueAtTime(0.008, now + 6);
+            shimmer.connect(shimmerGain);
+            shimmerGain.connect(relaxMusicCtx.destination);
+            shimmer.start(now);
+            relaxMusicOscillators.push({ osc: shimmer, gain: shimmerGain });
+        }
+        
+        function playLofiBeat(now) {
+            // Dm7 chord (lofi piano feel)
+            const pianoNotes = [146.83, 174.61, 220, 261.63];
+            pianoNotes.forEach((freq, i) => {
+                const osc = relaxMusicCtx.createOscillator();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(freq, now);
+                
+                const gain = relaxMusicCtx.createGain();
+                gain.gain.setValueAtTime(0, now);
+                gain.gain.linearRampToValueAtTime(0.025, now + 2);
+                
+                const filter = relaxMusicCtx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(400, now);
+                
+                osc.connect(filter);
+                filter.connect(gain);
+                gain.connect(relaxMusicCtx.destination);
+                osc.start(now);
+                relaxMusicOscillators.push({ osc, gain });
+            });
+            
+            // Lofi drum pattern
+            function scheduleLofiDrums(startTime) {
+                if (!relaxMusicCtx || relaxMusicCtx.state === 'closed') return;
+                
+                // Kick on 1 and 3
+                [0, 1.0].forEach(offset => {
+                    const kick = relaxMusicCtx.createOscillator();
+                    kick.type = 'sine';
+                    kick.frequency.setValueAtTime(55, startTime + offset);
+                    kick.frequency.exponentialRampToValueAtTime(30, startTime + offset + 0.12);
+                    const kGain = relaxMusicCtx.createGain();
+                    kGain.gain.setValueAtTime(0.12, startTime + offset);
+                    kGain.gain.exponentialRampToValueAtTime(0.001, startTime + offset + 0.3);
+                    kick.connect(kGain);
+                    kGain.connect(relaxMusicCtx.destination);
+                    kick.start(startTime + offset);
+                    kick.stop(startTime + offset + 0.4);
+                });
+                
+                // Snare on 2 and 4
+                [0.5, 1.5].forEach(offset => {
+                    const snareNoise = relaxMusicCtx.createBufferSource();
+                    const noiseBuffer = relaxMusicCtx.createBuffer(1, relaxMusicCtx.sampleRate * 0.15, relaxMusicCtx.sampleRate);
+                    const data = noiseBuffer.getChannelData(0);
+                    for (let j = 0; j < data.length; j++) data[j] = Math.random() * 2 - 1;
+                    snareNoise.buffer = noiseBuffer;
+                    
+                    const snareFilter = relaxMusicCtx.createBiquadFilter();
+                    snareFilter.type = 'highpass';
+                    snareFilter.frequency.value = 800;
+                    
+                    const sGain = relaxMusicCtx.createGain();
+                    sGain.gain.setValueAtTime(0.06, startTime + offset);
+                    sGain.gain.exponentialRampToValueAtTime(0.001, startTime + offset + 0.15);
+                    
+                    snareNoise.connect(snareFilter);
+                    snareFilter.connect(sGain);
+                    sGain.connect(relaxMusicCtx.destination);
+                    snareNoise.start(startTime + offset);
+                });
+                
+                // Hi-hat on every 8th
+                for (let i = 0; i < 8; i++) {
+                    const hh = relaxMusicCtx.createBufferSource();
+                    const hhBuffer = relaxMusicCtx.createBuffer(1, relaxMusicCtx.sampleRate * 0.05, relaxMusicCtx.sampleRate);
+                    const hhData = hhBuffer.getChannelData(0);
+                    for (let j = 0; j < hhData.length; j++) hhData[j] = Math.random() * 2 - 1;
+                    hh.buffer = hhBuffer;
+                    
+                    const hhFilter = relaxMusicCtx.createBiquadFilter();
+                    hhFilter.type = 'highpass';
+                    hhFilter.frequency.value = 6000;
+                    
+                    const hhGain = relaxMusicCtx.createGain();
+                    hhGain.gain.setValueAtTime(0.02, startTime + i * 0.25);
+                    hhGain.gain.exponentialRampToValueAtTime(0.001, startTime + i * 0.25 + 0.05);
+                    
+                    hh.connect(hhFilter);
+                    hhFilter.connect(hhGain);
+                    hhGain.connect(relaxMusicCtx.destination);
+                    hh.start(startTime + i * 0.25);
+                }
+            }
+            
+            // Schedule lofi drums (2 second loop)
+            for (let bar = 0; bar < 45; bar++) {
+                scheduleLofiDrums(now + 2 + bar * 2);
+            }
+        }
+        
+        function addNoiseTexture(now) {
+            const noiseBuffer = relaxMusicCtx.createBuffer(1, relaxMusicCtx.sampleRate * 2, relaxMusicCtx.sampleRate);
+            const noiseData = noiseBuffer.getChannelData(0);
+            for (let i = 0; i < noiseData.length; i++) {
+                noiseData[i] = (Math.random() * 2 - 1) * 0.008;
+            }
+            
+            const noise = relaxMusicCtx.createBufferSource();
+            noise.buffer = noiseBuffer;
+            noise.loop = true;
+            
+            const noiseFilter = relaxMusicCtx.createBiquadFilter();
+            noiseFilter.type = 'lowpass';
+            noiseFilter.frequency.setValueAtTime(300, now);
+            
+            const noiseGain = relaxMusicCtx.createGain();
+            noiseGain.gain.setValueAtTime(0, now);
+            noiseGain.gain.linearRampToValueAtTime(0.015, now + 2);
+            
+            noise.connect(noiseFilter);
+            noiseFilter.connect(noiseGain);
+            noiseGain.connect(relaxMusicCtx.destination);
+            noise.start(now);
+            
+            relaxMusicOscillators.push({ noise, noiseGain });
+        }
+        
+        function stopRelaxMusic() {
+            if (!relaxMusicCtx) return;
+            
+            const now = relaxMusicCtx.currentTime;
+            
+            relaxMusicOscillators.forEach(item => {
+                if (item.gain) {
+                    item.gain.gain.linearRampToValueAtTime(0, now + 1);
+                }
+                if (item.noiseGain) {
+                    item.noiseGain.gain.linearRampToValueAtTime(0, now + 1);
+                }
+                if (item.interval) {
+                    clearInterval(item.interval);
+                }
+            });
+            
+            setTimeout(() => {
+                relaxMusicOscillators.forEach(item => {
+                    try {
+                        if (item.osc) item.osc.stop();
+                        if (item.lfo) item.lfo.stop();
+                        if (item.noise) item.noise.stop();
+                    } catch(e) {}
+                });
+                relaxMusicOscillators = [];
+                if (relaxMusicCtx) {
+                    relaxMusicCtx.close();
+                    relaxMusicCtx = null;
+                }
+            }, 1500);
+        }
 
         function createPlayer() {
             player = new THREE.Group();
@@ -1736,10 +2730,12 @@
         }
 
         function createStations() {
-            const indicatorGeo = new THREE.RingGeometry(0.8, 1, 32);
-            const indicatorMat = new THREE.MeshBasicMaterial({ color: 0x00ff88, transparent: true, opacity: 0.3, side: THREE.DoubleSide });
+            // Smaller indicator circles
+            const indicatorGeo = new THREE.RingGeometry(0.6, 0.75, 32);
+            const indicatorMat = new THREE.MeshBasicMaterial({ color: 0x00ff88, transparent: true, opacity: 0.4, side: THREE.DoubleSide });
 
-            const computerStation = { position: new THREE.Vector3(-0.5, 0, -4), radius: 2, type: 'computer', label: 'Computer - Music Player' };
+            // Computer station - in front of desk/monitors
+            const computerStation = { position: new THREE.Vector3(0, 0, -3.5), radius: 1.5, type: 'computer', label: 'Computer - Music Player' };
             const indicator1 = new THREE.Mesh(indicatorGeo, indicatorMat);
             indicator1.rotation.x = -Math.PI / 2;
             indicator1.position.copy(computerStation.position);
@@ -1748,8 +2744,10 @@
             computerStation.indicator = indicator1;
             stations.push(computerStation);
 
-            const tvStation = { position: new THREE.Vector3(5.5, 0, -4), radius: 2, type: 'tv', label: 'TV - Video Gallery' };
-            const indicator2 = new THREE.Mesh(indicatorGeo, indicatorMat.clone());
+            // TV station - right in front of the TV
+            const tvStation = { position: new THREE.Vector3(5.5, 0, -3), radius: 1.5, type: 'tv', label: 'TV - Video Gallery' };
+            const indicator2 = new THREE.Mesh(indicatorGeo.clone(), indicatorMat.clone());
+            indicator2.material.color.setHex(0x00aaff);
             indicator2.rotation.x = -Math.PI / 2;
             indicator2.position.copy(tvStation.position);
             indicator2.position.y = 0.05;
@@ -1757,8 +2755,8 @@
             tvStation.indicator = indicator2;
             stations.push(tvStation);
             
-            // Drum station - near the drum throne
-            const drumStation = { position: new THREE.Vector3(-6, 0, -2), radius: 1.5, type: 'drums', label: 'Drums - Play Beats' };
+            // Drum station - near the drums
+            const drumStation = { position: new THREE.Vector3(-6, 0, -1.5), radius: 1.3, type: 'drums', label: 'Drums - Play Beats' };
             const indicator3 = new THREE.Mesh(indicatorGeo.clone(), indicatorMat.clone());
             indicator3.material.color.setHex(0xff6600);
             indicator3.rotation.x = -Math.PI / 2;
@@ -1768,16 +2766,111 @@
             drumStation.indicator = indicator3;
             stations.push(drumStation);
             
-            // Synth station - in front of the keyboard
-            const synthStation = { position: new THREE.Vector3(-2.5, 0, -3.5), radius: 1.5, type: 'synth', label: 'Synth - Play Keys' };
+            // Synth station - in front of keyboard
+            const synthStation = { position: new THREE.Vector3(-2.5, 0, -3), radius: 1.3, type: 'synth', label: 'Synth - Play Keys' };
             const indicator4 = new THREE.Mesh(indicatorGeo.clone(), indicatorMat.clone());
-            indicator4.material.color.setHex(0xff00ff); // Purple for synth
+            indicator4.material.color.setHex(0xff00ff);
             indicator4.rotation.x = -Math.PI / 2;
             indicator4.position.copy(synthStation.position);
             indicator4.position.y = 0.05;
             scene.add(indicator4);
             synthStation.indicator = indicator4;
             stations.push(synthStation);
+            
+            // Instagram station - back left corner
+            const instaStation = { position: new THREE.Vector3(-6, 0, 4.5), radius: 1.3, type: 'instagram', label: 'Instagram - @whoisthemetro' };
+            const indicator5 = new THREE.Mesh(indicatorGeo.clone(), indicatorMat.clone());
+            indicator5.material.color.setHex(0xe1306c);
+            indicator5.rotation.x = -Math.PI / 2;
+            indicator5.position.copy(instaStation.position);
+            indicator5.position.y = 0.05;
+            scene.add(indicator5);
+            instaStation.indicator = indicator5;
+            stations.push(instaStation);
+            
+            // Bed/relax station - left side of the bed
+            const bedStation = { position: new THREE.Vector3(4, 0, 4), radius: 1.3, type: 'bed', label: 'Bed - Relax & Stargaze' };
+            const indicator6 = new THREE.Mesh(indicatorGeo.clone(), indicatorMat.clone());
+            indicator6.material.color.setHex(0x4444ff);
+            indicator6.rotation.x = -Math.PI / 2;
+            indicator6.position.copy(bedStation.position);
+            indicator6.position.y = 0.05;
+            scene.add(indicator6);
+            bedStation.indicator = indicator6;
+            stations.push(bedStation);
+            
+            // Create Instagram sign
+            createInstagramSign(-6, 4.5);
+        }
+        
+        function createInstagramSign(x, z) {
+            const group = new THREE.Group();
+            
+            // Sign post
+            const postMat = new THREE.MeshStandardMaterial({ color: 0x333333 });
+            const post = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2, 8), postMat);
+            post.position.y = 1;
+            group.add(post);
+            
+            // Sign board with Instagram gradient
+            const signCanvas = document.createElement('canvas');
+            signCanvas.width = 256;
+            signCanvas.height = 256;
+            const ctx = signCanvas.getContext('2d');
+            
+            // Instagram gradient background
+            const gradient = ctx.createLinearGradient(0, 0, 256, 256);
+            gradient.addColorStop(0, '#405de6');
+            gradient.addColorStop(0.25, '#5851db');
+            gradient.addColorStop(0.5, '#833ab4');
+            gradient.addColorStop(0.75, '#c13584');
+            gradient.addColorStop(1, '#fd1d1d');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, 256, 256);
+            
+            // Instagram icon (simplified camera)
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 12;
+            ctx.beginPath();
+            ctx.roundRect(40, 40, 176, 176, 40);
+            ctx.stroke();
+            
+            ctx.beginPath();
+            ctx.arc(128, 128, 50, 0, Math.PI * 2);
+            ctx.stroke();
+            
+            ctx.beginPath();
+            ctx.arc(190, 66, 15, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#ffffff';
+            ctx.fill();
+            
+            const signTexture = new THREE.CanvasTexture(signCanvas);
+            const signMat = new THREE.MeshBasicMaterial({ map: signTexture });
+            const sign = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.05), signMat);
+            sign.position.y = 2.2;
+            group.add(sign);
+            
+            // Text below
+            const textCanvas = document.createElement('canvas');
+            textCanvas.width = 256;
+            textCanvas.height = 64;
+            const textCtx = textCanvas.getContext('2d');
+            textCtx.fillStyle = '#1a1a1a';
+            textCtx.fillRect(0, 0, 256, 64);
+            textCtx.fillStyle = '#ffffff';
+            textCtx.font = 'bold 24px Arial';
+            textCtx.textAlign = 'center';
+            textCtx.fillText('@whoisthemetro', 128, 42);
+            
+            const textTexture = new THREE.CanvasTexture(textCanvas);
+            const textMat = new THREE.MeshBasicMaterial({ map: textTexture });
+            const textSign = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.2), textMat);
+            textSign.position.y = 1.7;
+            group.add(textSign);
+            
+            group.position.set(x, 0, z);
+            scene.add(group);
         }
 
         function setupPlaylist() {
@@ -1926,19 +3019,91 @@
         }
 
         function setupEvents() {
+            // Track which keys are currently held (to prevent repeat)
+            const heldKeys = {};
+            
             // Keyboard events
             document.addEventListener('keydown', (e) => {
-                keys[e.key.toLowerCase()] = true;
-                if (e.key.toLowerCase() === 'e' && nearStation && !currentStation) enterStation(nearStation);
-                if (e.key === 'Escape' && currentStation) exitStation();
-                if (e.key === ' ' && isGrounded && !currentStation && gameStarted) {
-                    verticalVelocity = jumpForce;
-                    isGrounded = false;
-                    playJumpSound();
-                    e.preventDefault();
+                const key = e.key.toLowerCase();
+                keys[key] = true;
+                
+                // Regular game controls when not in a station
+                if (!currentStation) {
+                    if (key === 'e' && nearStation) enterStation(nearStation);
+                    if (e.key === ' ' && isGrounded && gameStarted) {
+                        verticalVelocity = jumpForce;
+                        isGrounded = false;
+                        playJumpSound();
+                        e.preventDefault();
+                    }
+                    return;
+                }
+                
+                if (e.key === 'Escape') {
+                    exitStation();
+                    return;
+                }
+                
+                // Synth keyboard input
+                if (currentStation && currentStation.type === 'synth') {
+                    if (heldKeys[key]) return; // Prevent key repeat
+                    heldKeys[key] = true;
+                    
+                    if (synthKeyboardMap.hasOwnProperty(key)) {
+                        // Add octave offset to note
+                        playSynthSound(synthKeyboardMap[key] + (synthOctave * 12));
+                        e.preventDefault();
+                    }
+                    // Number keys for sound selection
+                    if (key >= '1' && key <= '4') {
+                        synthSoundType = parseInt(key) - 1;
+                        const colors = [0xff6600, 0x00ff66, 0x6600ff, 0xff0066];
+                        soundButtonLight.material.color.setHex(colors[synthSoundType]);
+                        updateSynthDisplay();
+                    }
+                    // Space toggles arpeggio
+                    if (e.key === ' ') {
+                        arpeggioEnabled = !arpeggioEnabled;
+                        arpButtonLight.material.color.setHex(arpeggioEnabled ? 0x00ffff : 0x333333);
+                        if (!arpeggioEnabled) stopArpeggio();
+                        updateSynthDisplay();
+                        e.preventDefault();
+                    }
+                    // X = Octave Up, Z = Octave Down
+                    if (key === 'x') {
+                        synthOctave = Math.min(synthOctave + 1, 2);
+                        updateSynthDisplay();
+                        e.preventDefault();
+                    }
+                    if (key === 'z') {
+                        synthOctave = Math.max(synthOctave - 1, -2);
+                        updateSynthDisplay();
+                        e.preventDefault();
+                    }
+                }
+                
+                // Drums keyboard input
+                if (currentStation && currentStation.type === 'drums') {
+                    if (heldKeys[key]) return; // Prevent key repeat
+                    heldKeys[key] = true;
+                    
+                    if (drumKeyboardMap.hasOwnProperty(key)) {
+                        playDrumSound(drumKeyboardMap[key]);
+                        e.preventDefault();
+                    }
+                    // Number keys 1-4 for drum preset selection
+                    if (key >= '1' && key <= '4') {
+                        drumPreset = parseInt(key) - 1;
+                        e.preventDefault();
+                    }
                 }
             });
-            document.addEventListener('keyup', (e) => keys[e.key.toLowerCase()] = false);
+            
+            document.addEventListener('keyup', (e) => {
+                const key = e.key.toLowerCase();
+                keys[key] = false;
+                heldKeys[key] = false;
+            });
             
             // Resize handler
             window.addEventListener('resize', () => {
@@ -2021,7 +3186,7 @@
                 renderer.domElement.style.cursor = (drumIntersects.length > 0 || synthIntersects.length > 0 || buttonIntersects.length > 0) ? 'pointer' : 'default';
             });
             
-            // Touch for 3D objects (drums, synth) - handles taps and swipes
+            // Touch for 3D objects (drums, synth) - only on touchstart
             let lastSynthTouchX = 0;
             let lastDrumTouch = 0;
             
@@ -2052,16 +3217,6 @@
                     e.preventDefault();
                 }
             }, { passive: false });
-            
-            renderer.domElement.addEventListener('touchend', (e) => {
-                // Also trigger on touch end for better responsiveness
-                if (currentStation && (currentStation.type === 'drums' || currentStation.type === 'synth')) {
-                    if (e.changedTouches && e.changedTouches[0]) {
-                        const touch = e.changedTouches[0];
-                        handle3DInteraction(touch.clientX, touch.clientY);
-                    }
-                }
-            }, { passive: true });
             
             // Mobile controls setup
             setupMobileControls();
@@ -2205,6 +3360,7 @@
             makeTappable(document.getElementById('tv-close-btn'), exitStation);
             makeTappable(document.getElementById('drums-close-btn'), exitStation);
             makeTappable(document.getElementById('synth-close-btn'), exitStation);
+            makeTappable(document.getElementById('bed-close-btn'), exitStation);
             
             // Secret modal
             makeTappable(document.getElementById('secret-submit-btn'), checkSecretAnswer);
@@ -2447,71 +3603,102 @@
         function playSynthSound(noteIndex) {
             flashAllLights();
             
-            // Base frequency for C4
-            const baseFreq = 261.63;
+            // Create or reuse shared audio context
+            if (!synthAudioCtx || synthAudioCtx.state === 'closed') {
+                synthAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (synthAudioCtx.state === 'suspended') {
+                synthAudioCtx.resume();
+            }
             
-            // Map the clicked key to the detected scale
-            const scaleNotes = currentScale.map(n => (n + detectedKey) % 12);
+            // Base frequency for C3 (one octave below middle C)
+            const baseFreq = 130.81; // C3
             
-            // Find the closest note in the scale
-            const octave = Math.floor(noteIndex / 12);
-            const noteInOctave = noteIndex % 12;
+            // If no song is playing, play chromatically (all 12 notes)
+            // If song is playing, quantize to detected scale
+            let freq;
             
-            // Find closest scale note
-            let closestNoteIndex = 0;
-            let closestNote = scaleNotes[0];
-            let minDist = 12;
-            scaleNotes.forEach((n, idx) => {
-                const dist = Math.min(Math.abs(n - noteInOctave), 12 - Math.abs(n - noteInOctave));
-                if (dist < minDist) {
-                    minDist = dist;
-                    closestNote = n;
-                    closestNoteIndex = idx;
-                }
-            });
-            
-            if (arpeggioEnabled) {
-                // Stop existing arpeggio if running
-                if (arpeggioInterval) {
-                    clearInterval(arpeggioInterval);
-                }
+            if (!isPlaying) {
+                // CHROMATIC MODE - play exactly what key was pressed
+                // noteIndex directly maps to semitones from C
+                freq = baseFreq * Math.pow(2, noteIndex / 12);
                 
-                // Create new audio context for arpeggio
-                arpeggioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                arpeggioBaseNote = closestNoteIndex;
-                
-                // Build arpeggio notes
-                const arpNotes = [];
-                for (let i = 0; i < 4; i++) {
-                    const scaleIdx = (closestNoteIndex + i) % scaleNotes.length;
-                    const noteOctave = octave + Math.floor((closestNoteIndex + i) / scaleNotes.length);
-                    const note = noteOctave * 12 + scaleNotes[scaleIdx];
-                    arpNotes.push(note);
-                }
-                
-                // Play persistent arpeggio
-                let arpIndex = 0;
-                const playArpNote = () => {
-                    if (!arpeggioEnabled || !arpeggioCtx) return;
+                if (arpeggioEnabled) {
+                    // Chromatic arpeggio (minor chord shape: root, m3, P5, octave)
+                    if (arpeggioInterval) clearInterval(arpeggioInterval);
                     
-                    const note = arpNotes[arpIndex % arpNotes.length];
-                    const freq = baseFreq * Math.pow(2, note / 12);
-                    playSynthNote(arpeggioCtx, freq, arpeggioCtx.currentTime, 0.4);
-                    flashAllLights();
-                    arpIndex++;
-                };
-                
-                // Play first note immediately
-                playArpNote();
-                
-                // Continue arpeggio indefinitely
-                arpeggioInterval = setInterval(playArpNote, 120);
+                    const arpNotes = [noteIndex, noteIndex + 3, noteIndex + 7, noteIndex + 12];
+                    let arpIndex = 0;
+                    const arpSpeed = 150; // Default 150ms when no BPM detected
+                    
+                    const playArpNote = () => {
+                        if (!arpeggioEnabled) return;
+                        const note = arpNotes[arpIndex % arpNotes.length];
+                        const arpFreq = baseFreq * Math.pow(2, note / 12);
+                        playSynthNote(synthAudioCtx, arpFreq, synthAudioCtx.currentTime, 0.3);
+                        flashAllLights();
+                        arpIndex++;
+                    };
+                    
+                    playArpNote();
+                    arpeggioInterval = setInterval(playArpNote, arpSpeed);
+                } else {
+                    playSynthNote(synthAudioCtx, freq, synthAudioCtx.currentTime, 0.5);
+                }
             } else {
-                // Single note in key
-                const ctx = new (window.AudioContext || window.webkitAudioContext)();
-                const quantizedNote = octave * 12 + closestNote;
-                const freq = baseFreq * Math.pow(2, quantizedNote / 12);
-                playSynthNote(ctx, freq, ctx.currentTime, 0.6);
+                // SCALE MODE - quantize to detected key/scale
+                const scaleNotes = currentScale.map(n => (n + detectedKey) % 12);
+                const octave = Math.floor(noteIndex / 12);
+                const noteInOctave = noteIndex % 12;
+                
+                // Find closest scale note
+                let closestNoteIndex = 0;
+                let closestNote = scaleNotes[0];
+                let minDist = 12;
+                scaleNotes.forEach((n, idx) => {
+                    const dist = Math.min(Math.abs(n - noteInOctave), 12 - Math.abs(n - noteInOctave));
+                    if (dist < minDist) {
+                        minDist = dist;
+                        closestNote = n;
+                        closestNoteIndex = idx;
+                    }
+                });
+                
+                if (arpeggioEnabled) {
+                    if (arpeggioInterval) clearInterval(arpeggioInterval);
+                    
+                    arpeggioBaseNote = closestNoteIndex;
+                    
+                    // Build arpeggio from scale notes
+                    const arpNotes = [];
+                    for (let i = 0; i < 4; i++) {
+                        const scaleIdx = (closestNoteIndex + i) % scaleNotes.length;
+                        const noteOctave = octave + Math.floor((closestNoteIndex + i) / scaleNotes.length);
+                        const note = noteOctave * 12 + scaleNotes[scaleIdx];
+                        arpNotes.push(note);
+                    }
+                    
+                    // Calculate interval from BPM (16th notes)
+                    const arpSpeed = Math.max(50, beatInterval / 4);
+                    
+                    let arpIndex = 0;
+                    const playArpNote = () => {
+                        if (!arpeggioEnabled) return;
+                        const note = arpNotes[arpIndex % arpNotes.length];
+                        const arpFreq = baseFreq * Math.pow(2, note / 12);
+                        playSynthNote(synthAudioCtx, arpFreq, synthAudioCtx.currentTime, 0.3);
+                        flashAllLights();
+                        arpIndex++;
+                    };
+                    
+                    playArpNote();
+                    arpeggioInterval = setInterval(playArpNote, arpSpeed);
+                } else {
+                    // Single note quantized to scale
+                    const quantizedNote = octave * 12 + closestNote;
+                    freq = baseFreq * Math.pow(2, quantizedNote / 12);
+                    playSynthNote(synthAudioCtx, freq, synthAudioCtx.currentTime, 0.5);
+                }
             }
         }
         
@@ -2519,10 +3706,6 @@
             if (arpeggioInterval) {
                 clearInterval(arpeggioInterval);
                 arpeggioInterval = null;
-            }
-            if (arpeggioCtx) {
-                arpeggioCtx.close();
-                arpeggioCtx = null;
             }
         }
         
@@ -2566,11 +3749,11 @@
                 filter.Q.value = 1;
             }
             
-            // Gain envelope
+            // Gain envelope - reduced volume
             const gain = ctx.createGain();
             gain.gain.setValueAtTime(0, startTime);
-            gain.gain.linearRampToValueAtTime(volume * 0.4, startTime + 0.02);
-            gain.gain.exponentialRampToValueAtTime(volume * 0.2, startTime + 0.2);
+            gain.gain.linearRampToValueAtTime(volume * 0.25, startTime + 0.02);
+            gain.gain.exponentialRampToValueAtTime(volume * 0.12, startTime + 0.2);
             gain.gain.exponentialRampToValueAtTime(0.001, startTime + 1.5);
             
             // Delay
@@ -2628,14 +3811,64 @@
         }
         
         function playDrumSound(type) {
-            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            // Create or reuse shared drum audio context
+            if (!drumAudioCtx || drumAudioCtx.state === 'closed') {
+                drumAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (drumAudioCtx.state === 'suspended') {
+                drumAudioCtx.resume();
+            }
+            
+            const ctx = drumAudioCtx;
             const now = ctx.currentTime;
             
             flashAllLights();
             
+            // Preset-specific parameters
+            const presets = {
+                // ACOUSTIC
+                0: {
+                    kick: { freq: 150, endFreq: 30, decay: 0.3, type: 'sine' },
+                    snare: { noiseFreq: 1000, toneFreq: 200, decay: 0.2 },
+                    hihat: { freq: 7000, decay: 0.08 },
+                    tom: { freqMult: 1, decay: 0.25 },
+                    crash: { freq: 5500, decay: 1.4 },
+                    reverb: 0.25
+                },
+                // ELECTRONIC
+                1: {
+                    kick: { freq: 180, endFreq: 40, decay: 0.2, type: 'sine' },
+                    snare: { noiseFreq: 2000, toneFreq: 280, decay: 0.15 },
+                    hihat: { freq: 9000, decay: 0.05 },
+                    tom: { freqMult: 1.2, decay: 0.18 },
+                    crash: { freq: 7000, decay: 0.8 },
+                    reverb: 0.15
+                },
+                // 808
+                2: {
+                    kick: { freq: 60, endFreq: 20, decay: 0.5, type: 'sine' },
+                    snare: { noiseFreq: 800, toneFreq: 150, decay: 0.25 },
+                    hihat: { freq: 10000, decay: 0.04 },
+                    tom: { freqMult: 0.7, decay: 0.35 },
+                    crash: { freq: 6000, decay: 1.0 },
+                    reverb: 0.1
+                },
+                // LOFI
+                3: {
+                    kick: { freq: 100, endFreq: 35, decay: 0.35, type: 'triangle' },
+                    snare: { noiseFreq: 600, toneFreq: 160, decay: 0.3 },
+                    hihat: { freq: 5000, decay: 0.12 },
+                    tom: { freqMult: 0.85, decay: 0.3 },
+                    crash: { freq: 4000, decay: 1.8 },
+                    reverb: 0.4
+                }
+            };
+            
+            const p = presets[drumPreset];
+            
             // Create reverb convolver
             const convolver = ctx.createConvolver();
-            const reverbTime = 0.8;
+            const reverbTime = 0.6 + p.reverb;
             const sampleRate = ctx.sampleRate;
             const reverbLength = sampleRate * reverbTime;
             const impulse = ctx.createBuffer(2, reverbLength, sampleRate);
@@ -2650,8 +3883,8 @@
             // Dry/wet mix
             const dryGain = ctx.createGain();
             const wetGain = ctx.createGain();
-            dryGain.gain.value = 0.85; // Mostly dry
-            wetGain.gain.value = 0.25; // Subtle reverb
+            dryGain.gain.value = 0.85;
+            wetGain.gain.value = p.reverb;
             
             convolver.connect(wetGain);
             wetGain.connect(ctx.destination);
@@ -2659,17 +3892,17 @@
             if (type === 'kick') {
                 const osc = ctx.createOscillator();
                 const gain = ctx.createGain();
-                osc.type = 'sine';
-                osc.frequency.setValueAtTime(150, now);
-                osc.frequency.exponentialRampToValueAtTime(30, now + 0.15);
-                gain.gain.setValueAtTime(1, now);
-                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+                osc.type = p.kick.type;
+                osc.frequency.setValueAtTime(p.kick.freq, now);
+                osc.frequency.exponentialRampToValueAtTime(p.kick.endFreq, now + 0.15);
+                gain.gain.setValueAtTime(0.9, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + p.kick.decay);
                 osc.connect(gain);
                 gain.connect(dryGain);
                 gain.connect(convolver);
                 dryGain.connect(ctx.destination);
                 osc.start(now);
-                osc.stop(now + 0.3);
+                osc.stop(now + p.kick.decay);
             } else if (type === 'snare') {
                 const noise = ctx.createBufferSource();
                 const noiseBuffer = ctx.createBuffer(1, ctx.sampleRate * 0.2, ctx.sampleRate);
@@ -2680,9 +3913,9 @@
                 const noiseGain = ctx.createGain();
                 const noiseFilter = ctx.createBiquadFilter();
                 noiseFilter.type = 'highpass';
-                noiseFilter.frequency.value = 1000;
-                noiseGain.gain.setValueAtTime(0.8, now);
-                noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+                noiseFilter.frequency.value = p.snare.noiseFreq;
+                noiseGain.gain.setValueAtTime(0.7, now);
+                noiseGain.gain.exponentialRampToValueAtTime(0.01, now + p.snare.decay);
                 noise.connect(noiseFilter);
                 noiseFilter.connect(noiseGain);
                 noiseGain.connect(dryGain);
@@ -2692,8 +3925,8 @@
                 const osc = ctx.createOscillator();
                 const oscGain = ctx.createGain();
                 osc.type = 'triangle';
-                osc.frequency.setValueAtTime(200, now);
-                oscGain.gain.setValueAtTime(0.7, now);
+                osc.frequency.setValueAtTime(p.snare.toneFreq, now);
+                oscGain.gain.setValueAtTime(0.6, now);
                 oscGain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
                 osc.connect(oscGain);
                 oscGain.connect(dryGain);
@@ -2701,7 +3934,7 @@
                 
                 noise.start(now);
                 osc.start(now);
-                osc.stop(now + 0.2);
+                osc.stop(now + p.snare.decay);
             } else if (type === 'hihat') {
                 const noise = ctx.createBufferSource();
                 const noiseBuffer = ctx.createBuffer(1, ctx.sampleRate * 0.1, ctx.sampleRate);
@@ -2711,11 +3944,11 @@
                 
                 const filter = ctx.createBiquadFilter();
                 filter.type = 'highpass';
-                filter.frequency.value = 7000;
+                filter.frequency.value = p.hihat.freq;
                 
                 const gain = ctx.createGain();
-                gain.gain.setValueAtTime(0.4, now);
-                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+                gain.gain.setValueAtTime(0.35, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + p.hihat.decay);
                 
                 noise.connect(filter);
                 filter.connect(gain);
@@ -2723,77 +3956,81 @@
                 gain.connect(convolver);
                 dryGain.connect(ctx.destination);
                 noise.start(now);
-            } else if (type === 'hitom') {
+            } else if (type === 'tom1' || type === 'hitom') {
                 const osc = ctx.createOscillator();
                 const gain = ctx.createGain();
                 osc.type = 'sine';
-                osc.frequency.setValueAtTime(300, now);
-                osc.frequency.exponentialRampToValueAtTime(180, now + 0.15);
-                gain.gain.setValueAtTime(0.8, now);
-                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
+                osc.frequency.setValueAtTime(300 * p.tom.freqMult, now);
+                osc.frequency.exponentialRampToValueAtTime(180 * p.tom.freqMult, now + 0.15);
+                gain.gain.setValueAtTime(0.7, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + p.tom.decay);
                 osc.connect(gain);
                 gain.connect(dryGain);
                 gain.connect(convolver);
                 dryGain.connect(ctx.destination);
                 osc.start(now);
-                osc.stop(now + 0.25);
-            } else if (type === 'midtom') {
+                osc.stop(now + p.tom.decay);
+            } else if (type === 'tom2' || type === 'midtom') {
                 const osc = ctx.createOscillator();
                 const gain = ctx.createGain();
                 osc.type = 'sine';
-                osc.frequency.setValueAtTime(220, now);
-                osc.frequency.exponentialRampToValueAtTime(130, now + 0.18);
-                gain.gain.setValueAtTime(0.8, now);
-                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+                osc.frequency.setValueAtTime(220 * p.tom.freqMult, now);
+                osc.frequency.exponentialRampToValueAtTime(130 * p.tom.freqMult, now + 0.18);
+                gain.gain.setValueAtTime(0.7, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + p.tom.decay + 0.05);
                 osc.connect(gain);
                 gain.connect(dryGain);
                 gain.connect(convolver);
                 dryGain.connect(ctx.destination);
                 osc.start(now);
-                osc.stop(now + 0.3);
-            } else if (type === 'lowtom') {
-                const osc = ctx.createOscillator();
-                const gain = ctx.createGain();
-                osc.type = 'sine';
-                osc.frequency.setValueAtTime(150, now);
-                osc.frequency.exponentialRampToValueAtTime(80, now + 0.2);
-                gain.gain.setValueAtTime(0.9, now);
-                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
-                osc.connect(gain);
-                gain.connect(dryGain);
-                gain.connect(convolver);
-                dryGain.connect(ctx.destination);
-                osc.start(now);
-                osc.stop(now + 0.4);
+                osc.stop(now + p.tom.decay + 0.1);
             } else if (type === 'crash1' || type === 'crash2') {
-                // Crash cymbals with pitch variation
                 const noise = ctx.createBufferSource();
                 const noiseBuffer = ctx.createBuffer(1, ctx.sampleRate * 1.5, ctx.sampleRate);
                 const output = noiseBuffer.getChannelData(0);
                 for (let i = 0; i < noiseBuffer.length; i++) output[i] = Math.random() * 2 - 1;
                 noise.buffer = noiseBuffer;
                 
-                // Different pitch for each cymbal + slight random variation
-                const basePitch = type === 'crash1' ? 5500 : 4500;
-                const pitchVariation = (Math.random() - 0.5) * 400; // ±200Hz variation
+                const basePitch = type === 'crash1' ? p.crash.freq : p.crash.freq * 0.85;
+                const pitchVariation = (Math.random() - 0.5) * 400;
                 
                 const filter = ctx.createBiquadFilter();
                 filter.type = 'highpass';
                 filter.frequency.value = basePitch + pitchVariation;
                 
-                // Add a bandpass for more tonal character
                 const bandpass = ctx.createBiquadFilter();
                 bandpass.type = 'bandpass';
                 bandpass.frequency.value = (basePitch + pitchVariation) * 1.2;
                 bandpass.Q.value = 0.5;
                 
                 const gain = ctx.createGain();
-                gain.gain.setValueAtTime(0.55, now);
-                gain.gain.exponentialRampToValueAtTime(0.01, now + 1.4);
+                gain.gain.setValueAtTime(0.5, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + p.crash.decay);
                 
                 noise.connect(filter);
                 filter.connect(bandpass);
                 bandpass.connect(gain);
+                gain.connect(dryGain);
+                gain.connect(convolver);
+                dryGain.connect(ctx.destination);
+                noise.start(now);
+            } else if (type === 'ride') {
+                const noise = ctx.createBufferSource();
+                const noiseBuffer = ctx.createBuffer(1, ctx.sampleRate * 1, ctx.sampleRate);
+                const output = noiseBuffer.getChannelData(0);
+                for (let i = 0; i < noiseBuffer.length; i++) output[i] = Math.random() * 2 - 1;
+                noise.buffer = noiseBuffer;
+                
+                const filter = ctx.createBiquadFilter();
+                filter.type = 'highpass';
+                filter.frequency.value = p.crash.freq * 1.3;
+                
+                const gain = ctx.createGain();
+                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + p.crash.decay * 0.6);
+                
+                noise.connect(filter);
+                filter.connect(gain);
                 gain.connect(dryGain);
                 gain.connect(convolver);
                 dryGain.connect(ctx.destination);
@@ -2838,7 +4075,12 @@
                 isPlaying = false;
                 document.getElementById('play-pause-btn').textContent = '▶';
                 document.getElementById('album-art').classList.remove('playing');
+                // Hide dance floor when music stops
+                removeDanceFloor();
             } else {
+                // Create dance floor immediately when trying to play
+                createDanceFloor();
+                
                 audioElement.play().then(() => {
                     isPlaying = true;
                     document.getElementById('play-pause-btn').textContent = '⏸';
@@ -2849,6 +4091,8 @@
                     isPlaying = false;
                     document.getElementById('play-pause-btn').textContent = '▶';
                     document.getElementById('album-art').classList.remove('playing');
+                    // Remove dance floor if play failed
+                    removeDanceFloor();
                 });
             }
         }
@@ -2863,6 +4107,15 @@
                     audioDataArray = new Uint8Array(analyser.frequencyBinCount);
                     source.connect(analyser);
                     analyser.connect(audioContext.destination);
+                    
+                    // Setup BPM detection
+                    bpmAnalyser = audioContext.createAnalyser();
+                    bpmAnalyser.fftSize = 1024;
+                    bpmDataArray = new Uint8Array(bpmAnalyser.frequencyBinCount);
+                    source.connect(bpmAnalyser);
+                    
+                    // Start BPM detection loop
+                    detectBPM();
                 } catch (e) {
                     console.log('Analyser setup error:', e);
                 }
@@ -2870,6 +4123,54 @@
             if (audioContext && audioContext.state === 'suspended') {
                 audioContext.resume();
             }
+        }
+        
+        function detectBPM() {
+            if (!bpmAnalyser || !isPlaying) {
+                requestAnimationFrame(detectBPM);
+                return;
+            }
+            
+            bpmAnalyser.getByteFrequencyData(bpmDataArray);
+            
+            // Focus on bass frequencies (first 10 bins) for beat detection
+            let bassEnergy = 0;
+            for (let i = 0; i < 10; i++) {
+                bassEnergy += bpmDataArray[i];
+            }
+            bassEnergy /= 10;
+            
+            const now = performance.now();
+            const threshold = 180; // Adjust for sensitivity
+            
+            // Detect peaks (beats)
+            if (bassEnergy > threshold && now - lastPeakTime > 200) { // Min 200ms between beats (300 BPM max)
+                if (lastPeakTime > 0) {
+                    const interval = now - lastPeakTime;
+                    peakTimes.push(interval);
+                    
+                    // Keep last 8 intervals for averaging
+                    if (peakTimes.length > 8) {
+                        peakTimes.shift();
+                    }
+                    
+                    // Calculate average BPM from intervals
+                    if (peakTimes.length >= 4) {
+                        const avgInterval = peakTimes.reduce((a, b) => a + b, 0) / peakTimes.length;
+                        const detectedBPM = Math.round(60000 / avgInterval);
+                        
+                        // Only update if reasonable BPM range (60-180)
+                        if (detectedBPM >= 60 && detectedBPM <= 180) {
+                            currentBPM = detectedBPM;
+                            beatInterval = avgInterval;
+                            updateSynthDisplay();
+                        }
+                    }
+                }
+                lastPeakTime = now;
+            }
+            
+            requestAnimationFrame(detectBPM);
         }
 
         function updateProgress() {
@@ -2910,25 +4211,37 @@
             currentStation = station;
             if (station.type === 'computer') {
                 document.getElementById('computer-interface').classList.add('active');
-                gsapLike(camera.position, { x: -0.5, y: 3, z: -2 }, 500);
+                gsapLike(camera.position, { x: 0, y: 3, z: -1.5 }, 500);
             } else if (station.type === 'tv') {
                 document.getElementById('tv-interface').classList.add('active');
                 selectChannel(0);
-                gsapLike(camera.position, { x: 5.5, y: 2.5, z: -2 }, 500);
+                gsapLike(camera.position, { x: 5.5, y: 2.5, z: 1.5 }, 500);
             } else if (station.type === 'drums') {
                 document.getElementById('drums-interface').classList.add('active');
-                // Hide player when at drums
                 if (player) player.visible = false;
-                // Camera positioned behind the drums, looking at them like sitting at the throne
                 gsapLike(camera.position, { x: -6, y: 1.8, z: 0.8 }, 500);
                 gsapLike(camera.rotation, { x: -0.2, y: 0, z: 0 }, 500);
             } else if (station.type === 'synth') {
                 document.getElementById('synth-interface').classList.add('active');
-                // Hide player when at synth
                 if (player) player.visible = false;
-                // Camera positioned behind the synth, zoomed out to see full keyboard
-                gsapLike(camera.position, { x: -2.5, y: 2.8, z: -2.5 }, 500);
+                // Positioned behind looking at the keyboard - raised to see buttons
+                gsapLike(camera.position, { x: -2.5, y: 2.5, z: -2.5 }, 500);
                 gsapLike(camera.rotation, { x: -0.5, y: 0, z: 0 }, 500);
+            } else if (station.type === 'instagram') {
+                window.open('https://www.instagram.com/whoisthemetro', '_blank');
+                currentStation = null;
+                return;
+            } else if (station.type === 'bed') {
+                // Lay in bed and stargaze
+                if (player) player.visible = false;
+                document.getElementById('bed-interface').classList.add('active');
+                // Camera centered in room looking straight up at ceiling
+                gsapLike(camera.position, { x: 0, y: 0.8, z: 0 }, 500);
+                setTimeout(() => {
+                    // Positive PI/2 on X axis looks UP toward ceiling
+                    camera.rotation.set(Math.PI / 2, 0, 0);
+                }, 400);
+                startStargazing();
             }
             document.getElementById('interaction-prompt').classList.remove('visible');
         }
@@ -2936,13 +4249,15 @@
         function exitStation() {
             if (!currentStation) return;
             if (currentStation.type === 'tv') document.getElementById('tv-video').src = '';
-            // Show player again when leaving drums or synth
-            if ((currentStation.type === 'drums' || currentStation.type === 'synth') && player) {
+            if ((currentStation.type === 'drums' || currentStation.type === 'synth' || currentStation.type === 'bed') && player) {
                 player.visible = true;
             }
-            // Stop arpeggio when leaving synth
             if (currentStation.type === 'synth') {
                 stopArpeggio();
+            }
+            if (currentStation.type === 'bed') {
+                stopStargazing();
+                document.getElementById('bed-interface').classList.remove('active');
             }
             document.getElementById('computer-interface').classList.remove('active');
             document.getElementById('tv-interface').classList.remove('active');
@@ -3021,6 +4336,16 @@
             
             // Audio reactive lights
             updateAudioReactiveLights();
+            
+            // Stargazing animation
+            if (stargazingActive) {
+                animateStargazing(performance.now() / 1000);
+            }
+            
+            // Animate dancers if music is playing (always, even at stations)
+            if (isPlaying && dancers.length > 0) {
+                animateDancers(performance.now() / 1000);
+            }
             
             if (!gameStarted || currentStation) {
                 renderer.render(scene, camera);
@@ -3132,6 +4457,14 @@
                     newZ + playerRadius > bedCollider.minZ && newZ - playerRadius < bedCollider.maxZ) {
                     canMoveZ = false;
                 }
+            }
+            
+            // Dancer collision
+            if (checkDancerCollision(newX, player.position.z)) {
+                canMoveX = false;
+            }
+            if (checkDancerCollision(player.position.x, newZ)) {
+                canMoveZ = false;
             }
             
             if (newX > -7 && newX < 7 && canMoveX) player.position.x = newX;
