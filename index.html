@@ -328,6 +328,213 @@
             
             #tv-interface { height: 80%; max-height: none; }
         }
+        
+        /* Mobile Touch Controls for Instruments */
+        .mobile-instrument-controls {
+            display: none;
+            position: fixed;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 150;
+            pointer-events: auto;
+        }
+        
+        @media (max-width: 768px) {
+            .mobile-instrument-controls.active { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+        }
+        
+        /* Mobile Piano Keys */
+        .mobile-piano {
+            display: flex;
+            gap: 2px;
+            background: #1a1a1a;
+            padding: 10px;
+            border-radius: 12px;
+            border: 2px solid #ff00ff;
+            box-shadow: 0 0 20px rgba(255,0,255,0.3);
+        }
+        .piano-key {
+            width: 36px;
+            height: 100px;
+            background: linear-gradient(180deg, #f8f8f8, #e0e0e0);
+            border: 1px solid #888;
+            border-radius: 0 0 6px 6px;
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            padding-bottom: 8px;
+            font-size: 10px;
+            color: #333;
+            font-weight: bold;
+            touch-action: manipulation;
+            user-select: none;
+        }
+        .piano-key.black {
+            width: 28px;
+            height: 65px;
+            background: linear-gradient(180deg, #2a2a2a, #1a1a1a);
+            color: #aaa;
+            margin: 0 -14px;
+            z-index: 1;
+            border-radius: 0 0 4px 4px;
+        }
+        .piano-key:active, .piano-key.pressed {
+            background: linear-gradient(180deg, #00ff88, #00aa55);
+            color: #000;
+        }
+        .piano-key.black:active, .piano-key.black.pressed {
+            background: linear-gradient(180deg, #00cc66, #008844);
+        }
+        
+        .piano-options {
+            display: flex;
+            gap: 8px;
+            margin-top: 5px;
+        }
+        .piano-option-btn {
+            background: #333;
+            color: #fff;
+            border: 2px solid #666;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 11px;
+            font-weight: bold;
+            touch-action: manipulation;
+        }
+        .piano-option-btn.active {
+            background: #ff00ff;
+            border-color: #ff66ff;
+            color: #fff;
+        }
+        
+        /* Mobile Drum Pads */
+        .mobile-drums {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+            background: #1a1a1a;
+            padding: 12px;
+            border-radius: 12px;
+            border: 2px solid #ff6600;
+            box-shadow: 0 0 20px rgba(255,102,0,0.3);
+        }
+        .drum-pad {
+            width: 65px;
+            height: 65px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            font-weight: bold;
+            color: #fff;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+            touch-action: manipulation;
+            user-select: none;
+            border: 2px solid rgba(255,255,255,0.2);
+        }
+        .drum-pad:active, .drum-pad.pressed {
+            transform: scale(0.95);
+            filter: brightness(1.3);
+        }
+        .drum-pad.kick { background: linear-gradient(135deg, #ff3366, #cc0033); }
+        .drum-pad.snare { background: linear-gradient(135deg, #ffaa00, #cc7700); }
+        .drum-pad.hihat { background: linear-gradient(135deg, #00ccff, #0088aa); }
+        .drum-pad.tom1 { background: linear-gradient(135deg, #aa00ff, #7700aa); }
+        .drum-pad.tom2 { background: linear-gradient(135deg, #ff00aa, #aa0077); }
+        .drum-pad.crash1 { background: linear-gradient(135deg, #00ff88, #00aa55); }
+        .drum-pad.crash2 { background: linear-gradient(135deg, #88ff00, #55aa00); }
+        .drum-pad.ride { background: linear-gradient(135deg, #ffff00, #aaaa00); }
+        
+        .drum-preset-selector {
+            display: flex;
+            gap: 6px;
+            margin-top: 8px;
+        }
+        .drum-preset-btn {
+            background: #333;
+            color: #aaa;
+            border: 2px solid #555;
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 9px;
+            font-weight: bold;
+        }
+        .drum-preset-btn.active {
+            background: #ff6600;
+            border-color: #ff8833;
+            color: #fff;
+        }
+        
+        /* Better Enter/Exit Buttons */
+        .station-action-btn {
+            position: fixed;
+            width: 70px;
+            height: 70px;
+            border-radius: 50%;
+            font-size: 14px;
+            font-weight: bold;
+            border: 3px solid;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 200;
+            touch-action: manipulation;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        #enter-station-btn {
+            bottom: 100px;
+            right: 20px;
+            background: linear-gradient(135deg, #00ff88, #00aa55);
+            border-color: #00ff88;
+            color: #000;
+        }
+        #enter-station-btn.visible { display: flex; }
+        
+        #exit-station-btn {
+            bottom: 20px;
+            right: 20px;
+            background: linear-gradient(135deg, #ff4444, #aa0000);
+            border-color: #ff4444;
+            color: #fff;
+        }
+        #exit-station-btn.visible { display: flex; }
+        
+        @media (min-width: 769px) {
+            #enter-station-btn, #exit-station-btn { display: none !important; }
+        }
+        
+        @media (max-width: 768px) {
+            #controls-hint { display: none; }
+            #mobile-controls { display: block; }
+            .mobile-buttons { 
+                display: flex; 
+                gap: 10px;
+                position: fixed;
+                bottom: 15px;
+                left: 15px;
+            }
+            .mobile-btn {
+                width: 50px;
+                height: 50px;
+                border-radius: 50%;
+                background: rgba(0,0,0,0.7);
+                border: 2px solid #00ff88;
+                color: #00ff88;
+                font-size: 18px;
+                font-weight: bold;
+            }
+            .mobile-btn.exit-btn {
+                border-color: #ff4444;
+                color: #ff4444;
+            }
+            /* Hide old mobile buttons when in station */
+            .in-station .mobile-buttons { opacity: 0.3; }
+        }
     </style>
 </head>
 <body>
@@ -424,6 +631,55 @@
                 <button class="close-btn" id="bed-close-btn"></button>
             </div>
             <div class="bed-info">Relax and watch the stars... Press ESC to get up</div>
+        </div>
+        
+        <!-- Mobile Enter/Exit Buttons -->
+        <button id="enter-station-btn" class="station-action-btn">Enter</button>
+        <button id="exit-station-btn" class="station-action-btn">Exit</button>
+        
+        <!-- Mobile Piano Controls -->
+        <div id="mobile-synth-controls" class="mobile-instrument-controls">
+            <div class="mobile-piano">
+                <div class="piano-key" data-note="0">C</div>
+                <div class="piano-key black" data-note="1">C#</div>
+                <div class="piano-key" data-note="2">D</div>
+                <div class="piano-key black" data-note="3">D#</div>
+                <div class="piano-key" data-note="4">E</div>
+                <div class="piano-key" data-note="5">F</div>
+                <div class="piano-key black" data-note="6">F#</div>
+                <div class="piano-key" data-note="7">G</div>
+                <div class="piano-key black" data-note="8">G#</div>
+                <div class="piano-key" data-note="9">A</div>
+                <div class="piano-key black" data-note="10">A#</div>
+                <div class="piano-key" data-note="11">B</div>
+                <div class="piano-key" data-note="12">C</div>
+            </div>
+            <div class="piano-options">
+                <button class="piano-option-btn" id="chord-mode-btn">CHORDS</button>
+                <button class="piano-option-btn" id="octave-down-btn">OCT -</button>
+                <button class="piano-option-btn" id="octave-up-btn">OCT +</button>
+                <button class="piano-option-btn" id="sound-cycle-btn">SOUND</button>
+            </div>
+        </div>
+        
+        <!-- Mobile Drum Pads -->
+        <div id="mobile-drum-controls" class="mobile-instrument-controls">
+            <div class="mobile-drums">
+                <div class="drum-pad kick" data-drum="kick">KICK</div>
+                <div class="drum-pad snare" data-drum="snare">SNARE</div>
+                <div class="drum-pad hihat" data-drum="hihat">HI-HAT</div>
+                <div class="drum-pad tom1" data-drum="tom1">TOM 1</div>
+                <div class="drum-pad tom2" data-drum="tom2">TOM 2</div>
+                <div class="drum-pad crash1" data-drum="crash1">CRASH</div>
+                <div class="drum-pad crash2" data-drum="crash2">CRASH 2</div>
+                <div class="drum-pad ride" data-drum="ride">RIDE</div>
+            </div>
+            <div class="drum-preset-selector">
+                <button class="drum-preset-btn active" data-preset="0">ACOUSTIC</button>
+                <button class="drum-preset-btn" data-preset="1">ELECTRO</button>
+                <button class="drum-preset-btn" data-preset="2">808</button>
+                <button class="drum-preset-btn" data-preset="3">LOFI</button>
+            </div>
         </div>
     </div>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -3331,6 +3587,7 @@
             // MUSIC PLAYER CONTROLS - Add touch handlers
             // ========================================
             setupMusicPlayerTouch();
+            setupMobileInstrumentControls();
         }
         
         function setupMusicPlayerTouch() {
@@ -3385,6 +3642,172 @@
                 progressBar.addEventListener('click', (e) => {
                     seek(e.clientX);
                 });
+            }
+        }
+        
+        // Mobile instrument controls
+        let chordModeEnabled = false;
+        
+        function setupMobileInstrumentControls() {
+            const isMobile = window.innerWidth <= 768;
+            if (!isMobile) return;
+            
+            // Enter station button
+            const enterBtn = document.getElementById('enter-station-btn');
+            const exitBtn = document.getElementById('exit-station-btn');
+            
+            enterBtn.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                if (nearStation && !currentStation) {
+                    enterStation(nearStation);
+                }
+            });
+            
+            exitBtn.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                if (currentStation) {
+                    exitStation();
+                }
+            });
+            
+            // Piano keys
+            document.querySelectorAll('.piano-key').forEach(key => {
+                const note = parseInt(key.dataset.note);
+                
+                key.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    key.classList.add('pressed');
+                    
+                    if (chordModeEnabled) {
+                        playDiatonicChord(note);
+                    } else {
+                        playSynthSound(note + (synthOctave * 12));
+                    }
+                });
+                
+                key.addEventListener('touchend', () => {
+                    key.classList.remove('pressed');
+                });
+            });
+            
+            // Chord mode toggle
+            document.getElementById('chord-mode-btn').addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                chordModeEnabled = !chordModeEnabled;
+                e.target.classList.toggle('active', chordModeEnabled);
+            });
+            
+            // Octave buttons
+            document.getElementById('octave-down-btn').addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                synthOctave = Math.max(synthOctave - 1, -2);
+                updateSynthDisplay();
+            });
+            
+            document.getElementById('octave-up-btn').addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                synthOctave = Math.min(synthOctave + 1, 2);
+                updateSynthDisplay();
+            });
+            
+            // Sound cycle button
+            document.getElementById('sound-cycle-btn').addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                synthSoundType = (synthSoundType + 1) % 4;
+                const colors = [0xff6600, 0x00ff66, 0x6600ff, 0xff0066];
+                if (soundButtonLight) soundButtonLight.material.color.setHex(colors[synthSoundType]);
+                updateSynthDisplay();
+            });
+            
+            // Drum pads
+            document.querySelectorAll('.drum-pad').forEach(pad => {
+                pad.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    pad.classList.add('pressed');
+                    playDrumSound(pad.dataset.drum);
+                });
+                
+                pad.addEventListener('touchend', () => {
+                    pad.classList.remove('pressed');
+                });
+            });
+            
+            // Drum preset buttons
+            document.querySelectorAll('.drum-preset-btn').forEach(btn => {
+                btn.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    document.querySelectorAll('.drum-preset-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    drumPreset = parseInt(btn.dataset.preset);
+                });
+            });
+        }
+        
+        function playDiatonicChord(rootNote) {
+            // Diatonic chord: 1, 3, 5, 7 based on scale degree
+            const majorScale = [0, 2, 4, 5, 7, 9, 11]; // C major intervals
+            const scaleIndex = majorScale.indexOf(rootNote % 12);
+            
+            if (scaleIndex === -1) {
+                // Not in major scale, just play the note
+                playSynthSound(rootNote + (synthOctave * 12));
+                return;
+            }
+            
+            // Determine chord quality based on scale degree
+            // I, IV, V = major, ii, iii, vi = minor, vii = diminished
+            const chordQualities = [
+                [0, 4, 7, 11],  // I - major 7
+                [0, 3, 7, 10],  // ii - minor 7
+                [0, 3, 7, 10],  // iii - minor 7
+                [0, 4, 7, 11],  // IV - major 7
+                [0, 4, 7, 10],  // V - dominant 7
+                [0, 3, 7, 10],  // vi - minor 7
+                [0, 3, 6, 10],  // vii - half-dim
+            ];
+            
+            const chord = chordQualities[scaleIndex];
+            const baseNote = rootNote + (synthOctave * 12);
+            
+            // Play all chord notes
+            chord.forEach((interval, i) => {
+                setTimeout(() => {
+                    playSynthSound(baseNote + interval);
+                }, i * 20); // Slight strum effect
+            });
+        }
+        
+        function showMobileInstrumentControls(type) {
+            const isMobile = window.innerWidth <= 768;
+            if (!isMobile) return;
+            
+            document.getElementById('mobile-synth-controls').classList.remove('active');
+            document.getElementById('mobile-drum-controls').classList.remove('active');
+            document.getElementById('enter-station-btn').classList.remove('visible');
+            document.getElementById('exit-station-btn').classList.add('visible');
+            
+            if (type === 'synth') {
+                document.getElementById('mobile-synth-controls').classList.add('active');
+            } else if (type === 'drums') {
+                document.getElementById('mobile-drum-controls').classList.add('active');
+            }
+        }
+        
+        function hideMobileInstrumentControls() {
+            document.getElementById('mobile-synth-controls').classList.remove('active');
+            document.getElementById('mobile-drum-controls').classList.remove('active');
+            document.getElementById('exit-station-btn').classList.remove('visible');
+        }
+        
+        function updateMobileEnterButton() {
+            const isMobile = window.innerWidth <= 768;
+            if (!isMobile) return;
+            
+            const enterBtn = document.getElementById('enter-station-btn');
+            if (nearStation && !currentStation) {
+                enterBtn.classList.add('visible');
+            } else {
+                enterBtn.classList.remove('visible');
             }
         }
         
@@ -4209,45 +4632,51 @@
         
         function enterStation(station) {
             currentStation = station;
+            document.body.classList.add('in-station');
+            
             if (station.type === 'computer') {
                 document.getElementById('computer-interface').classList.add('active');
                 gsapLike(camera.position, { x: 0, y: 3, z: -1.5 }, 500);
+                showMobileInstrumentControls('computer');
             } else if (station.type === 'tv') {
                 document.getElementById('tv-interface').classList.add('active');
                 selectChannel(0);
                 gsapLike(camera.position, { x: 5.5, y: 2.5, z: 1.5 }, 500);
+                showMobileInstrumentControls('tv');
             } else if (station.type === 'drums') {
                 document.getElementById('drums-interface').classList.add('active');
                 if (player) player.visible = false;
                 gsapLike(camera.position, { x: -6, y: 1.8, z: 0.8 }, 500);
                 gsapLike(camera.rotation, { x: -0.2, y: 0, z: 0 }, 500);
+                showMobileInstrumentControls('drums');
             } else if (station.type === 'synth') {
                 document.getElementById('synth-interface').classList.add('active');
                 if (player) player.visible = false;
-                // Positioned behind looking at the keyboard - raised to see buttons
                 gsapLike(camera.position, { x: -2.5, y: 2.5, z: -2.5 }, 500);
                 gsapLike(camera.rotation, { x: -0.5, y: 0, z: 0 }, 500);
+                showMobileInstrumentControls('synth');
             } else if (station.type === 'instagram') {
                 window.open('https://www.instagram.com/whoisthemetro', '_blank');
                 currentStation = null;
+                document.body.classList.remove('in-station');
                 return;
             } else if (station.type === 'bed') {
-                // Lay in bed and stargaze
                 if (player) player.visible = false;
                 document.getElementById('bed-interface').classList.add('active');
-                // Camera centered in room looking straight up at ceiling
                 gsapLike(camera.position, { x: 0, y: 0.8, z: 0 }, 500);
                 setTimeout(() => {
-                    // Positive PI/2 on X axis looks UP toward ceiling
                     camera.rotation.set(Math.PI / 2, 0, 0);
                 }, 400);
                 startStargazing();
+                showMobileInstrumentControls('bed');
             }
             document.getElementById('interaction-prompt').classList.remove('visible');
         }
 
         function exitStation() {
             if (!currentStation) return;
+            document.body.classList.remove('in-station');
+            
             if (currentStation.type === 'tv') document.getElementById('tv-video').src = '';
             if ((currentStation.type === 'drums' || currentStation.type === 'synth' || currentStation.type === 'bed') && player) {
                 player.visible = true;
@@ -4263,6 +4692,7 @@
             document.getElementById('tv-interface').classList.remove('active');
             document.getElementById('drums-interface').classList.remove('active');
             document.getElementById('synth-interface').classList.remove('active');
+            hideMobileInstrumentControls();
             gsapLike(camera.position, { x: 0, y: 8, z: 12 }, 500);
             gsapLike(camera.rotation, { x: -0.5, y: 0, z: 0 }, 500);
             currentStation = null;
@@ -4496,13 +4926,16 @@
                 const dist = player.position.distanceTo(station.position);
                 if (dist < station.radius) {
                     nearStation = station;
-                    prompt.textContent = isMobileDevice ? `Tap circle or E - ${station.label}` : `Press E - ${station.label}`;
+                    prompt.textContent = isMobileDevice ? `Tap ENTER - ${station.label}` : `Press E - ${station.label}`;
                     prompt.classList.add('visible');
                 }
                 station.indicator.rotation.z += 0.02;
                 station.indicator.material.opacity = 0.3 + Math.sin(Date.now() * 0.003) * 0.2;
             });
             if (!nearStation) prompt.classList.remove('visible');
+            
+            // Update mobile enter button visibility
+            updateMobileEnterButton();
 
             camera.position.x += (player.position.x - camera.position.x) * 0.05;
             camera.position.z += (player.position.z + 9 - camera.position.z) * 0.05;
