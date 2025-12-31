@@ -207,178 +207,374 @@
         ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
         
         /* ==========================================
-           MOBILE - Complete Rewrite
+           MOBILE - Android & iOS Optimized
            ========================================== */
         
         @media (max-width: 900px), (pointer: coarse) {
+            /* Safe area support for notched phones (iPhone X+, Android with notch) */
+            html {
+                padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+            }
+            
+            /* Prevent overscroll/bounce on iOS */
+            body {
+                overscroll-behavior: none;
+                -webkit-overflow-scrolling: touch;
+                position: fixed;
+                width: 100%;
+                height: 100%;
+            }
+            
+            #game-container {
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+            }
+            
             /* Hide desktop controls */
             #controls-hint { display: none !important; }
             
-            /* Show mobile buttons - centered vertically on right */
-            .mobile-buttons { 
-                display: flex !important;
-            }
+            /* Hide old mobile buttons */
+            .mobile-buttons { display: none !important; }
             
-            /* Music Player Mobile */
+            /* Computer/Desktop Interface - Full screen */
             #computer-interface { 
-                width: 94%; 
-                height: 65%; 
-                max-height: 450px;
-                top: 50%;
-                left: 50%;
-                transform: translate(-50%, -50%);
+                position: fixed !important;
+                top: 0 !important;
+                left: 0 !important;
+                right: 0 !important;
+                bottom: 0 !important;
+                width: 100% !important;
+                height: 100% !important;
+                max-width: none !important;
+                max-height: none !important;
+                transform: none !important;
+                border-radius: 0 !important;
+                border: none !important;
             }
-            #music-player { 
-                flex-direction: column; 
-                padding: 8px; 
-                gap: 6px; 
-            }
-            .screen-header { padding: 10px 12px; }
-            .screen-title { font-size: 11px; }
-            .close-btn { width: 28px; height: 28px; }
             
-            /* Folders horizontal scroll */
-            .player-left { 
-                width: 100%; 
-                max-height: 50px; 
-                overflow-x: auto; 
-                overflow-y: hidden; 
+            /* Desktop icons */
+            .desktop-header {
+                padding: 12px 15px;
+                padding-top: calc(12px + env(safe-area-inset-top));
             }
+            .desktop-icons {
+                padding: 20px 15px;
+                gap: 25px;
+            }
+            .desktop-icon {
+                padding: 15px;
+                min-width: 80px;
+            }
+            .icon-img { font-size: 42px; }
+            .icon-label { font-size: 12px; }
+            .desktop-taskbar {
+                padding-bottom: calc(8px + env(safe-area-inset-bottom));
+            }
+            
+            /* App headers - sticky */
+            .app-header {
+                position: sticky;
+                top: 0;
+                z-index: 10;
+                padding: 12px 15px;
+                padding-top: calc(12px + env(safe-area-inset-top));
+            }
+            .back-btn {
+                padding: 12px 18px;
+                font-size: 14px;
+                min-height: 44px;
+            }
+            .app-title { font-size: 15px; }
+            
+            /* Music Player - Full height, scrollable */
+            #music-player { 
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+                overflow: hidden;
+            }
+            .playlist-container {
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+                overflow: hidden;
+                padding: 10px;
+            }
+            
+            /* Folders - horizontal scroll */
             .playlist-folders { 
-                display: flex; 
-                flex-direction: row;
-                gap: 6px; 
-                padding: 6px; 
-                white-space: nowrap; 
+                display: flex;
+                flex-wrap: nowrap;
+                gap: 8px;
+                padding: 8px;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+                flex-shrink: 0;
             }
             .folder-item { 
-                flex-shrink: 0; 
-                padding: 6px 10px; 
+                flex-shrink: 0;
+                padding: 10px 14px;
+                min-height: 44px;
             }
-            .folder-item .folder-name { font-size: 10px; }
-            .folder-item .folder-icon { font-size: 14px; }
+            .folder-item .folder-name { font-size: 12px; }
+            .folder-item .folder-icon { font-size: 16px; }
             
-            /* Tracks list */
-            .player-right { flex: 1; min-height: 0; overflow: hidden; }
-            .playlist { 
+            /* Playlist - Scrollable */
+            .playlist-scroll {
                 flex: 1;
-                max-height: 90px; 
-                min-height: 50px;
                 overflow-y: auto;
+                -webkit-overflow-scrolling: touch;
+                min-height: 120px;
             }
-            .playlist-item { padding: 8px; }
-            .playlist-item .track-num { font-size: 10px; width: 20px; }
-            .playlist-item .track-info .name { font-size: 11px; }
-            
-            /* Now playing */
-            .now-playing { padding: 8px; gap: 10px; }
-            .now-playing .album-art { width: 40px; height: 40px; font-size: 18px; }
-            .track-info-main .track-title { font-size: 12px; }
-            .track-info-main .track-artist { font-size: 10px; }
-            
-            /* Progress */
-            .progress-container { margin: 4px 0; }
-            .progress-bar { height: 8px; }
-            .time-display { font-size: 9px; margin-top: 3px; }
-            
-            /* Transport controls - bigger for touch */
-            .player-controls { 
-                gap: 20px; 
-                min-height: 60px; 
-                padding: 8px 0;
+            .playlist { 
+                padding: 8px;
             }
-            .control-btn { 
-                width: 44px; 
-                height: 44px; 
-                font-size: 16px; 
+            .playlist-item { 
+                padding: 14px 12px;
+                min-height: 50px;
+                margin-bottom: 6px;
             }
-            .control-btn.play-pause { 
-                width: 54px; 
-                height: 54px; 
+            .playlist-item .track-num { font-size: 12px; width: 25px; }
+            .playlist-item .track-info .name { font-size: 14px; }
+            
+            /* Player bottom - fixed at bottom */
+            .player-bottom {
+                flex-shrink: 0;
+                padding: 12px 15px;
+                padding-bottom: calc(12px + env(safe-area-inset-bottom));
+                background: #1a1a1a;
+                border-top: 1px solid #333;
+            }
+            .now-playing-bar { gap: 12px; }
+            .album-art-small { width: 50px; height: 50px; font-size: 22px; }
+            .track-info-compact .track-title { font-size: 14px; }
+            .track-info-compact .track-artist { font-size: 11px; }
+            
+            /* Player controls - touch friendly */
+            .player-controls-compact { gap: 8px; }
+            .ctrl-btn { 
+                width: 46px; 
+                height: 46px; 
+                font-size: 16px;
+                -webkit-tap-highlight-color: transparent;
+            }
+            .ctrl-btn.play-btn { 
+                width: 56px; 
+                height: 56px; 
                 font-size: 20px; 
             }
             
-            /* TV Interface */
-            #tv-interface { 
-                width: 94%; 
-                height: 50%; 
-                max-height: 350px;
-                top: 50%;
-                transform: translate(-50%, -50%);
+            /* Progress bar */
+            .progress-container { gap: 10px; margin-top: 10px; }
+            .progress-container span { font-size: 11px; }
+            .progress-bar { height: 8px; }
+            
+            /* Game interface */
+            #game-container-inner {
+                touch-action: none;
             }
-            .tv-controls { padding: 8px; gap: 6px; }
-            .channel-btn { padding: 8px 12px; font-size: 10px; }
+            #game-ui {
+                top: calc(10px + env(safe-area-inset-top));
+            }
+            #game-score, #game-lives {
+                padding: 10px 15px;
+                font-size: 13px;
+            }
+            .game-title, .game-over-title { font-size: 26px; }
+            .game-desc { font-size: 14px; padding: 0 25px; line-height: 1.6; }
+            #start-game-btn, #restart-game-btn {
+                padding: 18px 45px;
+                font-size: 18px;
+                min-height: 56px;
+            }
+            
+            /* Video gallery */
+            .video-grid {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 12px;
+                padding: 12px;
+                padding-bottom: calc(12px + env(safe-area-inset-bottom));
+            }
+            .video-thumb-title { font-size: 11px; padding: 8px; }
+            #close-video-btn {
+                padding: 16px;
+                font-size: 16px;
+                min-height: 54px;
+                padding-bottom: calc(16px + env(safe-area-inset-bottom));
+            }
+            
+            /* TV/Couch Interface - Full screen */
+            #tv-interface { 
+                padding: 15px;
+                padding-top: calc(15px + env(safe-area-inset-top));
+                padding-bottom: calc(15px + env(safe-area-inset-bottom));
+            }
+            .couch-view {
+                width: 100%;
+                height: 100%;
+                max-width: none;
+            }
+            .tv-frame {
+                flex: 1;
+                max-height: 55vh;
+            }
+            .couch-remote {
+                flex-shrink: 0;
+                padding: 12px;
+                gap: 10px;
+            }
+            .channel-btn {
+                padding: 12px 16px;
+                font-size: 12px;
+                min-height: 44px;
+            }
+            .remote-btn.exit-couch {
+                padding: 12px 24px;
+            }
             
             /* Drums/Synth headers */
             #drums-interface, #synth-interface { 
-                top: 10px; 
-                padding: 8px 12px; 
-                max-width: 85%; 
+                top: calc(10px + env(safe-area-inset-top));
+                padding: 10px 15px;
+                max-width: 92%;
+                left: 50%;
+                transform: translateX(-50%);
             }
-            .drums-title, .synth-title { font-size: 14px; }
-            .drums-info, .synth-info { font-size: 9px; }
-            .drums-header, .synth-header { gap: 10px; }
+            .drums-title, .synth-title { font-size: 15px; }
+            .drums-info, .synth-info { font-size: 10px; line-height: 1.4; }
+            
+            /* Bed interface */
+            #bed-interface {
+                bottom: calc(20px + env(safe-area-inset-bottom));
+            }
+            
+            /* Interaction prompt */
+            #interaction-prompt {
+                bottom: calc(100px + env(safe-area-inset-bottom));
+                font-size: 15px;
+                padding: 14px 24px;
+            }
             
             /* Secret Modal */
             .secret-content { 
-                padding: 18px; 
-                width: 88%;
-                max-width: 300px;
+                padding: 20px;
+                width: 90%;
+                max-width: 320px;
             }
-            .secret-icon { font-size: 30px; margin-bottom: 10px; }
-            .secret-title { font-size: 17px; margin-bottom: 12px; }
-            .secret-question { font-size: 12px; margin-bottom: 12px; }
-            #secret-answer { padding: 10px; font-size: 14px; }
-            .secret-buttons button { padding: 10px 16px; font-size: 12px; }
+            .secret-icon { font-size: 36px; margin-bottom: 12px; }
+            .secret-title { font-size: 18px; margin-bottom: 14px; }
+            .secret-question { font-size: 13px; margin-bottom: 14px; }
+            #secret-answer { padding: 14px; font-size: 16px; }
+            .secret-buttons button { padding: 14px 20px; font-size: 14px; min-height: 48px; }
+            
+            /* Loading screen */
+            .loading-text { font-size: 28px; }
+            .enter-btn { 
+                padding: 18px 50px; 
+                font-size: 18px;
+                min-height: 56px;
+            }
+        }
+        
+        /* Small phones (iPhone SE, small Androids < 375px) */
+        @media (max-width: 375px) {
+            .desktop-icons { gap: 18px; }
+            .desktop-icon { min-width: 70px; }
+            .icon-img { font-size: 36px; }
+            .icon-label { font-size: 10px; }
+            
+            .folder-item { padding: 8px 12px; }
+            .playlist-item { padding: 12px 10px; }
+            .playlist-item .track-info .name { font-size: 13px; }
+            
+            .ctrl-btn { width: 42px; height: 42px; font-size: 14px; }
+            .ctrl-btn.play-btn { width: 50px; height: 50px; font-size: 18px; }
+            
+            .video-grid { grid-template-columns: 1fr; }
+            
+            .channel-btn { padding: 10px 14px; font-size: 11px; }
+            
+            .game-title, .game-over-title { font-size: 22px; }
+            .game-desc { font-size: 13px; }
         }
         
         /* Portrait specific */
         @media (max-width: 500px) and (orientation: portrait) {
-            #computer-interface { 
-                height: 60%; 
-                max-height: 400px;
+            .playlist-scroll {
+                max-height: 40vh;
             }
-            .playlist { max-height: 70px; }
-            .player-controls { gap: 15px; min-height: 50px; }
-            .control-btn { width: 40px; height: 40px; font-size: 14px; }
-            .control-btn.play-pause { width: 50px; height: 50px; font-size: 18px; }
+            .tv-frame {
+                max-height: 50vh;
+            }
         }
         
         /* Landscape specific */
         @media (orientation: landscape) and (max-height: 500px) {
-            #computer-interface { 
-                height: 85%; 
-                max-height: none;
+            /* Music app in landscape */
+            #music-player {
+                flex-direction: row;
             }
-            #music-player { flex-direction: row; }
-            .player-left { 
-                width: 100px; 
-                max-height: none;
-                overflow-y: auto;
-                overflow-x: hidden;
+            .playlist-container {
+                flex: 1;
             }
-            .playlist-folders { flex-direction: column; }
-            .playlist { max-height: 60px; }
-            .player-controls { gap: 10px; min-height: 40px; }
-            .control-btn { width: 32px; height: 32px; font-size: 12px; }
-            .control-btn.play-pause { width: 40px; height: 40px; font-size: 16px; }
+            .player-bottom {
+                width: 180px;
+                flex-shrink: 0;
+                flex-direction: column;
+                justify-content: center;
+                padding: 10px;
+            }
+            .now-playing-bar {
+                flex-direction: column;
+                text-align: center;
+                gap: 8px;
+            }
+            .player-controls-compact {
+                justify-content: center;
+            }
             
-            #tv-interface { height: 80%; max-height: none; }
+            /* Game in landscape */
+            #game-ui { top: 5px; }
+            #game-score, #game-lives { padding: 6px 12px; font-size: 11px; }
+            
+            /* TV in landscape */
+            .couch-view {
+                flex-direction: row;
+                gap: 10px;
+            }
+            .tv-frame {
+                flex: 1;
+                max-height: none;
+            }
+            .couch-remote {
+                width: 130px;
+                flex-direction: column;
+                overflow-y: auto;
+            }
         }
         
         /* Mobile Touch Controls for Instruments */
         .mobile-instrument-controls {
             display: none;
             position: fixed;
-            bottom: 80px;
+            bottom: calc(80px + env(safe-area-inset-bottom));
             left: 50%;
             transform: translateX(-50%);
             z-index: 150;
             pointer-events: auto;
+            max-width: 95vw;
         }
         
         @media (max-width: 768px) {
-            .mobile-instrument-controls.active { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+            .mobile-instrument-controls.active { 
+                display: flex; 
+                flex-direction: column; 
+                align-items: center; 
+                gap: 10px; 
+            }
         }
         
         /* Mobile Piano Keys */
@@ -386,33 +582,38 @@
             display: flex;
             gap: 2px;
             background: #1a1a1a;
-            padding: 10px;
+            padding: 8px;
             border-radius: 12px;
             border: 2px solid #ff00ff;
             box-shadow: 0 0 20px rgba(255,0,255,0.3);
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            max-width: 100%;
         }
         .piano-key {
-            width: 36px;
-            height: 100px;
+            width: 32px;
+            height: 90px;
             background: linear-gradient(180deg, #f8f8f8, #e0e0e0);
             border: 1px solid #888;
             border-radius: 0 0 6px 6px;
             display: flex;
             align-items: flex-end;
             justify-content: center;
-            padding-bottom: 8px;
-            font-size: 10px;
+            padding-bottom: 6px;
+            font-size: 9px;
             color: #333;
             font-weight: bold;
             touch-action: manipulation;
             user-select: none;
+            flex-shrink: 0;
+            -webkit-tap-highlight-color: transparent;
         }
         .piano-key.black {
-            width: 28px;
-            height: 65px;
+            width: 24px;
+            height: 58px;
             background: linear-gradient(180deg, #2a2a2a, #1a1a1a);
             color: #aaa;
-            margin: 0 -14px;
+            margin: 0 -12px;
             z-index: 1;
             border-radius: 0 0 4px 4px;
         }
@@ -426,18 +627,22 @@
         
         .piano-options {
             display: flex;
-            gap: 8px;
+            gap: 6px;
             margin-top: 5px;
+            flex-wrap: wrap;
+            justify-content: center;
         }
         .piano-option-btn {
             background: #333;
             color: #fff;
             border: 2px solid #666;
-            padding: 8px 12px;
+            padding: 10px 14px;
             border-radius: 8px;
             font-size: 11px;
             font-weight: bold;
             touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+            min-height: 44px;
         }
         .piano-option-btn.active {
             background: #ff00ff;
@@ -449,27 +654,29 @@
         .mobile-drums {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
-            gap: 8px;
+            gap: 6px;
             background: #1a1a1a;
-            padding: 12px;
+            padding: 10px;
             border-radius: 12px;
             border: 2px solid #ff6600;
             box-shadow: 0 0 20px rgba(255,102,0,0.3);
+            max-width: 300px;
         }
         .drum-pad {
-            width: 65px;
-            height: 65px;
+            width: 60px;
+            height: 60px;
             border-radius: 10px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 10px;
+            font-size: 9px;
             font-weight: bold;
             color: #fff;
             text-shadow: 0 1px 2px rgba(0,0,0,0.5);
             touch-action: manipulation;
             user-select: none;
             border: 2px solid rgba(255,255,255,0.2);
+            -webkit-tap-highlight-color: transparent;
         }
         .drum-pad:active, .drum-pad.pressed {
             transform: scale(0.95);
@@ -486,22 +693,34 @@
         
         .drum-preset-selector {
             display: flex;
-            gap: 6px;
+            gap: 4px;
             margin-top: 8px;
+            flex-wrap: wrap;
+            justify-content: center;
         }
         .drum-preset-btn {
             background: #333;
             color: #aaa;
             border: 2px solid #555;
-            padding: 6px 10px;
+            padding: 8px 10px;
             border-radius: 6px;
             font-size: 9px;
             font-weight: bold;
+            -webkit-tap-highlight-color: transparent;
+            min-height: 36px;
         }
         .drum-preset-btn.active {
             background: #ff6600;
             border-color: #ff8833;
             color: #fff;
+        }
+        
+        /* Small phones - smaller controls */
+        @media (max-width: 375px) {
+            .mobile-drums { max-width: 260px; }
+            .drum-pad { width: 55px; height: 55px; font-size: 8px; }
+            .piano-key { width: 28px; height: 80px; }
+            .piano-key.black { width: 20px; height: 50px; margin: 0 -10px; }
         }
         
         /* Better Enter/Exit Buttons */
@@ -510,7 +729,7 @@
             width: 70px;
             height: 70px;
             border-radius: 50%;
-            font-size: 14px;
+            font-size: 13px;
             font-weight: bold;
             border: 3px solid;
             display: none;
@@ -521,10 +740,11 @@
             box-shadow: 0 4px 15px rgba(0,0,0,0.4);
             text-transform: uppercase;
             letter-spacing: 1px;
+            -webkit-tap-highlight-color: transparent;
         }
         
         #enter-station-btn {
-            bottom: 100px;
+            bottom: calc(100px + env(safe-area-inset-bottom));
             right: 20px;
             background: linear-gradient(135deg, #00ff88, #00aa55);
             border-color: #00ff88;
@@ -533,7 +753,7 @@
         #enter-station-btn.visible { display: flex; }
         
         #exit-station-btn {
-            bottom: 20px;
+            bottom: calc(20px + env(safe-area-inset-bottom));
             right: 20px;
             background: linear-gradient(135deg, #ff4444, #aa0000);
             border-color: #ff4444;
@@ -548,29 +768,15 @@
         @media (max-width: 768px) {
             #controls-hint { display: none; }
             #mobile-controls { display: block; }
-            .mobile-buttons { 
-                display: flex; 
-                gap: 10px;
-                position: fixed;
-                bottom: 15px;
-                left: 15px;
+        }
+        
+        /* Small phones - smaller buttons */
+        @media (max-width: 375px) {
+            .station-action-btn {
+                width: 60px;
+                height: 60px;
+                font-size: 11px;
             }
-            .mobile-btn {
-                width: 50px;
-                height: 50px;
-                border-radius: 50%;
-                background: rgba(0,0,0,0.7);
-                border: 2px solid #00ff88;
-                color: #00ff88;
-                font-size: 18px;
-                font-weight: bold;
-            }
-            .mobile-btn.exit-btn {
-                border-color: #ff4444;
-                color: #ff4444;
-            }
-            /* Hide old mobile buttons when in station */
-            .in-station .mobile-buttons { opacity: 0.3; }
         }
     </style>
 </head>
@@ -3107,18 +3313,6 @@
             scene.add(indicator1);
             computerStation.indicator = indicator1;
             stations.push(computerStation);
-
-            // TV station - right in front of the TV
-            // Couch station - sit and watch TV
-            const tvStation = { position: new THREE.Vector3(5.5, 0, 1), radius: 1.5, type: 'tv', label: 'Couch - Watch TV' };
-            const indicator2 = new THREE.Mesh(indicatorGeo.clone(), indicatorMat.clone());
-            indicator2.material.color.setHex(0x00aaff);
-            indicator2.rotation.x = -Math.PI / 2;
-            indicator2.position.copy(tvStation.position);
-            indicator2.position.y = 0.05;
-            scene.add(indicator2);
-            tvStation.indicator = indicator2;
-            stations.push(tvStation);
             
             // Drum station - near the drums
             const drumStation = { position: new THREE.Vector3(-6, 0, -1.5), radius: 1.3, type: 'drums', label: 'Drums - Play Beats' };
