@@ -1,0 +1,6 @@
+# macOS noise
+.DS_Store
+
+# Original full-resolution photos — only the optimized thumbs in
+# assets/photos/ are deployed. Keep originals local.
+assets/Pics for Website/
