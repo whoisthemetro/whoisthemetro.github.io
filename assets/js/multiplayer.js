@@ -128,9 +128,13 @@ window.METRO_MP = (function () {
       if (msg.t === "drum") {
         A.remote.drum(msg.n, msg.v || 100);
         emit("remoteDrum", { name: msg.n, velocity: msg.v || 100 });
+      } else if (msg.t === "noteOn") {
+        A.remote.noteOn(msg.m, msg.v || 100);
+      } else if (msg.t === "noteOff") {
+        A.remote.noteOff(msg.m);
       } else if (msg.t === "note") {
+        // legacy: one-shot note (kept for back-compat with older client)
         A.remote.note(msg.m, msg.d || 0.5, msg.v || 100);
-        emit("remoteNote", { midi: msg.m, velocity: msg.v || 100 });
       } else if (msg.t === "pose") {
         _remotePose = { x: msg.x, z: msg.z, yaw: msg.yaw, valid: true };
         emit("remotePose", _remotePose);
@@ -159,9 +163,11 @@ window.METRO_MP = (function () {
   return {
     init: () => loadPeerJS(),
     host, join, leave,
-    sendDrum: (name, vel = 100) => send({ t: "drum", n: name, v: vel }),
-    sendNote: (midi, dur = 0.5, vel = 100) => send({ t: "note", m: midi, d: dur, v: vel }),
-    sendPose: (x, z, yaw) => send({ t: "pose", x, z, yaw }),
+    sendDrum:    (name, vel = 100)         => send({ t: "drum",    n: name, v: vel }),
+    sendNoteOn:  (midi, vel = 100)         => send({ t: "noteOn",  m: midi, v: vel }),
+    sendNoteOff: (midi)                    => send({ t: "noteOff", m: midi }),
+    sendNote:    (midi, dur = 0.5, vel = 100) => send({ t: "note", m: midi, d: dur, v: vel }), // legacy
+    sendPose:    (x, z, yaw)               => send({ t: "pose", x, z, yaw }),
     onConnected: (fn) => { listeners.connected.add(fn); return () => listeners.connected.delete(fn); },
     onDisconnected: (fn) => { listeners.disconnected.add(fn); return () => listeners.disconnected.delete(fn); },
     onStatus: (fn) => { listeners.status.add(fn); return () => listeners.status.delete(fn); },

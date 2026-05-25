@@ -373,6 +373,7 @@
 
     // ----- MULTIPLAYER PANEL -----
     wireMultiplayer();
+    wireMidiPanel();
   });
 
   function wireMultiplayer() {
@@ -456,5 +457,80 @@
       hostCode.style.display = "none";
       joinInput.style.display = "none";
     });
+  }
+
+  function wireMidiPanel() {
+    const M = window.METRO_MIDI;
+    if (!M) return;
+    const btn = $("#midi-btn");
+    const panel = $("#midi-panel");
+    const list = $("#midi-list");
+    const status = $("#midi-status");
+
+    btn.addEventListener("click", () => {
+      panel.classList.toggle("show");
+      // first time opening: try to init (gesture-driven)
+      if (!M.isReady()) M.init();
+    });
+
+    function render(payload) {
+      const devices = payload?.devices || M.devices();
+      list.innerHTML = "";
+      if (!M.isReady()) {
+        if (payload?.status === "unsupported") {
+          status.textContent = "WEB MIDI NOT SUPPORTED IN THIS BROWSER";
+          status.className = "status err";
+        } else if (payload?.status === "denied") {
+          status.textContent = "MIDI ACCESS DENIED";
+          status.className = "status err";
+        } else {
+          status.textContent = "CLICK ANY INSTRUMENT TO ENABLE MIDI";
+          status.className = "status";
+        }
+        list.innerHTML = '<div class="empty">MIDI NOT INITIALIZED</div>';
+        btn.classList.remove("connected");
+        return;
+      }
+      if (!devices.length) {
+        list.innerHTML = '<div class="empty">NO MIDI DEVICES DETECTED</div>';
+        status.textContent = "PLUG IN A CONTROLLER, THEN REOPEN THIS PANEL";
+        status.className = "status";
+        btn.classList.remove("connected");
+        return;
+      }
+      btn.classList.add("connected");
+      status.textContent = `${devices.length} DEVICE${devices.length > 1 ? "S" : ""} CONNECTED`;
+      status.className = "status ok";
+
+      devices.forEach(d => {
+        const row = create("div", { class: "device" },
+          create("div", { class: "name" },
+            d.name || "Unknown device",
+            d.manufacturer ? create("span", { class: "mfr" }, d.manufacturer) : null
+          ),
+          (() => {
+            const routes = create("div", { class: "routes" });
+            const modes = [
+              { id: "auto",  label: "AUTO" },
+              { id: "keys",  label: "KEYS" },
+              { id: "drums", label: "DRUMS" },
+            ];
+            modes.forEach(m => {
+              const b = create("button", {
+                class: d.mode === m.id ? "on" : "",
+                onclick: () => M.setMode(d.id, m.id),
+              }, m.label);
+              routes.appendChild(b);
+            });
+            return routes;
+          })()
+        );
+        list.appendChild(row);
+      });
+    }
+
+    M.onEvent(render);
+    // initial render in case MIDI was already initialized before panel opened
+    render();
   }
 })();

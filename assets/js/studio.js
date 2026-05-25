@@ -111,20 +111,43 @@ window.METRO_STUDIO = (function () {
       pitch -= e.movementY * TURN_SPEED;
       pitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, pitch));
     }
-    function onCanvasClick() {
-      if (!pointerLocked) renderer.domElement.requestPointerLock?.();
-      else tryInteract();
+    // Track held interactable across mousedown/mouseup so we can release
+    // sustaining notes when the mouse button comes back up.
+    let heldInteractable = null;
+
+    function onCanvasMouseDown(e) {
+      if (e.button !== 0) return;
+      if (!pointerLocked) { renderer.domElement.requestPointerLock?.(); return; }
+      if (!hovered) return;
+      heldInteractable = hovered;
+      if (hovered.beginHold) hovered.beginHold();
+      else hovered.action();
+      if (hovered.onHit) hovered.onHit();
+    }
+    function onMouseUp(e) {
+      if (e.button !== 0) return;
+      if (heldInteractable && heldInteractable.endHold) heldInteractable.endHold();
+      heldInteractable = null;
     }
     function onPointerLockChange() {
       pointerLocked = document.pointerLockElement === renderer.domElement;
     }
-    renderer.domElement.addEventListener("click", onCanvasClick);
-    document.addEventListener("pointerlockchange", onPointerLockChange);
+    renderer.domElement.addEventListener("mousedown", onCanvasMouseDown);
+    window.addEventListener("mouseup", onMouseUp);
+    // If pointer lock is lost while holding, release the note
+    document.addEventListener("pointerlockchange", () => {
+      onPointerLockChange();
+      if (!pointerLocked && heldInteractable && heldInteractable.endHold) {
+        heldInteractable.endHold();
+        heldInteractable = null;
+      }
+    });
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("keydown", onKeyDown);
     document.addEventListener("keyup", onKeyUp);
 
-    renderer.domElement.addEventListener("touchend", (e) => {
+    // Touch: tap starts hold, lift ends hold. Raycast from tap point.
+    renderer.domElement.addEventListener("touchstart", (e) => {
       if (e.changedTouches.length !== 1) return;
       const t = e.changedTouches[0];
       const r = renderer.domElement.getBoundingClientRect();
@@ -132,7 +155,16 @@ window.METRO_STUDIO = (function () {
       const ny = -((t.clientY - r.top)  / r.height) * 2 + 1;
       raycaster.setFromCamera({ x: nx, y: ny }, camera);
       const hit = findInteractableHit(raycaster);
-      if (hit) { hovered = hit; tryInteract(); }
+      if (!hit) return;
+      hovered = hit;
+      heldInteractable = hit;
+      if (hit.beginHold) hit.beginHold();
+      else hit.action();
+      if (hit.onHit) hit.onHit();
+    }, { passive: true });
+    renderer.domElement.addEventListener("touchend", (e) => {
+      if (heldInteractable && heldInteractable.endHold) heldInteractable.endHold();
+      heldInteractable = null;
     }, { passive: true });
 
     function onResize() {
@@ -175,10 +207,16 @@ window.METRO_STUDIO = (function () {
       }
     });
     A.onNote(({ midi, velocity, origin }) => {
-      keyMeshes[midi]?.flash(origin);
+      keyMeshes[midi]?.flashOn(origin);
       synthScreen.repaint();
       if (origin === "local") {
-        window.METRO_MP?.isConnected() && window.METRO_MP.sendNote(midi, 0.5, velocity);
+        window.METRO_MP?.isConnected() && window.METRO_MP.sendNoteOn(midi, velocity);
+      }
+    });
+    A.onNoteOff(({ midi, origin }) => {
+      keyMeshes[midi]?.flashOff();
+      if (origin === "local") {
+        window.METRO_MP?.isConnected() && window.METRO_MP.sendNoteOff(midi);
       }
     });
 
@@ -761,54 +799,6 @@ window.METRO_STUDIO = (function () {
       drumPads.kick = { flash: () => { pulse = 1.0; } };
     }
 
-    // ---------- BRAIN MODULE (Roland PM-16 look-alike) ----------
-    const brainStand = new THREE.Mesh(
-      new THREE.BoxGeometry(0.05, 0.45, 0.05),
-      rackMat
-    );
-    brainStand.position.set(KX - 0.7, KY + 0.45, KZ + 0.85);
-    scene.add(brainStand);
-    const brainStand2 = brainStand.clone();
-    brainStand2.position.x = KX - 0.4;
-    scene.add(brainStand2);
-
-    const brain = new THREE.Mesh(
-      new THREE.BoxGeometry(0.95, 0.28, 0.35),
-      new THREE.MeshStandardMaterial({ color: 0x0c0d10, roughness: 0.5 })
-    );
-    brain.position.set(KX - 0.55, KY + 0.78, KZ + 0.85);
-    brain.rotation.x = -0.25;
-    scene.add(brain);
-
-    // brain LCD: a small canvas texture
-    const bcnv = document.createElement("canvas");
-    bcnv.width = 280; bcnv.height = 80;
-    const bctx = bcnv.getContext("2d");
-    const btex = new THREE.CanvasTexture(bcnv);
-    bctx.fillStyle = "#1a2410"; bctx.fillRect(0, 0, 280, 80);
-    bctx.fillStyle = "#9cff58"; bctx.font = "bold 28px monospace";
-    bctx.fillText("ROLAND PM-16", 10, 32);
-    bctx.font = "16px monospace";
-    bctx.fillText("KIT: 01  METRO V1", 10, 60);
-    btex.needsUpdate = true;
-    const lcd = new THREE.Mesh(
-      new THREE.PlaneGeometry(0.45, 0.12),
-      new THREE.MeshBasicMaterial({ map: btex, toneMapped: false })
-    );
-    lcd.position.set(KX - 0.75, KY + 0.83, KZ + 0.69);
-    lcd.rotation.x = -0.25;
-    scene.add(lcd);
-    // brain buttons (visual)
-    for (let i = 0; i < 8; i++) {
-      const r = Math.floor(i / 4), c = i % 4;
-      const btn = new THREE.Mesh(
-        new THREE.BoxGeometry(0.045, 0.025, 0.045),
-        new THREE.MeshStandardMaterial({ color: 0x222428, roughness: 0.5 })
-      );
-      btn.position.set(KX - 0.35 + c * 0.06, KY + 0.83 - r * 0.07, KZ + 0.70 - r * 0.018);
-      btn.rotation.x = -0.25;
-      scene.add(btn);
-    }
     // amp box on side (decorative)
     const amp = new THREE.Mesh(
       new THREE.BoxGeometry(0.7, 0.9, 0.6),
@@ -863,101 +853,115 @@ window.METRO_STUDIO = (function () {
     const body = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.18, 0.66), synthMat);
     body.position.set(KX, KY + 0.14, KZ); scene.add(body);
 
-    // ----- SLANTED CONTROL PANEL (above keys, tilted up toward player) -----
-    const panelTilt = Math.PI / 4.5; // ~40deg up
+    // ----- BACK PANEL (vertical control surface that faces the player) -----
+    // Rises behind the keybed at chest-to-face height. Slight backward lean
+    // keeps it ergonomic without obscuring the screen at a standing distance.
     const panel = new THREE.Group();
-    panel.position.set(KX, KY + 0.36, KZ - 0.30);
-    panel.rotation.x = -panelTilt;
+    panel.position.set(KX, KY + 0.55, KZ - 0.30);  // chest height, behind keys
+    panel.rotation.x = -Math.PI / 18;              // ~10° lean back at the top
     scene.add(panel);
 
+    // Panel slab — wide, ~60cm tall, thin in depth. Faces +Z (toward player).
     const panelBody = new THREE.Mesh(
-      new THREE.BoxGeometry(3.2, 0.04, 0.50),
+      new THREE.BoxGeometry(3.2, 0.62, 0.04),
       new THREE.MeshStandardMaterial({ color: 0x0a0c12, roughness: 0.4, metalness: 0.4 })
     );
     panel.add(panelBody);
 
-    // LCD screen (canvas texture)
+    // Two support struts going down to the keybed for visual support
+    const strutMat = new THREE.MeshStandardMaterial({ color: 0x0a0c12, roughness: 0.5 });
+    function strut(x) {
+      const s = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.30, 0.04), strutMat);
+      s.position.set(x, -0.31 - 0.15, 0); // dangle below the back panel
+      panel.add(s);
+    }
+    strut(-1.45); strut(1.45);
+
+    // ----- LCD (faces +Z, player-facing) -----
     const scnv = document.createElement("canvas");
-    scnv.width = 720; scnv.height = 150;
+    scnv.width = 720; scnv.height = 240;
     const sctx = scnv.getContext("2d");
     const stex = new THREE.CanvasTexture(scnv);
     stex.encoding = THREE.sRGBEncoding;
 
     const lcd = new THREE.Mesh(
-      new THREE.PlaneGeometry(1.4, 0.3),
+      new THREE.PlaneGeometry(1.50, 0.36),
       new THREE.MeshBasicMaterial({ map: stex, toneMapped: false })
     );
-    lcd.position.set(0, 0.025, -0.04);
-    lcd.rotation.x = -Math.PI/2;
+    lcd.position.set(0, 0.12, 0.025);  // upper half of panel, just in front of slab
     panel.add(lcd);
 
-    // LCD bezel
+    // LCD bezel (raised border around the screen)
     const bezel = new THREE.Mesh(
-      new THREE.BoxGeometry(1.46, 0.025, 0.35),
+      new THREE.BoxGeometry(1.58, 0.42, 0.018),
       new THREE.MeshStandardMaterial({ color: 0x05060a, roughness: 0.6 })
     );
-    bezel.position.set(0, 0.014, -0.04);
+    bezel.position.set(0, 0.12, 0.014);
     panel.add(bezel);
 
     function paintLcd() {
       const W = sctx.canvas.width, H = sctx.canvas.height;
       sctx.fillStyle = "#0a1416"; sctx.fillRect(0, 0, W, H);
-      // grid
+      // scanline grid
       sctx.strokeStyle = "#0e2628"; sctx.lineWidth = 1;
       for (let x = 0; x < W; x += 20) { sctx.beginPath(); sctx.moveTo(x, 0); sctx.lineTo(x, H); sctx.stroke(); }
       for (let y = 0; y < H; y += 20) { sctx.beginPath(); sctx.moveTo(0, y); sctx.lineTo(W, y); sctx.stroke(); }
       const p = A.synth.currentPreset();
-      sctx.fillStyle = "#00ffd0"; sctx.font = "bold 60px monospace";
-      sctx.fillText(p.name, 24, 80);
-      sctx.font = "20px monospace"; sctx.fillStyle = "#9cffe6";
-      sctx.fillText("WAVE:" + p.wave.toUpperCase().padEnd(8, " ") + "OCT:" + A.synth.state.octave, 24, 116);
+      // header
+      sctx.fillStyle = "#00ffd0"; sctx.font = "bold 22px monospace";
+      sctx.fillText("METRO SYNTH", 24, 38);
+      // preset name (huge)
+      sctx.fillStyle = "#9cffe6"; sctx.font = "bold 88px monospace";
+      sctx.fillText(p.name, 24, 122);
+      // wave + octave
+      sctx.fillStyle = "#9cffe6"; sctx.font = "26px monospace";
+      sctx.fillText("WAVE: " + p.wave.toUpperCase(), 24, 168);
+      sctx.fillText("OCT: " + A.synth.state.octave, 320, 168);
       // FX badges
       const fx = A.synth.state.fx;
-      const badges = [["DLY", fx.delay], ["REV", fx.reverb], ["DST", fx.distortion]];
-      let bx = 460;
-      badges.forEach(([t, on]) => {
-        sctx.fillStyle = on ? "#00ffd0" : "#152024";
-        sctx.fillRect(bx, 24, 70, 36);
-        sctx.fillStyle = on ? "#001512" : "#00ffd0";
-        sctx.font = "bold 22px monospace";
-        sctx.fillText(t, bx + 16, 50);
-        bx += 80;
+      const badges = [["DLY", fx.delay, "#00ffd0"], ["REV", fx.reverb, "#ff2bd6"], ["DST", fx.distortion, "#ffae00"]];
+      let bx = 24;
+      badges.forEach(([t, on, color]) => {
+        sctx.fillStyle = on ? color : "#152024";
+        sctx.fillRect(bx, 188, 90, 38);
+        sctx.fillStyle = on ? "#001512" : "#3a4a4a";
+        sctx.font = "bold 24px monospace";
+        sctx.fillText(t, bx + 22, 215);
+        bx += 100;
       });
       stex.needsUpdate = true;
     }
     paintLcd();
 
     // ----- PANEL CONTROL BUTTONS -----
-    // A control button is a small box mesh. Click triggers .action.
-    // Position is in panel-local coordinates (panel is rotated, so y is along panel surface).
-    function panelButton(label, color, w, h, x, z, action, getOn) {
+    // Each button is a thin box mounted on the panel front face.
+    // Click depresses it (pushes -Z into panel).
+    function panelButton(label, color, w, h, x, y, action, getOn) {
       const offMat = new THREE.MeshStandardMaterial({
         color: 0x1a1d24, emissive: color, emissiveIntensity: 0.0, roughness: 0.5,
       });
       const onMat = new THREE.MeshStandardMaterial({
         color, emissive: color, emissiveIntensity: 0.6, roughness: 0.45,
       });
-      const mat = offMat;
-      const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, 0.03, h), mat);
-      mesh.position.set(x, 0.025, z);
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.035), offMat);
+      mesh.position.set(x, y, 0.030);
       panel.add(mesh);
 
-      // label sprite — canvas texture facing up
+      // label as a plane in front of button face, facing +Z (player-facing)
       const lcnv = document.createElement("canvas");
       lcnv.width = 256; lcnv.height = 64;
       const lc = lcnv.getContext("2d");
       lc.fillStyle = "rgba(0,0,0,0)"; lc.fillRect(0, 0, 256, 64);
-      lc.fillStyle = "#cfe7ff"; lc.font = "bold 32px monospace";
+      lc.fillStyle = "#e8f4ff"; lc.font = "bold 36px monospace";
       lc.textAlign = "center"; lc.textBaseline = "middle";
       lc.fillText(label, 128, 32);
       const ltex = new THREE.CanvasTexture(lcnv);
       ltex.encoding = THREE.sRGBEncoding;
       const lblMesh = new THREE.Mesh(
-        new THREE.PlaneGeometry(w * 1.5, h * 0.6),
+        new THREE.PlaneGeometry(w * 1.1, h * 0.7),
         new THREE.MeshBasicMaterial({ map: ltex, transparent: true, toneMapped: false })
       );
-      lblMesh.position.set(x, 0.041, z + h * 0.7);
-      lblMesh.rotation.x = -Math.PI/2;
+      lblMesh.position.set(x, y, 0.050);  // just in front of the button face
       panel.add(lblMesh);
 
       let hov = false, hit = 0;
@@ -968,7 +972,7 @@ window.METRO_STUDIO = (function () {
         onHit: () => { hit = 1.0; },
         tick: (dt) => {
           if (hit > 0) hit = Math.max(0, hit - dt * 6);
-          mesh.position.y = 0.025 - 0.005 * hit;
+          mesh.position.z = 0.030 - 0.010 * hit;
         },
       };
       function refreshOn() {
@@ -981,34 +985,36 @@ window.METRO_STUDIO = (function () {
       return { mesh, refresh: refreshOn };
     }
 
-    // PRESET PREV / NEXT
-    panelButton("◀", 0x00ffd0, 0.12, 0.10, -1.45, 0.0, () => A.synth.prevPreset());
-    panelButton("▶", 0x00ffd0, 0.12, 0.10, -1.30, 0.0, () => A.synth.nextPreset());
+    // Button row below the LCD (panel-local y = -0.20)
+    const BTN_Y = -0.20;
+    // PRESET prev / next (far left)
+    panelButton("◀", 0x00ffd0, 0.13, 0.13, -1.45, BTN_Y, () => A.synth.prevPreset());
+    panelButton("▶", 0x00ffd0, 0.13, 0.13, -1.28, BTN_Y, () => A.synth.nextPreset());
 
-    // WAVEFORMS (4)
+    // WAVEFORMS
     const waves = [["SAW","sawtooth"], ["SQR","square"], ["SIN","sine"], ["TRI","triangle"]];
     waves.forEach(([lbl, w], i) => {
-      panelButton(lbl, 0xff2bd6, 0.18, 0.10, -1.05 + i * 0.20, 0.0,
+      panelButton(lbl, 0xff2bd6, 0.19, 0.13, -1.00 + i * 0.22, BTN_Y,
         () => A.synth.setWave(w),
         () => A.synth.currentPreset().wave === w);
     });
 
-    // FX TOGGLES
-    panelButton("DLY",  0x00ffd0, 0.20, 0.10, -0.15, 0.10, () => A.synth.toggleFx("delay"),      () => A.synth.state.fx.delay);
-    panelButton("REV",  0xff2bd6, 0.20, 0.10,  0.10, 0.10, () => A.synth.toggleFx("reverb"),     () => A.synth.state.fx.reverb);
-    panelButton("DST",  0xffae00, 0.20, 0.10,  0.35, 0.10, () => A.synth.toggleFx("distortion"), () => A.synth.state.fx.distortion);
+    // FX
+    panelButton("DLY",  0x00ffd0, 0.21, 0.13, 0.00,  BTN_Y, () => A.synth.toggleFx("delay"),      () => A.synth.state.fx.delay);
+    panelButton("REV",  0xff2bd6, 0.21, 0.13, 0.25,  BTN_Y, () => A.synth.toggleFx("reverb"),     () => A.synth.state.fx.reverb);
+    panelButton("DST",  0xffae00, 0.21, 0.13, 0.50,  BTN_Y, () => A.synth.toggleFx("distortion"), () => A.synth.state.fx.distortion);
 
-    // OCTAVE
-    panelButton("OCT-", 0xc8a557, 0.20, 0.10,  0.95, 0.10, () => A.synth.setOctave(A.synth.state.octave - 1));
-    panelButton("OCT+", 0xc8a557, 0.20, 0.10,  1.20, 0.10, () => A.synth.setOctave(A.synth.state.octave + 1));
+    // OCTAVE (far right)
+    panelButton("OCT-", 0xc8a557, 0.21, 0.13, 1.05, BTN_Y, () => A.synth.setOctave(A.synth.state.octave - 1));
+    panelButton("OCT+", 0xc8a557, 0.21, 0.13, 1.30, BTN_Y, () => A.synth.setOctave(A.synth.state.octave + 1));
 
-    // VOICE LABEL (just visual — large pseudo-screen indicator on far right of panel)
-    const synthLabel = new THREE.Mesh(
-      new THREE.BoxGeometry(0.5, 0.025, 0.10),
+    // brand stripe under the LCD on the right side
+    const brand = new THREE.Mesh(
+      new THREE.BoxGeometry(0.7, 0.04, 0.005),
       new THREE.MeshBasicMaterial({ color: 0xff2bd6 })
     );
-    synthLabel.position.set(1.40, 0.025, -0.10);
-    panel.add(synthLabel);
+    brand.position.set(1.10, -0.05, 0.024);
+    panel.add(brand);
 
     // ----- KEYBED LED STRIP -----
     const led = new THREE.Mesh(
@@ -1030,7 +1036,7 @@ window.METRO_STUDIO = (function () {
 
     function registerKey(mesh, note, octave, isBlack) {
       const restY = mesh.position.y;
-      let pulse = 0, hov = false, origin = "local";
+      let isHeld = false, pulse = 0, hov = false, origin = "local";
       const matCopy = mesh.material.clone();
       mesh.material = matCopy;
       const baseColor = matCopy.color.clone();
@@ -1038,21 +1044,29 @@ window.METRO_STUDIO = (function () {
       const item = {
         mesh,
         label: `${note}${octave}`,
-        action: () => A.synth.playNote(`${note}${octave}`, 0.45),
+        // tap = one-shot 0.45s note (used by mobile TAP button)
+        action: () => A.synth.playNote(midi, 0.45),
+        // hold = sustained while button stays down (mousedown/mouseup, touchstart/touchend)
+        beginHold: () => A.synth.noteOn(midi, 100),
+        endHold:   () => A.synth.noteOff(midi),
         setHover: (on) => { hov = on; },
-        onHit: () => { pulse = 1.0; origin = "local"; },
         tick: (dt) => {
-          if (pulse > 0) pulse = Math.max(0, pulse - dt * 5);
-          mesh.position.y = restY - 0.018 * pulse;
+          if (!isHeld && pulse > 0) pulse = Math.max(0, pulse - dt * 5);
+          const depress = isHeld ? 1.0 : pulse;
+          mesh.position.y = restY - 0.018 * depress;
           const c = isBlack ? new THREE.Color(0xff2bd6) : new THREE.Color(0x00ffd0);
-          if (origin === "midi") c.set(0xffae00);
+          if (origin === "midi")   c.set(0xffae00);
           if (origin === "remote") c.set(0xff2bd6);
-          matCopy.color.lerpColors(baseColor, c, pulse);
-          if (matCopy.emissive) matCopy.emissive.set(c).multiplyScalar(pulse * 0.5);
+          const intensity = isHeld ? 0.85 : pulse;
+          matCopy.color.lerpColors(baseColor, c, intensity);
+          if (matCopy.emissive) matCopy.emissive.set(c).multiplyScalar(intensity * 0.5);
         },
       };
       interactables.push(item);
-      keyMeshes[midi] = { flash: (o) => { pulse = 1.0; origin = o || "local"; } };
+      keyMeshes[midi] = {
+        flashOn:  (o) => { isHeld = true;  pulse = 1.0; origin = o || "local"; },
+        flashOff: ()  => { isHeld = false; /* let pulse decay */ },
+      };
     }
 
     // white keys

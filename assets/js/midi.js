@@ -1,82 +1,140 @@
 /* ============================================================
    METRO — WEB MIDI INPUT
-   Auto-connects to any plugged-in MIDI device.
-   - Channel 10 (drums) or notes in GM drum map → drum sounds
-   - All other notes → synth
+
+   Routing rules (no overlap):
+   - Each connected device has a routing setting: AUTO | KEYS | DRUMS
+   - AUTO  → channel 10 = drums, all other channels = synth
+            (matches GM convention; what every DAW does)
+   - KEYS  → all notes from this device → synth, regardless of channel
+   - DRUMS → all notes from this device → drum sounds
+            (GM drum map first, then chromatic fallback for unmapped notes)
+   - Settings persist in localStorage so a plugged-in device stays assigned
+     between sessions. New devices start in AUTO mode.
+
+   Multi-player friendly: each person plugs in their own controller and
+   sets it once. No "press to arm" needed.
    ============================================================ */
 
 window.METRO_MIDI = (function () {
+  const STORAGE_KEY = "metro-midi-routes-v1";
   let access = null;
-  let inputs = [];
-  let listeners = new Set();
+  let inputs = [];                // [{ id, name, mode }]
+  let routes = loadRoutes();      // { deviceId: "auto" | "keys" | "drums" }
+  const listeners = new Set();    // status change subscribers
+
+  function loadRoutes() {
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}"); }
+    catch { return {}; }
+  }
+  function saveRoutes() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(routes)); } catch {}
+  }
 
   async function init() {
     if (!navigator.requestMIDIAccess) {
-      console.info("[MIDI] Web MIDI API not available");
-      notify({ status: "unsupported" });
+      console.info("[MIDI] Web MIDI API not available in this browser");
+      emit({ status: "unsupported" });
       return;
     }
     try {
       access = await navigator.requestMIDIAccess({ sysex: false });
       bindAll();
       access.onstatechange = () => bindAll();
-      notify({ status: "ready", devices: inputs.map(i => i.name) });
       console.info("[MIDI] Connected:", inputs.map(i => i.name).join(", ") || "(no devices)");
     } catch (e) {
       console.warn("[MIDI] requestMIDIAccess failed", e);
-      notify({ status: "denied", error: String(e) });
+      emit({ status: "denied", error: String(e) });
     }
   }
 
   function bindAll() {
     inputs = [];
     for (const input of access.inputs.values()) {
-      input.onmidimessage = onMessage;
-      inputs.push(input);
+      input.onmidimessage = (msg) => onMessage(msg, input);
+      const mode = routes[input.id] || "auto";
+      inputs.push({ id: input.id, name: input.name, manufacturer: input.manufacturer || "", mode });
     }
-    notify({ status: "ready", devices: inputs.map(i => i.name) });
+    emit({ status: "ready", devices: inputs.slice() });
   }
 
-  function onMessage(msg) {
+  function setMode(deviceId, mode) {
+    if (!["auto", "keys", "drums"].includes(mode)) return;
+    routes[deviceId] = mode;
+    saveRoutes();
+    // update local cache
+    const d = inputs.find(i => i.id === deviceId);
+    if (d) d.mode = mode;
+    emit({ status: "ready", devices: inputs.slice() });
+  }
+
+  // Remember which target each MIDI note was sent to, so noteOff goes
+  // to the same place even if routing changes mid-press.
+  const activeMidiTarget = new Map(); // "deviceId:note" → "synth" | "drums"
+
+  function onMessage(msg, input) {
     const A = window.METRO_AUDIO;
     if (!A) return;
     A.ensureCtx();
     const [status, d1, d2] = msg.data;
     const cmd = status & 0xf0;
-    const channel = status & 0x0f; // 0-15
+    const channel = status & 0x0f;
+    const key = input.id + ":" + d1;
 
-    if (cmd === 0x90 && d2 > 0) {
-      // Note on
-      // GM convention: channel 10 (index 9) = drums
-      const treatAsDrum = (channel === 9);
-      const drumName = A.midi.drumMap[d1];
-      if (treatAsDrum || drumName) {
-        // route to drum
-        const name = drumName || "snare";
-        A.drums.play(name, d2);
-        emit({ kind: "drum", name, velocity: d2 });
+    const isNoteOn  = (cmd === 0x90 && d2 > 0);
+    const isNoteOff = (cmd === 0x80) || (cmd === 0x90 && d2 === 0);
+
+    if (isNoteOn) {
+      const mode = routes[input.id] || "auto";
+      const target = decideTarget(mode, channel);
+      activeMidiTarget.set(key, target);
+      if (target === "drums") {
+        const drumName = A.midi.drumMap[d1] || chromaticDrum(d1);
+        A.drums.play(drumName, d2);
       } else {
-        // route to synth
-        A.synth.playNote(d1, 0.5, d2);
-        emit({ kind: "note", midi: d1, velocity: d2 });
+        // sustained — release on noteOff
+        A.synth.noteOn(d1, d2);
       }
-    } else if (cmd === 0x80 || (cmd === 0x90 && d2 === 0)) {
-      // Note off — synth is single-shot envelope so nothing to do
-    } else if (cmd === 0xb0) {
-      // CC — could map to FX in future
+    } else if (isNoteOff) {
+      const target = activeMidiTarget.get(key);
+      activeMidiTarget.delete(key);
+      if (target === "synth") A.synth.noteOff(d1);
+      // drums are one-shot — nothing to do
     }
   }
 
-  function emit(payload) {
-    listeners.forEach(fn => { try { fn(payload); } catch (e) {} });
+  function decideTarget(mode, channel) {
+    if (mode === "keys")  return "synth";
+    if (mode === "drums") return "drums";
+    // AUTO: pure channel routing. GM channel 10 = drums.
+    if (channel === 9) return "drums";
+    // Else synth. We deliberately ignore the GM drum-map note-range
+    // here so a low piano note doesn't trigger a kick drum.
+    return "synth";
   }
-  function onEvent(fn) { listeners.add(fn); return () => listeners.delete(fn); }
-  function notify(payload) { /* status updates, future UI */ }
 
-  return { init, onEvent, isReady: () => !!access, devices: () => inputs.map(i => i.name) };
+  // For DRUMS-forced mode: map any note not in the GM drum table
+  // to one of our 8 drum sounds by pitch class.
+  const CHROMATIC_DRUM = [
+    "kick", "clap", "snare", "clap",
+    "hihat", "openhat", "clap", "tom1",
+    "clap", "tom2", "clap", "tom3",
+  ];
+  function chromaticDrum(note) {
+    return CHROMATIC_DRUM[((note % 12) + 12) % 12];
+  }
+
+  function emit(payload) { listeners.forEach(fn => { try { fn(payload); } catch (e) {} }); }
+  function onEvent(fn) { listeners.add(fn); return () => listeners.delete(fn); }
+
+  return {
+    init, onEvent, setMode,
+    isReady: () => !!access,
+    devices: () => inputs.slice(),
+    modeFor: (deviceId) => routes[deviceId] || "auto",
+  };
 })();
 
-// Auto-init on first user gesture (browsers require gesture for MIDI prompt).
+// Browsers require a user gesture before the MIDI permission prompt.
 document.addEventListener("click", () => {
   if (!window.METRO_MIDI.isReady()) window.METRO_MIDI.init();
 }, { once: true });

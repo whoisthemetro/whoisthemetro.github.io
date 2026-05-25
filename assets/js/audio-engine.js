@@ -1,7 +1,6 @@
 /* ============================================================
    METRO — AUDIO ENGINE
-   Web Audio synth + drum machine.
-   Presets, FX chain (delay/reverb/distortion), MIDI-friendly trigger API.
+   Web Audio synth (proper ADSR + held sustain) + drum machine.
    ============================================================ */
 
 window.METRO_AUDIO = (function () {
@@ -20,9 +19,8 @@ window.METRO_AUDIO = (function () {
     master.gain.value = 0.7;
     master.connect(ctx.destination);
 
-    // distortion is patched between dry signal and master
     distNode = ctx.createWaveShaper();
-    distNode.curve = makeDistCurve(0);    // off by default
+    distNode.curve = makeDistCurve(0);
     distNode.oversample = "2x";
     distMix = ctx.createGain();
     distMix.gain.value = 1.0;
@@ -30,17 +28,14 @@ window.METRO_AUDIO = (function () {
     dryBus = ctx.createGain();
     dryBus.gain.value = 1;
 
-    // dry → dist → distMix → master
     dryBus.connect(distNode).connect(distMix).connect(master);
 
-    // reverb send
     reverbBus = ctx.createGain();
     reverbBus.gain.value = 0.25;
     const conv = ctx.createConvolver();
     conv.buffer = buildIR(2.2, 2.5);
     reverbBus.connect(conv).connect(master);
 
-    // delay send (shared)
     delayWet = ctx.createGain();
     delayWet.gain.value = 0.22;
     delayNode = ctx.createDelay();
@@ -55,14 +50,12 @@ window.METRO_AUDIO = (function () {
     const ir = ctx.createBuffer(2, len, ctx.sampleRate);
     for (let ch = 0; ch < 2; ch++) {
       const d = ir.getChannelData(ch);
-      for (let i = 0; i < len; i++) {
-        d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decay);
-      }
+      for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decay);
     }
     return ir;
   }
   function makeDistCurve(amount) {
-    const k = amount; // 0..1
+    const k = amount;
     const n = 1024;
     const c = new Float32Array(n);
     const deg = Math.PI / 180;
@@ -73,34 +66,28 @@ window.METRO_AUDIO = (function () {
     return c;
   }
 
-  // ---------- SYNTH ----------
-  // A preset bundles waveform + envelope + filter + mod settings.
+  // ---------- SYNTH PRESETS (with full ADSR) ----------
+  // sustain is the held level as fraction of peak (0..1).
+  // PLUCK and STAB intentionally have sustain=0 so they decay regardless of hold.
   const PRESETS = [
-    { name: "LEAD",  wave: "sawtooth", cutoff: 2400, q: 6,  attack: 0.005, release: 0.30, detune: 8,  delay: true,  reverb: 0.18, dist: 0.10 },
-    { name: "PAD",   wave: "sine",     cutoff: 1200, q: 2,  attack: 0.60,  release: 1.40, detune: 12, delay: false, reverb: 0.55, dist: 0.0  },
-    { name: "PLUCK", wave: "triangle", cutoff: 3000, q: 4,  attack: 0.002, release: 0.18, detune: 4,  delay: true,  reverb: 0.22, dist: 0.0  },
-    { name: "BASS",  wave: "square",   cutoff: 800,  q: 5,  attack: 0.005, release: 0.25, detune: 0,  delay: false, reverb: 0.05, dist: 0.0  },
-    { name: "STAB",  wave: "square",   cutoff: 1600, q: 8,  attack: 0.005, release: 0.12, detune: 6,  delay: true,  reverb: 0.25, dist: 0.15 },
+    { name: "LEAD",  wave: "sawtooth", cutoff: 2400, q: 6, attack: 0.005, decay: 0.10, sustain: 0.75, release: 0.30, detune: 8,  delay: true,  reverb: 0.18, dist: 0.10 },
+    { name: "PAD",   wave: "sine",     cutoff: 1200, q: 2, attack: 0.60,  decay: 0.40, sustain: 0.90, release: 1.40, detune: 12, delay: false, reverb: 0.55, dist: 0.0  },
+    { name: "PLUCK", wave: "triangle", cutoff: 3000, q: 4, attack: 0.002, decay: 0.18, sustain: 0.00, release: 0.18, detune: 4,  delay: true,  reverb: 0.22, dist: 0.0  },
+    { name: "BASS",  wave: "square",   cutoff: 800,  q: 5, attack: 0.005, decay: 0.05, sustain: 0.85, release: 0.25, detune: 0,  delay: false, reverb: 0.05, dist: 0.0  },
+    { name: "STAB",  wave: "square",   cutoff: 1600, q: 8, attack: 0.005, decay: 0.10, sustain: 0.00, release: 0.15, detune: 6,  delay: true,  reverb: 0.25, dist: 0.15 },
   ];
 
   const synthState = {
     presetIndex: 0,
     octave: 4,
-    fx: { delay: true, reverb: true, distortion: false }, // user overrides
+    fx: { delay: true, reverb: true, distortion: false },
   };
 
   function currentPreset() { return PRESETS[synthState.presetIndex]; }
-
-  function setPreset(i) {
-    synthState.presetIndex = (i + PRESETS.length) % PRESETS.length;
-    applyPresetFx();
-  }
+  function setPreset(i) { synthState.presetIndex = (i + PRESETS.length) % PRESETS.length; applyPresetFx(); }
   function nextPreset() { setPreset(synthState.presetIndex + 1); }
   function prevPreset() { setPreset(synthState.presetIndex - 1); }
-
   function applyPresetFx() {
-    // user toggles override preset defaults: preset just provides defaults,
-    // but FX toggles let you turn on/off independently.
     const p = currentPreset();
     if (!master) return;
     reverbBus.gain.value = synthState.fx.reverb ? p.reverb : 0;
@@ -122,13 +109,21 @@ window.METRO_AUDIO = (function () {
   }
   function midiToFreq(m) { return 440 * Math.pow(2, (m - 69) / 12); }
 
-  function playSynthNote(note, dur = 0.5, velocity = 100) {
+  // ---------- VOICE ALLOCATION (sustain support) ----------
+  // Each held note has a voice. noteOn creates one; noteOff releases it.
+  const voices = new Map(); // midi → { o1, o2, env, peak, sustainLevel }
+
+  function noteOn(midi, velocity = 100) {
     ensureCtx(); buildBus(); applyPresetFx();
-    const midi = typeof note === "number" ? note : noteToMidi(note);
-    const freq = midiToFreq(midi);
-    const now = ctx.currentTime;
+    // retrigger: release any existing voice on this midi note
+    if (voices.has(midi)) noteOff(midi);
+
     const p = currentPreset();
+    const now = ctx.currentTime;
+    const freq = midiToFreq(midi);
     const v = Math.max(0, Math.min(1, velocity / 127));
+    const peak = 0.75 * v;
+    const sustainLevel = Math.max(peak * p.sustain, 0.00001);
 
     const o1 = ctx.createOscillator();
     const o2 = ctx.createOscillator();
@@ -149,37 +144,68 @@ window.METRO_AUDIO = (function () {
 
     const env = ctx.createGain();
     env.gain.setValueAtTime(0.0001, now);
-    env.gain.exponentialRampToValueAtTime(0.75 * v, now + p.attack);
-    env.gain.exponentialRampToValueAtTime(0.0001, now + p.attack + p.release);
-    filt.connect(env);
+    // Attack: 0 → peak
+    env.gain.exponentialRampToValueAtTime(Math.max(peak, 0.0001), now + p.attack);
+    // Decay: peak → sustain. (If sustain is 0, this becomes a natural pluck.)
+    env.gain.exponentialRampToValueAtTime(sustainLevel, now + p.attack + p.decay);
 
+    filt.connect(env);
     env.connect(dryBus);
     if (synthState.fx.reverb) env.connect(reverbBus);
-    if (synthState.fx.delay) env.connect(delayNode);
+    if (synthState.fx.delay)  env.connect(delayNode);
 
     o1.start(now); o2.start(now);
-    const stopAt = now + p.attack + p.release + 0.2;
-    o1.stop(stopAt); o2.stop(stopAt);
+
+    // Safety: if note is held forever, schedule a hard stop way in the future
+    // (will be replaced/canceled when noteOff is called)
+    const safety = setTimeout(() => {
+      if (voices.has(midi) && voices.get(midi).o1 === o1) noteOff(midi);
+    }, 60_000);
+
+    voices.set(midi, { o1, o2, env, peak, sustainLevel, safety });
   }
 
-  // ---------- DRUMS ----------
-  // GM drum map → our internal names (subset)
+  function noteOff(midi) {
+    const v = voices.get(midi);
+    if (!v) return;
+    voices.delete(midi);
+    clearTimeout(v.safety);
+
+    const p = currentPreset();
+    const now = ctx.currentTime;
+    // Read the current envelope value to start release smoothly without click
+    const currentVal = Math.max(v.env.gain.value, 0.00001);
+    v.env.gain.cancelScheduledValues(now);
+    v.env.gain.setValueAtTime(currentVal, now);
+    v.env.gain.exponentialRampToValueAtTime(0.00001, now + p.release);
+
+    const stopAt = now + p.release + 0.1;
+    try { v.o1.stop(stopAt); v.o2.stop(stopAt); } catch (e) {}
+  }
+
+  // Convenience: fire-and-forget single shot (for clicks without hold semantics)
+  function playSynthNote(noteOrMidi, dur = 0.5, velocity = 100) {
+    const midi = typeof noteOrMidi === "number" ? noteOrMidi : noteToMidi(noteOrMidi);
+    noteOn(midi, velocity);
+    setTimeout(() => noteOff(midi), Math.max(50, dur * 1000));
+    return midi;
+  }
+
+  // ---------- DRUMS (one-shot) ----------
   const GM_DRUM_MAP = {
-    35: "kick", 36: "kick",           // Acoustic Bass / Bass Drum 1
-    38: "snare", 40: "snare",         // Snare 1 / 2
-    42: "hihat",                       // Closed Hi-hat
-    46: "openhat",                     // Open Hi-hat
+    35: "kick", 36: "kick",
+    38: "snare", 40: "snare",
+    42: "hihat",
+    46: "openhat",
     41: "tom3", 43: "tom3", 45: "tom1", 47: "tom1", 48: "tom2", 50: "tom2",
-    39: "clap",                        // Hand Clap
-    49: "openhat", 51: "openhat",     // Crash 1 / Ride 1 (mapped to crash sound)
-    57: "openhat",
+    39: "clap",
+    49: "openhat", 51: "openhat", 57: "openhat",
   };
 
   const DRUMS = {
     kick: (v) => {
       const now = ctx.currentTime;
-      const o = ctx.createOscillator();
-      const g = ctx.createGain();
+      const o = ctx.createOscillator(); const g = ctx.createGain();
       o.frequency.setValueAtTime(160, now);
       o.frequency.exponentialRampToValueAtTime(45, now + 0.12);
       g.gain.setValueAtTime(v, now);
@@ -189,8 +215,7 @@ window.METRO_AUDIO = (function () {
     },
     snare: (v) => {
       const now = ctx.currentTime;
-      const o = ctx.createOscillator();
-      const og = ctx.createGain();
+      const o = ctx.createOscillator(); const og = ctx.createGain();
       o.type = "triangle"; o.frequency.value = 200;
       og.gain.setValueAtTime(0.6 * v, now);
       og.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
@@ -274,60 +299,64 @@ window.METRO_AUDIO = (function () {
     if (fn) fn(v);
   }
 
-  // ---------- DISPATCH (visual hooks for local + remote + MIDI events) ----------
-  // The studio scene subscribes here; multiplayer + MIDI dispatch through these.
-  // origin: "local" | "remote" | "midi"
-  const listeners = { drum: new Set(), note: new Set() };
-  function onDrum(fn) { listeners.drum.add(fn); return () => listeners.drum.delete(fn); }
-  function onNote(fn) { listeners.note.add(fn); return () => listeners.note.delete(fn); }
+  // ---------- DISPATCH ----------
+  // listeners["note"] fires on noteOn; "noteOff" on release; "drum" on any drum hit
+  const listeners = { drum: new Set(), note: new Set(), noteOff: new Set() };
+  function onDrum(fn)    { listeners.drum.add(fn);    return () => listeners.drum.delete(fn); }
+  function onNote(fn)    { listeners.note.add(fn);    return () => listeners.note.delete(fn); }
+  function onNoteOff(fn) { listeners.noteOff.add(fn); return () => listeners.noteOff.delete(fn); }
   function emit(kind, payload) {
     listeners[kind]?.forEach(fn => { try { fn(payload); } catch (e) {} });
   }
 
-  // Public trigger fns route through dispatch so all UI animation paths fire.
   function triggerDrum(name, velocity = 100, origin = "local") {
     playDrum(name, velocity);
     emit("drum", { name, velocity, origin });
   }
-  function triggerNote(midiOrName, dur = 0.5, velocity = 100, origin = "local") {
-    playSynthNote(midiOrName, dur, velocity);
+  function triggerNoteOn(midi, velocity = 100, origin = "local") {
+    noteOn(midi, velocity);
+    emit("note", { midi, velocity, origin });
+  }
+  function triggerNoteOff(midi, origin = "local") {
+    noteOff(midi);
+    emit("noteOff", { midi, origin });
+  }
+  function triggerNoteShot(midiOrName, dur = 0.5, velocity = 100, origin = "local") {
     const midi = typeof midiOrName === "number" ? midiOrName : noteToMidi(midiOrName);
-    emit("note", { midi, velocity, dur, origin });
+    triggerNoteOn(midi, velocity, origin);
+    setTimeout(() => triggerNoteOff(midi, origin), Math.max(50, dur * 1000));
   }
 
   return {
     ensureCtx,
-    // Synth state + control
     synth: {
       state: synthState,
       presets: PRESETS,
       currentPreset, setPreset, nextPreset, prevPreset,
-      setWave: (w) => { currentPreset().wave = w; }, // tweak current preset
+      setWave: (w) => { currentPreset().wave = w; },
       setOctave: (o) => { synthState.octave = Math.max(0, Math.min(8, o)); },
       toggleFx,
-      playNote: (n, d, v) => triggerNote(n, d, v, "local"),
+      // sustained note (use beginHold / endHold or noteOn / noteOff pair)
+      noteOn:  (midi, vel = 100) => triggerNoteOn(midi, vel, "local"),
+      noteOff: (midi)            => triggerNoteOff(midi, "local"),
+      // one-shot — fixed duration regardless of hold (for taps)
+      playNote: (n, d, v)        => triggerNoteShot(n, d, v, "local"),
     },
-    // Drums
     drums: {
       play: (name, vel = 100) => triggerDrum(name, vel, "local"),
       names: ["kick", "snare", "hihat", "openhat", "tom1", "tom2", "tom3", "clap"],
     },
-    // MIDI helpers
     midi: {
       drumMap: GM_DRUM_MAP,
-      noteOn: (note, velocity = 100) => {
-        // route based on GM channel-10 convention: if mapped to drum, play drum
-        if (GM_DRUM_MAP[note]) triggerDrum(GM_DRUM_MAP[note], velocity, "midi");
-        else triggerNote(note, 0.5, velocity, "midi");
-      },
+      // (kept for backwards reference but routing happens in midi.js now)
     },
-    // Remote (multiplayer) playback — same path as local but tagged "remote" for UI
     remote: {
-      drum: (name, vel = 100) => triggerDrum(name, vel, "remote"),
-      note: (midi, dur = 0.5, vel = 100) => triggerNote(midi, dur, vel, "remote"),
+      drum:    (name, vel = 100)       => triggerDrum(name, vel, "remote"),
+      noteOn:  (midi, vel = 100)       => triggerNoteOn(midi, vel, "remote"),
+      noteOff: (midi)                  => triggerNoteOff(midi, "remote"),
+      note:    (midi, dur, vel)        => triggerNoteShot(midi, dur, vel, "remote"),
     },
-    // Subscribe to dispatch events (for UI flashes)
-    onDrum, onNote,
+    onDrum, onNote, onNoteOff,
     setMasterVolume: (v) => { ensureCtx(); buildBus(); master.gain.value = v; },
   };
 })();

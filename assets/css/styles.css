@@ -778,6 +778,77 @@ button { font-family: inherit; cursor: pointer; }
 }
 
 /* ============================================================
+   MIDI PANEL
+   ============================================================ */
+#midi-panel {
+  position: fixed; top: 60px; right: 16px;
+  width: 360px; max-width: calc(100vw - 32px);
+  background: rgba(11,13,20,0.96);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px;
+  z-index: 80;
+  display: none;
+  box-shadow: 0 10px 32px rgba(0,0,0,0.5);
+}
+#midi-panel.show { display: block; }
+#midi-panel h3 {
+  margin: 0 0 6px;
+  font-size: 12px; letter-spacing: 0.3em; text-transform: uppercase;
+  color: var(--neon);
+}
+#midi-panel .hint { color: var(--ink-dim); font-size: 11px; line-height: 1.5; margin-bottom: 14px; }
+#midi-panel .hint b { color: var(--neon); font-weight: 600; }
+#midi-panel .status {
+  margin-top: 12px;
+  font-size: 11px; letter-spacing: 0.16em;
+  color: var(--ink-dim); text-transform: uppercase;
+}
+#midi-panel .status.ok { color: var(--neon); }
+#midi-panel .status.err { color: var(--neon-2); }
+
+#midi-list { display: flex; flex-direction: column; gap: 8px; }
+#midi-list .device {
+  border: 1px solid var(--line-dim);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+#midi-list .device .name {
+  font-size: 12px; color: var(--ink);
+  margin-bottom: 8px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+#midi-list .device .name .mfr {
+  color: var(--ink-dim); font-size: 10px; margin-left: 8px;
+}
+#midi-list .device .routes {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px;
+}
+#midi-list .device .routes button {
+  font-family: inherit;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--line-dim);
+  color: var(--ink-dim);
+  padding: 6px 0;
+  border-radius: 6px;
+  font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
+  cursor: pointer;
+}
+#midi-list .device .routes button:hover { color: var(--ink); border-color: var(--line); }
+#midi-list .device .routes button.on {
+  background: var(--neon); color: #001512; border-color: var(--neon);
+  text-shadow: none;
+}
+#midi-list .empty {
+  padding: 16px;
+  text-align: center;
+  color: var(--ink-dim);
+  font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
+  border: 1px dashed var(--line-dim);
+  border-radius: 8px;
+}
+
+/* ============================================================
    TOAST
    ============================================================ */
 #toast {

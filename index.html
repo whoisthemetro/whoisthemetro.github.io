@@ -26,11 +26,27 @@
       <button data-go="videos">VIDEOS</button>
     </div>
     <div class="spacer"></div>
+    <button class="navbtn-icon" id="midi-btn" title="MIDI device routing">
+      MIDI<span class="dot"></span>
+    </button>
     <button class="navbtn-icon" id="mp-btn" title="Jam with a friend (multiplayer)">
       JAM<span class="dot"></span>
     </button>
     <button class="navbtn-icon" id="topnav-music" title="Open music player">&#9835;</button>
   </nav>
+
+  <!-- MIDI routing panel -->
+  <div id="midi-panel">
+    <h3>MIDI DEVICES</h3>
+    <div class="hint">
+      Each device routes independently. <b>AUTO</b> uses MIDI channel 10 for drums,
+      everything else for keys (works with most drum pads + keyboards out of the box).
+      Force a device to <b>KEYS</b> or <b>DRUMS</b> if your controller doesn't
+      follow that convention.
+    </div>
+    <div id="midi-list"></div>
+    <div class="status" id="midi-status">CLICK ANY INSTRUMENT TO ENABLE MIDI</div>
+  </div>
 
   <!-- Multiplayer panel -->
   <div id="mp-panel">
