@@ -70,7 +70,7 @@ create table if not exists private.admin (
 
 -- ▼▼▼ SET YOUR ADMIN PASSPHRASE HERE (replace CHANGE_ME) ▼▼▼
 insert into private.admin (id, pass_hash)
-values (1, crypt('CHANGE_ME', gen_salt('bf')))
+values (1, extensions.crypt('CHANGE_ME', extensions.gen_salt('bf')))
 on conflict (id) do update set pass_hash = excluded.pass_hash;
 -- ▲▲▲ re-run just this insert any time to change it ▲▲▲
 
@@ -133,7 +133,7 @@ declare
   v_ok boolean;
 begin
   perform pg_sleep(0.3);   -- makes passphrase guessing impractically slow
-  select (pass_hash = crypt(pass, pass_hash)) into v_ok
+  select (pass_hash = extensions.crypt(pass, pass_hash)) into v_ok
     from private.admin where id = 1;
   if not coalesce(v_ok, false) then
     return false;

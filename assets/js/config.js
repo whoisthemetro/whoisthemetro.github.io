@@ -11,6 +11,6 @@
    policies in supabase/schema.sql.
    ============================================================ */
 window.METRO_CONFIG = {
-  SUPABASE_URL: "",      // e.g. "https://abcdefgh.supabase.co"
-  SUPABASE_ANON_KEY: "", // the long "anon / public" key from Project Settings → API
+  SUPABASE_URL: "https://donnxntnewmkzrycugpn.supabase.co",
+  SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRvbm54bnRuZXdta3pyeWN1Z3BuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwNjU3OTEsImV4cCI6MjA5NjY0MTc5MX0.rOl_otqZqZPM7czYVWLHFLxLMSAcYj7mChlrS9xytps",
 };
