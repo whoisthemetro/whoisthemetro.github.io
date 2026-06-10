@@ -712,12 +712,17 @@ export function buildWorld() {
     const { fraction } = getMoonIllumination(now);
     sky.draw(sun, moon, fraction, wx);
 
-    // aim the beam from where the body actually hangs over LA
+    // aim the beam from where the body actually hangs over LA.
+    // The window faces due south; in room coordinates that makes
+    // west = +x, east = -x. SunCalc azimuth is 0 at south, positive
+    // toward the west — so a western sun sits at +x, eastern at -x:
+    // morning light rakes in from the left of the glass, evening
+    // from the right, exactly like the real room.
     const src = sun.altitude > -0.05 ? sun : moon;
     const az = Math.max(-0.9, Math.min(0.9, src.azimuth));   // clamp into window view
     const alt = Math.max(0.06, src.altitude);
     beam.position.set(
-      WIN.cx - Math.sin(az) * 10,
+      WIN.cx + Math.sin(az) * 10,
       WIN.cy + Math.tan(alt) * 10,
       ZF - 10
     );
@@ -1022,6 +1027,117 @@ export function buildWorld() {
   chair.rotation.y = Math.PI;
   add(chair);
 
+  /* --- the cat's corner: litter box, bowls, treat jar --- */
+  const careTargets = [];
+
+  // litter box, back-left corner
+  const litterGrp = new THREE.Group();
+  const trayMat = lam(0x9aa0a4);
+  const trayFloor = box(0.52, 0.03, 0.4, trayMat);
+  trayFloor.position.y = 0.015;
+  litterGrp.add(trayFloor);
+  for (const [tw, td, tx, tz] of [
+    [0.52, 0.025, 0, -0.19], [0.52, 0.025, 0, 0.19],
+    [0.025, 0.4, -0.248, 0], [0.025, 0.4, 0.248, 0],
+  ]) {
+    const wallp = box(tw, 0.12, td, trayMat);
+    wallp.position.set(tx, 0.06, tz);
+    litterGrp.add(wallp);
+  }
+  const sand = plane(0.47, 0.35, new THREE.MeshLambertMaterial({
+    map: canvasTex(128, 128, (g) => {
+      g.fillStyle = "#cfc3a4"; g.fillRect(0, 0, 128, 128);
+      for (let i = 0; i < 3000; i++) {
+        const v = 170 + Math.random() * 60;
+        g.fillStyle = `rgba(${v},${v - 12},${v - 40},0.6)`;
+        g.fillRect(Math.random() * 128, Math.random() * 128, 1.5, 1.5);
+      }
+    }),
+  }));
+  sand.rotation.x = -Math.PI / 2;
+  sand.position.y = 0.045;
+  litterGrp.add(sand);
+  const clumps = [];
+  for (let i = 0; i < 5; i++) {
+    const c = new THREE.Mesh(new THREE.SphereGeometry(0.022, 8, 6), lam(0x4a3a26));
+    c.scale.y = 0.6;
+    c.position.set(-0.16 + (i * 0.083), 0.05, (i % 2 ? 0.09 : -0.07));
+    c.visible = false;
+    litterGrp.add(c);
+    clumps.push(c);
+  }
+  litterGrp.position.set(-2.28, 0, 2.85);
+  add(litterGrp);
+  const litterHit = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.3, 0.5),
+    new THREE.MeshBasicMaterial({ visible: false }));
+  litterHit.position.set(-2.28, 0.15, 2.85);
+  litterHit.userData.care = "litter";
+  add(litterHit);
+  careTargets.push(litterHit);
+
+  // food + water bowls along the right wall
+  function bowl(kind, color, x, z) {
+    const grp = new THREE.Group();
+    const outer = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.06, 0.045, 16), lam(color));
+    outer.position.y = 0.0225;
+    grp.add(outer);
+    const fillMat = kind === "food"
+      ? new THREE.MeshLambertMaterial({
+          map: canvasTex(64, 64, (g) => {
+            g.fillStyle = "#6a4a26"; g.fillRect(0, 0, 64, 64);
+            for (let i = 0; i < 240; i++) {
+              g.fillStyle = `rgba(${120 + Math.random() * 50},${80 + Math.random() * 40},${40 + Math.random() * 25},0.9)`;
+              g.beginPath(); g.arc(Math.random() * 64, Math.random() * 64, 2.6, 0, 7); g.fill();
+            }
+          }),
+        })
+      : new THREE.MeshStandardMaterial({ color: 0x3a7ab8, roughness: 0.1, metalness: 0.1, transparent: true, opacity: 0.85 });
+    const fill = new THREE.Mesh(new THREE.CylinderGeometry(0.058, 0.05, 0.03, 16), fillMat);
+    fill.position.y = 0.025;
+    grp.add(fill);
+    grp.position.set(x, 0, z);
+    add(grp);
+    const hit = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.18, 0.22),
+      new THREE.MeshBasicMaterial({ visible: false }));
+    hit.position.set(x, 0.09, z);
+    hit.userData.care = kind;
+    add(hit);
+    careTargets.push(hit);
+    return fill;
+  }
+  const foodFill = bowl("food", 0x8a3324, 2.32, 0.75);
+  const waterFill = bowl("water", 0x46606e, 2.32, 1.08);
+
+  // treat jar on the windowsill
+  const jar = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.09, 12),
+    new THREE.MeshStandardMaterial({ color: 0xd8e4ea, roughness: 0.05, metalness: 0, transparent: true, opacity: 0.4 }));
+  jar.position.set(1.4, 0.905, ZF + 0.07);
+  add(jar);
+  const jarKibble = new THREE.Mesh(new THREE.CylinderGeometry(0.029, 0.029, 0.055, 12), lam(0x7a5530));
+  jarKibble.position.set(1.4, 0.888, ZF + 0.07);
+  add(jarKibble);
+  const jarHit = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.16, 0.14),
+    new THREE.MeshBasicMaterial({ visible: false }));
+  jarHit.position.set(1.4, 0.92, ZF + 0.07);
+  jarHit.userData.care = "treats";
+  add(jarHit);
+  careTargets.push(jarHit);
+
+  // live fill levels — same for every visitor, in real time
+  function updateCare(state) {
+    const food = Math.max(0, Math.min(1, state.food ?? 1));
+    const water = Math.max(0, Math.min(1, state.water ?? 1));
+    const dirty = Math.max(0, Math.min(1, state.litter ?? 0));
+    foodFill.visible = food > 0.04;
+    foodFill.scale.set(1, Math.max(0.08, food), 1);
+    foodFill.position.y = 0.012 + 0.015 * food;
+    waterFill.visible = water > 0.04;
+    waterFill.scale.set(1, Math.max(0.08, water), 1);
+    waterFill.position.y = 0.012 + 0.015 * water;
+    clumps.forEach((c, i) => { c.visible = dirty > (i + 1) / 6; });
+    sand.material.color.setScalar(1 - dirty * 0.35);
+  }
+
   /* --- METRO neon, on the bedroom door (the one light that stays) --- */
   const neonCanvas = document.createElement("canvas");
   neonCanvas.width = 512; neonCanvas.height = 128;
@@ -1124,11 +1240,15 @@ export function buildWorld() {
     setCityListener: fn => { onCity = fn; },
     setWeather,
     getWeather: () => wx,
+    careTargets, updateCare,
     // where the cat likes to be
     catSpots: {
       chair: { x: SWEET.x, z: SWEET.z, y: 0.51 },
       keys: { x1: -0.24, x2: 0.62, z: -2.45, y: 0.53 },
       windowFloor: { x: -1.7, z: -2.7 },
+      foodBowl: { x: 2.12, z: 0.75 },
+      waterBowl: { x: 2.12, z: 1.08 },
+      litter: { x: -2.1, z: 2.8 },
       bounds: ROOM.bounds,
     },
   };

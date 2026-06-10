@@ -73,6 +73,89 @@ export function plink(i = 0) {
   osc.stop(t + 0.75);
 }
 
+// A meow, synthesized from scratch with randomized pitch, contour,
+// vibrato and length — no two meows in the room's history are identical.
+export function meow(excited = false) {
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  const f0 = 340 + Math.random() * 280;
+  const dur = (excited ? 0.3 : 0.45) + Math.random() * 0.45;
+  const osc = ctx.createOscillator();
+  osc.type = "sawtooth";
+  const vib = ctx.createOscillator();
+  vib.frequency.value = 4 + Math.random() * 4.5;
+  const vibG = ctx.createGain();
+  vibG.gain.value = 7 + Math.random() * 16;
+  vib.connect(vibG).connect(osc.frequency);
+  const bp = ctx.createBiquadFilter();
+  bp.type = "bandpass";
+  bp.Q.value = 1.8 + Math.random() * 1.4;
+  const g = ctx.createGain();
+  osc.connect(bp).connect(g).connect(master);
+  const rise = 0.2 + Math.random() * 0.3;
+  osc.frequency.setValueAtTime(f0 * (0.65 + Math.random() * 0.2), t);
+  osc.frequency.linearRampToValueAtTime(f0 * (1.1 + Math.random() * 0.35), t + dur * rise);
+  osc.frequency.linearRampToValueAtTime(f0 * (0.55 + Math.random() * 0.2), t + dur);
+  bp.frequency.setValueAtTime(850 + Math.random() * 600, t);
+  bp.frequency.linearRampToValueAtTime(450 + Math.random() * 300, t + dur);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.05 + Math.random() * 0.025, t + 0.05);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  osc.start(t); vib.start(t);
+  osc.stop(t + dur + 0.05); vib.stop(t + dur + 0.05);
+  if (excited && Math.random() < 0.7) setTimeout(() => meow(false), 240 + Math.random() * 260);
+}
+
+// Displeasure.
+export function hiss() {
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  const src = ctx.createBufferSource();
+  src.buffer = noiseBuffer(0.8);
+  const bp = ctx.createBiquadFilter();
+  bp.type = "bandpass";
+  bp.frequency.value = 2400;
+  bp.Q.value = 0.8;
+  const g = ctx.createGain();
+  src.connect(bp).connect(g).connect(master);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.09, t + 0.05);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
+  src.start(t); src.stop(t + 0.55);
+}
+
+// Kibble hitting a bowl, water filling, sand being shuffled.
+export function careSound(kind) {
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  if (kind === "kibble") {
+    for (let i = 0; i < 16; i++) {
+      const tt = t + 0.04 + i * (0.035 + Math.random() * 0.04);
+      const o = ctx.createOscillator();
+      o.type = "square";
+      o.frequency.value = 1400 + Math.random() * 1800;
+      const g = ctx.createGain();
+      o.connect(g).connect(master);
+      g.gain.setValueAtTime(0.012 + Math.random() * 0.01, tt);
+      g.gain.exponentialRampToValueAtTime(0.0001, tt + 0.04);
+      o.start(tt); o.stop(tt + 0.05);
+    }
+  } else {
+    const src = ctx.createBufferSource();
+    src.buffer = noiseBuffer(1.4);
+    const f = ctx.createBiquadFilter();
+    f.type = kind === "water" ? "lowpass" : "bandpass";
+    f.frequency.value = kind === "water" ? 800 : 1100;
+    const g = ctx.createGain();
+    src.connect(f).connect(g).connect(master);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(kind === "water" ? 0.05 : 0.035, t + 0.15);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 1.2);
+    if (kind === "water") f.frequency.linearRampToValueAtTime(1400, t + 1.1);
+    src.start(t); src.stop(t + 1.3);
+  }
+}
+
 // Purring: low rumble, amplitude fluttering at ~24 Hz.
 export function purr(seconds = 1.8) {
   if (!ctx) return;

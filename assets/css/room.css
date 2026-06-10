@@ -193,6 +193,29 @@ textarea:focus, input:focus { border-color: var(--amber); }
 }
 #toast.show { transform: translate(-50%, 0); }
 
+/* ---------- the cat fights back ---------- */
+#scratch {
+  position: fixed; inset: 0; z-index: 80; pointer-events: none; opacity: 0;
+  background:
+    linear-gradient(105deg, transparent 46%, rgba(200,30,30,0.55) 47%, transparent 49%),
+    linear-gradient(105deg, transparent 51%, rgba(200,30,30,0.45) 52%, transparent 54%),
+    linear-gradient(105deg, transparent 56%, rgba(200,30,30,0.5) 57%, transparent 59%);
+}
+#scratch.flash { animation: scratch-flash 0.7s ease-out; }
+@keyframes scratch-flash {
+  0% { opacity: 0; }
+  12% { opacity: 1; }
+  100% { opacity: 0; }
+}
+#scene.shake { animation: cat-shake 0.4s linear; }
+@keyframes cat-shake {
+  0%, 100% { transform: translate(0, 0); }
+  20% { transform: translate(-7px, 4px); }
+  40% { transform: translate(6px, -5px); }
+  60% { transform: translate(-5px, -3px); }
+  80% { transform: translate(4px, 5px); }
+}
+
 @media (max-width: 700px) {
   #hint-desktop { display: none; }
   .intro-card { padding: 32px 18px; }

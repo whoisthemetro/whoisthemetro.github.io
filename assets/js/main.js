@@ -9,7 +9,7 @@ import { NotesWall } from "./notes3d.js";
 import { Ghosts } from "./ghosts.js";
 import { store } from "./store.js";
 import { presence } from "./presence.js";
-import { startAmbience, citySound, plink, purr, setRain } from "./ambience.js";
+import { startAmbience, citySound, plink, purr, setRain, meow, hiss, careSound } from "./ambience.js";
 import { weather } from "./weather.js";
 import { startEchoRecording, EchoPlayer } from "./echoes.js";
 import { Cat } from "./cat.js";
@@ -45,7 +45,19 @@ controls.yaw = world.spawn.yaw;
 world.setCityListener((type) => citySound(type));
 
 // the cat
-const cat = new Cat(world.scene, world.catSpots, { plink, purr });
+const cat = new Cat(world.scene, world.catSpots, {
+  plink, purr, meow, hiss, dig: () => careSound("sand"),
+});
+
+// shared cat needs — bowls and litter are the same for every visitor
+let catState = null;
+function applyCatState(s) {
+  catState = s;
+  const d = store.decayCat(s);
+  world.updateCare(d);
+  cat.setNeeds(d);
+}
+setInterval(() => { if (catState) applyCatState(catState); }, 60000);  // keep decaying live
 
 // echoes of everyone who came before
 const echoGroup = new THREE.Group();
@@ -109,9 +121,71 @@ canvas.addEventListener("click", () => {
 function castAt(ndcX, ndcY) {
   raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera);
   // doors are included as blockers so notes can't be pinned onto them
-  const targets = [cat.hitMesh, ...notesWall.raycastTargets(), ...world.blockers];
+  const targets = [cat.hitMesh, ...world.careTargets, ...notesWall.raycastTargets(), ...world.blockers];
   const hits = raycaster.intersectObjects(targets, false);
   return hits[0] || null;
+}
+
+function gotScratched() {
+  hiss();
+  const el = $("#scratch");
+  el.classList.remove("flash");
+  void el.offsetWidth;          // restart the animation
+  el.classList.add("flash");
+  canvas.classList.remove("shake");
+  void canvas.offsetWidth;
+  canvas.classList.add("shake");
+  toast("😾 the cat scratched you");
+}
+
+function treatsLeftToday() {
+  let log = [];
+  try { log = JSON.parse(localStorage.getItem("metro.treats") || "[]"); } catch (e) {}
+  log = log.filter(t => Date.now() - t < 24 * 3600000);
+  try { localStorage.setItem("metro.treats", JSON.stringify(log)); } catch (e) {}
+  return 3 - log.length;
+}
+
+async function handleCare(kind) {
+  const d = store.decayCat(catState);
+  try {
+    if (kind === "food") {
+      if (d.food >= 0.6) return toast("the food bowl is still pretty full");
+      careSound("kibble");
+      applyCatState(await wrapCare("feed"));
+      toast("you filled the food bowl 🐾");
+    } else if (kind === "water") {
+      if (d.water >= 0.7) return toast("the water's fine");
+      careSound("water");
+      applyCatState(await wrapCare("water"));
+      toast("fresh water, poured");
+    } else if (kind === "litter") {
+      if (d.litter <= 0.15) return toast("the litter box is clean");
+      careSound("sand");
+      applyCatState(await wrapCare("clean"));
+      toast("litter box: spotless. you're a good person.");
+    } else if (kind === "treats") {
+      if (treatsLeftToday() <= 0) return toast("you've spoiled the cat enough for one day");
+      const res = await wrapCare("treat");
+      if (res && res.ok === false) return toast("the cat is full of treats right now");
+      try {
+        const log = JSON.parse(localStorage.getItem("metro.treats") || "[]");
+        log.push(Date.now());
+        localStorage.setItem("metro.treats", JSON.stringify(log));
+      } catch (e) {}
+      const p = controls.pose();
+      cat.treatAt(p.x - Math.sin(p.yaw) * 0.7, p.z - Math.cos(p.yaw) * 0.7);
+      if (res) applyCatState(res);
+      toast("the cat is sprinting over");
+    }
+  } catch (e) {
+    toast("couldn't reach the cat's things — try again");
+  }
+}
+// cat_care returns the fresh state; stamp it so decay math starts now
+async function wrapCare(action) {
+  const res = await store.catCare(action);
+  return res ? { ...res, updated_at: new Date().toISOString() } : res;
 }
 
 let lastPetAt = 0;
@@ -120,12 +194,18 @@ controls.onAction((ndcX, ndcY) => {
   const hit = castAt(ndcX, ndcY);
   if (!hit) return;
   if (hit.object.userData.cat && hit.distance < 2.2) {
-    if (Date.now() - lastPetAt < 1500) return;
+    if (Date.now() - lastPetAt < 1200) return;
     lastPetAt = Date.now();
-    cat.pet();
-    store.petCat()
-      .then(n => { if (n) toast(`purrrr — this cat has been petted ${n} time${n === 1 ? "" : "s"}`); })
-      .catch(() => {});
+    const outcome = cat.petOutcome();
+    if (outcome === "scratch") gotScratched();
+    wrapCare("pet").then(res => {
+      if (res && outcome === "love") {
+        toast(`purrrr — this cat has been petted ${res.pets} time${res.pets === 1 ? "" : "s"}`);
+        applyCatState(res);
+      }
+    }).catch(() => {});
+  } else if (hit.object.userData.care && hit.distance < 2.6) {
+    handleCare(hit.object.userData.care);
   } else if (hit.object.userData.note) {
     openReader(hit.object.userData.note);
   } else if (hit.object.userData.postable && hit.distance < 4.5) {
@@ -140,6 +220,15 @@ setInterval(() => {
   const hit = castAt(0, 0);
   if (hit && hit.object.userData.cat && hit.distance < 2.2) {
     aimTip.textContent = "click to pet the cat";
+    aimTip.classList.add("show");
+  } else if (hit && hit.object.userData.care && hit.distance < 2.6) {
+    const d = store.decayCat(catState);
+    const k = hit.object.userData.care;
+    aimTip.textContent =
+      k === "food" ? `food ${Math.round(d.food * 100)}% — click to refill` :
+      k === "water" ? `water ${Math.round(d.water * 100)}% — click to refill` :
+      k === "litter" ? (d.litter > 0.15 ? "click to clean the litter box" : "litter box — clean") :
+      `treat jar — ${Math.max(0, treatsLeftToday())} left today`;
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.note) {
     aimTip.textContent = "click to read";
@@ -405,6 +494,11 @@ addEventListener("keydown", (e) => {
   weather.start();
   echoPlayer.load();
   startEchoRecording(() => controls.pose(), identity.color);
+
+  // cat needs: load shared state, stay subscribed to everyone's care
+  try { applyCatState(await store.getCatState()); }
+  catch (e) { applyCatState({ food: 1, water: 1, litter: 0, pets: 0, updated_at: new Date().toISOString() }); }
+  store.onCatState((s) => applyCatState(s));
 })();
 
 /* ---------------- frame loop ---------------- */

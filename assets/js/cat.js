@@ -38,8 +38,18 @@ export class Cat {
     this.yaw = Math.PI;
     this.target = null;
     this.lastPlinkX = null;
+
+    // inner life
+    this.mood = 0.35;                       // -1 grumpy .. 1 loving
+    this.needs = { food: 1, water: 1, litter: 0 };
+    this.moodTimer = rand(20, 50);
+    this.meowTimer = rand(45, 150);
+    this.needTimer = rand(30, 80);          // when to consider eating/drinking/litter
+    this.actionT = 0;                       // anim clock for eat/drink/dig
     this._apply(0);
   }
+
+  setNeeds(n) { if (n) this.needs = n; }
 
   _build() {
     const lam = (c) => new THREE.MeshLambertMaterial({ color: c });
@@ -88,6 +98,13 @@ export class Cat {
 
   _pick(playerPose) {
     const s = this.spots;
+    // needs first: an empty bowl is ignored (and resented)
+    if (this.needs.food < 0.85 && this.needs.food > 0.06 && Math.random() < 0.4)
+      return this._goto(s.foodBowl.x, s.foodBowl.z, "eat", 0);
+    if (this.needs.water < 0.8 && this.needs.water > 0.06 && Math.random() < 0.35)
+      return this._goto(s.waterBowl.x, s.waterBowl.z, "drink", 0);
+    if (this.needs.litter < 0.92 && Math.random() < 0.18)
+      return this._goto(s.litter.x, s.litter.z, "litterbox", 0);
     const r = Math.random();
     if (r < 0.30) return this._goto(s.chair.x, s.chair.z, "sleep", s.chair.y);
     if (r < 0.50) return this._goto(s.windowFloor.x, s.windowFloor.z, "window", 0);
@@ -102,9 +119,40 @@ export class Cat {
     this.target = { x, z, thenState, thenY };
   }
 
-  pet() {
-    this.fx.purr?.();
-    // hearts float up
+  // Petting is a gamble that depends on its mood. Returns
+  // 'love' | 'meh' | 'scratch' so the caller can react.
+  petOutcome() {
+    this.mood -= 0.07;     // even a loving cat has limits
+    let out;
+    if (this.mood > 0.25) out = "love";
+    else if (this.mood > -0.25) out = Math.random() < 0.75 ? "love" : "meh";
+    else out = Math.random() < 0.45 ? "scratch" : "meh";
+
+    if (out === "love") {
+      this.fx.purr?.();
+      if (Math.random() < 0.4) this.fx.meow?.();
+      this._hearts();
+      if (this.state === "sleep") { this.state = "sit"; this.timer = rand(6, 14); this.baseY = this.baseY; }
+    } else if (out === "meh") {
+      // tolerates you, barely — a slow tail flick, nothing more
+      if (Math.random() < 0.3) this.fx.meow?.();
+    } else {
+      this.fx.hiss?.();
+      this.mood += 0.18;   // it feels better after telling you off
+      if (this.state === "sleep") { this.state = "sit"; this.timer = rand(4, 8); }
+    }
+    return out;
+  }
+
+  // A treat hits different no matter the mood.
+  treatAt(x, z) {
+    this.mood = Math.min(1, this.mood + 0.6);
+    this.fx.meow?.(true);
+    this._goto(x, z, "eat", 0);
+    this.timer = 5;
+  }
+
+  _hearts() {
     for (let i = 0; i < 3; i++) {
       const c = document.createElement("canvas");
       c.width = c.height = 64;
@@ -118,14 +166,45 @@ export class Cat {
       this.grp.parent.add(sp);
       this.hearts.push({ sp, t: 0, drift: rand(-0.05, 0.05) });
     }
-    // petting wakes it into a happy sit facing... wherever it likes
-    if (this.state === "sleep") { this.state = "sit"; this.timer = rand(6, 14); }
   }
 
   /* ---------- per-frame ---------- */
 
   tick(dt, t, playerPose) {
     this.timer -= dt;
+
+    // mood drifts with how well it's being taken care of
+    this.moodTimer -= dt;
+    if (this.moodTimer <= 0) {
+      this.moodTimer = rand(20, 55);
+      const cared = 0.45
+        - 0.7 * (1 - this.needs.food)
+        - 0.3 * (1 - this.needs.water)
+        - 0.5 * this.needs.litter;
+      const target = Math.max(-1, Math.min(1, cared + rand(-0.4, 0.4)));
+      this.mood += (target - this.mood) * 0.6;
+    }
+
+    // it talks — more when hungry, never the same meow twice
+    if (this.state !== "sleep") {
+      this.meowTimer -= dt;
+      if (this.meowTimer <= 0) {
+        this.meowTimer = this.needs.food < 0.25 ? rand(25, 80) : rand(60, 220);
+        this.fx.meow?.();
+      }
+    }
+
+    if (this.state === "eat" || this.state === "drink" || this.state === "litterbox") {
+      this.actionT += dt;
+      if (this.state === "litterbox" && this.fx.dig && Math.floor(this.actionT / 0.8) !== Math.floor((this.actionT - dt) / 0.8)) {
+        this.fx.dig();
+      }
+      if (this.timer <= 0) {
+        if (this.state !== "litterbox") this.mood = Math.min(1, this.mood + 0.15);
+        this.state = "sit";
+        this.timer = rand(4, 10);
+      }
+    }
 
     if (this.state === "walk" && this.target) {
       const dx = this.target.x - this.pos.x, dz = this.target.z - this.pos.z;
@@ -136,10 +215,14 @@ export class Cat {
         this.state = this.target.thenState;
         this.timer = this.state === "sleep" ? rand(50, 140)
                    : this.state === "keys" ? rand(6, 10)
+                   : this.state === "eat" ? rand(5, 8)
+                   : this.state === "drink" ? rand(4, 6)
+                   : this.state === "litterbox" ? rand(5, 7)
                    : rand(15, 45);
         if (this.state === "keys") this.target = { x: this.spots.keys.x2, z: this.spots.keys.z };
         else this.target = null;
         if (this.state === "window") this.yaw = Math.PI;  // face the glass
+        this.actionT = 0;
       } else {
         const want = Math.atan2(dx, dz);
         let dy = want - this.yaw;
@@ -206,6 +289,7 @@ export class Cat {
   _apply(t, dt = 0) {
     const sleeping = this.state === "sleep";
     const walking = this.state === "walk" || this.state === "keys";
+    const headDown = this.state === "eat" || this.state === "drink" || this.state === "litterbox";
 
     this.grp.position.set(this.pos.x, this.baseY, this.pos.z);
     this.grp.rotation.y = this.yaw - Math.PI / 2;   // model faces +x locally
@@ -214,8 +298,10 @@ export class Cat {
     const breathe = sleeping ? Math.sin(t * 1.6) * 0.006 : 0;
     const bob = walking ? Math.abs(Math.sin(t * 8)) * 0.012 : 0;
     this.body.position.y = 0.115 + breathe + bob;
-    this.head.position.y = (sleeping ? 0.09 : 0.16) + bob;
-    this.head.rotation.z = sleeping ? -0.5 : 0;
+    this.head.position.y = (sleeping ? 0.09 : headDown ? 0.08 : 0.16) + bob;
+    this.head.rotation.z = sleeping ? -0.5
+      : headDown ? -0.9 + Math.sin((this.actionT || 0) * 7) * 0.12   // nibbling / digging
+      : 0;
     // tail sway — faster when walking, lazy when asleep
     const sway = Math.sin(t * (walking ? 6 : 1.6));
     this.tail[0].rotation.x = sway * 0.35;
