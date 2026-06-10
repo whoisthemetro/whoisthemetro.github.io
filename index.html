@@ -26,14 +26,33 @@
       <button data-go="videos">VIDEOS</button>
     </div>
     <div class="spacer"></div>
-    <button class="navbtn-icon" id="midi-btn" title="MIDI device routing">
+    <button class="navbtn-icon studio-only" id="seq-btn" title="16-step drum sequencer">
+      SEQ<span class="dot"></span>
+    </button>
+    <button class="navbtn-icon studio-only" id="midi-btn" title="MIDI device routing">
       MIDI<span class="dot"></span>
     </button>
-    <button class="navbtn-icon" id="mp-btn" title="Jam with a friend (multiplayer)">
+    <button class="navbtn-icon studio-only" id="mp-btn" title="Jam with a friend (multiplayer)">
       JAM<span class="dot"></span>
     </button>
     <button class="navbtn-icon" id="topnav-music" title="Open music player">&#9835;</button>
   </nav>
+
+  <!-- Drum step sequencer overlay -->
+  <div id="sequencer">
+    <div class="head">
+      <h2>16-STEP SEQUENCER</h2>
+      <div class="ctrls">
+        <button id="seq-play" class="play">PLAY</button>
+        <label>BPM <input id="seq-bpm" type="number" min="40" max="220" value="120"></label>
+        <button id="seq-clear">CLEAR</button>
+        <button id="seq-random">RANDOM</button>
+        <button id="seq-close" class="close">CLOSE</button>
+      </div>
+    </div>
+    <div class="grid" id="seq-grid"></div>
+    <div class="status" id="seq-status">PATTERN LOOPS WHILE PLAYING — CLOSE TO HIDE WITHOUT STOPPING</div>
+  </div>
 
   <!-- MIDI routing panel -->
   <div id="midi-panel">
@@ -227,6 +246,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="assets/js/data.js"></script>
 <script src="assets/js/audio-engine.js"></script>
+<script src="assets/js/sequencer.js"></script>
 <script src="assets/js/midi.js"></script>
 <script src="assets/js/multiplayer.js"></script>
 <script src="assets/js/gallery.js"></script>

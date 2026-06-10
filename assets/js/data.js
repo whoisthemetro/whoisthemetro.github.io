@@ -153,5 +153,91 @@ window.METRO_DATA = (function () {
     email:     "mailto:whoisthemetro@gmail.com",
   };
 
-  return { SONGS, VAULT_PASSWORD, PHOTOS, VIDEOS, LINKS };
+  /* ---------- CAPTIONS ----------
+     Pool of short, low-key one-liners assigned deterministically by
+     filename hash. Each photo always gets the same caption from this
+     pool unless you set an explicit `title:` or `caption:` on the
+     photo entry above.
+     Add or edit freely — captions reshuffle if the pool length changes.
+  */
+  const CAPTION_POOL = [
+    "Pretty sure that's load-bearing",
+    "Take three, no notes",
+    "Mildly cinematic",
+    "Reasonable hostage",
+    "Mild crime scene",
+    "Negotiating with the void",
+    "Off-brand serenity",
+    "Reluctantly photogenic",
+    "Suspicious amount of vibes",
+    "Brunch was a mistake",
+    "Found art, also lost",
+    "Plausibly deniable",
+    "Free with purchase",
+    "Held together by ambition",
+    "Conceptually employed",
+    "On hold with the universe",
+    "Loosely tethered",
+    "Off-camera, thriving",
+    "Approved by no committee",
+    "Aspirationally still",
+    "Insurance won't cover this",
+    "Aggressively optional",
+    "Allegedly Tuesday",
+    "Lightly haunted",
+    "Pending review",
+    "Conditional grace",
+    "Asked very nicely",
+    "Off-menu",
+    "Roughly a feeling",
+    "Hosted by gravity",
+    "Unsanctioned event",
+    "Possibly a metaphor",
+    "Discount immortality",
+    "Trial separation from clarity",
+    "Vibes, audited",
+    "Faintly diplomatic",
+    "Witnessed by nobody",
+    "Reasonable for a Tuesday",
+    "Soft launch",
+    "Quietly suspicious",
+    "Loitering with intent",
+    "Probably the protagonist",
+    "Not for resale",
+    "Lightly toasted",
+    "Vouched for by nobody",
+    "Tax-deductible feeling",
+    "Photogenic by accident",
+    "Loud whisper",
+    "Tactically silent",
+    "Borrowed gravity",
+    "Marked safe from clarity",
+    "Briefly important",
+    "Operating at vibe capacity",
+    "Sponsored by sleep deprivation",
+    "Mostly a vibe",
+    "On thin ice, looks good",
+    "Reasonable doubt",
+    "Half-committed",
+    "Asking for a friend",
+    "Spiritually unbothered",
+    "Light vandalism",
+    "Almost a plan",
+    // a few quieter holdouts so the pool isn't entirely deadpan
+    "Late spring", "Half-light", "On the way out", "Almost",
+  ];
+
+  // Stable string → small int. Used to pick a caption for each photo.
+  function hashStr(s) {
+    let h = 0;
+    for (let i = 0; i < s.length; i++) {
+      h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+    }
+    return Math.abs(h);
+  }
+  function autoCaption(src) {
+    return CAPTION_POOL[hashStr(src || "") % CAPTION_POOL.length];
+  }
+
+  return { SONGS, VAULT_PASSWORD, PHOTOS, VIDEOS, LINKS, CAPTION_POOL, autoCaption };
 })();

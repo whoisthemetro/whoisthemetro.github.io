@@ -6,7 +6,7 @@
    ============================================================ */
 
 (function () {
-  const { SONGS, VAULT_PASSWORD, PHOTOS, VIDEOS, LINKS } = window.METRO_DATA;
+  const { SONGS, VAULT_PASSWORD, PHOTOS, VIDEOS, LINKS, autoCaption } = window.METRO_DATA;
 
   /* ---------- State ---------- */
   const state = {
@@ -72,6 +72,16 @@
       b.classList.toggle("active", b.dataset.go === scene);
     });
 
+    // Studio-only nav buttons (SEQ / MIDI / JAM) appear only in the studio.
+    const inStudio = scene === "studio";
+    document.getElementById("topnav").classList.toggle("in-studio", inStudio);
+    if (!inStudio) {
+      // Close any of those panels that were left open
+      document.getElementById("sequencer")?.classList.remove("show");
+      document.getElementById("midi-panel")?.classList.remove("show");
+      document.getElementById("mp-panel")?.classList.remove("show");
+    }
+
     state.scene = scene;
 
     if (scene === "gallery") {
@@ -105,6 +115,9 @@
     if (idx != null) state.idx = (idx + state.queue.length) % state.queue.length;
     const s = currentSong();
     if (!s) return;
+    // Make sure the audio engine + mixer routing is up so MUSIC channel
+    // controls (mute, EQ, volume) actually affect playback.
+    window.METRO_AUDIO?.init?.();
     if (state.audio.src !== new URL(s.src, location.href).href) {
       state.audio.src = s.src;
     }
@@ -269,10 +282,21 @@
     const p = modalPhotos[modalIdx];
     if (!p) return;
     $("#photomodal img").src = p.src;
-    $("#photo-title").textContent = p.title || "";
-    $("#photo-desc").textContent = p.caption || "";
+    // Title falls back to an auto-generated caption from the pool.
+    // Explicit caption: only show if the photo also has an explicit title
+    // (so we don't print the auto caption twice).
+    $("#photo-title").textContent = p.title || autoCaption(p.src);
+    $("#photo-desc").textContent = (p.title && p.caption) ? p.caption : "";
   }
-  function closePhotoModal() { $("#photomodal").classList.remove("show"); }
+  function closePhotoModal() {
+    $("#photomodal").classList.remove("show");
+    // Re-engage gallery pointer lock so the player can move immediately
+    // without having to click the canvas again.
+    if (state.scene === "gallery") {
+      const g = state.sceneInstances.gallery;
+      if (g && g.requestLock) g.requestLock();
+    }
+  }
   function photoNext(dir) {
     modalIdx = (modalIdx + dir + modalPhotos.length) % modalPhotos.length;
     renderPhotoModal();
@@ -353,8 +377,10 @@
       if (e.key === "Escape") {
         if ($("#musicfull").classList.contains("show")) { closeFull(); return; }
         if ($("#videoplayer").classList.contains("show")) { closeVideo(); return; }
-        if ($("#photomodal").classList.contains("show")) { closePhotoModal(); return; }
-        // let instrument overlay handle its own Escape close (studio.js)
+        // Photo modal: ESC is a no-op. The browser-level ESC also drops
+        // pointer lock with a cooldown that breaks auto-relock when returning
+        // to the gallery — click outside / close button instead.
+        if ($("#photomodal").classList.contains("show")) return;
         if (document.querySelector("#instrument-overlay.show")) return;
         if (state.scene !== "lobby") go("lobby");
       }
@@ -374,6 +400,7 @@
     // ----- MULTIPLAYER PANEL -----
     wireMultiplayer();
     wireMidiPanel();
+    wireSequencer();
   });
 
   function wireMultiplayer() {
@@ -476,33 +503,32 @@
     function render(payload) {
       const devices = payload?.devices || M.devices();
       list.innerHTML = "";
-      if (!M.isReady()) {
+
+      // Status line — typing device always exists so panel is never empty
+      const realMidi = devices.filter(d => !d.isTyping);
+      if (!M.isReady() && realMidi.length === 0) {
         if (payload?.status === "unsupported") {
-          status.textContent = "WEB MIDI NOT SUPPORTED IN THIS BROWSER";
-          status.className = "status err";
+          status.textContent = "WEB MIDI NOT SUPPORTED — TYPING KEYBOARD STILL WORKS";
+          status.className = "status";
         } else if (payload?.status === "denied") {
-          status.textContent = "MIDI ACCESS DENIED";
+          status.textContent = "MIDI ACCESS DENIED — TYPING KEYBOARD STILL WORKS";
           status.className = "status err";
         } else {
-          status.textContent = "CLICK ANY INSTRUMENT TO ENABLE MIDI";
+          status.textContent = "CLICK ANY INSTRUMENT TO ENABLE MIDI DEVICES";
           status.className = "status";
         }
-        list.innerHTML = '<div class="empty">MIDI NOT INITIALIZED</div>';
-        btn.classList.remove("connected");
-        return;
+      } else {
+        status.textContent = `${realMidi.length} MIDI DEVICE${realMidi.length === 1 ? "" : "S"} + TYPING KEYBOARD`;
+        status.className = "status ok";
       }
-      if (!devices.length) {
-        list.innerHTML = '<div class="empty">NO MIDI DEVICES DETECTED</div>';
-        status.textContent = "PLUG IN A CONTROLLER, THEN REOPEN THIS PANEL";
-        status.className = "status";
-        btn.classList.remove("connected");
-        return;
-      }
-      btn.classList.add("connected");
-      status.textContent = `${devices.length} DEVICE${devices.length > 1 ? "S" : ""} CONNECTED`;
-      status.className = "status ok";
+      btn.classList.toggle("connected", realMidi.length > 0 || M.typingActive());
 
       devices.forEach(d => {
+        // For the typing device the "auto" slot is rendered as "OFF"
+        const modes = d.isTyping
+          ? [ { id: "off",  label: "OFF" }, { id: "keys", label: "KEYS" }, { id: "drums", label: "DRUMS" } ]
+          : [ { id: "auto", label: "AUTO" }, { id: "keys", label: "KEYS" }, { id: "drums", label: "DRUMS" } ];
+
         const row = create("div", { class: "device" },
           create("div", { class: "name" },
             d.name || "Unknown device",
@@ -510,11 +536,6 @@
           ),
           (() => {
             const routes = create("div", { class: "routes" });
-            const modes = [
-              { id: "auto",  label: "AUTO" },
-              { id: "keys",  label: "KEYS" },
-              { id: "drums", label: "DRUMS" },
-            ];
             modes.forEach(m => {
               const b = create("button", {
                 class: d.mode === m.id ? "on" : "",
@@ -525,6 +546,14 @@
             return routes;
           })()
         );
+        // For typing, add a help hint about which keys do what
+        if (d.isTyping) {
+          row.appendChild(create("div", { class: "hint" },
+            "KEYS: row A–; plays C4–E5, W/E/T/Y/U/O/P = sharps · " +
+            "DRUMS: Q/W/E/R = kick/snare/hat/openhat, A/S/D/F = toms+clap · " +
+            "WASD movement is suppressed while active."
+          ));
+        }
         list.appendChild(row);
       });
     }
@@ -532,5 +561,82 @@
     M.onEvent(render);
     // initial render in case MIDI was already initialized before panel opened
     render();
+  }
+
+  function wireSequencer() {
+    const S = window.METRO_SEQ;
+    if (!S) return;
+    const btn      = $("#seq-btn");
+    const panel    = $("#sequencer");
+    const grid     = $("#seq-grid");
+    const playBtn  = $("#seq-play");
+    const bpmInput = $("#seq-bpm");
+    const clearBtn = $("#seq-clear");
+    const rndBtn   = $("#seq-random");
+    const closeBtn = $("#seq-close");
+
+    const labels = {
+      kick: "KICK", snare: "SNARE", hihat: "HI-HAT", openhat: "OPEN HH",
+      tom1: "TOM 1", tom2: "TOM 2", tom3: "TOM 3", clap: "CLAP",
+    };
+
+    // Build grid
+    let cellEls = {}; // drum -> array of 16 cell elements
+    function buildGrid() {
+      grid.innerHTML = "";
+      cellEls = {};
+      S.DRUMS.forEach(drum => {
+        const lbl = create("div", { class: "lbl row-" + drum }, labels[drum] || drum);
+        // CSS Grid: label uses 1 column, then 16 cells follow on the same row
+        // (rows wrap automatically with grid-template-columns set to 17).
+        grid.appendChild(lbl);
+        cellEls[drum] = [];
+        for (let i = 0; i < S.STEPS; i++) {
+          const c = create("div", {
+            class: "cell row-" + drum + (i % 4 === 0 ? " beat" : ""),
+            onclick: () => S.toggleStep(drum, i),
+          });
+          grid.appendChild(c);
+          cellEls[drum].push(c);
+        }
+      });
+      refreshAll();
+    }
+    function refreshAll() {
+      const pat = S.getPattern();
+      const cur = S.getStep();
+      S.DRUMS.forEach(drum => {
+        for (let i = 0; i < S.STEPS; i++) {
+          const cell = cellEls[drum][i];
+          if (!cell) continue;
+          cell.classList.toggle("on",  !!pat[drum][i]);
+          cell.classList.toggle("cur", i === cur && S.isPlaying());
+        }
+      });
+    }
+
+    btn.addEventListener("click", () => {
+      if (!cellEls.kick) buildGrid();
+      panel.classList.toggle("show");
+    });
+    closeBtn.addEventListener("click", () => panel.classList.remove("show"));
+    playBtn.addEventListener("click", () => {
+      if (S.isPlaying()) S.stop();
+      else { window.METRO_AUDIO?.init?.(); S.play(); }
+    });
+    clearBtn.addEventListener("click", () => S.clearPattern());
+    rndBtn.addEventListener("click", () => S.randomize());
+    bpmInput.addEventListener("change", () => S.setBpm(parseInt(bpmInput.value) || 120));
+    bpmInput.value = S.getBpm();
+
+    // React to sequencer state changes
+    S.onChange(() => {
+      // Update play button label + nav-button dot
+      const playing = S.isPlaying();
+      playBtn.classList.toggle("on", playing);
+      playBtn.textContent = playing ? "STOP" : "PLAY";
+      btn.classList.toggle("playing", playing);
+      refreshAll();
+    });
   }
 })();

@@ -87,15 +87,23 @@ button { font-family: inherit; cursor: pointer; }
 }
 #topnav .spacer { flex: 1; }
 #topnav .navbtn-icon {
-  width: 36px; height: 36px;
-  display: grid; place-items: center;
+  min-width: 56px; height: 36px;
+  padding: 0 10px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   border: 1px solid var(--line);
   background: rgba(0,0,0,0.35);
   border-radius: 8px;
   color: var(--neon);
-  font-size: 16px;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  font-weight: 600;
 }
-#topnav .navbtn-icon:hover { background: rgba(0,255,208,0.08); }
+#topnav #topnav-music { font-size: 16px; min-width: 44px; padding: 0; }
+#topnav .navbtn-icon:hover { background: rgba(0,255,208,0.08); border-color: var(--neon); }
+/* Studio-only nav buttons: hidden by default, revealed when the topnav has the
+   in-studio class (toggled in app.js whenever the scene changes). */
+#topnav .studio-only { display: none; }
+#topnav.in-studio .studio-only { display: inline-flex; }
 
 /* ============================================================
    LANDING / LOBBY
@@ -529,6 +537,28 @@ button { font-family: inherit; cursor: pointer; }
   display: none;
 }
 .scene-hud .prompt.show { display: block; }
+.scene-hud .latency {
+  position: absolute; top: 60px; right: 16px;
+  padding: 8px 12px;
+  background: rgba(0,0,0,0.55);
+  border: 1px solid var(--line-dim);
+  border-radius: 6px;
+  color: var(--ink-dim);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  line-height: 1.5;
+  text-align: right;
+  font-family: "JetBrains Mono", monospace;
+}
+.scene-hud .latency .lbl { color: var(--neon); margin-right: 6px; }
+.scene-hud .latency .advice {
+  margin-top: 4px;
+  font-size: 10px;
+  color: var(--neon-3);
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+}
+
 .scene-hud .controls {
   position: absolute; right: 16px; bottom: 80px;
   padding: 10px 14px;
@@ -778,6 +808,114 @@ button { font-family: inherit; cursor: pointer; }
 }
 
 /* ============================================================
+   STEP SEQUENCER
+   ============================================================ */
+#sequencer {
+  position: fixed; top: 60px; right: 16px;
+  width: 720px; max-width: calc(100vw - 32px);
+  background: rgba(11,13,20,0.97);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px 16px;
+  z-index: 80;
+  display: none;
+  box-shadow: 0 10px 32px rgba(0,0,0,0.55);
+}
+#sequencer.show { display: block; }
+#sequencer .head {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+#sequencer h2 {
+  margin: 0;
+  font-size: 12px; letter-spacing: 0.30em;
+  color: var(--neon); text-transform: uppercase;
+}
+#sequencer .ctrls { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+#sequencer .ctrls button, #sequencer .ctrls label {
+  font-family: inherit; font-size: 11px;
+  letter-spacing: 0.14em; text-transform: uppercase;
+  padding: 6px 10px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--line-dim);
+  color: var(--ink);
+  border-radius: 6px;
+  cursor: pointer;
+}
+#sequencer .ctrls label {
+  display: flex; align-items: center; gap: 6px;
+  cursor: default;
+}
+#sequencer .ctrls input[type="number"] {
+  width: 48px;
+  background: transparent;
+  border: none;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 12px;
+  text-align: center;
+}
+#sequencer .ctrls button.play.on {
+  background: var(--neon); color: #001512; border-color: var(--neon);
+}
+#sequencer .ctrls button.close {
+  border-color: var(--line);
+}
+#sequencer .ctrls button:hover { border-color: var(--neon); color: var(--ink); }
+
+/* Grid: 1 label column + 16 step cells */
+#sequencer .grid {
+  display: grid;
+  grid-template-columns: 76px repeat(16, 1fr);
+  gap: 4px;
+  font-family: "JetBrains Mono", monospace;
+}
+#sequencer .grid .lbl {
+  display: flex; align-items: center;
+  font-size: 10px; letter-spacing: 0.18em;
+  color: var(--ink-dim); text-transform: uppercase;
+  padding-right: 8px;
+}
+#sequencer .grid .cell {
+  aspect-ratio: 1;
+  background: #14171f;
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 3px;
+  cursor: pointer;
+  transition: transform 80ms ease;
+}
+#sequencer .grid .cell:hover { transform: scale(1.08); }
+#sequencer .grid .cell.on { background: var(--neon); border-color: var(--neon); box-shadow: 0 0 6px rgba(0,255,208,0.4); }
+/* Beat group dividers — slightly darker every 4th cell */
+#sequencer .grid .cell.beat { border-left: 1px solid rgba(255,255,255,0.18); }
+/* Current step highlight */
+#sequencer .grid .cell.cur { outline: 2px solid #ffae00; outline-offset: -1px; }
+#sequencer .grid .cell.cur.on { box-shadow: 0 0 14px rgba(255,174,0,0.55); }
+/* Per-drum row accent colors (override the .on color) */
+#sequencer .grid .row-kick    .cell.on { background: #00ffd0; border-color: #00ffd0; }
+#sequencer .grid .row-snare   .cell.on { background: #ffae00; border-color: #ffae00; }
+#sequencer .grid .row-hihat   .cell.on { background: #c8a557; border-color: #c8a557; }
+#sequencer .grid .row-openhat .cell.on { background: #c8a557; border-color: #c8a557; }
+#sequencer .grid .row-tom1    .cell.on { background: #ff2bd6; border-color: #ff2bd6; }
+#sequencer .grid .row-tom2    .cell.on { background: #ff2bd6; border-color: #ff2bd6; }
+#sequencer .grid .row-tom3    .cell.on { background: #ff2bd6; border-color: #ff2bd6; }
+#sequencer .grid .row-clap    .cell.on { background: #00ffd0; border-color: #00ffd0; }
+#sequencer .status {
+  margin-top: 12px;
+  font-size: 10px; letter-spacing: 0.18em;
+  color: var(--ink-dim); text-transform: uppercase;
+}
+
+/* SEQ button dot indicator */
+#seq-btn.playing .dot {
+  background: var(--neon);
+  box-shadow: 0 0 8px rgba(0,255,208,0.7);
+  animation: pulse 0.5s infinite;
+}
+
+/* ============================================================
    MIDI PANEL
    ============================================================ */
 #midi-panel {
@@ -838,6 +976,12 @@ button { font-family: inherit; cursor: pointer; }
 #midi-list .device .routes button.on {
   background: var(--neon); color: #001512; border-color: var(--neon);
   text-shadow: none;
+}
+#midi-list .device .hint {
+  margin-top: 8px;
+  font-size: 10px; line-height: 1.5;
+  color: var(--ink-dim);
+  letter-spacing: 0.04em;
 }
 #midi-list .empty {
   padding: 16px;

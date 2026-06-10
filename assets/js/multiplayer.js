@@ -24,13 +24,19 @@ window.METRO_MP = (function () {
   let conn = null;
   let isHost = false;
   let myCode = null;
+  let myRole = null;            // "host" | "guest" | null (only when connected)
   let _remotePose = { x: 0, z: 0, yaw: 0, valid: false };
+  let _rtt = 0;                 // last measured round-trip in ms
+  let _claims = { drums: null, synth: null };   // null | "host" | "guest"
+  let _pingTimer = null;
   const listeners = {
     connected: new Set(),
     disconnected: new Set(),
     remoteDrum: new Set(),
     remoteNote: new Set(),
     remotePose: new Set(),
+    claims: new Set(),
+    rtt: new Set(),
     status: new Set(),
   };
 
@@ -120,33 +126,78 @@ window.METRO_MP = (function () {
 
   function wireConn() {
     conn.on("open", () => {
-      emit("connected", { code: myCode || "remote" });
+      myRole = isHost ? "host" : "guest";
+      // Start ping cadence for RTT measurement
+      if (_pingTimer) clearInterval(_pingTimer);
+      _pingTimer = setInterval(() => {
+        if (conn && conn.open) send({ t: "ping", ts: performance.now() });
+      }, 1500);
+      emit("connected", { code: myCode || "remote", role: myRole });
     });
     conn.on("data", (msg) => {
       const A = window.METRO_AUDIO;
       if (!A || !msg || !msg.t) return;
       if (msg.t === "drum") {
+        // Filter remote drums by claim
+        if (_claims.drums && _claims.drums !== otherRole()) return;
         A.remote.drum(msg.n, msg.v || 100);
         emit("remoteDrum", { name: msg.n, velocity: msg.v || 100 });
       } else if (msg.t === "noteOn") {
+        if (_claims.synth && _claims.synth !== otherRole()) return;
         A.remote.noteOn(msg.m, msg.v || 100);
       } else if (msg.t === "noteOff") {
+        if (_claims.synth && _claims.synth !== otherRole()) return;
         A.remote.noteOff(msg.m);
       } else if (msg.t === "note") {
-        // legacy: one-shot note (kept for back-compat with older client)
         A.remote.note(msg.m, msg.d || 0.5, msg.v || 100);
       } else if (msg.t === "pose") {
         _remotePose = { x: msg.x, z: msg.z, yaw: msg.yaw, valid: true };
         emit("remotePose", _remotePose);
+      } else if (msg.t === "claim") {
+        // Partner set a claim
+        _claims[msg.inst] = msg.owner;
+        emit("claims", { ..._claims });
+      } else if (msg.t === "ping") {
+        send({ t: "pong", ts: msg.ts });
+      } else if (msg.t === "pong") {
+        _rtt = Math.round(performance.now() - msg.ts);
+        emit("rtt", _rtt);
       }
     });
     conn.on("close", () => {
       _remotePose.valid = false;
+      _claims = { drums: null, synth: null };
+      _rtt = 0;
+      myRole = null;
+      if (_pingTimer) { clearInterval(_pingTimer); _pingTimer = null; }
       conn = null;
       emit("disconnected", {});
+      emit("claims", { ..._claims });
     });
     conn.on("error", (e) => { console.warn("[MP] conn error", e); });
   }
+
+  function otherRole() {
+    if (myRole === "host") return "guest";
+    if (myRole === "guest") return "host";
+    return null;
+  }
+
+  function setClaim(inst, owner) {
+    // owner: "me" | "release" | "host" | "guest" | null
+    if (owner === "me") owner = myRole;
+    if (owner === "release") owner = null;
+    _claims[inst] = owner;
+    send({ t: "claim", inst, owner });
+    emit("claims", { ..._claims });
+  }
+  function getClaim(inst) { return _claims[inst]; }
+  function claimAvailable(inst) {
+    // null (free) OR I own it
+    const c = _claims[inst];
+    return c == null || c === myRole;
+  }
+  function iAmOwner(inst) { return _claims[inst] === myRole; }
 
   function leave() {
     if (conn) { conn.close(); conn = null; }
@@ -172,7 +223,16 @@ window.METRO_MP = (function () {
     onDisconnected: (fn) => { listeners.disconnected.add(fn); return () => listeners.disconnected.delete(fn); },
     onStatus: (fn) => { listeners.status.add(fn); return () => listeners.status.delete(fn); },
     onRemotePose: (fn) => { listeners.remotePose.add(fn); return () => listeners.remotePose.delete(fn); },
+    onClaims:    (fn) => { listeners.claims.add(fn);    return () => listeners.claims.delete(fn); },
+    onRtt:       (fn) => { listeners.rtt.add(fn);       return () => listeners.rtt.delete(fn); },
     isConnected: () => !!(conn && conn.open),
+    myRole: () => myRole,
+    rttMs: () => _rtt,
+    claims: () => ({ ..._claims }),
+    setClaim, getClaim, claimAvailable, iAmOwner,
+    // For solo play (no MP): claim system is inert — claimAvailable returns
+    // true for everything, iAmOwner returns false, nothing is enforced.
+    soloFriendly: () => !conn || !conn.open,
     remotePose: () => _remotePose,
   };
 })();

@@ -7,10 +7,10 @@
 window.METRO_GALLERY = (function () {
   const { PHOTOS } = window.METRO_DATA;
 
-  // Room dimensions
-  const ROOM = { w: 44, d: 36, h: 6.0 };
+  // Room dimensions — smaller + faster to feel responsive
+  const ROOM = { w: 26, d: 20, h: 5.5 };
   const EYE_H = 1.65;
-  const WALK_SPEED = 4.6;          // units/sec
+  const WALK_SPEED = 6.5;          // units/sec
   const TURN_SPEED = 0.0025;       // mouse sensitivity
 
   // Salon layout: uniform row height keeps tops/bottoms aligned within a row,
@@ -35,7 +35,7 @@ window.METRO_GALLERY = (function () {
     // Three.js setup
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x05060a);
-    scene.fog = new THREE.Fog(0x05060a, 12, 38);
+    scene.fog = new THREE.Fog(0x05060a, 10, 28);
 
     const camera = new THREE.PerspectiveCamera(
       72, container.clientWidth / container.clientHeight, 0.1, 200
@@ -109,6 +109,7 @@ window.METRO_GALLERY = (function () {
 
     function onMouseMove(e) {
       if (!pointerLocked) return;
+      if (overlayOpen()) return;
       yaw   -= e.movementX * TURN_SPEED;
       pitch -= e.movementY * TURN_SPEED;
       pitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, pitch));
@@ -146,6 +147,8 @@ window.METRO_GALLERY = (function () {
       if (!hoveredPhoto) return;
       const idx = photoMeshes.findIndex(p => p.mesh === hoveredPhoto);
       const ordered = photoMeshes.map(p => p.photoData);
+      // Release pointer lock so the camera stays put while viewing the photo.
+      if (document.pointerLockElement) document.exitPointerLock();
       window.METRO_PHOTO_MODAL.open(ordered, idx);
     }
 
@@ -237,6 +240,11 @@ window.METRO_GALLERY = (function () {
         state.scene = "";
         if (document.pointerLockElement === renderer.domElement) document.exitPointerLock();
         cancelAnimationFrame(raf); raf = null;
+      },
+      // Called by app.js after the photo modal closes — re-engages pointer
+      // lock so the player can move without clicking the canvas again.
+      requestLock() {
+        try { renderer.domElement.requestPointerLock?.(); } catch (e) {}
       },
     };
 

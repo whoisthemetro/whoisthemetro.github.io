@@ -17,10 +17,27 @@
 
 window.METRO_MIDI = (function () {
   const STORAGE_KEY = "metro-midi-routes-v1";
+  // "typing" is a built-in virtual device — the user's actual computer keyboard.
+  // Always present in the device list, modes: "off" / "keys" / "drums".
+  const TYPING_ID = "typing";
   let access = null;
   let inputs = [];                // [{ id, name, mode }]
-  let routes = loadRoutes();      // { deviceId: "auto" | "keys" | "drums" }
+  let routes = loadRoutes();      // { deviceId: "auto"|"keys"|"drums"|"off" }
+  if (!routes[TYPING_ID]) routes[TYPING_ID] = "off";
   const listeners = new Set();    // status change subscribers
+
+  // ---- TYPING-KEYBOARD MAP (virtualpiano layout) ----
+  // Lower octave on the home row, black keys on the top row.
+  const PIANO_MAP = {
+    a: 60, w: 61, s: 62, e: 63, d: 64, f: 65, t: 66, g: 67,
+    y: 68, h: 69, u: 70, j: 71, k: 72, o: 73, l: 74, p: 75, ";": 76,
+  };
+  const TYPING_DRUM_MAP = {
+    q: "kick", w: "snare", e: "hihat", r: "openhat",
+    a: "tom1", s: "tom2", d: "tom3", f: "clap",
+  };
+  // Notes currently held by typing-keyboard (for noteOff on keyup)
+  const typingHeldMidi = new Set();
 
   function loadRoutes() {
     try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}"); }
@@ -49,10 +66,21 @@ window.METRO_MIDI = (function () {
 
   function bindAll() {
     inputs = [];
-    for (const input of access.inputs.values()) {
-      input.onmidimessage = (msg) => onMessage(msg, input);
-      const mode = routes[input.id] || "auto";
-      inputs.push({ id: input.id, name: input.name, manufacturer: input.manufacturer || "", mode });
+    // Always include the typing keyboard at the top of the list — works
+    // even when there's no MIDI permission / no real MIDI device plugged in.
+    inputs.push({
+      id: TYPING_ID,
+      name: "Typing keyboard",
+      manufacturer: "built-in",
+      mode: routes[TYPING_ID] || "off",
+      isTyping: true,
+    });
+    if (access) {
+      for (const input of access.inputs.values()) {
+        input.onmidimessage = (msg) => onMessage(msg, input);
+        const mode = routes[input.id] || "auto";
+        inputs.push({ id: input.id, name: input.name, manufacturer: input.manufacturer || "", mode });
+      }
     }
     emit({ status: "ready", devices: inputs.slice() });
   }
@@ -86,6 +114,10 @@ window.METRO_MIDI = (function () {
     if (isNoteOn) {
       const mode = routes[input.id] || "auto";
       const target = decideTarget(mode, channel);
+      // In multiplayer, gate by the instrument's claim. If a partner owns
+      // the instrument, this device cannot play it.
+      const MP = window.METRO_MP;
+      if (MP && MP.isConnected() && !MP.claimAvailable(target)) return;
       activeMidiTarget.set(key, target);
       if (target === "drums") {
         const drumName = A.midi.drumMap[d1] || chromaticDrum(d1);
@@ -101,6 +133,59 @@ window.METRO_MIDI = (function () {
       // drums are one-shot — nothing to do
     }
   }
+
+  // ============================================================
+  // TYPING KEYBOARD — virtual MIDI device
+  // ============================================================
+  function typingMode() { return routes[TYPING_ID] || "off"; }
+  function typingActive() {
+    const m = typingMode();
+    return m === "keys" || m === "drums";
+  }
+  function onTypingKeyDown(e) {
+    if (!typingActive()) return;
+    if (e.target.matches("input, textarea")) return;
+    if (e.repeat) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const A = window.METRO_AUDIO;
+    if (!A) return;
+    const mode = typingMode();
+    const MP = window.METRO_MP;
+    A.ensureCtx();
+    const key = e.key.toLowerCase();
+    if (mode === "keys") {
+      const midi = PIANO_MAP[key];
+      if (midi == null) return;
+      if (MP && MP.isConnected() && !MP.claimAvailable("synth")) return;
+      A.synth.noteOn(midi, 100);
+      typingHeldMidi.add(midi);
+      e.preventDefault();
+    } else if (mode === "drums") {
+      const name = TYPING_DRUM_MAP[key];
+      if (!name) return;
+      if (MP && MP.isConnected() && !MP.claimAvailable("drums")) return;
+      A.drums.play(name, 100);
+      e.preventDefault();
+    }
+  }
+  function onTypingKeyUp(e) {
+    if (e.target.matches("input, textarea")) return;
+    if (typingMode() !== "keys") return;
+    const key = e.key.toLowerCase();
+    const midi = PIANO_MAP[key];
+    if (midi == null) return;
+    const A = window.METRO_AUDIO;
+    if (A && typingHeldMidi.has(midi)) {
+      A.synth.noteOff(midi);
+      typingHeldMidi.delete(midi);
+    }
+  }
+  document.addEventListener("keydown", onTypingKeyDown);
+  document.addEventListener("keyup",   onTypingKeyUp);
+
+  // Populate the inputs list with the typing device immediately, so the
+  // MIDI panel shows it even without MIDI permission.
+  bindAll();
 
   function decideTarget(mode, channel) {
     if (mode === "keys")  return "synth";
@@ -131,6 +216,7 @@ window.METRO_MIDI = (function () {
     isReady: () => !!access,
     devices: () => inputs.slice(),
     modeFor: (deviceId) => routes[deviceId] || "auto",
+    typingActive,
   };
 })();
 
