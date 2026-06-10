@@ -14,6 +14,14 @@ import { PAPERS, hostOf } from "./util.js";
 
 const NOTE_W = 0.38, PHOTO_W = 0.46, LINK_W = 0.44;
 
+// footprint on the wall per kind, in meters [w, h]
+const KIND_SIZE = {
+  note: [NOTE_W, NOTE_W],
+  photo: [PHOTO_W, PHOTO_W * (300 / 256)],
+  link: [LINK_W, LINK_W * (132 / 256)],
+};
+const PAD = 0.03;   // breathing room between notes
+
 function roundRect(g, x, y, w, h, r) {
   g.beginPath();
   g.moveTo(x + r, y);
@@ -135,12 +143,45 @@ export class NotesWall {
     this.store = store;
     this.byId = new Map();       // id -> mesh
     this.seq = 0;                // stacking order → tiny z offsets
+    this.occupied = new Map();   // wall id -> [{id, cu, cv, hu, hv}] in meters
   }
 
   has(id) { return this.byId.has(id); }
 
   setAll(notes) {
-    for (const n of notes) this.add(n);
+    // oldest first → the deterministic de-overlap below gives every
+    // visitor the exact same layout
+    const sorted = [...notes].sort((a, b) =>
+      String(a.created_at).localeCompare(String(b.created_at)) || String(a.id).localeCompare(String(b.id)));
+    for (const n of sorted) this.add(n);
+  }
+
+  // Every note is its own thing: if the stored spot overlaps an earlier
+  // note, walk a deterministic spiral outward to the nearest free patch.
+  _resolveSpot(wall, note) {
+    const [kw, kh] = KIND_SIZE[note.kind] || KIND_SIZE.note;
+    const hu = kw / 2 + PAD, hv = kh / 2 + PAD;
+    const taken = this.occupied.get(wall.id) || [];
+    const collides = (cu, cv) => taken.some(o =>
+      Math.abs(cu - o.cu) < hu + o.hu && Math.abs(cv - o.cv) < hv + o.hv);
+    const clampU = (cu) => Math.min(wall.w * 0.96 - hu, Math.max(wall.w * 0.04 + hu, cu));
+    const clampV = (cv) => Math.min(wall.h * 0.78 - hv, Math.max(wall.h * 0.13 + hv, cv));
+
+    let cu = clampU(note.x * wall.w);
+    let cv = clampV(note.y * wall.h);
+    if (!collides(cu, cv)) return { cu, cv, hu, hv };
+
+    const STEP = 0.07;
+    for (let ring = 1; ring <= 60; ring++) {
+      const n = 8 * ring;
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI * 2;
+        const tu = clampU(note.x * wall.w + Math.cos(a) * ring * STEP);
+        const tv = clampV(note.y * wall.h + Math.sin(a) * ring * STEP);
+        if (!collides(tu, tv)) return { cu: tu, cv: tv, hu, hv };
+      }
+    }
+    return { cu, cv, hu, hv };   // wall truly full — overlap beats losing the note
   }
 
   add(note) {
@@ -174,13 +215,16 @@ export class NotesWall {
       }),
     );
 
-    // world position from (wall, u, v) — always proud of the wall, with a
-    // small per-note stagger so overlapping notes never z-fight, capped so
-    // a crowded wall doesn't push notes visibly into the room
+    // world position from (wall, u, v), de-overlapped so every note owns
+    // its own patch of wall, with a tiny stagger against z-fighting
+    const spot = this._resolveSpot(wall, note);
+    if (!this.occupied.has(wall.id)) this.occupied.set(wall.id, []);
+    this.occupied.get(wall.id).push({ id: note.id, ...spot });
+
     const offset = 0.014 + (this.seq++ % 64) * 0.0008;
     const pos = wall.origin.clone()
-      .addScaledVector(wall.uDir, note.x * wall.w)
-      .addScaledVector(wall.vDir, note.y * wall.h)
+      .addScaledVector(wall.uDir, spot.cu)
+      .addScaledVector(wall.vDir, spot.cv)
       .addScaledVector(wall.normal, offset);
     mesh.position.copy(pos);
     mesh.quaternion.copy(wall.mesh.quaternion);
@@ -214,6 +258,10 @@ export class NotesWall {
     mesh.material.dispose();
     mesh.geometry.dispose();
     this.byId.delete(id);
+    for (const taken of this.occupied.values()) {
+      const i = taken.findIndex(o => o.id === id);
+      if (i >= 0) { taken.splice(i, 1); break; }
+    }
   }
 
   // everything clickable: notes first (closer), then bare walls

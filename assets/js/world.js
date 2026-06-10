@@ -429,7 +429,7 @@ function makeSky() {
     return { x: 360 + (azd / 55) * 340, y: 250 - (altd / 60) * 235 };
   }
 
-  function draw(sun, moon, moonFrac) {
+  function draw(sun, moon, moonFrac, wx = { clouds: 0, fog: false, rain: 0 }) {
     const sunAlt = sun.altitude / (Math.PI / 180);
     let top, bot;
     if (sunAlt > 5)        { top = "#7fb2e0"; bot = "#c8dcec"; }
@@ -441,11 +441,27 @@ function makeSky() {
     g.fillStyle = grad;
     g.fillRect(0, 0, 720, 280);
 
-    if (sunAlt < -8) {
+    if (sunAlt < -8 && wx.clouds < 0.55) {
       for (const [x, y, r] of stars) {
-        g.fillStyle = `rgba(255,255,255,${0.25 + r * 0.5})`;
+        g.fillStyle = `rgba(255,255,255,${(0.25 + r * 0.5) * (1 - wx.clouds)})`;
         g.fillRect(x, y, r > 0.8 ? 2 : 1.4, r > 0.8 ? 2 : 1.4);
       }
+    }
+
+    // the real cloud cover over LA right now
+    if (wx.clouds > 0.1) {
+      const dark = sunAlt > 0 ? 225 : 38;
+      for (let i = 0; i < wx.clouds * 16; i++) {
+        g.fillStyle = `rgba(${dark},${dark},${dark + 6},${0.10 + wx.clouds * 0.16})`;
+        const cx = ((i * 137) % 760) - 20, cy = 20 + ((i * 71) % 140);
+        g.beginPath();
+        g.ellipse(cx, cy, 90 + (i * 31) % 70, 22 + (i * 13) % 16, 0, 0, 7);
+        g.fill();
+      }
+    }
+    if (wx.fog) {
+      g.fillStyle = "rgba(150,155,160,0.45)";
+      g.fillRect(0, 0, 720, 280);
     }
 
     g.fillStyle = sunAlt > 5 ? "rgba(70,80,95,0.85)" : "#05070c";
@@ -590,6 +606,29 @@ export function buildWorld() {
   const glass = add(plane(WIN.w, WIN.h, new THREE.MeshBasicMaterial({ map: sky.tex })));
   glass.position.set(WIN.cx, WIN.cy, ZF + 0.01);
 
+  // rain running down the glass when it's actually raining in Hawthorne
+  const rainTex = canvasTex(256, 256, (g) => {
+    g.clearRect(0, 0, 256, 256);
+    for (let i = 0; i < 46; i++) {
+      const x = Math.random() * 256, len = 18 + Math.random() * 60;
+      const y = Math.random() * 256;
+      const grad2 = g.createLinearGradient(0, y, 0, y + len);
+      grad2.addColorStop(0, "rgba(200,220,240,0)");
+      grad2.addColorStop(0.8, `rgba(200,220,240,${0.25 + Math.random() * 0.3})`);
+      grad2.addColorStop(1, "rgba(230,240,250,0.6)");
+      g.fillStyle = grad2;
+      g.fillRect(x, y, 1.4, len);
+      g.fillStyle = "rgba(220,235,250,0.5)";
+      g.fillRect(x - 0.6, y + len, 2.6, 2.6);
+    }
+  });
+  rainTex.wrapS = rainTex.wrapT = THREE.RepeatWrapping;
+  const rainPane = add(plane(WIN.w, WIN.h, new THREE.MeshBasicMaterial({
+    map: rainTex, transparent: true, opacity: 0.55, depthWrite: false,
+  })));
+  rainPane.position.set(WIN.cx, WIN.cy, ZF + 0.02);
+  rainPane.visible = false;
+
   const blindsMat = new THREE.MeshLambertMaterial({
     map: blindsTexture(), transparent: true, side: THREE.DoubleSide, alphaTest: 0.4,
   });
@@ -664,12 +703,14 @@ export function buildWorld() {
   // sky bounce — the only "ambient", and it follows the sky too
   const skyFill = add(new THREE.HemisphereLight(0x8a96a8, 0x2a241c, 0.3));
 
+  let wx = { clouds: 0, rain: 0, fog: false };
+
   function updateSky() {
     const now = new Date();
     const sun = getSunPosition(now, LAT, LNG);
     const moon = getMoonPosition(now, LAT, LNG);
     const { fraction } = getMoonIllumination(now);
-    sky.draw(sun, moon, fraction);
+    sky.draw(sun, moon, fraction, wx);
 
     // aim the beam from where the body actually hangs over LA
     const src = sun.altitude > -0.05 ? sun : moon;
@@ -712,8 +753,20 @@ export function buildWorld() {
       skyFill.color.set(0x565e6e); skyFill.groundColor.set(0x241f18);
       skyFill.intensity = 0.18;
     }
+
+    // clouds soften everything; rain a touch more
+    const dim = Math.max(0.18, 1 - 0.65 * wx.clouds - (wx.rain ? 0.12 : 0));
+    beam.intensity *= dim;
+    windowLight.intensity *= Math.max(0.3, 1 - 0.45 * wx.clouds);
+    skyFill.intensity *= Math.max(0.5, 1 - 0.3 * wx.clouds);
   }
   updateSky();
+
+  function setWeather(w) {
+    wx = w || wx;
+    rainPane.visible = wx.rain > 0;
+    updateSky();
+  }
 
   /* --- doors --- */
   function door(w, h, x, z, rotY, double = false) {
@@ -1052,6 +1105,11 @@ export function buildWorld() {
     }
     dustGeo.attributes.position.needsUpdate = true;
 
+    // rain runs down the glass
+    if (rainPane.visible) {
+      rainTex.offset.y -= dt * (wx.rain === 2 ? 0.5 : 0.25);
+    }
+
     nextCityAt -= dt;
     if (nextCityAt <= 0) {
       nextCityAt = rand(70, 180);
@@ -1064,5 +1122,14 @@ export function buildWorld() {
     bounds: ROOM.bounds,
     spawn: { x: 1.7, z: 2.35, yaw: 0.28 },
     setCityListener: fn => { onCity = fn; },
+    setWeather,
+    getWeather: () => wx,
+    // where the cat likes to be
+    catSpots: {
+      chair: { x: SWEET.x, z: SWEET.z, y: 0.51 },
+      keys: { x1: -0.24, x2: 0.62, z: -2.45, y: 0.53 },
+      windowFloor: { x: -1.7, z: -2.7 },
+      bounds: ROOM.bounds,
+    },
   };
 }

@@ -9,7 +9,10 @@ import { NotesWall } from "./notes3d.js";
 import { Ghosts } from "./ghosts.js";
 import { store } from "./store.js";
 import { presence } from "./presence.js";
-import { startAmbience, citySound } from "./ambience.js";
+import { startAmbience, citySound, plink, purr, setRain } from "./ambience.js";
+import { weather } from "./weather.js";
+import { startEchoRecording, EchoPlayer } from "./echoes.js";
+import { Cat } from "./cat.js";
 import {
   PAPERS, IS_TOUCH, safeUrl, hostOf, timeAgo, toast,
   getIdentity, saveIdentity, shrinkImage,
@@ -40,6 +43,18 @@ controls.pos.z = world.spawn.z;
 controls.yaw = world.spawn.yaw;
 
 world.setCityListener((type) => citySound(type));
+
+// the cat
+const cat = new Cat(world.scene, world.catSpots, { plink, purr });
+
+// echoes of everyone who came before
+const echoGroup = new THREE.Group();
+world.scene.add(echoGroup);
+const echoPlayer = new EchoPlayer(echoGroup);
+
+// the real weather outside
+weather.onUpdate((wx) => { world.setWeather(wx); setRain(wx.rain); });
+world.setWeather(weather.current);
 
 addEventListener("resize", () => {
   camera.aspect = innerWidth / innerHeight;
@@ -94,16 +109,24 @@ canvas.addEventListener("click", () => {
 function castAt(ndcX, ndcY) {
   raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera);
   // doors are included as blockers so notes can't be pinned onto them
-  const targets = [...notesWall.raycastTargets(), ...world.blockers];
+  const targets = [cat.hitMesh, ...notesWall.raycastTargets(), ...world.blockers];
   const hits = raycaster.intersectObjects(targets, false);
   return hits[0] || null;
 }
 
+let lastPetAt = 0;
 controls.onAction((ndcX, ndcY) => {
   if (modalOpen) return;
   const hit = castAt(ndcX, ndcY);
   if (!hit) return;
-  if (hit.object.userData.note) {
+  if (hit.object.userData.cat && hit.distance < 2.2) {
+    if (Date.now() - lastPetAt < 1500) return;
+    lastPetAt = Date.now();
+    cat.pet();
+    store.petCat()
+      .then(n => { if (n) toast(`purrrr — this cat has been petted ${n} time${n === 1 ? "" : "s"}`); })
+      .catch(() => {});
+  } else if (hit.object.userData.note) {
     openReader(hit.object.userData.note);
   } else if (hit.object.userData.postable && hit.distance < 4.5) {
     const place = notesWall.placementFromHit(hit);
@@ -115,7 +138,10 @@ controls.onAction((ndcX, ndcY) => {
 setInterval(() => {
   if (!controls.locked || IS_TOUCH || modalOpen) { aimTip.classList.remove("show"); return; }
   const hit = castAt(0, 0);
-  if (hit && hit.object.userData.note) {
+  if (hit && hit.object.userData.cat && hit.distance < 2.2) {
+    aimTip.textContent = "click to pet the cat";
+    aimTip.classList.add("show");
+  } else if (hit && hit.object.userData.note) {
     aimTip.textContent = "click to read";
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.postable && hit.distance < 4.5) {
@@ -375,10 +401,14 @@ addEventListener("keydown", (e) => {
     $("#online-count").textContent = String(peers.size + 1);
   });
   presence.onPose((uid, pose) => ghosts.setPose(uid, pose));
+
+  weather.start();
+  echoPlayer.load();
+  startEchoRecording(() => controls.pose(), identity.color);
 })();
 
 /* ---------------- frame loop ---------------- */
-window.METRO_DEBUG = { renderer, camera, world, controls, THREE };
+window.METRO_DEBUG = { renderer, camera, world, controls, THREE, cat, echoPlayer, notesWall };
 
 const clock = new THREE.Clock();
 let t = 0;
@@ -388,5 +418,7 @@ renderer.setAnimationLoop(() => {
   controls.update(dt);
   world.tick(dt);
   ghosts.tick(dt, t);
+  cat.tick(dt, t, controls.pose());
+  echoPlayer.tick(dt);
   renderer.render(world.scene, camera);
 });

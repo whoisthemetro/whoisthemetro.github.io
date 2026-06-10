@@ -56,6 +56,75 @@ export function startAmbience() {
   hum.start();
 }
 
+// The cat stepping on the MIDI keys — soft pentatonic plinks.
+const PENTA = [0, 3, 5, 7, 10, 12, 15, 17, 19, 22];
+export function plink(i = 0) {
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  const osc = ctx.createOscillator();
+  osc.type = "sine";
+  osc.frequency.value = 220 * Math.pow(2, PENTA[i % PENTA.length] / 12);
+  const g = ctx.createGain();
+  osc.connect(g).connect(master);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.05, t + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.7);
+  osc.start(t);
+  osc.stop(t + 0.75);
+}
+
+// Purring: low rumble, amplitude fluttering at ~24 Hz.
+export function purr(seconds = 1.8) {
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  const src = ctx.createBufferSource();
+  src.buffer = noiseBuffer(seconds + 0.5);
+  const lp = ctx.createBiquadFilter();
+  lp.type = "lowpass";
+  lp.frequency.value = 140;
+  const g = ctx.createGain();
+  const flutter = ctx.createOscillator();
+  flutter.frequency.value = 24;
+  const flutterGain = ctx.createGain();
+  flutterGain.gain.value = 0.05;
+  flutter.connect(flutterGain).connect(g.gain);
+  src.connect(lp).connect(g).connect(master);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.09, t + 0.25);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + seconds);
+  src.start(t); flutter.start(t);
+  src.stop(t + seconds + 0.1); flutter.stop(t + seconds + 0.1);
+}
+
+// Rain against the window — starts/stops with the real weather.
+let rainNodes = null;
+export function setRain(level) {   // 0 off, 1 light, 2 heavy
+  if (!ctx) return;
+  if (!level && rainNodes) {
+    rainNodes.g.gain.linearRampToValueAtTime(0.0001, ctx.currentTime + 2);
+    const old = rainNodes;
+    rainNodes = null;
+    setTimeout(() => { try { old.src.stop(); } catch (e) {} }, 2500);
+    return;
+  }
+  if (level && !rainNodes) {
+    const src = ctx.createBufferSource();
+    src.buffer = noiseBuffer(4);
+    src.loop = true;
+    const hp = ctx.createBiquadFilter();
+    hp.type = "highpass";
+    hp.frequency.value = 900;
+    const g = ctx.createGain();
+    g.gain.value = 0.0001;
+    src.connect(hp).connect(g).connect(master);
+    src.start();
+    rainNodes = { src, g };
+  }
+  if (level && rainNodes) {
+    rainNodes.g.gain.linearRampToValueAtTime(level === 2 ? 0.035 : 0.015, ctx.currentTime + 2);
+  }
+}
+
 // The city outside, heard through the walls: a far-off siren or a
 // car with too much subwoofer rolling past.
 export function citySound(type = "siren") {

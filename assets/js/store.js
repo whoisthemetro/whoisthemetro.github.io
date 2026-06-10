@@ -128,8 +128,48 @@ async function adminDelete(id, pass) {
   emitRemoved(id);
 }
 
+/* ---------------- echoes + the cat ---------------- */
+
+async function saveEcho(color, path) {
+  if (mode === "supabase") {
+    const { error } = await sb.from("echoes").insert({ color, path });
+    if (error) throw error;
+    return;
+  }
+  try {
+    const all = JSON.parse(localStorage.getItem("metro.echoes") || "[]");
+    all.push(path);
+    localStorage.setItem("metro.echoes", JSON.stringify(all.slice(-20)));
+  } catch (e) {}
+}
+
+async function listEchoes() {
+  if (mode === "supabase") {
+    const { data, error } = await sb.from("echoes")
+      .select("path").order("created_at", { ascending: false }).limit(40);
+    if (error) throw error;
+    return (data || []).map(r => r.path);
+  }
+  try { return JSON.parse(localStorage.getItem("metro.echoes") || "[]"); } catch (e) { return []; }
+}
+
+async function petCat() {
+  if (mode === "supabase") {
+    const { data, error } = await sb.rpc("pet_cat");
+    if (error) throw error;
+    return data;
+  }
+  let n = 0;
+  try {
+    n = (parseInt(localStorage.getItem("metro.catpets") || "0", 10) || 0) + 1;
+    localStorage.setItem("metro.catpets", String(n));
+  } catch (e) {}
+  return n;
+}
+
 export const store = {
   init, list, add, imageUrl, adminDelete,
+  saveEcho, listEchoes, petCat,
   get mode() { return mode; },
   get client() { return sb; },
   onNew: fn => { newListeners.add(fn); return () => newListeners.delete(fn); },
