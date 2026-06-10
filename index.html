@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>THE METRO — an underground room that remembers</title>
-<meta name="description" content="A living underground station. Walk in, leave a note on the wall. It stays forever.">
+<title>THE METRO — the room is always on</title>
+<meta name="description" content="A living studio room. Walk in, leave a note on the wall. It stays forever.">
 <meta property="og:title" content="THE METRO">
-<meta property="og:description" content="An underground room that remembers. Leave something on the wall.">
+<meta property="og:description" content="The room is always on. Leave something on the wall.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2307090b'/%3E%3Ctext x='16' y='23' font-family='Helvetica,Arial' font-size='20' font-weight='900' fill='%23ff4d2e' text-anchor='middle'%3EM%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -28,14 +28,14 @@
 <div id="intro" class="overlay show">
   <div class="intro-card">
     <h1 class="metro-title">THE&nbsp;METRO</h1>
-    <p class="tagline">an underground room that remembers</p>
+    <p class="tagline">the room is always on</p>
     <p class="intro-body">
-      Walk in. Read the wall. Leave a note, a picture, a link —
-      it stays here after you're gone. If someone else is down here
-      right now, you'll see them.
+      Step into the studio. The session never stops. Leave a note,
+      a picture, a link on the wall — it stays after you're gone.
+      If someone else is in the room right now, you'll see them.
     </p>
-    <button id="enter-btn">descend</button>
-    <p class="controls-hint" id="hint-desktop">WASD move &nbsp;·&nbsp; mouse look &nbsp;·&nbsp; click a wall to post &nbsp;·&nbsp; ESC to surface</p>
+    <button id="enter-btn">come in</button>
+    <p class="controls-hint" id="hint-desktop">WASD move &nbsp;·&nbsp; mouse look &nbsp;·&nbsp; click a wall to post &nbsp;·&nbsp; ESC to step out</p>
     <p class="controls-hint" id="hint-mobile">left thumb to walk &nbsp;·&nbsp; right thumb to look &nbsp;·&nbsp; tap a wall to post</p>
     <p class="mode-badge" id="mode-badge"></p>
   </div>
@@ -44,15 +44,15 @@
 <!-- ====== paused (pointer lock lost) ====== -->
 <div id="paused" class="overlay">
   <div class="intro-card small">
-    <h2 class="metro-sub">surfaced</h2>
-    <button id="resume-btn">go back down</button>
+    <h2 class="metro-sub">stepped out</h2>
+    <button id="resume-btn">go back in</button>
   </div>
 </div>
 
 <!-- ====== HUD ====== -->
 <div id="hud">
   <div id="crosshair">+</div>
-  <div id="online-pill"><span class="dot"></span><span id="online-count">1</span> down here</div>
+  <div id="online-pill"><span class="dot"></span><span id="online-count">1</span> in the room</div>
   <div id="aim-tip">click to read</div>
 </div>
 

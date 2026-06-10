@@ -56,24 +56,44 @@ export function startAmbience() {
   hum.start();
 }
 
-export function trainSound(seconds = 6.5) {
+// The city outside, heard through the walls: a far-off siren or a
+// car with too much subwoofer rolling past.
+export function citySound(type = "siren") {
   if (!ctx) return;
   const t = ctx.currentTime;
-  const src = ctx.createBufferSource();
-  src.buffer = noiseBuffer(seconds + 1);
-  const lp = ctx.createBiquadFilter();
-  lp.type = "lowpass";
-  const g = ctx.createGain();
-  src.connect(lp).connect(g).connect(master);
 
-  // swell in, roar, fade out — filter opens as it gets close
-  g.gain.setValueAtTime(0.0001, t);
-  g.gain.exponentialRampToValueAtTime(0.34, t + seconds * 0.45);
-  g.gain.exponentialRampToValueAtTime(0.0001, t + seconds);
-  lp.frequency.setValueAtTime(120, t);
-  lp.frequency.linearRampToValueAtTime(700, t + seconds * 0.45);
-  lp.frequency.linearRampToValueAtTime(110, t + seconds);
-
-  src.start(t);
-  src.stop(t + seconds + 0.2);
+  if (type === "siren") {
+    const dur = 7;
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.value = 420;
+    const g = ctx.createGain();
+    osc.connect(lp).connect(g).connect(master);
+    // two-tone wail, drifting away
+    for (let i = 0; i < dur; i += 1.4) {
+      osc.frequency.setValueAtTime(620, t + i);
+      osc.frequency.linearRampToValueAtTime(470, t + i + 1.4);
+    }
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.016, t + 1.6);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    osc.start(t);
+    osc.stop(t + dur + 0.1);
+  } else {
+    const dur = 4.5;
+    const src = ctx.createBufferSource();
+    src.buffer = noiseBuffer(dur + 1);
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.value = 70;
+    const g = ctx.createGain();
+    src.connect(lp).connect(g).connect(master);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.09, t + dur * 0.5);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.start(t);
+    src.stop(t + dur + 0.2);
+  }
 }

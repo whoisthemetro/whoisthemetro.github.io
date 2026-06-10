@@ -9,7 +9,7 @@ import { NotesWall } from "./notes3d.js";
 import { Ghosts } from "./ghosts.js";
 import { store } from "./store.js";
 import { presence } from "./presence.js";
-import { startAmbience, trainSound } from "./ambience.js";
+import { startAmbience, citySound } from "./ambience.js";
 import {
   PAPERS, IS_TOUCH, safeUrl, hostOf, timeAgo, toast,
   getIdentity, saveIdentity, shrinkImage,
@@ -33,7 +33,11 @@ const ghosts = new Ghosts(world.ghostGroup);
 const raycaster = new THREE.Raycaster();
 const identity = getIdentity();
 
-world.setTrainListener((dur) => trainSound(dur));
+controls.pos.x = world.spawn.x;
+controls.pos.z = world.spawn.z;
+controls.yaw = world.spawn.yaw;
+
+world.setCityListener((type) => citySound(type));
 
 addEventListener("resize", () => {
   camera.aspect = innerWidth / innerHeight;
@@ -87,7 +91,9 @@ canvas.addEventListener("click", () => {
 /* ---------------- aiming / interacting ---------------- */
 function castAt(ndcX, ndcY) {
   raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera);
-  const hits = raycaster.intersectObjects(notesWall.raycastTargets(), false);
+  // doors are included as blockers so notes can't be pinned onto them
+  const targets = [...notesWall.raycastTargets(), ...world.blockers];
+  const hits = raycaster.intersectObjects(targets, false);
   return hits[0] || null;
 }
 
@@ -97,7 +103,7 @@ controls.onAction((ndcX, ndcY) => {
   if (!hit) return;
   if (hit.object.userData.note) {
     openReader(hit.object.userData.note);
-  } else if (hit.distance < 6.5) {
+  } else if (hit.object.userData.postable && hit.distance < 4.5) {
     const place = notesWall.placementFromHit(hit);
     if (place) openComposer(place);
   }
@@ -110,7 +116,7 @@ setInterval(() => {
   if (hit && hit.object.userData.note) {
     aimTip.textContent = "click to read";
     aimTip.classList.add("show");
-  } else if (hit && hit.distance < 6.5) {
+  } else if (hit && hit.object.userData.postable && hit.distance < 4.5) {
     aimTip.textContent = "click to leave something";
     aimTip.classList.add("show");
   } else {
@@ -321,6 +327,24 @@ addEventListener("keydown", (e) => {
 /* ---------------- data + presence boot ---------------- */
 (async function boot() {
   const mode = await store.init();
+
+  // erase deep-link from a Discord notification: site.com/#erase=<note id>
+  const eraseMatch = location.hash.match(/^#erase=([0-9a-f-]{36})$/i);
+  if (eraseMatch) {
+    const id = eraseMatch[1];
+    let pass = sessionStorage.getItem("metro.adminpass") || prompt("admin passphrase to erase this:");
+    if (pass) {
+      try {
+        await store.adminDelete(id, pass);
+        sessionStorage.setItem("metro.adminpass", pass);
+        toast("erased from the wall.");
+      } catch (e) {
+        sessionStorage.removeItem("metro.adminpass");
+        toast("couldn't erase — wrong passphrase?");
+      }
+    }
+    history.replaceState(null, "", location.pathname);
+  }
 
   const badge = $("#mode-badge");
   if (mode === "supabase") {
