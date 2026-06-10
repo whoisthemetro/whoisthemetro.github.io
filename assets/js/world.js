@@ -1,19 +1,20 @@
 /* ============================================================
    THE METRO — the room
    A bedroom home studio, generated entirely in code: cream walls,
-   carpet, desk against the front wall with an ultrawide riding a
-   Dangerous Music D-Box MK1, Apple keyboard + trackball, Mac Studio
-   with a portable monitor on top, a MIDI controller half-tucked
-   under the desk, a 12U rack on casters with an Apollo Twin, an
-   ergo chair, sound panels, and three doors (bathroom, closet,
-   entry — with the METRO neon on the entry door).
+   stained carpet, desk against the front wall with an ultrawide
+   riding a Dangerous Music D-Box MK1, Apple keyboard + trackball,
+   Mac Studio with a portable monitor on top, a MIDI controller
+   half-tucked under the desk, Kali monitors on stands either side
+   of the desk, a 12U rack on casters with an Apollo Twin, an ergo
+   chair, sound panels, and three doors (bathroom, closet, entry —
+   with the METRO neon on the entry door).
 
-   Behind the desk: a window spanning most of the wall, vertical
-   blinds and half-drawn blackout curtains. What comes through is
-   real: the sun and moon positions are computed live for
-   Hawthorne, CA — moonlight only spills in when the moon is
-   actually up over Los Angeles. A clock on the desk shows the
-   actual time there.
+   The ONLY light is what comes through the window (plus the neon
+   and the screens themselves): a shadow-casting beam that follows
+   the real sun and moon over Hawthorne, CA, striping the carpet
+   through the vertical blinds, and a soft sky fill that breathes
+   with the actual time of day. A clock on the desk shows the real
+   time there.
 
    Layout (meters), y up, floor y=0, ceiling y=2.7:
      x: -2.6 (left wall: bathroom door + closet) .. 2.6 (right wall: entry door)
@@ -43,33 +44,77 @@ function canvasTex(w, h, draw) {
   return t;
 }
 
-function carpetTexture() {
-  const t = canvasTex(512, 512, (g, w, h) => {
-    g.fillStyle = "#6b6258";
+// One non-repeating carpet for the whole floor, so stains and the worn
+// walk path land in real places instead of tiling.
+function floorTexture() {
+  return canvasTex(800, 1024, (g, w, h) => {
+    // (canvas x → room x, canvas y → room z, top = front wall)
+    const px = (rx) => ((rx + 2.6) / 5.2) * w;
+    const pz = (rz) => ((rz + 3.3) / 6.6) * h;
+
+    g.fillStyle = "#6e6557";
     g.fillRect(0, 0, w, h);
-    // dense low-contrast fiber speckle
-    for (let i = 0; i < 26000; i++) {
-      const v = 88 + Math.random() * 38;
-      g.fillStyle = `rgba(${v},${v - 7},${v - 16},${0.25 + Math.random() * 0.3})`;
-      g.fillRect(Math.random() * w, Math.random() * h, 1.6, 1.6);
+    // carpet pile: layered speckle, two scales
+    for (let i = 0; i < 42000; i++) {
+      const v = 84 + Math.random() * 44;
+      g.fillStyle = `rgba(${v},${v - 8},${v - 18},${0.2 + Math.random() * 0.3})`;
+      g.fillRect(Math.random() * w, Math.random() * h, 1.4, 1.4);
     }
+    for (let i = 0; i < 5000; i++) {
+      const v = 70 + Math.random() * 26;
+      g.fillStyle = `rgba(${v},${v - 6},${v - 14},0.35)`;
+      g.fillRect(Math.random() * w, Math.random() * h, 2.6, 1.2);
+    }
+    // vacuum tracks
+    for (let i = 0; i < 6; i++) {
+      g.fillStyle = i % 2 ? "rgba(255,250,240,0.025)" : "rgba(0,0,0,0.03)";
+      g.fillRect((i * 140 + 30) % w, 0, 60, h);
+    }
+
+    const blotch = (cx, cy, r, color, alpha, n = 7) => {
+      for (let i = 0; i < n; i++) {
+        g.fillStyle = `rgba(${color},${alpha * (0.5 + Math.random() * 0.5)})`;
+        g.beginPath();
+        g.ellipse(cx + (Math.random() - 0.5) * r, cy + (Math.random() - 0.5) * r,
+          r * (0.4 + Math.random() * 0.5), r * (0.3 + Math.random() * 0.45),
+          Math.random() * 3, 0, 7);
+        g.fill();
+      }
+    };
+    // worn traffic path: entry door → middle of the room → desk
+    for (let t = 0; t <= 1; t += 0.04) {
+      const x = px(1.9 - t * 1.6);
+      const y = pz(2.2 - t * 4.2);
+      blotch(x, y, 36, "40,34,26", 0.04, 3);
+    }
+    // coffee by the chair, something spilled near the rack, an old big one
+    blotch(px(0.95), pz(-1.9), 22, "62,42,22", 0.16);
+    blotch(px(1.05), pz(-1.75), 9, "52,32,16", 0.22, 4);
+    blotch(px(1.7), pz(-2.3), 26, "48,40,30", 0.12);
+    blotch(px(-0.9), pz(0.6), 55, "55,48,38", 0.07);
+    blotch(px(-1.9), pz(-1.5), 18, "60,50,34", 0.1);   // by the closet
   });
-  t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  return t;
 }
 
-// Cream wall painted as one canvas: drywall, baseboard, and acoustic
-// panels drawn flat so notes pin right over them.
+// Cream wall painted as one canvas: drywall, baseboard, scuffs, and
+// acoustic panels drawn flat so notes pin right over them.
 function wallTexture(wMeters, hMeters, panels = []) {
   const ppm = 160;
   return canvasTex(Math.round(wMeters * ppm), Math.round(hMeters * ppm), (g, w, h) => {
-    g.fillStyle = "#e4dccb";   // cream
+    g.fillStyle = "#e4dccb";
     g.fillRect(0, 0, w, h);
     for (let i = 0; i < w * h / 300; i++) {
       g.fillStyle = `rgba(120,108,88,${Math.random() * 0.03})`;
       g.fillRect(Math.random() * w, Math.random() * h, 2, 2);
     }
-    // panels: [u, v(bottom), wM, hM] in meters from bottom-left
+    // the wall has lived a little: scuffs low, a faint handprint height smudge
+    for (let i = 0; i < wMeters * 2; i++) {
+      const x = Math.random() * w;
+      g.fillStyle = `rgba(90,78,58,${0.04 + Math.random() * 0.05})`;
+      g.beginPath();
+      g.ellipse(x, h - (0.14 + Math.random() * 0.3) * ppm, 18 + Math.random() * 26, 6 + Math.random() * 8, Math.random(), 0, 7);
+      g.fill();
+    }
     for (const [pu, pv, pw, ph] of panels) {
       const x = pu * ppm, y = h - (pv + ph) * ppm;
       g.fillStyle = "#1b1d22";
@@ -82,11 +127,47 @@ function wallTexture(wMeters, hMeters, panels = []) {
       g.fillStyle = "rgba(255,255,255,0.03)";
       for (let yy = y; yy < y + ph * ppm; yy += 4) g.fillRect(x, yy, pw * ppm, 1);
     }
-    // baseboard
     g.fillStyle = "#cfc6b2";
     g.fillRect(0, h - 0.1 * ppm, w, 0.1 * ppm);
     g.fillStyle = "rgba(0,0,0,0.18)";
     g.fillRect(0, h - 0.1 * ppm, w, 3);
+  });
+}
+
+function deskTexture() {
+  return canvasTex(950, 390, (g, w, h) => {
+    g.fillStyle = "#33291d";
+    g.fillRect(0, 0, w, h);
+    // walnut grain
+    for (let i = 0; i < 70; i++) {
+      const y = Math.random() * h;
+      g.strokeStyle = `rgba(${14 + Math.random() * 30},${10 + Math.random() * 22},${6 + Math.random() * 14},${0.25 + Math.random() * 0.3})`;
+      g.lineWidth = 1 + Math.random() * 2;
+      g.beginPath();
+      g.moveTo(0, y);
+      for (let x = 0; x <= w; x += 40) g.lineTo(x, y + Math.sin(x * 0.012 + i) * 6);
+      g.stroke();
+    }
+    // scratches + a coffee ring where the mug lives (right side)
+    g.strokeStyle = "rgba(190,170,140,0.18)";
+    for (let i = 0; i < 9; i++) {
+      g.lineWidth = 0.8;
+      g.beginPath();
+      const x = Math.random() * w, y = Math.random() * h;
+      g.moveTo(x, y); g.lineTo(x + (Math.random() - 0.5) * 90, y + (Math.random() - 0.5) * 24);
+      g.stroke();
+    }
+    g.strokeStyle = "rgba(60,40,20,0.4)";
+    g.lineWidth = 4;
+    g.beginPath(); g.arc(w * 0.82, h * 0.32, 22, 0, 7); g.stroke();
+    g.strokeStyle = "rgba(60,40,20,0.2)";
+    g.beginPath(); g.arc(w * 0.84, h * 0.36, 22, 0.6, 5.2); g.stroke();
+    // sheen toward the window edge
+    const grad = g.createLinearGradient(0, 0, 0, h);
+    grad.addColorStop(0, "rgba(255,240,210,0.07)");
+    grad.addColorStop(0.4, "rgba(255,240,210,0)");
+    g.fillStyle = grad;
+    g.fillRect(0, 0, w, h);
   });
 }
 
@@ -126,12 +207,60 @@ function rackFaceTexture() {
       for (let i = 0; i < 12; i++) { g.beginPath(); g.arc(38 + i * 15, y + 18, 5, 0, 7); g.fill(); }
       for (let i = 0; i < 12; i++) { g.beginPath(); g.arc(38 + i * 15, y + 36, 5, 0, 7); g.fill(); }
     });
+    // scuffed rails
+    g.fillStyle = "rgba(255,255,255,0.05)";
+    for (let i = 0; i < 14; i++) g.fillRect(Math.random() < 0.5 ? 2 : w - 16, Math.random() * h, 12, 2);
+  });
+}
+
+// Kali studio monitor front baffle
+function kaliFaceTexture() {
+  return canvasTex(256, 420, (g, w, h) => {
+    g.fillStyle = "#17191c";
+    g.fillRect(0, 0, w, h);
+    // subtle vinyl grain
+    for (let i = 0; i < 2600; i++) {
+      g.fillStyle = `rgba(255,255,255,${Math.random() * 0.02})`;
+      g.fillRect(Math.random() * w, Math.random() * h, 1.5, 1.5);
+    }
+    // tweeter in waveguide
+    let grad = g.createRadialGradient(128, 110, 4, 128, 110, 58);
+    grad.addColorStop(0, "#0a0b0d"); grad.addColorStop(0.5, "#22262b"); grad.addColorStop(1, "#101216");
+    g.fillStyle = grad;
+    g.beginPath(); g.arc(128, 110, 58, 0, 7); g.fill();
+    g.fillStyle = "#06070a";
+    g.beginPath(); g.arc(128, 110, 22, 0, 7); g.fill();
+    g.fillStyle = "rgba(180,200,220,0.25)";
+    g.beginPath(); g.arc(120, 102, 8, 0, 7); g.fill();
+    // woofer
+    grad = g.createRadialGradient(128, 268, 10, 128, 268, 86);
+    grad.addColorStop(0, "#1d2024"); grad.addColorStop(0.55, "#0b0c0f");
+    grad.addColorStop(0.8, "#23272c"); grad.addColorStop(1, "#0a0b0d");
+    g.fillStyle = grad;
+    g.beginPath(); g.arc(128, 268, 86, 0, 7); g.fill();
+    g.strokeStyle = "#000"; g.lineWidth = 6;
+    g.beginPath(); g.arc(128, 268, 78, 0, 7); g.stroke();
+    g.fillStyle = "#15181c";
+    g.beginPath(); g.arc(128, 268, 26, 0, 7); g.fill();
+    g.fillStyle = "rgba(255,255,255,0.07)";
+    g.beginPath(); g.arc(112, 252, 12, 0, 7); g.fill();
+    // front port slot
+    g.fillStyle = "#000";
+    g.beginPath();
+    g.roundRect(48, 374, 160, 22, 11);
+    g.fill();
+    // logo + power led
+    g.fillStyle = "#9aa3ad"; g.font = "700 17px Archivo";
+    g.textAlign = "left";
+    g.fillText("KALI", 22, 36);
+    g.fillStyle = "#3be07a";
+    g.fillRect(222, 392, 6, 6);
   });
 }
 
 function doorTexture(double = false) {
   return canvasTex(double ? 512 : 256, 640, (g, w, h) => {
-    g.fillStyle = "#d8d0bd";   // cream doors to match the room
+    g.fillStyle = "#d8d0bd";
     g.fillRect(0, 0, w, h);
     const panel = (x, y, pw, ph) => {
       g.strokeStyle = "rgba(90,80,60,0.45)"; g.lineWidth = 5;
@@ -145,6 +274,21 @@ function doorTexture(double = false) {
       panel(ox + 22, 30, w / leaves - 44, 250);
       panel(ox + 22, 320, w / leaves - 44, 280);
       if (double) { g.fillStyle = "#9a907a"; g.fillRect(ox + (l ? 4 : w / 2 - 8), 0, 4, h); }
+    }
+    if (!double) {
+      // hand grime around the knob
+      const grad = g.createRadialGradient(w - 36, 322, 4, w - 36, 322, 46);
+      grad.addColorStop(0, "rgba(95,80,55,0.22)");
+      grad.addColorStop(1, "rgba(95,80,55,0)");
+      g.fillStyle = grad;
+      g.fillRect(w - 90, 270, 90, 104);
+    }
+    // toe scuffs at the bottom
+    for (let i = 0; i < 5; i++) {
+      g.fillStyle = `rgba(70,60,42,${0.08 + Math.random() * 0.08})`;
+      g.beginPath();
+      g.ellipse(Math.random() * w, h - 14 - Math.random() * 26, 14 + Math.random() * 18, 4 + Math.random() * 5, 0.2, 0, 7);
+      g.fill();
     }
   });
 }
@@ -277,11 +421,8 @@ function makeSky() {
   const g = c.getContext("2d");
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
-  // fixed star field so it doesn't twinkle on every redraw
   const stars = Array.from({ length: 90 }, () => [Math.random() * 720, Math.random() * 200, Math.random()]);
 
-  // sun/moon get mapped into the window if they're in front of it
-  // (window faces south; azimuth 0 = due south, ±~55° fits the glass)
   function place(az, alt) {
     const azd = az / (Math.PI / 180), altd = alt / (Math.PI / 180);
     if (Math.abs(azd) > 55 || altd < -2 || altd > 60) return null;
@@ -290,10 +431,9 @@ function makeSky() {
 
   function draw(sun, moon, moonFrac) {
     const sunAlt = sun.altitude / (Math.PI / 180);
-    // sky color by sun altitude: night → twilight → day
     let top, bot;
     if (sunAlt > 5)        { top = "#7fb2e0"; bot = "#c8dcec"; }
-    else if (sunAlt > -6)  { top = "#2a3c5e"; bot = "#d88a52"; }   // golden/blue hour
+    else if (sunAlt > -6)  { top = "#2a3c5e"; bot = "#d88a52"; }
     else if (sunAlt > -12) { top = "#141d33"; bot = "#3a3550"; }
     else                   { top = "#0a0f1f"; bot = "#1a2030"; }
     const grad = g.createLinearGradient(0, 0, 0, 280);
@@ -308,7 +448,6 @@ function makeSky() {
       }
     }
 
-    // LA skyline silhouette + city glow
     g.fillStyle = sunAlt > 5 ? "rgba(70,80,95,0.85)" : "#05070c";
     for (let i = 0; i < 26; i++) {
       const bw = 14 + ((i * 37) % 38);
@@ -321,7 +460,6 @@ function makeSky() {
       glow.addColorStop(1, "rgba(255,160,80,0)");
       g.fillStyle = glow;
       g.fillRect(0, 190, 720, 90);
-      // scattered lit windows
       for (let i = 0; i < 60; i++) {
         g.fillStyle = `rgba(255,${190 + (i % 3) * 20},120,${0.5 + (i % 5) * 0.1})`;
         g.fillRect((i * 47) % 716, 280 - ((i * 13) % 52), 2, 2);
@@ -342,7 +480,6 @@ function makeSky() {
       g.shadowColor = "rgba(220,230,250,0.9)"; g.shadowBlur = 26;
       g.beginPath(); g.arc(mp.x, mp.y, 13, 0, 7); g.fill();
       g.shadowBlur = 0;
-      // phase shadow
       g.fillStyle = "rgba(10,15,31,0.85)";
       g.beginPath();
       g.arc(mp.x + 26 * (1 - moonFrac) * (moonFrac < 0.5 ? 1 : -1) * 0.6, mp.y, 13, 0, 7);
@@ -356,7 +493,6 @@ function makeSky() {
 function blindsTexture() {
   const t = canvasTex(720, 280, (g, w, h) => {
     g.clearRect(0, 0, w, h);
-    // slats angled half-open: real gaps so the sky reads between them
     const slat = 19, gap = 11;
     for (let x = 0; x < w; x += slat + gap) {
       const grad = g.createLinearGradient(x, 0, x + slat, 0);
@@ -366,7 +502,6 @@ function blindsTexture() {
       g.fillStyle = grad;
       g.fillRect(x, 0, slat, h);
     }
-    // headrail
     g.fillStyle = "rgba(120,113,97,1)";
     g.fillRect(0, 0, w, 10);
   });
@@ -378,40 +513,39 @@ function blindsTexture() {
 export function buildWorld() {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x07080b);
-  scene.fog = new THREE.Fog(0x07080b, 7, 34);
+  scene.fog = new THREE.Fog(0x07080b, 9, 40);
 
   const { X, ZF, ZB, H } = ROOM;
-  const W = 2 * X;          // 5.2 room width
-  const D = ZB - ZF;        // 6.6 room depth
+  const W = 2 * X;
+  const D = ZB - ZF;
 
   const add = (m) => { scene.add(m); return m; };
   const box = (w, h, d, mat) => new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
   const plane = (w, h, mat) => new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
   const lam = (color) => new THREE.MeshLambertMaterial({ color });
+  const caster = (m) => { m.castShadow = true; return m; };
 
   const blockers = [];
 
   /* --- shell --- */
-  const carpet = carpetTexture();
-  carpet.repeat.set(4, 5);
-  const floor = add(plane(W, D, new THREE.MeshLambertMaterial({ map: carpet })));
+  const floor = add(plane(W, D, new THREE.MeshLambertMaterial({ map: floorTexture() })));
   floor.rotation.x = -Math.PI / 2;
-  floor.position.set(0, 0, 0);
+  floor.receiveShadow = true;
 
   const ceil = add(plane(W, D, lam(0xd6cfc0)));
   ceil.rotation.x = Math.PI / 2;
-  ceil.position.set(0, H, 0);
+  ceil.position.y = H;
 
   const walls = [];
   function postableWall(id, w, mat, setup, origin, uDir, normal) {
     const mesh = add(plane(w, H, mat));
     setup(mesh);
     mesh.userData.postable = true;
+    mesh.receiveShadow = true;
     walls.push({ id, mesh, w, h: H, origin, uDir, vDir: new THREE.Vector3(0, 1, 0), normal });
     return mesh;
   }
 
-  // back wall — four panels, equal gaps across the full width
   postableWall("back", W,
     new THREE.MeshLambertMaterial({
       map: wallTexture(W, H, [
@@ -422,9 +556,6 @@ export function buildWorld() {
     m => { m.rotation.y = Math.PI; m.position.set(0, H / 2, ZB); },
     new THREE.Vector3(X, 0, ZB), new THREE.Vector3(-1, 0, 0), new THREE.Vector3(0, 0, -1));
 
-  // left wall (u runs from the back corner): bathroom door u≈4.99..5.91,
-  // closet u≈2.89..4.51 → three even panels in the long back stretch,
-  // one by the front corner
   postableWall("west", D,
     new THREE.MeshLambertMaterial({
       map: wallTexture(D, H, [
@@ -435,8 +566,6 @@ export function buildWorld() {
     m => { m.rotation.y = Math.PI / 2; m.position.set(-X, H / 2, 0); },
     new THREE.Vector3(-X, 0, ZB), new THREE.Vector3(0, 0, -1), new THREE.Vector3(1, 0, 0));
 
-  // right wall (u runs from the front corner): entry door u≈5.11..6.09 →
-  // four even panels in the clear stretch before it
   postableWall("east", D,
     new THREE.MeshLambertMaterial({
       map: wallTexture(D, H, [
@@ -447,27 +576,27 @@ export function buildWorld() {
     m => { m.rotation.y = -Math.PI / 2; m.position.set(X, H / 2, 0); },
     new THREE.Vector3(X, 0, ZF), new THREE.Vector3(0, 0, 1), new THREE.Vector3(-1, 0, 0));
 
-  // front wall (desk + window) — not postable; window occupies u 0.8..4.4,
-  // so one panel sits in each strip beside it
   const front = add(plane(W, H, new THREE.MeshLambertMaterial({
     map: wallTexture(W, H, [
       [0.125, 1.0, 0.55, 1.2], [4.525, 1.0, 0.55, 1.2],
     ]),
   })));
   front.position.set(0, H / 2, ZF);
+  front.receiveShadow = true;
 
   /* --- the window (faces south over LA) --- */
-  const WIN = { w: 3.6, h: 1.4, cx: 0, cy: 1.6 };   // y 0.9..2.3
+  const WIN = { w: 3.6, h: 1.4, cx: 0, cy: 1.6 };
   const sky = makeSky();
   const glass = add(plane(WIN.w, WIN.h, new THREE.MeshBasicMaterial({ map: sky.tex })));
   glass.position.set(WIN.cx, WIN.cy, ZF + 0.01);
 
-  const blinds = add(plane(WIN.w - 0.06, WIN.h - 0.04, new THREE.MeshLambertMaterial({
-    map: blindsTexture(), transparent: true, side: THREE.DoubleSide,
-  })));
+  const blindsMat = new THREE.MeshLambertMaterial({
+    map: blindsTexture(), transparent: true, side: THREE.DoubleSide, alphaTest: 0.4,
+  });
+  const blinds = add(plane(WIN.w - 0.06, WIN.h - 0.04, blindsMat));
   blinds.position.set(WIN.cx, WIN.cy, ZF + 0.045);
+  blinds.castShadow = true;   // the slats stripe the room
 
-  // frame
   const frameMat = lam(0xcfc6b2);
   for (const [fw, fh, fx, fy] of [
     [WIN.w + 0.12, 0.07, 0, WIN.cy + WIN.h / 2 + 0.035],
@@ -475,22 +604,19 @@ export function buildWorld() {
     [0.07, WIN.h + 0.14, -WIN.w / 2 - 0.035, WIN.cy],
     [0.07, WIN.h + 0.14, WIN.w / 2 + 0.035, WIN.cy],
   ]) {
-    const f = box(fw, fh, 0.06, frameMat);
+    const f = caster(box(fw, fh, 0.06, frameMat));
     f.position.set(fx, fy, ZF + 0.03);
     add(f);
   }
-  // sill
-  const sill = box(WIN.w + 0.2, 0.04, 0.14, frameMat);
+  const sill = caster(box(WIN.w + 0.2, 0.04, 0.14, frameMat));
   sill.position.set(WIN.cx, WIN.cy - WIN.h / 2 - 0.09, ZF + 0.07);
   add(sill);
 
-  // blackout curtains, mostly pulled open + a rod
   const curtMat = new THREE.MeshLambertMaterial({ color: 0x2b2620 });
   for (const side of [-1, 1]) {
-    const curt = box(0.5, WIN.h + 0.5, 0.05, curtMat);
+    const curt = caster(box(0.5, WIN.h + 0.5, 0.05, curtMat));
     curt.position.set(side * (WIN.w / 2 - 0.05), WIN.cy + 0.08, ZF + 0.10);
     add(curt);
-    // fold hints
     for (let i = 0; i < 3; i++) {
       const fold = box(0.06, WIN.h + 0.5, 0.06, curtMat);
       fold.position.set(side * (WIN.w / 2 - 0.05) + (i - 1) * 0.15, WIN.cy + 0.08, ZF + 0.125);
@@ -502,9 +628,24 @@ export function buildWorld() {
   rod.position.set(WIN.cx, WIN.cy + WIN.h / 2 + 0.3, ZF + 0.11);
   add(rod);
 
-  // what the sky throws into the room
-  const windowLight = add(new THREE.PointLight(0x9fb6e8, 0, 8, 2));
-  windowLight.position.set(WIN.cx, WIN.cy, ZF + 0.7);
+  /* --- ALL room light comes from outside --- */
+  // soft spill just inside the glass
+  const windowLight = add(new THREE.PointLight(0x9fb6e8, 0, 9, 2));
+  windowLight.position.set(WIN.cx, WIN.cy, ZF + 0.6);
+  // the beam: parallel rays from where the sun/moon actually is,
+  // throwing real shadows (including the blind slats) into the room
+  const beam = new THREE.DirectionalLight(0xfff0d8, 0);
+  beam.castShadow = true;
+  beam.shadow.mapSize.set(1024, 1024);
+  beam.shadow.camera.left = -5; beam.shadow.camera.right = 5;
+  beam.shadow.camera.top = 5; beam.shadow.camera.bottom = -5;
+  beam.shadow.camera.near = 0.5; beam.shadow.camera.far = 30;
+  beam.shadow.bias = -0.0004;
+  add(beam);
+  beam.target.position.set(0, 0.6, 0);
+  add(beam.target);
+  // sky bounce — the only "ambient", and it follows the sky too
+  const skyFill = add(new THREE.HemisphereLight(0x8a96a8, 0x2a241c, 0.3));
 
   function updateSky() {
     const now = new Date();
@@ -513,19 +654,46 @@ export function buildWorld() {
     const { fraction } = getMoonIllumination(now);
     sky.draw(sun, moon, fraction);
 
+    // aim the beam from where the body actually hangs over LA
+    const src = sun.altitude > -0.05 ? sun : moon;
+    const az = Math.max(-0.9, Math.min(0.9, src.azimuth));   // clamp into window view
+    const alt = Math.max(0.06, src.altitude);
+    beam.position.set(
+      WIN.cx - Math.sin(az) * 10,
+      WIN.cy + Math.tan(alt) * 10,
+      ZF - 10
+    );
+
     const sunAlt = sun.altitude, moonAlt = moon.altitude;
-    if (sunAlt > 0) {
+    if (sunAlt > 0) {                       // day
       windowLight.color.set(0xfff0d8);
-      windowLight.intensity = 10 + 35 * Math.sin(Math.min(sunAlt, 1.2));
-    } else if (sunAlt > -0.2) {          // twilight
+      windowLight.intensity = 4 + 12 * Math.sin(Math.min(sunAlt, 1.2));
+      beam.color.set(0xfff2da);
+      beam.intensity = 0.7 + 1.6 * Math.sin(Math.min(sunAlt, 1.2));
+      skyFill.color.set(0xaebbd0); skyFill.groundColor.set(0x6a5e4c);
+      skyFill.intensity = 0.85;
+    } else if (sunAlt > -0.2) {             // twilight
+      const k = 1 + sunAlt / 0.2;           // 1 → 0 as it gets darker
       windowLight.color.set(0xd8915a);
-      windowLight.intensity = 10 * (1 + sunAlt / 0.2);
-    } else if (moonAlt > 0) {            // moonlight, scaled by phase
+      windowLight.intensity = 1 + 3.5 * k;
+      beam.color.set(0xe8a060);
+      beam.intensity = 0.45 * k + (moonAlt > 0 ? 0.25 * fraction : 0);
+      skyFill.color.set(0x9a8da0); skyFill.groundColor.set(0x4a4034);
+      skyFill.intensity = 0.2 + 0.4 * k;
+    } else if (moonAlt > 0) {               // moonlight, scaled by phase
       windowLight.color.set(0x9fb6e8);
-      windowLight.intensity = 1.2 + 9 * Math.sin(moonAlt) * fraction;
-    } else {                             // just the city
+      windowLight.intensity = 0.7 + 3.5 * Math.sin(moonAlt) * fraction;
+      beam.color.set(0xbfd0ee);
+      beam.intensity = 0.12 + 0.55 * Math.sin(moonAlt) * fraction;
+      skyFill.color.set(0x6a7890); skyFill.groundColor.set(0x2a241c);
+      skyFill.intensity = 0.22;
+    } else {                                // just the city below
       windowLight.color.set(0x8a7a9a);
-      windowLight.intensity = 0.9;
+      windowLight.intensity = 0.55;
+      beam.color.set(0x7a7080);
+      beam.intensity = 0.08;
+      skyFill.color.set(0x565e6e); skyFill.groundColor.set(0x241f18);
+      skyFill.intensity = 0.18;
     }
   }
   updateSky();
@@ -533,7 +701,7 @@ export function buildWorld() {
   /* --- doors --- */
   function door(w, h, x, z, rotY, double = false) {
     const grp = new THREE.Group();
-    const leaf = box(w, h, 0.045, new THREE.MeshLambertMaterial({ map: doorTexture(double) }));
+    const leaf = caster(box(w, h, 0.045, new THREE.MeshLambertMaterial({ map: doorTexture(double) })));
     leaf.position.y = h / 2;
     grp.add(leaf);
     const fm = lam(0xc4bba6);
@@ -541,7 +709,7 @@ export function buildWorld() {
       const jamb = box(0.06, h + 0.06, 0.08, fm);
       jamb.position.set(side * (w / 2 + 0.03), (h + 0.06) / 2, 0);
       grp.add(jamb);
-      blockers.push(jamb);   // no pinning notes through the frame
+      blockers.push(jamb);
     }
     const head = box(w + 0.12, 0.06, 0.08, fm);
     head.position.set(0, h + 0.03, 0);
@@ -559,25 +727,26 @@ export function buildWorld() {
     blockers.push(leaf);
     return grp;
   }
-  door(0.82, 2.03, -X + 0.035, -2.1, Math.PI / 2);          // bathroom — left of desk
-  door(1.5, 2.03, -X + 0.035, -0.4, Math.PI / 2, true);     // closet — left of bathroom door
-  const entryDoor = door(0.86, 2.03, X - 0.035, 2.3, -Math.PI / 2);  // bedroom door, right wall near back
+  door(0.82, 2.03, -X + 0.035, -2.1, Math.PI / 2);
+  door(1.5, 2.03, -X + 0.035, -0.4, Math.PI / 2, true);
+  const entryDoor = door(0.86, 2.03, X - 0.035, 2.3, -Math.PI / 2);
 
   /* --- the desk rig --- */
   const deskTopY = 0.74;
   const desk = new THREE.Group();
 
-  const top = box(1.9, 0.04, 0.78, new THREE.MeshLambertMaterial({ color: 0x2b241c }));
+  const top = caster(box(1.9, 0.04, 0.78, new THREE.MeshLambertMaterial({ map: deskTexture() })));
   top.position.y = deskTopY - 0.02;
+  top.receiveShadow = true;
   desk.add(top);
   for (const sx of [-0.88, 0.88]) {
-    const leg = box(0.05, deskTopY - 0.04, 0.7, lam(0x16181b));
+    const leg = caster(box(0.05, deskTopY - 0.04, 0.7, lam(0x16181b)));
     leg.position.set(sx, (deskTopY - 0.04) / 2, 0);
     desk.add(leg);
   }
 
   // D-Box MK1
-  const dbox = box(0.36, 0.105, 0.26, lam(0x111317));
+  const dbox = caster(box(0.36, 0.105, 0.26, lam(0x111317)));
   dbox.position.set(0, deskTopY + 0.0525, -0.2);
   desk.add(dbox);
   const dboxKnob = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.02, 18),
@@ -592,14 +761,15 @@ export function buildWorld() {
   // ultrawide on top of the D-Box
   const daw = makeDawScreen();
   const monW = 0.92, monH = 0.39;
-  const monBezel = box(monW + 0.02, monH + 0.02, 0.03, lam(0x0c0d10));
+  const monBezel = caster(box(monW + 0.02, monH + 0.02, 0.03, lam(0x0c0d10)));
   monBezel.position.set(0, deskTopY + 0.105 + monH / 2 + 0.01, -0.21);
   desk.add(monBezel);
   const monScreen = plane(monW, monH, new THREE.MeshBasicMaterial({ map: daw.tex }));
   monScreen.position.set(0, monBezel.position.y, -0.21 + 0.016);
   desk.add(monScreen);
-  const screenGlow = new THREE.PointLight(0x8fb6ff, 9, 4.5, 2);
-  screenGlow.position.set(0, deskTopY + 0.45, -0.05);
+  // the screen really does light the desk a little
+  const screenGlow = new THREE.PointLight(0x8fb6ff, 3, 2.6, 2);
+  screenGlow.position.set(0, deskTopY + 0.45, 0.1);
   desk.add(screenGlow);
 
   // apple keyboard with numpad + trackball
@@ -612,6 +782,10 @@ export function buildWorld() {
     g.fillStyle = "#f4f5f6";
     for (let y = 8; y < 104; y += 21)
       for (let x = 6; x < 430; x += 24) g.fillRect(x, y, 20, 17);
+    // shine on the most-used keys
+    g.fillStyle = "rgba(160,164,170,0.5)";
+    g.fillRect(54, 50, 20, 17); g.fillRect(78, 50, 20, 17); g.fillRect(102, 50, 20, 17);
+    g.fillRect(126, 92, 120, 15);
   });
   const kbTop = plane(0.44, 0.115, new THREE.MeshLambertMaterial({ map: kbKeys }));
   kbTop.rotation.x = -Math.PI / 2 - 0.04;
@@ -627,11 +801,11 @@ export function buildWorld() {
   desk.add(tbBall);
 
   // mac studio + portable monitor on top
-  const mac = box(0.2, 0.095, 0.2, new THREE.MeshStandardMaterial({ color: 0xc9ccd1, metalness: 0.6, roughness: 0.45 }));
+  const mac = caster(box(0.2, 0.095, 0.2, new THREE.MeshStandardMaterial({ color: 0xc9ccd1, metalness: 0.6, roughness: 0.45 })));
   mac.position.set(-0.7, deskTopY + 0.0475, -0.12);
   desk.add(mac);
   const meterScr = makeMeterScreen();
-  const pmBezel = box(0.35, 0.225, 0.012, lam(0x0c0d10));
+  const pmBezel = caster(box(0.35, 0.225, 0.012, lam(0x0c0d10)));
   pmBezel.rotation.x = -0.12;
   pmBezel.position.set(-0.7, deskTopY + 0.095 + 0.115, -0.14);
   desk.add(pmBezel);
@@ -651,8 +825,25 @@ export function buildWorld() {
   clockFace.position.set(0.62, deskTopY + 0.0355, -0.073);
   desk.add(clockFace);
 
+  // the mug that made the coffee ring
+  const mug = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.032, 0.09, 14), lam(0xd8cdb8));
+  mug.position.set(0.49, deskTopY + 0.045, 0.04);
+  desk.add(mug);
+  const coffee = new THREE.Mesh(new THREE.CylinderGeometry(0.029, 0.029, 0.004, 14), lam(0x2a1c10));
+  coffee.position.set(0.49, deskTopY + 0.088, 0.04);
+  desk.add(coffee);
+
+  // cables off the back of the desk
+  for (const [cx, tilt] of [[-0.1, 0.18], [0.07, -0.12], [-0.68, 0.1]]) {
+    const cable = new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.005, 0.7, 6), lam(0x0c0d0f));
+    cable.position.set(cx, deskTopY - 0.33, -0.345);
+    cable.rotation.z = tilt;
+    cable.rotation.x = 0.12;
+    desk.add(cable);
+  }
+
   // midi controller tucked under the desk, keys barely sticking out
-  const midiBody = box(0.96, 0.065, 0.27, lam(0x191b1f));
+  const midiBody = caster(box(0.96, 0.065, 0.27, lam(0x191b1f)));
   midiBody.position.set(0, 0.46, 0.27);
   desk.add(midiBody);
   const midiKeys = canvasTex(480, 60, (g) => {
@@ -668,12 +859,43 @@ export function buildWorld() {
   midiKeybed.position.set(0, 0.494, 0.345);
   desk.add(midiKeybed);
 
-  desk.position.set(0.2, 0, ZF + 0.49);   // against the front wall, under the window
+  desk.position.set(0.2, 0, ZF + 0.49);
   add(desk);
+
+  /* --- Kali monitors on stands, flanking the desk --- */
+  const kaliTex = kaliFaceTexture();
+  function kali(x, toeIn) {
+    const grp = new THREE.Group();
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.19, 0.02, 16), lam(0x1a1c1f));
+    base.position.y = 0.01;
+    grp.add(base);
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.74, 10), lam(0x202327));
+    pole.position.y = 0.39;
+    grp.add(pole);
+    const plate = box(0.2, 0.012, 0.24, lam(0x1a1c1f));
+    plate.position.y = 0.766;
+    grp.add(plate);
+    const cab = caster(box(0.225, 0.37, 0.26, lam(0x131519)));
+    cab.position.y = 0.772 + 0.185;
+    grp.add(cab);
+    const face = plane(0.215, 0.36, new THREE.MeshLambertMaterial({ map: kaliTex }));
+    face.position.set(0, cab.position.y, 0.131);
+    grp.add(face);
+    // speaker wire drooping to the floor
+    const wire = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.75, 6), lam(0x0c0d0f));
+    wire.position.set(0.04, 0.4, -0.1);
+    wire.rotation.x = -0.14;
+    grp.add(wire);
+    grp.position.set(x, 0, ZF + 0.33);
+    grp.rotation.y = toeIn;
+    add(grp);
+  }
+  kali(-1.15, -0.16);   // left of the desk
+  kali(1.55, 0.16);     // right of the desk, against the wall
 
   /* --- 12U rack on casters, apollo twin on top --- */
   const rack = new THREE.Group();
-  const rb = box(0.56, 0.62, 0.6, lam(0x101317));
+  const rb = caster(box(0.56, 0.62, 0.6, lam(0x101317)));
   rb.position.y = 0.31 + 0.06;
   rack.add(rb);
   const face = plane(0.52, 0.58, new THREE.MeshLambertMaterial({ map: rackFaceTexture() }));
@@ -685,23 +907,23 @@ export function buildWorld() {
     wheel.position.set(cx, 0.035, cz);
     rack.add(wheel);
   }
-  const apollo = box(0.16, 0.065, 0.15, new THREE.MeshStandardMaterial({ color: 0x9aa0a8, metalness: 0.65, roughness: 0.4 }));
+  const apollo = caster(box(0.16, 0.065, 0.15, new THREE.MeshStandardMaterial({ color: 0x9aa0a8, metalness: 0.65, roughness: 0.4 })));
   apollo.position.set(0, 0.62 + 0.06 + 0.0325, 0.1);
   rack.add(apollo);
   const apKnob = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 0.018, 18),
     new THREE.MeshStandardMaterial({ color: 0x2c2f34, metalness: 0.7, roughness: 0.35 }));
   apKnob.position.set(0, 0.62 + 0.06 + 0.068, 0.12);
   rack.add(apKnob);
-  rack.position.set(1.95, 0, ZF + 0.65);
+  rack.position.set(2.1, 0, ZF + 0.78);
   rack.rotation.y = -0.25;
   add(rack);
 
   /* --- ergo chair, pushed aside --- */
   const chair = new THREE.Group();
-  const seat = box(0.48, 0.07, 0.46, lam(0x1c1e22));
+  const seat = caster(box(0.48, 0.07, 0.46, lam(0x1c1e22)));
   seat.position.y = 0.47;
   chair.add(seat);
-  const backRest = box(0.46, 0.62, 0.06, lam(0x23262b));
+  const backRest = caster(box(0.46, 0.62, 0.06, lam(0x23262b)));
   backRest.position.set(0, 0.85, -0.24);
   backRest.rotation.x = 0.12;
   chair.add(backRest);
@@ -722,14 +944,7 @@ export function buildWorld() {
   chair.rotation.y = 0.8;
   add(chair);
 
-  /* --- LED strip under the desk edge --- */
-  const led = box(1.86, 0.015, 0.015, new THREE.MeshBasicMaterial({ color: 0x7a4dff }));
-  led.position.set(0.2, deskTopY + 0.02, ZF + 0.03);
-  add(led);
-  const ledLight = add(new THREE.PointLight(0x7a4dff, 4, 2.4, 2));
-  ledLight.position.set(0.2, deskTopY + 0.15, ZF + 0.25);
-
-  /* --- METRO neon, on the bedroom door --- */
+  /* --- METRO neon, on the bedroom door (the one light that stays) --- */
   const neonCanvas = document.createElement("canvas");
   neonCanvas.width = 512; neonCanvas.height = 128;
   const neonTex = new THREE.CanvasTexture(neonCanvas);
@@ -750,39 +965,17 @@ export function buildWorld() {
   }
   drawNeon();
   if (document.fonts?.ready) document.fonts.ready.then(drawNeon);
-  // dark plaque behind the tubes so the sign reads against the cream door
   const plaque = box(0.68, 0.19, 0.012, lam(0x141518));
   plaque.position.set(0, 1.62, 0.062);
   entryDoor.add(plaque);
   const neon = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.155), new THREE.MeshBasicMaterial({
     map: neonTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
   }));
-  neon.position.set(0, 1.62, 0.075);   // mounted on the door leaf
+  neon.position.set(0, 1.62, 0.075);
   entryDoor.add(neon);
   const neonLight = new THREE.PointLight(0xff4d2e, 1.3, 1.7, 2);
   neonLight.position.set(0, 1.62, 0.4);
   entryDoor.add(neonLight);
-
-  /* --- warm floor lamp between closet and bathroom door --- */
-  const lampPole = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.02, 1.5, 8), lam(0x222428));
-  lampPole.position.set(-2.25, 0.75, -1.4);
-  add(lampPole);
-  const lampShade = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.16, 0.22, 12, 1, true),
-    new THREE.MeshBasicMaterial({ color: 0xffd9a0, side: THREE.DoubleSide }));
-  lampShade.position.set(-2.25, 1.55, -1.4);
-  add(lampShade);
-  const lampLight = add(new THREE.PointLight(0xffc88a, 22, 7, 2));
-  lampLight.position.set(-2.2, 1.5, -1.4);
-
-  /* --- general light --- */
-  // cream walls bounce a lot — keep the base level low so the room
-  // actually feels like the middle of the night
-  add(new THREE.AmbientLight(0x5a6470, 0.85));
-  add(new THREE.HemisphereLight(0x3c4450, 0x241f18, 0.6));
-  const bounce = add(new THREE.PointLight(0xb8c0c8, 7, 10, 2));
-  bounce.position.set(0, H - 0.25, 0);
-  const bounce2 = add(new THREE.PointLight(0xb8c0c8, 5, 9, 2));
-  bounce2.position.set(0, H - 0.25, 2.0);
 
   /* --- dust --- */
   const DUST = 240;
@@ -817,9 +1010,9 @@ export function buildWorld() {
     if (elapsed - dawAt > 0.09) { dawAt = elapsed; daw.draw(); }
     if (elapsed - meterAt > 0.15) { meterAt = elapsed; meterScr.draw(); }
     if (elapsed - clockAt > 1) { clockAt = elapsed; clockScr.draw(); }
-    if (elapsed - skyAt > 60) { skyAt = elapsed; updateSky(); }   // sky tracks real time
+    if (elapsed - skyAt > 60) { skyAt = elapsed; updateSky(); }
 
-    screenGlow.intensity = 8 + Math.sin(elapsed * 2.3) * 1.2 + Math.sin(elapsed * 7.1) * 0.6;
+    screenGlow.intensity = 2.6 + Math.sin(elapsed * 2.3) * 0.45 + Math.sin(elapsed * 7.1) * 0.25;
 
     if (Math.random() < 0.004) neonLight.intensity = 0.3;
     else neonLight.intensity = 1.3 * (0.88 + 0.12 * Math.sin(elapsed * 1.9));

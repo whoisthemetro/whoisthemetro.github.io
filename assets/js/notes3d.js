@@ -163,11 +163,14 @@ export class NotesWall {
     const tex = new THREE.CanvasTexture(canvas);
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.anisotropy = 4;
-    // slight self-glow so what people leave is always readable in the gloom
+    // slight self-glow so what people leave is always readable in the gloom;
+    // depthTest off + late renderOrder = a note can NEVER be hidden behind
+    // a door, panel, or piece of furniture
     const mesh = new THREE.Mesh(
       new THREE.PlaneGeometry(w, h),
       new THREE.MeshLambertMaterial({
         map: tex, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.42,
+        depthTest: false, depthWrite: false,
       }),
     );
 
@@ -183,7 +186,7 @@ export class NotesWall {
     mesh.quaternion.copy(wall.mesh.quaternion);
     mesh.rotateZ(note.rot || 0);
     mesh.userData.note = note;
-    mesh.renderOrder = 2;   // after walls, so the wall never shades a note edge
+    mesh.renderOrder = 50 + (this.seq % 64);   // drawn after the whole room
     this.group.add(mesh);
     this.byId.set(note.id, mesh);
 
