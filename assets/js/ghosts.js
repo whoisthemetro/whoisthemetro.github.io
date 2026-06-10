@@ -1,0 +1,92 @@
+/* ============================================================
+   THE METRO — other people, rendered
+   Each live visitor is a soft glowing figure with their name
+   floating overhead. Poses arrive over presence broadcast and
+   get smoothed here so movement looks human, not teleporty.
+   ============================================================ */
+
+import * as THREE from "three";
+
+function nameSprite(name, color) {
+  const c = document.createElement("canvas");
+  c.width = 256; c.height = 64;
+  const g = c.getContext("2d");
+  g.font = "600 30px Archivo, sans-serif";
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.shadowColor = "rgba(0,0,0,0.9)";
+  g.shadowBlur = 8;
+  g.fillStyle = color;
+  g.fillText(name || "someone", 128, 32, 240);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
+  sp.scale.set(1.15, 0.29, 1);
+  return sp;
+}
+
+function makeFigure(color) {
+  const grp = new THREE.Group();
+  const mat = new THREE.MeshBasicMaterial({
+    color, transparent: true, opacity: 0.32,
+    blending: THREE.AdditiveBlending, depthWrite: false,
+  });
+  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.21, 0.85, 6, 14), mat);
+  body.position.y = 0.85;
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.15, 14, 12), mat);
+  head.position.y = 1.62;
+  grp.add(body, head);
+  return grp;
+}
+
+export class Ghosts {
+  constructor(group) {
+    this.group = group;
+    this.byUid = new Map();   // uid -> {grp, target:{x,z,yaw}, bobSeed}
+  }
+
+  syncPeers(peers) {
+    // remove the departed
+    for (const [uid, g] of this.byUid) {
+      if (!peers.has(uid)) {
+        this.group.remove(g.grp);
+        this.byUid.delete(uid);
+      }
+    }
+    // add the newly arrived
+    for (const [uid, meta] of peers) {
+      if (this.byUid.has(uid)) continue;
+      const grp = makeFigure(meta.color || "#ffb347");
+      const label = nameSprite(meta.name, meta.color || "#ffb347");
+      label.position.y = 2.0;
+      grp.add(label);
+      grp.position.set(0, 0, 2.5);
+      this.group.add(grp);
+      this.byUid.set(uid, {
+        grp,
+        target: { x: 0, z: 2.5, yaw: 0 },
+        bobSeed: Math.random() * 10,
+      });
+    }
+  }
+
+  setPose(uid, pose) {
+    const g = this.byUid.get(uid);
+    if (g) g.target = pose;
+  }
+
+  tick(dt, t) {
+    const k = Math.min(1, dt * 7);   // smoothing
+    for (const g of this.byUid.values()) {
+      g.grp.position.x += (g.target.x - g.grp.position.x) * k;
+      g.grp.position.z += (g.target.z - g.grp.position.z) * k;
+      let dy = g.target.yaw - g.grp.rotation.y;
+      dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+      g.grp.rotation.y += dy * k;
+      // gentle idle bob — they're alive
+      g.grp.position.y = Math.sin(t * 1.8 + g.bobSeed) * 0.025;
+    }
+  }
+
+  count() { return this.byUid.size; }
+}

@@ -1,266 +1,117 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>METRO</title>
-<meta name="description" content="Music. Photos. Visuals. A walk-through experience by Metro." />
-<meta name="theme-color" content="#05060a" />
-<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><circle cx=%2212%22 cy=%2212%22 r=%2210%22 fill=%22%2300ffd0%22/></svg>" />
-<link rel="stylesheet" href="assets/css/styles.css" />
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>THE METRO — an underground room that remembers</title>
+<meta name="description" content="A living underground station. Walk in, leave a note on the wall. It stays forever.">
+<meta property="og:title" content="THE METRO">
+<meta property="og:description" content="An underground room that remembers. Leave something on the wall.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2307090b'/%3E%3Ctext x='16' y='23' font-family='Helvetica,Arial' font-size='20' font-weight='900' fill='%23ff4d2e' text-anchor='middle'%3EM%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Archivo:wght@400;600;800&family=Six+Caps&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/room.css">
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+  }
+}
+</script>
 </head>
 <body>
 
-<!-- =========================================================
-     APP
-========================================================= -->
-<div id="app">
+<canvas id="scene"></canvas>
 
-  <!-- TOP NAV (persistent) -->
-  <nav id="topnav">
-    <div class="brand" id="brand">METRO</div>
-    <div class="navlinks">
-      <button data-go="lobby"   class="active">HOME</button>
-      <button data-go="gallery">GALLERY</button>
-      <button data-go="studio">STUDIO</button>
-      <button data-go="videos">VIDEOS</button>
-    </div>
-    <div class="spacer"></div>
-    <button class="navbtn-icon studio-only" id="seq-btn" title="16-step drum sequencer">
-      SEQ<span class="dot"></span>
-    </button>
-    <button class="navbtn-icon studio-only" id="midi-btn" title="MIDI device routing">
-      MIDI<span class="dot"></span>
-    </button>
-    <button class="navbtn-icon studio-only" id="mp-btn" title="Jam with a friend (multiplayer)">
-      JAM<span class="dot"></span>
-    </button>
-    <button class="navbtn-icon" id="topnav-music" title="Open music player">&#9835;</button>
-  </nav>
-
-  <!-- Drum step sequencer overlay -->
-  <div id="sequencer">
-    <div class="head">
-      <h2>16-STEP SEQUENCER</h2>
-      <div class="ctrls">
-        <button id="seq-play" class="play">PLAY</button>
-        <label>BPM <input id="seq-bpm" type="number" min="40" max="220" value="120"></label>
-        <button id="seq-clear">CLEAR</button>
-        <button id="seq-random">RANDOM</button>
-        <button id="seq-close" class="close">CLOSE</button>
-      </div>
-    </div>
-    <div class="grid" id="seq-grid"></div>
-    <div class="status" id="seq-status">PATTERN LOOPS WHILE PLAYING — CLOSE TO HIDE WITHOUT STOPPING</div>
-  </div>
-
-  <!-- MIDI routing panel -->
-  <div id="midi-panel">
-    <h3>MIDI DEVICES</h3>
-    <div class="hint">
-      Each device routes independently. <b>AUTO</b> uses MIDI channel 10 for drums,
-      everything else for keys (works with most drum pads + keyboards out of the box).
-      Force a device to <b>KEYS</b> or <b>DRUMS</b> if your controller doesn't
-      follow that convention.
-    </div>
-    <div id="midi-list"></div>
-    <div class="status" id="midi-status">CLICK ANY INSTRUMENT TO ENABLE MIDI</div>
-  </div>
-
-  <!-- Multiplayer panel -->
-  <div id="mp-panel">
-    <h3>JAM SESSION</h3>
-    <div class="hint">Play music live with a friend. Both of you open the studio — one hosts, the other joins.</div>
-    <div class="row">
-      <button id="mp-host" class="primary">HOST</button>
-      <button id="mp-join">JOIN</button>
-      <button id="mp-leave" style="display:none">LEAVE</button>
-    </div>
-    <div id="mp-host-code" style="display:none">
-      <div class="code" id="mp-code-text">----</div>
-      <button class="copy" id="mp-copy">COPY</button>
-      <div class="status">SHARE THIS CODE</div>
-    </div>
-    <div id="mp-join-input" style="display:none" class="row">
-      <input id="mp-code-input" placeholder="ENTER CODE" maxlength="6" />
-      <button id="mp-join-go" class="primary">GO</button>
-    </div>
-    <div class="status" id="mp-status">DISCONNECTED</div>
-  </div>
-
-  <!-- LOBBY / LANDING -->
-  <section class="scene active" id="scene-lobby">
-    <div id="lobby">
-      <div class="bg"></div>
-      <div class="grid"></div>
-      <div class="hero">
-        <div class="eyebrow">WELCOME &middot; MMXXVI</div>
-        <h1>METRO</h1>
-        <div class="glitch" aria-hidden="true">METRO</div>
-        <p class="tag">
-          A walk-through experience. Music, photos, visuals — all in one place.
-          Slip on headphones and pick a room.
-        </p>
-      </div>
-
-      <div class="portals">
-        <button class="portal" data-go="studio">
-          <div class="num">01</div>
-          <div class="sub">Music</div>
-          <h3>The Studio</h3>
-          <p>Step inside the studio. Play the synth, hit the drum kit, queue up a track on the wall screen.</p>
-          <div class="enter">ENTER <span class="arrow">→</span></div>
-        </button>
-
-        <button class="portal" data-go="gallery">
-          <div class="num">02</div>
-          <div class="sub">Photos</div>
-          <h3>The Gallery</h3>
-          <p>A walk-in space lined with photos. Wander, look, lean in. Click anything you want bigger.</p>
-          <div class="enter">ENTER <span class="arrow">→</span></div>
-        </button>
-
-        <button class="portal" data-go="videos">
-          <div class="num">03</div>
-          <div class="sub">Videos</div>
-          <h3>The Reel</h3>
-          <p>Short films, art pieces, behind the scenes. Pick a tile, full-screen, no menus.</p>
-          <div class="enter">ENTER <span class="arrow">→</span></div>
-        </button>
-
-        <button class="portal" id="quickplay">
-          <div class="num">★</div>
-          <div class="sub">Quick listen</div>
-          <h3>Just play music</h3>
-          <p>Skip the walk-around. Open the player and play in a tap.</p>
-          <div class="enter">PLAY <span class="arrow">→</span></div>
-        </button>
-      </div>
-
-      <div class="footer">
-        <div>© METRO &nbsp;&middot;&nbsp; whoisthemetro</div>
-        <div class="links">
-          <a id="lk-ig" target="_blank" rel="noopener">INSTAGRAM</a>
-          <a id="lk-gh" target="_blank" rel="noopener">GITHUB</a>
-          <a id="lk-em">EMAIL</a>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- GALLERY (3D) -->
-  <section class="scene" id="scene-gallery"></section>
-
-  <!-- STUDIO (3D) -->
-  <section class="scene" id="scene-studio"></section>
-
-  <!-- VIDEOS -->
-  <section class="scene" id="scene-videos">
-    <div id="videos">
-      <div class="head">
-        <div class="eyebrow">03 &middot; THE REEL</div>
-        <h1>Videos</h1>
-      </div>
-      <div class="grid" id="videos-grid"></div>
-    </div>
-  </section>
-
-</div>
-
-<!-- =========================================================
-     PERSISTENT MUSIC PLAYER
-========================================================= -->
-<div id="miniplayer" class="hidden">
-  <div class="art" id="mini-art"></div>
-  <div class="meta" id="mini-meta">
-    <div class="t" id="mini-t">—</div>
-    <div class="a" id="mini-a">—</div>
-    <div class="bar"><div id="mini-bar"></div></div>
-  </div>
-  <div class="ctrls">
-    <button id="mini-prev" title="Previous">&#9198;</button>
-    <button id="mini-play" title="Play / Pause">&#9654;</button>
-    <button id="mini-next" title="Next">&#9197;</button>
+<!-- ====== intro ====== -->
+<div id="intro" class="overlay show">
+  <div class="intro-card">
+    <h1 class="metro-title">THE&nbsp;METRO</h1>
+    <p class="tagline">an underground room that remembers</p>
+    <p class="intro-body">
+      Walk in. Read the wall. Leave a note, a picture, a link —
+      it stays here after you're gone. If someone else is down here
+      right now, you'll see them.
+    </p>
+    <button id="enter-btn">descend</button>
+    <p class="controls-hint" id="hint-desktop">WASD move &nbsp;·&nbsp; mouse look &nbsp;·&nbsp; click a wall to post &nbsp;·&nbsp; ESC to surface</p>
+    <p class="controls-hint" id="hint-mobile">left thumb to walk &nbsp;·&nbsp; right thumb to look &nbsp;·&nbsp; tap a wall to post</p>
+    <p class="mode-badge" id="mode-badge"></p>
   </div>
 </div>
 
-<!-- FULL MUSIC OVERLAY -->
-<div id="musicfull">
-  <div class="head">
-    <h2>MUSIC</h2>
-    <button id="full-close" class="close">CLOSE  [M]</button>
-  </div>
-  <div class="body">
-    <div class="nowplaying">
-      <div class="bigart" id="full-art"></div>
-      <div class="t" id="full-t">—</div>
-      <div class="a" id="full-a">—</div>
-      <div class="bigctrls">
-        <button id="full-prev">&#9198;</button>
-        <button id="full-play" class="play">&#9654;</button>
-        <button id="full-next">&#9197;</button>
-      </div>
-      <div class="scrub">
-        <div id="full-cur">0:00</div>
-        <div class="track" id="full-scrub"><div id="full-bar"></div></div>
-        <div id="full-dur">0:00</div>
-      </div>
-    </div>
-    <div class="queue">
-      <h3>Queue</h3>
-      <div class="list" id="full-list"></div>
-      <div class="vault-prompt" id="vault-prompt">
-        <input id="vault-input" placeholder="Vault password" type="password" />
-        <button id="vault-go">UNLOCK</button>
-      </div>
-    </div>
+<!-- ====== paused (pointer lock lost) ====== -->
+<div id="paused" class="overlay">
+  <div class="intro-card small">
+    <h2 class="metro-sub">surfaced</h2>
+    <button id="resume-btn">go back down</button>
   </div>
 </div>
 
-<!-- VIDEO PLAYER MODAL -->
-<div id="videoplayer">
-  <button class="close">CLOSE  [ESC]</button>
-  <div class="frame"></div>
+<!-- ====== HUD ====== -->
+<div id="hud">
+  <div id="crosshair">+</div>
+  <div id="online-pill"><span class="dot"></span><span id="online-count">1</span> down here</div>
+  <div id="aim-tip">click to read</div>
 </div>
 
-<!-- PHOTO MODAL -->
-<div id="photomodal">
-  <button class="close">CLOSE  [ESC]</button>
-  <button class="nav prev">&larr; PREV</button>
-  <button class="nav next">NEXT &rarr;</button>
-  <div class="img-wrap">
-    <img alt="" />
-    <div class="cap">
-      <div class="ti" id="photo-title"></div>
-      <div class="de" id="photo-desc"></div>
+<!-- mobile joystick -->
+<div id="joystick"><div id="joystick-nub"></div></div>
+
+<!-- ====== composer ====== -->
+<div id="composer" class="overlay">
+  <div class="panel">
+    <div class="panel-head">
+      <div class="tabs">
+        <button class="tab active" data-kind="note">note</button>
+        <button class="tab" data-kind="photo">photo</button>
+        <button class="tab" data-kind="link">link</button>
+      </div>
+      <button class="x" id="composer-close">×</button>
     </div>
+
+    <div class="kind-pane" id="pane-note">
+      <textarea id="note-text" maxlength="280" rows="5"
+        placeholder="say something to everyone who will ever stand here…"></textarea>
+      <div class="char-count"><span id="char-count">0</span>/280</div>
+      <div class="swatches" id="swatches"></div>
+    </div>
+
+    <div class="kind-pane hidden" id="pane-photo">
+      <label class="file-drop" id="file-drop">
+        <input type="file" id="photo-input" accept="image/*">
+        <span id="file-drop-label">tap to choose a picture</span>
+        <img id="photo-preview" class="hidden" alt="">
+      </label>
+      <input type="text" id="photo-caption" maxlength="120" placeholder="caption (optional)">
+    </div>
+
+    <div class="kind-pane hidden" id="pane-link">
+      <input type="url" id="link-url" maxlength="500" placeholder="https://…">
+      <input type="text" id="link-title" maxlength="80" placeholder="what is it? (optional)">
+    </div>
+
+    <input type="text" id="author-name" maxlength="24" placeholder="sign it (optional)">
+    <button id="post-btn">stick it on the wall</button>
+    <p class="fine-print">it stays here forever. be kind to the future.</p>
   </div>
 </div>
 
-<!-- TOAST -->
+<!-- ====== reader ====== -->
+<div id="reader" class="overlay">
+  <div class="panel reader-panel">
+    <button class="x" id="reader-close">×</button>
+    <div id="reader-content"></div>
+    <div class="reader-meta" id="reader-meta"></div>
+    <a id="reader-visit" class="hidden" target="_blank" rel="noopener noreferrer nofollow">visit link ↗</a>
+    <button id="reader-delete" class="hidden danger">remove from the wall</button>
+  </div>
+</div>
+
 <div id="toast"></div>
 
-<!-- =========================================================
-     SCRIPTS
-========================================================= -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="assets/js/data.js"></script>
-<script src="assets/js/audio-engine.js"></script>
-<script src="assets/js/sequencer.js"></script>
-<script src="assets/js/midi.js"></script>
-<script src="assets/js/multiplayer.js"></script>
-<script src="assets/js/gallery.js"></script>
-<script src="assets/js/studio.js"></script>
-<script src="assets/js/app.js"></script>
-<script>
-  document.addEventListener("DOMContentLoaded", () => {
-    document.getElementById("quickplay").addEventListener("click", (e) => {
-      e.preventDefault();
-      window.METRO_PLAYER.play(0);
-      document.getElementById("musicfull").classList.add("show");
-    });
-  });
-</script>
-
+<script src="assets/js/config.js"></script>
+<script type="module" src="assets/js/main.js"></script>
 </body>
 </html>
