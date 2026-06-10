@@ -651,16 +651,42 @@ export function buildWorld() {
   sill.position.set(WIN.cx, WIN.cy - WIN.h / 2 - 0.09, ZF + 0.07);
   add(sill);
 
+  // blackout curtains — click to draw them. Each side hangs from a pivot
+  // at the outer edge and scales inward until they meet in the middle.
   const curtMat = new THREE.MeshLambertMaterial({ color: 0x2b2620 });
+  const curtains = { closed: false, anim: 0 };   // anim: 0 open .. 1 closed
+  const curtainPivots = [];
+  const curtainHits = [];
   for (const side of [-1, 1]) {
-    const curt = caster(box(0.5, WIN.h + 0.5, 0.05, curtMat));
-    curt.position.set(side * (WIN.w / 2 - 0.05), WIN.cy + 0.08, ZF + 0.10);
-    add(curt);
-    for (let i = 0; i < 3; i++) {
-      const fold = box(0.06, WIN.h + 0.5, 0.06, curtMat);
-      fold.position.set(side * (WIN.w / 2 - 0.05) + (i - 1) * 0.15, WIN.cy + 0.08, ZF + 0.125);
-      add(fold);
+    const piv = new THREE.Group();
+    piv.position.set(side * (WIN.w / 2 + 0.12), WIN.cy + 0.08, ZF + 0.10);
+    const slab = box(1, WIN.h + 0.5, 0.05, curtMat);
+    slab.position.x = -side * 0.5;
+    slab.castShadow = true;
+    piv.add(slab);
+    for (let i = 1; i <= 4; i++) {
+      const fold = box(0.022, WIN.h + 0.5, 0.064, curtMat);
+      fold.position.set(-side * (i / 5), 0, 0.01);
+      piv.add(fold);
     }
+    const hit = new THREE.Mesh(new THREE.BoxGeometry(1, WIN.h + 0.5, 0.2),
+      new THREE.MeshBasicMaterial({ visible: false }));
+    hit.position.x = -side * 0.5;
+    hit.userData.curtain = true;
+    piv.add(hit);
+    curtainHits.push(hit);
+    add(piv);
+    curtainPivots.push(piv);
+  }
+  function applyCurtainAnim() {
+    const wOpen = 0.5, wClosed = WIN.w / 2 + 0.16;
+    const w = wOpen + (wClosed - wOpen) * curtains.anim;
+    curtainPivots.forEach(p => { p.scale.x = w; });
+  }
+  applyCurtainAnim();
+  function toggleCurtains() {
+    curtains.closed = !curtains.closed;
+    return curtains.closed;
   }
   const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, WIN.w + 0.7, 8), lam(0x4a443a));
   rod.rotation.z = Math.PI / 2;
@@ -764,6 +790,21 @@ export function buildWorld() {
     beam.intensity *= dim;
     windowLight.intensity *= Math.max(0.3, 1 - 0.45 * wx.clouds);
     skyFill.intensity *= Math.max(0.5, 1 - 0.3 * wx.clouds);
+
+    // remember the open-curtain levels; the curtains gate them per-frame
+    lightBase.beam = beam.intensity;
+    lightBase.win = windowLight.intensity;
+    lightBase.fill = skyFill.intensity;
+    applyLights();
+  }
+  const lightBase = { beam: 0, win: 0, fill: 0 };
+  function applyLights() {
+    // curtains drawn → outside light dies; only the screens, the neon and
+    // the clock keep the room visible (plus a whisper so it's navigable)
+    const k = 1 - curtains.anim;
+    beam.intensity = lightBase.beam * k;
+    windowLight.intensity = lightBase.win * k + 0.02;
+    skyFill.intensity = lightBase.fill * k + 0.07;
   }
   updateSky();
 
@@ -1226,6 +1267,14 @@ export function buildWorld() {
       rainTex.offset.y -= dt * (wx.rain === 2 ? 0.5 : 0.25);
     }
 
+    // curtains sliding
+    const want = curtains.closed ? 1 : 0;
+    if (Math.abs(curtains.anim - want) > 0.001) {
+      curtains.anim += Math.sign(want - curtains.anim) * Math.min(dt * 1.1, Math.abs(want - curtains.anim));
+      applyCurtainAnim();
+      applyLights();
+    }
+
     nextCityAt -= dt;
     if (nextCityAt <= 0) {
       nextCityAt = rand(70, 180);
@@ -1241,6 +1290,8 @@ export function buildWorld() {
     setWeather,
     getWeather: () => wx,
     careTargets, updateCare,
+    curtainHits, toggleCurtains,
+    curtainsClosed: () => curtains.closed,
     // where the cat likes to be
     catSpots: {
       chair: { x: SWEET.x, z: SWEET.z, y: 0.51 },

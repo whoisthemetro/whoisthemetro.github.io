@@ -57,7 +57,16 @@ function applyCatState(s) {
   world.updateCare(d);
   cat.setNeeds(d);
 }
-setInterval(() => { if (catState) applyCatState(catState); }, 60000);  // keep decaying live
+setInterval(() => { if (catState) applyCatState(catState); }, 60000);  // re-check the timers
+
+// when the cat finishes eating/drinking/using the box, the shared state
+// changes for everyone — first visitor's cat to act wins, the rest sync
+cat.onNeed = (kind) => {
+  const action = kind === "litterbox" ? "bathroom" : kind;
+  wrapCare(action)
+    .then(res => { if (res && res.ok !== false) applyCatState(res); })
+    .catch(() => {});
+};
 
 // echoes of everyone who came before
 const echoGroup = new THREE.Group();
@@ -121,7 +130,7 @@ canvas.addEventListener("click", () => {
 function castAt(ndcX, ndcY) {
   raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera);
   // doors are included as blockers so notes can't be pinned onto them
-  const targets = [cat.hitMesh, ...world.careTargets, ...notesWall.raycastTargets(), ...world.blockers];
+  const targets = [cat.hitMesh, ...world.careTargets, ...world.curtainHits, ...notesWall.raycastTargets(), ...world.blockers];
   const hits = raycaster.intersectObjects(targets, false);
   return hits[0] || null;
 }
@@ -204,6 +213,9 @@ controls.onAction((ndcX, ndcY) => {
         applyCatState(res);
       }
     }).catch(() => {});
+  } else if (hit.object.userData.curtain && hit.distance < 3.2) {
+    const closed = world.toggleCurtains();
+    toast(closed ? "curtains drawn — it's just you and the glow now" : "curtains open");
   } else if (hit.object.userData.care && hit.distance < 2.6) {
     handleCare(hit.object.userData.care);
   } else if (hit.object.userData.note) {
@@ -220,6 +232,9 @@ setInterval(() => {
   const hit = castAt(0, 0);
   if (hit && hit.object.userData.cat && hit.distance < 2.2) {
     aimTip.textContent = "click to pet the cat";
+    aimTip.classList.add("show");
+  } else if (hit && hit.object.userData.curtain && hit.distance < 3.2) {
+    aimTip.textContent = world.curtainsClosed() ? "click to open the curtains" : "click to draw the curtains";
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.care && hit.distance < 2.6) {
     const d = store.decayCat(catState);

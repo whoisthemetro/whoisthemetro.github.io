@@ -157,28 +157,43 @@ async function listEchoes() {
   try { return JSON.parse(localStorage.getItem("metro.echoes") || "[]"); } catch (e) { return []; }
 }
 
-/* ---- cat needs: shared in real time across every visitor ---- */
-// decay rates (hours to go from full to empty / clean to dirty)
-const CAT_RATES = { food: 36, water: 24, litter: 48 };
+/* ---- cat needs: shared in real time across every visitor ----
+   Bowls only go down because the cat actually eats and drinks; the
+   litter only dirties because the cat actually uses it. The cat runs
+   on shared timers (hungry_at / thirsty_at / bathroom_at) so every
+   visitor's cat gets hungry at the same moment, and whoever's cat
+   acts first writes the result — everyone else syncs over realtime. */
 const catListeners = new Set();
+const clamp01 = (v) => Math.max(0, Math.min(1, v ?? 0));
 
+// no passive decay — just levels plus "is it time yet?" flags
 function decayCat(s) {
-  if (!s) return { food: 1, water: 1, litter: 0, pets: 0 };
-  const hrs = Math.max(0, (Date.now() - new Date(s.updated_at || Date.now()).getTime()) / 3600000);
+  if (!s) return { food: 1, water: 1, litter: 0, pets: 0, hungry: false, thirsty: false, bathroom: false };
+  const now = Date.now();
+  const due = (k) => !s[k] || now >= new Date(s[k]).getTime();
   return {
-    food: Math.max(0, (s.food ?? 1) - hrs / CAT_RATES.food),
-    water: Math.max(0, (s.water ?? 1) - hrs / CAT_RATES.water),
-    litter: Math.min(1, (s.litter ?? 0) + hrs / CAT_RATES.litter),
+    food: clamp01(s.food ?? 1),
+    water: clamp01(s.water ?? 1),
+    litter: clamp01(s.litter ?? 0),
     pets: s.pets ?? 0,
+    hungry: due("hungry_at"),
+    thirsty: due("thirsty_at"),
+    bathroom: due("bathroom_at"),
   };
 }
 
 function lsCat() {
+  const fresh = {
+    food: 1, water: 1, litter: 0, pets: 0, treats: [],
+    hungry_at: new Date().toISOString(),
+    thirsty_at: new Date().toISOString(),
+    bathroom_at: new Date(Date.now() + 3600000).toISOString(),
+    updated_at: new Date().toISOString(),
+  };
   try {
-    return JSON.parse(localStorage.getItem("metro.catstate") || "null")
-      || { food: 1, water: 1, litter: 0, pets: 0, treats: [], updated_at: new Date().toISOString() };
+    return JSON.parse(localStorage.getItem("metro.catstate") || "null") || fresh;
   } catch (e) {
-    return { food: 1, water: 1, litter: 0, pets: 0, treats: [], updated_at: new Date().toISOString() };
+    return fresh;
   }
 }
 function lsCatWrite(s) {
@@ -196,7 +211,8 @@ async function getCatState() {
   return lsCat();
 }
 
-// actions: feed | water | clean | treat | pet → { food, water, litter, pets, ok, reason }
+// human actions: feed | water | clean | treat | pet
+// cat actions:   eat | drink | bathroom  (guarded by the shared timers)
 async function catCare(action) {
   if (mode === "supabase") {
     const { data, error } = await sb.rpc("cat_care", { action });
@@ -204,21 +220,38 @@ async function catCare(action) {
     return data;
   }
   const s = lsCat();
-  const d = decayCat(s);
   const now = Date.now();
+  const due = (k) => !s[k] || now >= new Date(s[k]).getTime();
+  const inHrs = (lo, hi) => new Date(now + (lo + Math.random() * (hi - lo)) * 3600000).toISOString();
   let ok = true, reason = "";
   s.treats = (s.treats || []).filter(t => now - t < 6 * 3600000);
-  if (action === "feed") { if (d.food < 0.6) d.food = 1; else { ok = false; reason = "food still full"; } }
-  else if (action === "water") { if (d.water < 0.7) d.water = 1; else { ok = false; reason = "water still full"; } }
-  else if (action === "clean") d.litter = 0;
+
+  if (action === "feed") { if (s.food < 0.6) s.food = 1; else { ok = false; reason = "food still full"; } }
+  else if (action === "water") { if (s.water < 0.7) s.water = 1; else { ok = false; reason = "water still full"; } }
+  else if (action === "clean") s.litter = 0;
   else if (action === "treat") {
     if (s.treats.length >= 6) { ok = false; reason = "cat is full"; }
-    else { s.treats.push(now); d.food = Math.min(1, d.food + 0.06); }
+    else { s.treats.push(now); s.food = Math.min(1, (s.food ?? 1) + 0.06); }
   }
-  else if (action === "pet") d.pets += 1;
-  Object.assign(s, d, { updated_at: new Date().toISOString() });
+  else if (action === "pet") s.pets = (s.pets ?? 0) + 1;
+  else if (action === "eat") {
+    if (!due("hungry_at")) { ok = false; reason = "not hungry"; }
+    else if ((s.food ?? 0) <= 0.05) { s.hungry_at = new Date(now + 25 * 60000).toISOString(); ok = false; reason = "bowl empty"; }
+    else { s.food = Math.max(0, s.food - 0.28); s.hungry_at = inHrs(3, 7); }
+  }
+  else if (action === "drink") {
+    if (!due("thirsty_at")) { ok = false; reason = "not thirsty"; }
+    else if ((s.water ?? 0) <= 0.05) { s.thirsty_at = new Date(now + 20 * 60000).toISOString(); ok = false; reason = "bowl empty"; }
+    else { s.water = Math.max(0, s.water - 0.3); s.thirsty_at = inHrs(2, 5); }
+  }
+  else if (action === "bathroom") {
+    if (!due("bathroom_at")) { ok = false; reason = "no need"; }
+    else { s.litter = Math.min(1, (s.litter ?? 0) + 0.2); s.bathroom_at = inHrs(4, 9); }
+  }
+
+  s.updated_at = new Date().toISOString();
   lsCatWrite(s);
-  return { ...d, ok, reason };
+  return { ...s, ok, reason };
 }
 
 function subscribeCat() {

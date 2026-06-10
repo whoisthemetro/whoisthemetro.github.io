@@ -98,12 +98,20 @@ export class Cat {
 
   _pick(playerPose) {
     const s = this.spots;
-    // needs first: an empty bowl is ignored (and resented)
-    if (this.needs.food < 0.85 && this.needs.food > 0.06 && Math.random() < 0.4)
-      return this._goto(s.foodBowl.x, s.foodBowl.z, "eat", 0);
-    if (this.needs.water < 0.8 && this.needs.water > 0.06 && Math.random() < 0.35)
-      return this._goto(s.waterBowl.x, s.waterBowl.z, "drink", 0);
-    if (this.needs.litter < 0.92 && Math.random() < 0.18)
+    // the body's schedule comes first — these are the shared timers
+    if (this.needs.hungry) {
+      if (this.needs.food > 0.05) return this._goto(s.foodBowl.x, s.foodBowl.z, "eat", 0);
+      // empty bowl: sit by it and complain until somebody fills it
+      if (Math.random() < 0.6) {
+        this.fx.meow?.();
+        return this._goto(s.foodBowl.x - 0.25, s.foodBowl.z, "sit", 0);
+      }
+    }
+    if (this.needs.thirsty) {
+      if (this.needs.water > 0.05) return this._goto(s.waterBowl.x, s.waterBowl.z, "drink", 0);
+      if (Math.random() < 0.5) return this._goto(s.waterBowl.x - 0.25, s.waterBowl.z, "sit", 0);
+    }
+    if (this.needs.bathroom)
       return this._goto(s.litter.x, s.litter.z, "litterbox", 0);
     const r = Math.random();
     if (r < 0.30) return this._goto(s.chair.x, s.chair.z, "sleep", s.chair.y);
@@ -147,6 +155,7 @@ export class Cat {
   // A treat hits different no matter the mood.
   treatAt(x, z) {
     this.mood = Math.min(1, this.mood + 0.6);
+    this.isTreat = true;          // a treat is not a meal — bowls untouched
     this.fx.meow?.(true);
     this._goto(x, z, "eat", 0);
     this.timer = 5;
@@ -180,7 +189,9 @@ export class Cat {
       const cared = 0.45
         - 0.7 * (1 - this.needs.food)
         - 0.3 * (1 - this.needs.water)
-        - 0.5 * this.needs.litter;
+        - 0.5 * this.needs.litter
+        - (this.needs.hungry && this.needs.food <= 0.05 ? 0.5 : 0)    // starving at an empty bowl
+        - (this.needs.thirsty && this.needs.water <= 0.05 ? 0.3 : 0);
       const target = Math.max(-1, Math.min(1, cared + rand(-0.4, 0.4)));
       this.mood += (target - this.mood) * 0.6;
     }
@@ -200,9 +211,13 @@ export class Cat {
         this.fx.dig();
       }
       if (this.timer <= 0) {
-        if (this.state !== "litterbox") this.mood = Math.min(1, this.mood + 0.15);
+        // done — this is the moment the bowl/litter actually changes
+        const finished = this.state;
+        if (finished !== "litterbox") this.mood = Math.min(1, this.mood + 0.15);
         this.state = "sit";
         this.timer = rand(4, 10);
+        if (finished === "eat" && this.isTreat) this.isTreat = false;
+        else this.onNeed?.(finished);   // 'eat' | 'drink' | 'litterbox'
       }
     }
 

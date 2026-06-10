@@ -4,12 +4,17 @@
 -- Run once: Supabase Dashboard → SQL Editor → paste → Run.
 -- (Nothing to edit. Run features.sql first if you haven't.)
 --
--- One row of truth for the whole internet:
---   food/water drain in real time, the litter box gets dirty,
---   and ANY visitor can refill, clean, treat, or pet. Changes
---   broadcast live to everyone in the room.
+-- One row of truth for the whole internet. The bowls ONLY go down
+-- because the cat actually eats and drinks; the litter only dirties
+-- because the cat actually uses it. The cat runs on shared timers
+-- (hungry_at / thirsty_at / bathroom_at): every visitor's cat gets
+-- hungry at the same moment, the first one to act writes the result,
+-- and everyone else syncs over realtime.
 --
 -- Rules baked in:
+--   · eat/drink/bathroom only succeed when the timer is due
+--   · an empty bowl can't be eaten from — the cat retries soon,
+--     hungry and resentful, until somebody refills it
 --   · refills only allowed when actually low (no bowl spam)
 --   · max 6 treats per 6 hours, globally — the cat gets full
 --   · 12 care actions per 5 minutes per visitor
@@ -22,9 +27,16 @@ create table if not exists public.cat_state (
   litter      double precision not null default 0,
   pets        bigint not null default 0,
   treats      timestamptz[] not null default '{}',
+  hungry_at   timestamptz not null default now(),
+  thirsty_at  timestamptz not null default now(),
+  bathroom_at timestamptz not null default now() + interval '1 hour',
   updated_at  timestamptz not null default now()
 );
 insert into public.cat_state (id) values (1) on conflict (id) do nothing;
+-- upgrades from the earlier version of this file
+alter table public.cat_state add column if not exists hungry_at timestamptz not null default now();
+alter table public.cat_state add column if not exists thirsty_at timestamptz not null default now();
+alter table public.cat_state add column if not exists bathroom_at timestamptz not null default now() + interval '1 hour';
 
 -- carry over the pet counter if features.sql created one
 do $$
@@ -54,7 +66,6 @@ as $$
 declare
   s        public.cat_state;
   v_now    timestamptz := now();
-  v_hrs    double precision;
   v_ip     text;
   v_recent int;
   v_ok     boolean := true;
@@ -75,11 +86,6 @@ begin
 
   select * into s from public.cat_state where id = 1 for update;
 
-  -- bring the needs up to date (they decay in real time)
-  v_hrs := extract(epoch from (v_now - s.updated_at)) / 3600.0;
-  s.food   := greatest(0, s.food - v_hrs / 36.0);
-  s.water  := greatest(0, s.water - v_hrs / 24.0);
-  s.litter := least(1, s.litter + v_hrs / 48.0);
   s.treats := coalesce(
     (select array_agg(t) from unnest(s.treats) t where t > v_now - interval '6 hours'),
     '{}');
@@ -101,18 +107,51 @@ begin
     end if;
   elsif action = 'pet' then
     s.pets := s.pets + 1;
+
+  -- the cat's own metabolism: timer-gated so only the first visitor's
+  -- cat to act actually changes the world
+  elsif action = 'eat' then
+    if v_now < s.hungry_at then
+      v_ok := false; v_reason := 'not hungry';
+    elsif s.food <= 0.05 then
+      s.hungry_at := v_now + interval '25 minutes';   -- comes back to check
+      v_ok := false; v_reason := 'bowl empty';
+    else
+      s.food := greatest(0, s.food - 0.28);
+      s.hungry_at := v_now + make_interval(mins => 180 + floor(random() * 240)::int);
+    end if;
+  elsif action = 'drink' then
+    if v_now < s.thirsty_at then
+      v_ok := false; v_reason := 'not thirsty';
+    elsif s.water <= 0.05 then
+      s.thirsty_at := v_now + interval '20 minutes';
+      v_ok := false; v_reason := 'bowl empty';
+    else
+      s.water := greatest(0, s.water - 0.3);
+      s.thirsty_at := v_now + make_interval(mins => 120 + floor(random() * 180)::int);
+    end if;
+  elsif action = 'bathroom' then
+    if v_now < s.bathroom_at then
+      v_ok := false; v_reason := 'no need';
+    else
+      s.litter := least(1, s.litter + 0.2);
+      s.bathroom_at := v_now + make_interval(mins => 240 + floor(random() * 300)::int);
+    end if;
   else
     v_ok := false; v_reason := 'unknown action';
   end if;
 
   update public.cat_state
      set food = s.food, water = s.water, litter = s.litter,
-         pets = s.pets, treats = s.treats, updated_at = v_now
+         pets = s.pets, treats = s.treats,
+         hungry_at = s.hungry_at, thirsty_at = s.thirsty_at,
+         bathroom_at = s.bathroom_at, updated_at = v_now
    where id = 1;
 
   return jsonb_build_object(
-    'food', s.food, 'water', s.water, 'litter', s.litter,
-    'pets', s.pets, 'ok', v_ok, 'reason', v_reason);
+    'food', s.food, 'water', s.water, 'litter', s.litter, 'pets', s.pets,
+    'hungry_at', s.hungry_at, 'thirsty_at', s.thirsty_at, 'bathroom_at', s.bathroom_at,
+    'ok', v_ok, 'reason', v_reason);
 end;
 $$;
 
