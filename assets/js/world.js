@@ -628,6 +628,23 @@ export function buildWorld() {
   rod.position.set(WIN.cx, WIN.cy + WIN.h / 2 + 0.3, ZF + 0.11);
   add(rod);
 
+  // Shadow mask: invisible casters covering the front wall EXCEPT the
+  // window, so the beam can only truly enter through the glass — like
+  // real life. Without this the directional light rakes straight through
+  // the wall and lights/shadows the doors.
+  const maskMat = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false });
+  for (const [mw, mh, mx, my] of [
+    [(W - WIN.w) / 2, H, -(WIN.w / 2 + (W - WIN.w) / 4), H / 2],   // left of window
+    [(W - WIN.w) / 2, H, WIN.w / 2 + (W - WIN.w) / 4, H / 2],      // right of window
+    [WIN.w, H - (WIN.cy + WIN.h / 2), 0, (H + WIN.cy + WIN.h / 2) / 2],  // above
+    [WIN.w, WIN.cy - WIN.h / 2, 0, (WIN.cy - WIN.h / 2) / 2],      // below
+  ]) {
+    const mask = plane(mw, mh, maskMat);
+    mask.position.set(mx, my, ZF - 0.06);
+    mask.castShadow = true;
+    add(mask);
+  }
+
   /* --- ALL room light comes from outside --- */
   // soft spill just inside the glass
   const windowLight = add(new THREE.PointLight(0x9fb6e8, 0, 9, 2));
@@ -701,7 +718,8 @@ export function buildWorld() {
   /* --- doors --- */
   function door(w, h, x, z, rotY, double = false) {
     const grp = new THREE.Group();
-    const leaf = caster(box(w, h, 0.045, new THREE.MeshLambertMaterial({ map: doorTexture(double) })));
+    // doors sit flush in walls — they receive light but never cast shadows
+    const leaf = box(w, h, 0.045, new THREE.MeshLambertMaterial({ map: doorTexture(double) }));
     leaf.position.y = h / 2;
     grp.add(leaf);
     const fm = lam(0xc4bba6);
@@ -890,8 +908,14 @@ export function buildWorld() {
     grp.rotation.y = toeIn;
     add(grp);
   }
-  kali(-1.15, -0.16);   // left of the desk
-  kali(1.55, 0.16);     // right of the desk, against the wall
+  // Equilateral triangle: 2.3 m between tweeters, symmetric about the desk
+  // centerline (x=0.2), each toed in 30° so the axes cross at the listening
+  // position — which is exactly 2.3 m from each speaker.
+  const SPK_SPACING = 2.3;
+  const SPK_Z = ZF + 0.33;
+  const SWEET = { x: 0.2, z: SPK_Z + SPK_SPACING * Math.sqrt(3) / 2 };
+  kali(0.2 - SPK_SPACING / 2, Math.PI / 6);    // left of the desk
+  kali(0.2 + SPK_SPACING / 2, -Math.PI / 6);   // right of the desk, against the wall
 
   /* --- 12U rack on casters, apollo twin on top --- */
   const rack = new THREE.Group();
@@ -940,8 +964,9 @@ export function buildWorld() {
     cast.position.set(Math.cos(a) * 0.29, 0.03, Math.sin(a) * 0.29);
     chair.add(cast);
   }
-  chair.position.set(0.85, 0, ZF + 1.25);
-  chair.rotation.y = 0.8;
+  // parked in the sweet spot, facing the monitors
+  chair.position.set(SWEET.x, 0, SWEET.z);
+  chair.rotation.y = Math.PI;
   add(chair);
 
   /* --- METRO neon, on the bedroom door (the one light that stays) --- */
