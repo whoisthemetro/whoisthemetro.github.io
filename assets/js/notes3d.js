@@ -171,8 +171,10 @@ export class NotesWall {
       }),
     );
 
-    // world position from (wall, u, v)
-    const offset = 0.015 + (this.seq++ % 400) * 0.0006;
+    // world position from (wall, u, v) — always proud of the wall, with a
+    // small per-note stagger so overlapping notes never z-fight, capped so
+    // a crowded wall doesn't push notes visibly into the room
+    const offset = 0.014 + (this.seq++ % 64) * 0.0008;
     const pos = wall.origin.clone()
       .addScaledVector(wall.uDir, note.x * wall.w)
       .addScaledVector(wall.vDir, note.y * wall.h)
@@ -181,6 +183,7 @@ export class NotesWall {
     mesh.quaternion.copy(wall.mesh.quaternion);
     mesh.rotateZ(note.rot || 0);
     mesh.userData.note = note;
+    mesh.renderOrder = 2;   // after walls, so the wall never shades a note edge
     this.group.add(mesh);
     this.byId.set(note.id, mesh);
 
