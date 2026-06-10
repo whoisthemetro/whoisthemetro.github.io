@@ -291,39 +291,43 @@ export function buildWorld() {
     return mesh;
   }
 
-  // back wall — big panel cluster
+  // back wall — four panels, equal gaps across the full width
   postableWall("back", W,
     new THREE.MeshLambertMaterial({
       map: wallTexture(W, H, [
-        [0.6, 1.0, 0.6, 1.2], [1.35, 1.0, 0.6, 1.2],
-        [3.25, 1.0, 0.6, 1.2], [4.0, 1.0, 0.6, 1.2],
+        [0.56, 1.0, 0.6, 1.2], [1.72, 1.0, 0.6, 1.2],
+        [2.88, 1.0, 0.6, 1.2], [4.04, 1.0, 0.6, 1.2],
       ]),
     }),
     m => { m.rotation.y = Math.PI; m.position.set(0, H / 2, ZB); },
     new THREE.Vector3(X, 0, ZB), new THREE.Vector3(-1, 0, 0), new THREE.Vector3(0, 0, -1));
 
-  // left wall — panels between the doors
+  // left wall — closet spans u≈0.94..2.56 and bathroom door u≈3.03..3.97
+  // (u runs from the back corner), so the one clear stretch is by the
+  // back corner: a single panel centered in it
   postableWall("west", D,
     new THREE.MeshLambertMaterial({
-      map: wallTexture(D, H, [[2.0, 1.1, 0.55, 1.1], [3.7, 1.1, 0.55, 1.1]]),
+      map: wallTexture(D, H, [[0.195, 1.0, 0.55, 1.2]]),
     }),
     m => { m.rotation.y = Math.PI / 2; m.position.set(-X, H / 2, (ZF + ZB) / 2); },
     new THREE.Vector3(-X, 0, ZB), new THREE.Vector3(0, 0, -1), new THREE.Vector3(1, 0, 0));
 
-  // right wall — panels forward of the entry door
+  // right wall — entry door spans u≈3.11..4.09 (u runs from the front
+  // corner): three panels with equal gaps in the clear stretch before it
   postableWall("east", D,
     new THREE.MeshLambertMaterial({
-      map: wallTexture(D, H, [[0.5, 1.1, 0.55, 1.1], [1.25, 1.1, 0.55, 1.1], [2.0, 1.1, 0.55, 1.1]]),
+      map: wallTexture(D, H, [[0.365, 1.0, 0.55, 1.2], [1.285, 1.0, 0.55, 1.2], [2.205, 1.0, 0.55, 1.2]]),
     }),
     m => { m.rotation.y = -Math.PI / 2; m.position.set(X, H / 2, (ZF + ZB) / 2); },
     new THREE.Vector3(X, 0, ZF), new THREE.Vector3(0, 0, 1), new THREE.Vector3(-1, 0, 0));
 
-  // front wall (desk wall) — not postable, dressed in panels around the screen
+  // front wall (desk wall) — not postable; two mirrored pairs of panels
+  // flanking the rig, leaving the center clear for the monitor and the
+  // neon (neon occupies u≈2.23..3.38, y≈2.10..2.40)
   const front = add(plane(W, H, new THREE.MeshLambertMaterial({
     map: wallTexture(W, H, [
-      [0.35, 1.5, 0.55, 0.9], [1.05, 1.5, 0.55, 0.9],
-      [3.6, 1.5, 0.55, 0.9], [4.3, 1.5, 0.55, 0.9],
-      [1.75, 2.05, 0.55, 0.45], [2.9, 2.05, 0.55, 0.45],
+      [0.45, 1.45, 0.55, 0.95], [1.2, 1.45, 0.55, 0.95],
+      [3.45, 1.45, 0.55, 0.95], [4.2, 1.45, 0.55, 0.95],
     ], { base: "#34383f" }),
   })));
   front.position.set(0, H / 2, ZF);
@@ -547,14 +551,14 @@ export function buildWorld() {
 
   // warm floor lamp, back-left corner
   const lampPole = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.02, 1.5, 8), lam(0x222428));
-  lampPole.position.set(-2.25, 0.75, 1.85);
+  lampPole.position.set(-2.25, 0.75, -0.6);   // in the gap between closet and bathroom door
   add(lampPole);
   const lampShade = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.16, 0.22, 12, 1, true),
     new THREE.MeshBasicMaterial({ color: 0xffd9a0, side: THREE.DoubleSide }));
-  lampShade.position.set(-2.25, 1.55, 1.85);
+  lampShade.position.set(-2.25, 1.55, -0.6);
   add(lampShade);
   const lampLight = add(new THREE.PointLight(0xffc88a, 22, 7, 2));
-  lampLight.position.set(-2.25, 1.5, 1.8);
+  lampLight.position.set(-2.2, 1.5, -0.6);
 
   /* --- general light --- */
   add(new THREE.AmbientLight(0x6a727d, 1.7));
