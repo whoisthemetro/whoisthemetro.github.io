@@ -68,8 +68,11 @@ const hiKey = () => `metro.${gameId}.hi`;
 function hiScore() {
   try { return parseInt(localStorage.getItem(hiKey()) || "0", 10) || 0; } catch (e) { return 0; }
 }
+let scoreHook = null;
+export function setScoreHook(fn) { scoreHook = fn; }   // main reports to the wall
 function saveHi(score) {
   try { if (score > hiScore()) localStorage.setItem(hiKey(), String(score)); } catch (e) {}
+  if (score > 0 && gameId === "defender") scoreHook?.(gameId, score);
 }
 
 /* ================= DEFENDER (single player) ================= */

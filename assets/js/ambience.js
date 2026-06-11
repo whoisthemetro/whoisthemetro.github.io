@@ -258,6 +258,56 @@ export function setRain(level) {   // 0 off, 1 light, 2 heavy
   }
 }
 
+// The volca-style sampler on the boat's kitchen table.
+// 0 KIK 1 SNR 2 HAT 3 OHH 4 CLP 5 TOM 6 RIM 7 COW
+export function drumHit(i = 0) {
+  if (!ctx) return;
+  const t = ctx.currentTime + 0.003;
+  const noise = (dur, filterType, freq, q, peak) => {
+    const src = ctx.createBufferSource();
+    src.buffer = noiseBuffer(dur + 0.1);
+    const f = ctx.createBiquadFilter();
+    f.type = filterType; f.frequency.value = freq; if (q) f.Q.value = q;
+    const g = ctx.createGain();
+    src.connect(f).connect(g).connect(master);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(peak, t + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
+    g.gain.linearRampToValueAtTime(0, t + dur + 0.02);
+    src.start(t); src.stop(t + dur + 0.05);
+  };
+  const tone = (f0, f1, dur, type, peak) => {
+    const o = ctx.createOscillator();
+    o.type = type;
+    o.frequency.setValueAtTime(f0, t);
+    o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t + dur);
+    const g = ctx.createGain();
+    o.connect(g).connect(master);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(peak, t + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
+    g.gain.linearRampToValueAtTime(0, t + dur + 0.02);
+    o.start(t); o.stop(t + dur + 0.05);
+  };
+  switch (i % 8) {
+    case 0: tone(140, 38, 0.32, "sine", 0.16); break;                        // kick
+    case 1: tone(220, 140, 0.12, "triangle", 0.07); noise(0.16, "highpass", 1600, 0.7, 0.08); break;  // snare
+    case 2: noise(0.05, "highpass", 7500, 1, 0.06); break;                   // closed hat
+    case 3: noise(0.32, "highpass", 6800, 1, 0.05); break;                   // open hat
+    case 4: { for (const d of [0, 0.012, 0.026]) {                           // clap
+      const tt = t + d;
+      const src = ctx.createBufferSource(); src.buffer = noiseBuffer(0.12);
+      const f = ctx.createBiquadFilter(); f.type = "bandpass"; f.frequency.value = 1400; f.Q.value = 1.2;
+      const g = ctx.createGain(); src.connect(f).connect(g).connect(master);
+      g.gain.setValueAtTime(0.06, tt); g.gain.exponentialRampToValueAtTime(0.0008, tt + 0.09);
+      src.start(tt); src.stop(tt + 0.12);
+    } break; }
+    case 5: tone(190, 75, 0.26, "sine", 0.11); break;                        // tom
+    case 6: noise(0.04, "bandpass", 3400, 4, 0.07); break;                   // rim
+    case 7: tone(835, 835, 0.22, "square", 0.035); tone(587, 587, 0.22, "square", 0.035); break; // cowbell
+  }
+}
+
 // Water lapping against a hull — the boat room's room tone.
 let waterNodes = null;
 export function setWater(on) {

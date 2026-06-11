@@ -57,6 +57,7 @@ async function init() {
     };
   }
   subscribeCat();
+  subscribeScores();
   return mode;
 }
 
@@ -289,7 +290,47 @@ async function readInbox(pass) {
   try { return JSON.parse(localStorage.getItem("metro.dms") || "[]").reverse(); } catch (e) { return []; }
 }
 
+/* ---- arcade high scores: shared, all-time ---- */
+const scoreListeners = new Set();
+async function submitScore(game, name, score) {
+  if (mode === "supabase") {
+    const { error } = await sb.from("scores").insert({ game, name, score });
+    if (error) throw error;
+    return;
+  }
+  try {
+    const all = JSON.parse(localStorage.getItem("metro.scores") || "[]");
+    all.push({ game, name, score, created_at: new Date().toISOString() });
+    localStorage.setItem("metro.scores", JSON.stringify(all.slice(-100)));
+  } catch (e) {}
+}
+async function listScores(game, limit = 10) {
+  if (mode === "supabase") {
+    const { data, error } = await sb.from("scores")
+      .select("name,score").eq("game", game)
+      .order("score", { ascending: false }).limit(limit);
+    if (error) throw error;
+    return data || [];
+  }
+  try {
+    return JSON.parse(localStorage.getItem("metro.scores") || "[]")
+      .filter(s => s.game === game)
+      .sort((a, b) => b.score - a.score).slice(0, limit);
+  } catch (e) { return []; }
+}
+function subscribeScores() {
+  if (mode === "supabase" && sb) {
+    sb.channel("scores-feed")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "scores" },
+        () => scoreListeners.forEach(fn => { try { fn(); } catch (e) {} }))
+      .subscribe();
+  }
+}
+
 export const store = {
+  submitScore, listScores,
+  onNewScore: fn => { scoreListeners.add(fn); return () => scoreListeners.delete(fn); },
+  _subscribeScores: subscribeScores,
   init, list, add, imageUrl, adminDelete,
   sendDM, readInbox, demoUrl,
   getCatState, catCare, decayCat,

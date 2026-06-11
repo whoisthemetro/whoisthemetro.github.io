@@ -9,11 +9,11 @@ import { NotesWall } from "./notes3d.js";
 import { Ghosts } from "./ghosts.js";
 import { store } from "./store.js";
 import { presence } from "./presence.js";
-import { startAmbience, citySound, pianoNote, purr, setRain, setWater, meow, hiss, careSound } from "./ambience.js";
+import { startAmbience, citySound, pianoNote, purr, setRain, setWater, meow, hiss, careSound, drumHit } from "./ambience.js";
 import { weather } from "./weather.js";
 import { startPlanes } from "./planes.js";
 import { Cat } from "./cat.js";
-import { openArcade, closeArcade, arcadeIsOpen, arcadeWantsEsc, handleGameMessage } from "./arcade.js";
+import { openArcade, closeArcade, arcadeIsOpen, arcadeWantsEsc, handleGameMessage, setScoreHook } from "./arcade.js";
 import { PIANO_VOICES } from "./ambience.js";
 import {
   PAPERS, IS_TOUCH, safeUrl, hostOf, timeAgo, toast,
@@ -143,7 +143,7 @@ canvas.addEventListener("click", () => {
 function castAt(ndcX, ndcY) {
   raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera);
   // doors are included as blockers so notes can't be pinned onto them
-  const targets = [cat.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, ...world.arcadeHits, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...notesWall.raycastTargets(), ...world.blockers];
+  const targets = [cat.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.volcaHit, world.boatHeadHit, ...world.arcadeHits, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...notesWall.raycastTargets(), ...world.blockers];
   const hits = raycaster.intersectObjects(targets, false);
   return hits[0] || null;
 }
@@ -248,11 +248,21 @@ controls.onAction((ndcX, ndcY) => {
     world.pressPianoKey(key);
     presence.sendNote(key, pianoVoice);
   } else if (hit.object.userData.dimmer && hit.distance < 2.6) {
-    dimmerUI.classList.toggle("show");
+    openDimmer();
   } else if (hit.object.userData.portal === "boat" && hit.distance < 2.6) {
     tryBoat();
   } else if (hit.object.userData.boatExit && hit.distance < 2.6) {
     leaveBoat();
+  } else if (hit.object.userData.volca && hit.distance < 1.8 && hit.uv) {
+    // 2 rows × 4 pads, mapped straight off the face texture
+    const col = Math.min(3, Math.floor(hit.uv.x * 4.27));
+    const row = hit.uv.y > 0.45 ? 0 : 1;     // uv y up = top row
+    const pad = row * 4 + col;
+    drumHit(pad);
+    world.pressVolcaPad(pad);
+    presence.sendAct({ kind: "volca", pad });
+  } else if (hit.object.userData.boatHead && hit.distance < 2.2) {
+    toast("the head. it's occupied. it's always occupied.");
   } else if (hit.object.userData.pianoVoice && hit.distance < 2.4) {
     pianoVoice = (pianoVoice + 1) % PIANO_VOICES.length;
     try { localStorage.setItem("metro.voice", String(pianoVoice)); } catch (e) {}
@@ -301,6 +311,12 @@ setInterval(() => {
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.dimmer && hit.distance < 2.6) {
     aimTip.textContent = `${TAP} — light dimmer`;
+    aimTip.classList.add("show");
+  } else if (hit && hit.object.userData.volca && hit.distance < 1.8) {
+    aimTip.textContent = `${TAP} the pads`;
+    aimTip.classList.add("show");
+  } else if (hit && hit.object.userData.boatHead && hit.distance < 2.2) {
+    aimTip.textContent = "the head";
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.portal === "boat" && hit.distance < 2.6) {
     aimTip.textContent = "private. it wants a password.";
@@ -535,55 +551,147 @@ function refreshAvatarBtn() {
   }
 }
 refreshAvatarBtn();
+let rpmReady = false, rpmFallbackTimer = null;
+function saveAvatar(url) {
+  identity.avatar = url;
+  saveIdentity(identity);
+  presence.updateMeta({ avatar: url });   // applies live, no refresh needed
+  hide(rpmOverlay);
+  refreshAvatarBtn();
+  toast("avatar saved — that's you now, everyone can see it.");
+}
 $("#avatar-btn").addEventListener("click", () => {
   const frame = $("#rpm-frame");
-  if (!frame.src) frame.src = RPM_URL;
+  rpmReady = false;
+  frame.classList.remove("hidden");
+  $("#rpm-fallback").classList.add("hidden");
+  frame.src = RPM_URL;     // fresh load each open
   show(rpmOverlay);
+  // if the embed never answers, switch to the paste-a-link path
+  clearTimeout(rpmFallbackTimer);
+  rpmFallbackTimer = setTimeout(() => {
+    if (!rpmReady) {
+      frame.classList.add("hidden");
+      $("#rpm-fallback").classList.remove("hidden");
+    }
+  }, 7000);
 });
-$("#rpm-close").addEventListener("click", () => hide(rpmOverlay));
+$("#rpm-close").addEventListener("click", () => { clearTimeout(rpmFallbackTimer); hide(rpmOverlay); });
+$("#rpm-save").addEventListener("click", () => {
+  const url = $("#rpm-url").value.trim();
+  if (!/^https:\/\/.+\.glb(\?.*)?$/i.test(url)) return toast("that doesn't look like a .glb avatar link");
+  saveAvatar(url);
+});
 addEventListener("message", (e) => {
   let msg = null;
   try { msg = typeof e.data === "string" ? JSON.parse(e.data) : e.data; } catch (err) { return; }
   if (!msg || msg.source !== "readyplayerme") return;
   if (msg.eventName === "v1.frame.ready") {
+    rpmReady = true;
     $("#rpm-frame").contentWindow?.postMessage(
       JSON.stringify({ target: "readyplayerme", type: "subscribe", eventName: "v1.**" }), "*");
   } else if (msg.eventName === "v1.avatar.exported") {
-    identity.avatar = msg.data?.url || null;
-    saveIdentity(identity);
-    hide(rpmOverlay);
-    refreshAvatarBtn();
-    toast("avatar saved — others will see the new you. refresh to re-join with it.");
+    saveAvatar(msg.data?.url || null);
   }
 });
 
 /* ---------------- the dimmer on the wall ---------------- */
-const DIM_COLORS = ["#ffe2b8", "#ff8a5c", "#ff5c8a", "#9d6cff", "#5cb8ff", "#6cff9d"];
-let dimLevel = 0, dimColor = DIM_COLORS[0];
+// a proper modal (pointer unlocks, so the mouse actually works):
+// full RGB hue wheel as a rainbow slider + a level slider
+let dimLevel = 0, dimHue = 40;
 const dimmerUI = $("#dimmer-ui");
-DIM_COLORS.forEach((c, i) => {
-  const b = document.createElement("button");
-  b.className = "dim-swatch" + (i === 0 ? " active" : "");
-  b.style.background = c;
-  b.addEventListener("click", () => {
-    dimColor = c;
-    $("#dim-colors").querySelectorAll(".dim-swatch").forEach(s => s.classList.remove("active"));
-    b.classList.add("active");
-    applyDimmer(true);
-  });
-  $("#dim-colors").appendChild(b);
-});
+// HSL(h, 90%, 70%) → hex — the full RGB wheel as one slider
+const hueToHex = (h) => {
+  const s = 0.9, l = 0.7;
+  const a = s * Math.min(l, 1 - l);
+  const chan = (n) => {
+    const k = (n + h / 30) % 12;
+    return l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+  };
+  const to = (v) => Math.round(v * 255).toString(16).padStart(2, "0");
+  return `#${to(chan(0))}${to(chan(8))}${to(chan(4))}`;
+};
 let dimSendT = 0;
 function applyDimmer(broadcast) {
-  world.setRoomLight(dimLevel, dimColor);
-  if (broadcast && Date.now() - dimSendT > 250) {   // don't spam the channel while sliding
+  const color = hueToHex(dimHue);
+  world.setRoomLight(dimLevel, color);
+  $("#dim-preview").style.background = color;
+  $("#dim-preview").style.opacity = 0.25 + dimLevel * 0.75;
+  if (broadcast && Date.now() - dimSendT > 200) {
     dimSendT = Date.now();
-    presence.sendAct({ kind: "dimmer", level: dimLevel, color: dimColor });
+    presence.sendAct({ kind: "dimmer", level: dimLevel, color });
   }
 }
-$("#dim-level").addEventListener("input", (e) => {
-  dimLevel = e.target.value / 100;
-  applyDimmer(true);
+function openDimmer() {
+  modalOpen = true;
+  controls.unlock();
+  show(dimmerUI);
+  applyDimmer(false);
+}
+function closeDimmer() {
+  hide(dimmerUI);
+  modalOpen = false;
+  // send the final state so everyone lands on exactly what you chose
+  presence.sendAct({ kind: "dimmer", level: dimLevel, color: hueToHex(dimHue) });
+  if (entered) safeLock();
+}
+$("#dimmer-close").addEventListener("click", closeDimmer);
+$("#dim-level").addEventListener("input", (e) => { dimLevel = e.target.value / 100; applyDimmer(true); });
+$("#dim-hue").addEventListener("input", (e) => { dimHue = +e.target.value; applyDimmer(true); });
+
+/* ---------------- room chat — press T, or the bubble ---------------- */
+const chatLog = $("#chat-log");
+const chatBar = $("#chat-bar");
+const chatInput = $("#chat-input");
+let chatOpen = false;
+function pushChat(name, color, text, mine = false) {
+  const div = document.createElement("div");
+  div.className = "chat-msg";
+  const n = document.createElement("span");
+  n.className = "chat-name";
+  n.style.color = color || "#ffb347";
+  n.textContent = name || "someone";
+  div.appendChild(n);
+  div.appendChild(document.createTextNode(text));
+  chatLog.appendChild(div);
+  while (chatLog.children.length > 8) chatLog.removeChild(chatLog.firstChild);
+  setTimeout(() => div.classList.add("old"), 14000);
+}
+function openChat() {
+  if (modalOpen) return;
+  chatOpen = true;
+  modalOpen = true;
+  controls.unlock();
+  chatBar.classList.add("show");
+  setTimeout(() => chatInput.focus(), 30);
+}
+function closeChat(relock = true) {
+  chatOpen = false;
+  modalOpen = false;
+  chatBar.classList.remove("show");
+  chatInput.blur();
+  if (relock && entered) safeLock();
+}
+$("#chat-btn").addEventListener("click", () => { if (!chatOpen) openChat(); });
+chatInput.addEventListener("keydown", (e) => {
+  e.stopPropagation();
+  if (e.key === "Enter") {
+    const text = chatInput.value.trim().slice(0, 200);
+    chatInput.value = "";
+    if (text) {
+      presence.sendChat(text);
+      pushChat(identity.name || "you", identity.color, text, true);
+    }
+    closeChat();
+  } else if (e.key === "Escape") {
+    closeChat();
+  }
+});
+addEventListener("keydown", (e) => {
+  if ((e.code === "KeyT" || e.code === "Enter") && controls.locked && !modalOpen && entered) {
+    e.preventDefault();
+    openChat();
+  }
 });
 
 /* ---------------- THE DESI: the boat room ---------------- */
@@ -756,6 +864,7 @@ addEventListener("keydown", (e) => {
     if (composer.classList.contains("show")) closeComposer(false);
     if (reader.classList.contains("show")) closeReader();
     if (dmOverlay.classList.contains("show")) closeDM();
+    if (dimmerUI.classList.contains("show")) closeDimmer();
     // real DOOM owns ESC (its own menu) — only its × button closes it
     if (arcadeIsOpen() && !arcadeWantsEsc()) closeArcadeOverlay();
   }
@@ -823,10 +932,25 @@ addEventListener("keydown", (e) => {
     } else if (p.kind === "pet") {
       cat.remoteHearts();
     } else if (p.kind === "dimmer") {
-      dimLevel = p.level; dimColor = p.color || dimColor;
-      world.setRoomLight(dimLevel, dimColor);
-      $("#dim-level").value = Math.round(dimLevel * 100);
+      dimLevel = p.level;
+      world.setRoomLight(p.level, p.color);
+      $("#dim-level").value = Math.round(p.level * 100);
+    } else if (p.kind === "volca") {
+      drumHit(p.pad);
+      world.pressVolcaPad(p.pad);
     }
+  });
+  presence.onChat((p) => pushChat(p.name || "someone", p.color, p.text));
+
+  // arcade leaderboard: load it, keep it live, report new scores
+  const refreshScores = () =>
+    store.listScores("defender", 8).then(rows => world.updateScores(rows)).catch(() => {});
+  refreshScores();
+  store.onNewScore(refreshScores);
+  setScoreHook((game, score) => {
+    store.submitScore(game, (identity.name || "anon").slice(0, 24), score)
+      .then(refreshScores)
+      .catch(() => {});
   });
 
   weather.start();
@@ -852,6 +976,7 @@ renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta(), 0.05);
   t += dt;
   controls.update(dt);
+  world.setParallax(camera.position.x);
   // aboard THE DESI the whole world rolls a little
   if (inBoat) {
     camera.position.y += Math.sin(t * 0.85) * 0.022 + Math.sin(t * 1.7) * 0.008;

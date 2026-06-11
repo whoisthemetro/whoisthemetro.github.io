@@ -18,6 +18,7 @@ const poseListeners = new Set();
 const noteListeners = new Set();
 const gameListeners = new Set();
 const actListeners = new Set();
+const chatListeners = new Set();
 
 let me = null;
 let getPose = null;
@@ -77,6 +78,11 @@ async function join(identity, poseFn) {
           actListeners.forEach(fn => { try { fn(payload); } catch (e) {} });
         }
       })
+      .on("broadcast", { event: "chat" }, ({ payload }) => {
+        if (payload.uid !== me.uid) {
+          chatListeners.forEach(fn => { try { fn(payload); } catch (e) {} });
+        }
+      })
       .on("broadcast", { event: "arcade" }, ({ payload }) => {
         if (payload.uid !== me.uid) {
           gameListeners.forEach(fn => { try { fn(payload); } catch (e) {} });
@@ -103,6 +109,8 @@ async function join(identity, poseFn) {
         noteListeners.forEach(fn => { try { fn(m.uid, m.i, m.v); } catch (e) {} });
       } else if (m.type === "act") {
         actListeners.forEach(fn => { try { fn(m.payload); } catch (e) {} });
+      } else if (m.type === "chat") {
+        chatListeners.forEach(fn => { try { fn(m.payload); } catch (e) {} });
       } else if (m.type === "arcade") {
         gameListeners.forEach(fn => { try { fn(m.payload); } catch (e) {} });
       } else if (m.type === "bye") {
@@ -142,6 +150,21 @@ export const presence = {
   // shared physical actions: curtains, closet, petting the cat —
   // when someone touches the room, everyone sees it move
   onAct: fn => { actListeners.add(fn); return () => actListeners.delete(fn); },
+  // room chat: live, ephemeral, for whoever is here right now
+  onChat: fn => { chatListeners.add(fn); return () => chatListeners.delete(fn); },
+  sendChat(text) {
+    if (!me) return;
+    const payload = { uid: me.uid, name: me.name || "", color: me.color, text: String(text).slice(0, 200) };
+    if (chan) chan.send({ type: "broadcast", event: "chat", payload });
+    else bc?.postMessage({ type: "chat", payload });
+  },
+  // re-announce yourself (e.g. after making an avatar) without rejoining
+  updateMeta(patch) {
+    if (!me) return;
+    Object.assign(me, patch);
+    if (chan) chan.track({ name: me.name, color: me.color, avatar: me.avatar || null });
+    else bc?.postMessage({ type: "hb", uid: me.uid, name: me.name, color: me.color, avatar: me.avatar || null });
+  },
   sendAct(payload) {
     if (!me) return;
     const msg = { ...payload, uid: me.uid };

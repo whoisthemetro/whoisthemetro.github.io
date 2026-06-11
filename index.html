@@ -57,6 +57,7 @@
   <div id="online-pill"><span class="dot"></span><span id="online-count">1</span> in the room</div>
   <div id="cat-pill">🐈‍⬛ <span id="cat-meters"></span></div>
   <div id="flight-strip"></div>
+  <div id="chat-log"></div>
   <div id="aim-tip">click to read</div>
 </div>
 
@@ -121,16 +122,42 @@
   <div class="rpm-shell">
     <button class="x" id="rpm-close">×</button>
     <iframe id="rpm-frame" allow="camera *; microphone *; clipboard-write" title="avatar creator"></iframe>
+    <div id="rpm-fallback" class="hidden">
+      <p>the embedded creator didn't load, but the long way works fine:</p>
+      <ol>
+        <li><a href="https://readyplayer.me/avatar" target="_blank" rel="noopener">open readyplayer.me ↗</a> and build your avatar</li>
+        <li>when it's done, copy the avatar link (it ends in <b>.glb</b>)</li>
+        <li>paste it here:</li>
+      </ol>
+      <input type="url" id="rpm-url" placeholder="https://models.readyplayer.me/….glb">
+      <button id="rpm-save">use this avatar</button>
+    </div>
   </div>
 </div>
 
 <!-- ====== light dimmer ====== -->
-<div id="dimmer-ui">
-  <div class="dim-row">
-    <span class="dim-label">lights</span>
-    <input type="range" id="dim-level" min="0" max="100" value="0">
+<div id="dimmer-ui" class="overlay">
+  <div class="panel dim-panel">
+    <div class="panel-head">
+      <span class="tab active">room lights</span>
+      <button class="x" id="dimmer-close">×</button>
+    </div>
+    <div class="dim-row">
+      <span class="dim-label">color</span>
+      <input type="range" id="dim-hue" min="0" max="360" value="40">
+    </div>
+    <div class="dim-row">
+      <span class="dim-label">level</span>
+      <input type="range" id="dim-level" min="0" max="100" value="0">
+    </div>
+    <div class="dim-preview" id="dim-preview"></div>
   </div>
-  <div class="dim-row" id="dim-colors"></div>
+</div>
+
+<!-- room chat: press T, or the bubble on mobile -->
+<button id="chat-btn">💬</button>
+<div id="chat-bar">
+  <input type="text" id="chat-input" maxlength="200" placeholder="say something to the room… (enter to send)">
 </div>
 
 <!-- room-change fade -->

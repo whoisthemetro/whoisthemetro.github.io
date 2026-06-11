@@ -78,6 +78,14 @@ export class Ghosts {
         this.byUid.delete(uid);
       }
     }
+    // avatar changed mid-session → rebuild that figure
+    for (const [uid, meta] of peers) {
+      const rec = this.byUid.get(uid);
+      if (rec && rec.avatarUrl !== (meta.avatar || null)) {
+        this.group.remove(rec.grp);
+        this.byUid.delete(uid);
+      }
+    }
     // add the newly arrived
     for (const [uid, meta] of peers) {
       if (this.byUid.has(uid)) continue;
@@ -89,6 +97,7 @@ export class Ghosts {
       this.group.add(grp);
       this.byUid.set(uid, {
         grp,
+        avatarUrl: meta.avatar || null,
         target: { x: 0, z: 2.5, yaw: 0 },
         bobSeed: Math.random() * 10,
       });

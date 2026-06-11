@@ -217,22 +217,76 @@ textarea:focus, input:focus { border-color: var(--amber); }
 }
 .rpm-shell .x { position: absolute; top: 4px; right: 8px; z-index: 2; }
 #rpm-frame { width: 100%; height: 100%; border: 0; }
+#rpm-frame.hidden { display: none; }
+#rpm-fallback { padding: 34px 28px; color: var(--ink); font-size: 14px; line-height: 1.7; }
+#rpm-fallback.hidden { display: none; }
+#rpm-fallback ol { margin: 12px 0 18px 20px; color: var(--dim); }
+#rpm-fallback a { color: var(--amber); }
+#rpm-fallback input { margin-bottom: 12px; }
+#rpm-save {
+  font-family: "Archivo"; font-weight: 800; text-transform: uppercase;
+  letter-spacing: 0.16em; font-size: 12px; background: var(--amber);
+  color: #14110a; border: none; padding: 12px 28px; cursor: pointer; border-radius: 2px;
+}
 
 /* ---------- light dimmer ---------- */
-#dimmer-ui {
-  position: fixed; right: 16px; bottom: 64px; z-index: 40;
-  background: rgba(10, 14, 17, 0.92); border: 1px solid var(--line);
-  border-radius: 8px; padding: 14px 16px; display: none; width: 220px;
+.dim-panel { width: min(92vw, 360px); }
+.dim-row { display: flex; align-items: center; gap: 12px; margin: 16px 0; }
+.dim-label { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim); width: 46px; }
+#dim-level, #dim-hue {
+  flex: 1; height: 14px; border-radius: 7px; appearance: none; -webkit-appearance: none;
+  outline: none; cursor: pointer;
 }
-#dimmer-ui.show { display: block; }
-.dim-row { display: flex; align-items: center; gap: 10px; margin: 6px 0; flex-wrap: wrap; }
-.dim-label { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim); }
-#dim-level { flex: 1; accent-color: var(--amber); }
-.dim-swatch {
-  width: 24px; height: 24px; border-radius: 50%; cursor: pointer;
-  border: 2px solid transparent;
+#dim-hue {
+  background: linear-gradient(90deg, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
 }
-.dim-swatch.active { border-color: var(--ink); }
+#dim-level { background: linear-gradient(90deg, #15181d, #f5f0e0); }
+#dim-level::-webkit-slider-thumb, #dim-hue::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 22px; height: 22px; border-radius: 50%;
+  background: var(--ink); border: 3px solid #0a0e11; cursor: pointer;
+}
+.dim-preview {
+  height: 18px; border-radius: 4px; margin-top: 4px;
+  border: 1px solid var(--line); background: #222;
+}
+
+/* ---------- room chat ---------- */
+#chat-log {
+  position: absolute; left: 16px; bottom: 56px; z-index: 30;
+  display: flex; flex-direction: column; gap: 3px;
+  max-width: min(46vw, 380px); pointer-events: none;
+  font-size: 13px; line-height: 1.45;
+}
+.chat-msg {
+  background: rgba(8, 10, 13, 0.55); border-radius: 4px;
+  padding: 3px 10px; width: fit-content; max-width: 100%;
+  word-wrap: break-word; text-shadow: 0 1px 2px #000;
+  animation: chat-in 0.18s ease-out;
+  transition: opacity 1.2s ease;
+}
+.chat-msg .chat-name { font-weight: 700; margin-right: 6px; }
+.chat-msg.old { opacity: 0.25; }
+@keyframes chat-in {
+  from { transform: translateX(-8px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+#chat-bar {
+  position: fixed; left: 16px; bottom: 14px; z-index: 60;
+  width: min(70vw, 420px); display: none;
+}
+#chat-bar.show { display: block; }
+#chat-input {
+  width: 100%; background: rgba(10, 14, 17, 0.95);
+  border: 1px solid var(--amber); border-radius: 4px;
+  color: var(--ink); padding: 10px 14px; font-size: 14px; outline: none;
+}
+#chat-btn {
+  position: fixed; right: 16px; bottom: 56px; z-index: 30;
+  width: 44px; height: 44px; border-radius: 50%;
+  background: rgba(10, 14, 17, 0.7); border: 1px solid var(--line);
+  font-size: 18px; display: none; cursor: pointer;
+}
+@media (pointer: coarse) { #chat-btn { display: block; } }
 
 /* room-change fade */
 #fade {
