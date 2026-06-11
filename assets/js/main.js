@@ -3,10 +3,6 @@
    ============================================================ */
 
 import * as THREE from "three";
-import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
-import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
-import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
-import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { buildWorld } from "./world.js";
 import { Controls } from "./controls.js";
 import { NotesWall } from "./notes3d.js";
@@ -50,15 +46,6 @@ const identity = getIdentity();
 controls.pos.x = world.spawn.x;
 controls.pos.z = world.spawn.z;
 controls.yaw = world.spawn.yaw;
-
-// subtle glow over the whole world: only genuinely bright things bloom
-// (screens, neon, signs, LEDs, the sun on the water)
-const postFx = new EffectComposer(renderer);
-postFx.addPass(new RenderPass(world.scene, camera));
-const bloom = new UnrealBloomPass(
-  new THREE.Vector2(innerWidth / 2, innerHeight / 2), 0.35, 0.55, 0.82);
-postFx.addPass(bloom);
-postFx.addPass(new OutputPass());
 
 world.setCityListener((type) => { if (!inBoat && !inArena) citySound(type); });
 
@@ -115,7 +102,6 @@ addEventListener("resize", () => {
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
-  postFx.setSize(innerWidth, innerHeight);
 });
 
 /* ---------------- ui elements ---------------- */
@@ -719,9 +705,12 @@ function fadeTo(fn) {
   setTimeout(() => { fn(); setTimeout(() => f.classList.remove("dark"), 150); }, 480);
 }
 async function tryBoat() {
+  modalOpen = true;                      // keep the pause screen away
   const pass = prompt("this door is private. password:");
-  if (!pass) return;
+  if (!pass) { modalOpen = false; if (entered) safeLock(); return; }
   if (await sha256(pass.trim().toLowerCase()) !== BOAT_PASS_HASH) {
+    modalOpen = false;
+    if (entered) safeLock();
     return toast("the door doesn't budge.");
   }
   fadeTo(() => {
@@ -734,6 +723,9 @@ async function tryBoat() {
     setRoomTone(false);                  // the bedroom stays behind, fully
     refreshNoteVisibility();
     toast("welcome aboard THE DESI 🌊");
+    modalOpen = false;
+    hide(paused);
+    if (entered) safeLock();
   });
 }
 // each room shows only its own notes
@@ -768,9 +760,12 @@ const disc = {
 };
 const arenaScore = { o: 0, b: 0 };
 async function tryArena() {
+  modalOpen = true;                      // keep the pause screen away
   const pass = prompt("the poster hums. password:");
-  if (!pass) return;
+  if (!pass) { modalOpen = false; if (entered) safeLock(); return; }
   if (await sha256(pass.trim().toLowerCase()) !== ARENA_HASH) {
+    modalOpen = false;
+    if (entered) safeLock();
     return toast("the poster stays a poster.");
   }
   fadeTo(() => {
@@ -786,10 +781,15 @@ async function tryArena() {
     setRoomTone(false);
     refreshNoteVisibility();
     store.logEvent("boat");   // counts as a portal trip
+    startArenaMusic();
     toast("welcome to THE CREW · WASD thrust · SPACE/C up/down · SHIFT boost · B brake");
+    modalOpen = false;
+    hide(paused);
+    if (entered) safeLock();
   });
 }
 function leaveArena() {
+  stopArenaMusic();
   // don't walk off with the disc
   if (disc.holder === identity.uid) {
     disc.holder = null;
@@ -873,6 +873,34 @@ function throwDisc() {
     p: [disc.pos.x, disc.pos.y, disc.pos.z],
     v: [disc.vel.x, disc.vel.y, disc.vel.z],
   });
+}
+
+/* ---------------- arena lobby music (Echo VR lobby theme) ---------------- */
+const ARENA_TRACK = "XAd1fq-cPzA";
+let ytPlayer = null, ytLoading = false;
+function startArenaMusic() {
+  if (ytPlayer) { try { ytPlayer.playVideo(); } catch (e) {} return; }
+  if (ytLoading) return;
+  ytLoading = true;
+  const boot = () => {
+    ytPlayer = new YT.Player("arena-music", {
+      width: 2, height: 2, videoId: ARENA_TRACK,
+      playerVars: { autoplay: 1, loop: 1, playlist: ARENA_TRACK, controls: 0, disablekb: 1 },
+      events: {
+        onReady: (e) => { e.target.setVolume(9); e.target.playVideo(); },   // faintly
+      },
+    });
+  };
+  if (window.YT && window.YT.Player) boot();
+  else {
+    window.onYouTubeIframeAPIReady = boot;
+    const s = document.createElement("script");
+    s.src = "https://www.youtube.com/iframe_api";
+    document.head.appendChild(s);
+  }
+}
+function stopArenaMusic() {
+  try { ytPlayer?.pauseVideo(); } catch (e) {}
 }
 
 /* ---------------- message in a bottle ---------------- */
@@ -1212,5 +1240,5 @@ renderer.setAnimationLoop(() => {
   cat.tick(dt, t, controls.pose());
   discTick(dt);
   if (inArena) setThruster(controls.thrusting);
-  postFx.render();
+  renderer.render(world.scene, camera);
 });

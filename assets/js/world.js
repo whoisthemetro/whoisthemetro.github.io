@@ -635,10 +635,7 @@ export function buildWorld() {
 
   postableWall("back", W,
     new THREE.MeshLambertMaterial({
-      map: wallTexture(W, H, [
-        [0.56, 1.0, 0.6, 1.2], [1.72, 1.0, 0.6, 1.2],
-        [2.88, 1.0, 0.6, 1.2], [4.04, 1.0, 0.6, 1.2],
-      ]),
+      map: wallTexture(W, H),
     }),
     m => { m.rotation.y = Math.PI; m.position.set(0, H / 2, ZB); },
     new THREE.Vector3(X, 0, ZB), new THREE.Vector3(-1, 0, 0), new THREE.Vector3(0, 0, -1));
@@ -659,10 +656,7 @@ export function buildWorld() {
   closetHole.closePath();
   westShape.holes.push(closetHole);
   const westGeo = new THREE.ShapeGeometry(westShape);
-  const westMap = wallTexture(D, H, [
-    [0.31, 1.0, 0.55, 1.2], [1.17, 1.0, 0.55, 1.2], [2.03, 1.0, 0.55, 1.2],
-    [6.0, 1.0, 0.55, 1.2],
-  ]);
+  const westMap = wallTexture(D, H);
   westMap.repeat.set(1 / D, 1 / H);     // ShapeGeometry uvs are in shape units
   westMap.offset.set(0.5, 0.5);
   postableWall("west", D,
@@ -679,22 +673,61 @@ export function buildWorld() {
 
   postableWall("east", D,
     new THREE.MeshLambertMaterial({
-      map: wallTexture(D, H, [
-        [0.58, 1.0, 0.55, 1.2], [1.71, 1.0, 0.55, 1.2],
-        [2.85, 1.0, 0.55, 1.2], [3.98, 1.0, 0.55, 1.2],
-      ]),
+      map: wallTexture(D, H),
     }),
     m => { m.rotation.y = -Math.PI / 2; m.position.set(X, H / 2, 0); },
     new THREE.Vector3(X, 0, ZF), new THREE.Vector3(0, 0, 1), new THREE.Vector3(-1, 0, 0),
     { voids: [{ u0: 5.06, u1: 6.14, v0: 0, v1: 2.12 }] });   // entry door
 
   const front = add(plane(W, H, new THREE.MeshLambertMaterial({
-    map: wallTexture(W, H, [
-      [0.125, 1.0, 0.55, 1.2], [4.525, 1.0, 0.55, 1.2],
-    ]),
+    map: wallTexture(W, H),
   })));
   front.position.set(0, H / 2, ZF);
   front.receiveShadow = true;
+
+  /* --- acoustic panels: real 7 cm slabs, not paint --- */
+  const panelMat = new THREE.MeshLambertMaterial({
+    map: canvasTex(128, 256, (g) => {
+      g.fillStyle = "#23262e"; g.fillRect(0, 0, 128, 256);
+      g.fillStyle = "rgba(255,255,255,0.05)";
+      for (let y = 0; y < 256; y += 5) g.fillRect(0, y, 128, 2);
+      g.strokeStyle = "rgba(0,0,0,0.6)"; g.lineWidth = 6;
+      g.strokeRect(2, 2, 124, 252);
+    }),
+  });
+  // [wall, u, v, w, h] in each wall's note coordinates
+  const PANEL_DEFS = [
+    ["back", 0.56, 1.0, 0.6, 1.2], ["back", 1.72, 1.0, 0.6, 1.2],
+    ["back", 2.88, 1.0, 0.6, 1.2], ["back", 4.04, 1.0, 0.6, 1.2],
+    ["west", 0.31, 1.0, 0.55, 1.2], ["west", 1.17, 1.0, 0.55, 1.2],
+    ["west", 2.03, 1.0, 0.55, 1.2], ["west", 6.0, 1.0, 0.55, 1.2],
+    ["east", 0.58, 1.0, 0.55, 1.2], ["east", 1.71, 1.0, 0.55, 1.2],
+    ["east", 2.85, 1.0, 0.55, 1.2], ["east", 3.98, 1.0, 0.55, 1.2],
+  ];
+  for (const [wid, pu, pv, pw, ph] of PANEL_DEFS) {
+    const wall = walls.find(w2 => w2.id === wid);
+    const center = wall.origin.clone()
+      .addScaledVector(wall.uDir, pu + pw / 2)
+      .addScaledVector(wall.vDir, pv + ph / 2)
+      .addScaledVector(wall.normal, 0.038);
+    const slab = new THREE.Mesh(new THREE.BoxGeometry(pw, ph, 0.07), panelMat);
+    slab.position.copy(center);
+    slab.lookAt(center.clone().add(wall.normal));
+    slab.castShadow = true;
+    slab.receiveShadow = true;
+    add(slab);
+    blockers.push(slab);
+    // notes keep clear of the slabs
+    wall.voids.push({ u0: pu - 0.04, u1: pu + pw + 0.04, v0: pv - 0.04, v1: pv + ph + 0.04 });
+  }
+  // the front wall's two painted panels become slabs too
+  for (const fx4 of [-2.32, 2.2]) {
+    const slab = new THREE.Mesh(new THREE.BoxGeometry(0.55, 1.2, 0.07), panelMat);
+    slab.position.set(fx4, 1.6, ZF + 0.038);
+    slab.castShadow = true;
+    add(slab);
+    blockers.push(slab);
+  }
 
   /* --- the window (faces south over LA) --- */
   const WIN = { w: 3.6, h: 1.4, cx: 0, cy: 1.6 };
@@ -1261,7 +1294,7 @@ export function buildWorld() {
   const scoreBoard = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 1.28),
     new THREE.MeshBasicMaterial({ map: scoreTex }));
   scoreBoard.rotation.y = Math.PI;
-  scoreBoard.position.set(-5.6, 1.55, AR.z1 - 0.02);
+  scoreBoard.position.set(-5.6, 1.55, AR.z1 - 0.05);
   add(scoreBoard);
 
   /* --- the desk rig --- */
@@ -2284,7 +2317,7 @@ export function buildWorld() {
     }),
   }));
   boatSign.rotation.y = Math.PI;
-  boatSign.position.set(BOAT.x, 1.85, BOAT.z + BD / 2 - 0.02);
+  boatSign.position.set(BOAT.x, 1.85, BOAT.z + BD / 2 - 0.06);
   addB(boatSign);
   const boatDoor = bAdd(box(0.7, 1.7, 0.04, lam(0x4a3520)));
   boatDoor.rotation.y = Math.PI;
@@ -2358,9 +2391,9 @@ export function buildWorld() {
      to pass around. Movement out there is pure momentum. --- */
   const ARENA = { x: 0, y: 80, z: 0, hx: 17, hy: 7, hz: 9 };
   const panelTex = canvasTex(512, 512, (g) => {
-    g.fillStyle = "#1c2230";
+    g.fillStyle = "#3d4658";
     g.fillRect(0, 0, 512, 512);
-    g.strokeStyle = "rgba(110,140,180,0.4)";
+    g.strokeStyle = "rgba(170,195,230,0.55)";
     g.lineWidth = 2;
     for (let i = 0; i <= 8; i++) {
       g.beginPath(); g.moveTo(i * 64, 0); g.lineTo(i * 64, 512); g.stroke();
@@ -2368,13 +2401,13 @@ export function buildWorld() {
     }
     // hazard chevrons + panel details
     for (let i = 0; i < 10; i++) {
-      g.fillStyle = "rgba(40,50,70,0.5)";
+      g.fillStyle = "rgba(90,105,130,0.6)";
       g.fillRect((i * 197) % 448, (i * 131) % 448, 56, 22);
     }
   });
   panelTex.wrapS = panelTex.wrapT = THREE.RepeatWrapping;
   const arenaMat = new THREE.MeshStandardMaterial({
-    map: panelTex, color: 0x8a93a8, metalness: 0.6, roughness: 0.55, side: THREE.DoubleSide,
+    map: panelTex, color: 0xd8dee8, metalness: 0.45, roughness: 0.6, side: THREE.DoubleSide,
   });
   const arenaGroup = new THREE.Group();
   scene.add(arenaGroup);
@@ -2417,7 +2450,7 @@ export function buildWorld() {
     trim(A.x + A.hx - 0.05, A.y + sy, A.z - A.hz, A.x + A.hx - 0.05, A.y + sy, A.z + A.hz, 0x22a4ff);
   }
   for (let i = -2; i <= 2; i++) {
-    trim(A.x + i * 6, A.y + A.hy - 0.04, A.z - A.hz, A.x + i * 6, A.y + A.hy - 0.04, A.z + A.hz, 0x8ab8ff);
+    trim(A.x + i * 6, A.y + A.hy - 0.1, A.z - A.hz, A.x + i * 6, A.y + A.hy - 0.04, A.z + A.hz, 0x8ab8ff);
   }
   // center ring hologram
   const centerRing = new THREE.Mesh(new THREE.TorusGeometry(2.4, 0.06, 8, 48),
@@ -2436,7 +2469,7 @@ export function buildWorld() {
   goalB.position.x = A.x + A.hx - 0.4;
   addA(goalB);
   for (const [gx, gc] of [[A.x - A.hx + 1.2, 0xff7320], [A.x + A.hx - 1.2, 0x22a4ff]]) {
-    const gl = new THREE.PointLight(gc, 14, 9, 2);
+    const gl = new THREE.PointLight(gc, 24, 11, 2);
     gl.position.set(gx, A.y, A.z);
     addA(gl);
   }
@@ -2453,10 +2486,30 @@ export function buildWorld() {
     addA(edge);
   }
   // fill light + space dust
-  for (const fx3 of [-10, 0, 10]) {
-    const af = new THREE.PointLight(0xaab8d8, 70, 34, 2);
+  for (const fx3 of [-11, 0, 11]) {
+    const af = new THREE.PointLight(0xc8d4e8, 110, 38, 2);
     af.position.set(A.x + fx3, A.y + A.hy - 1.5, A.z);
     addA(af);
+    // visible light tube under each fixture
+    const tube = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.1, 0.25),
+      new THREE.MeshBasicMaterial({ color: 0xe8f0ff }));
+    tube.position.set(A.x + fx3, A.y + A.hy - 0.4, A.z);
+    addA(tube);
+  }
+  // team end zones, echo-style: colored wall bands at each end
+  for (const [ex, ec] of [[A.x - A.hx + 3.5, 0xff7320], [A.x + A.hx - 3.5, 0x22a4ff]]) {
+    for (const ez of [-A.hz + 0.08, A.hz - 0.08]) {
+      const band = new THREE.Mesh(new THREE.PlaneGeometry(5.5, 0.5),
+        new THREE.MeshBasicMaterial({ color: ec, transparent: true, opacity: 0.85, side: THREE.DoubleSide }));
+      band.position.set(ex, A.y, ez > 0 ? A.z + A.hz - 0.08 : A.z - A.hz + 0.08);
+      band.rotation.y = ez > 0 ? Math.PI : 0;
+      addA(band);
+    }
+    const glowDisk = new THREE.Mesh(new THREE.CircleGeometry(3.2, 32),
+      new THREE.MeshBasicMaterial({ color: ec, transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending, depthWrite: false }));
+    glowDisk.rotation.y = ex < A.x ? Math.PI / 2 : -Math.PI / 2;
+    glowDisk.position.set(ex < A.x ? A.x - A.hx + 0.5 : A.x + A.hx - 0.5, A.y, A.z);
+    addA(glowDisk);
   }
   const ADUST = 240;
   const aDustPos = new Float32Array(ADUST * 3);
@@ -2694,6 +2747,36 @@ export function buildWorld() {
     { x0: BOAT.x - 1.75, x1: BOAT.x + 1.75, z0: BOAT.z - 1.15, z1: BOAT.z + 1.15 },
   ];
   const isWalkable = (x, z) => WALK_RECTS.some(r => x >= r.x0 && x <= r.x1 && z >= r.z0 && z <= r.z1);
+
+  /* --- stylized cel shading: every lit material gets a stepped toon
+     ramp. Bright emissive things (screens, neon, signs) stay as-is. --- */
+  const toonRampCanvas = document.createElement("canvas");
+  toonRampCanvas.width = 4; toonRampCanvas.height = 1;
+  {
+    const g = toonRampCanvas.getContext("2d");
+    ["#4a4a52", "#8a8a92", "#c9c9cf", "#ffffff"].forEach((col, i) => {
+      g.fillStyle = col; g.fillRect(i, 0, 1, 1);
+    });
+  }
+  const toonRamp = new THREE.CanvasTexture(toonRampCanvas);
+  toonRamp.minFilter = toonRamp.magFilter = THREE.NearestFilter;
+  scene.traverse((o) => {
+    if (!o.isMesh) return;
+    const m = o.material;
+    if (!m || !(m.isMeshLambertMaterial || m.isMeshStandardMaterial)) return;
+    const tm = new THREE.MeshToonMaterial({
+      map: m.map || null,
+      color: m.color.clone(),
+      gradientMap: toonRamp,
+      transparent: m.transparent,
+      opacity: m.opacity,
+      side: m.side,
+      emissive: m.emissive ? m.emissive.clone() : 0x000000,
+      emissiveMap: m.emissiveMap || null,
+      emissiveIntensity: m.emissiveIntensity ?? 1,
+    });
+    o.material = tm;
+  });
 
   return {
     scene, walls, blockers, noteGroup, ghostGroup, tick,

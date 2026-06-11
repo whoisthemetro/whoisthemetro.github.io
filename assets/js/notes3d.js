@@ -222,7 +222,7 @@ export class NotesWall {
     if (!this.occupied.has(wall.id)) this.occupied.set(wall.id, []);
     this.occupied.get(wall.id).push({ id: note.id, ...spot });
 
-    const offset = 0.014 + (this.seq++ % 64) * 0.0008;
+    const offset = 0.03 + (this.seq++ % 64) * 0.0008;
     const pos = wall.origin.clone()
       .addScaledVector(wall.uDir, spot.cu)
       .addScaledVector(wall.vDir, spot.cv)
