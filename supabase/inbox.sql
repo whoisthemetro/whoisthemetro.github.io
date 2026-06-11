@@ -16,8 +16,26 @@ create table if not exists public.private_messages (
   created_at  timestamptz not null default now(),
   name        text check (name is null or char_length(name) <= 40),
   text        text not null check (char_length(text) between 1 and 500),
-  url         text check (url is null or (char_length(url) <= 500 and url ~* '^https?://'))
+  url         text check (url is null or (char_length(url) <= 500 and url ~* '^https?://')),
+  file_path   text check (file_path is null or char_length(file_path) <= 200)
 );
+alter table public.private_messages add column if not exists file_path text
+  check (file_path is null or char_length(file_path) <= 200);
+
+-- demo drop-box: audio attachments live here under unguessable uuid
+-- names; the paths are only ever revealed through read_inbox(pass)
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('demos', 'demos', true, 26214400,
+        array['audio/mpeg', 'audio/wav', 'audio/x-wav', 'audio/mp4', 'audio/aac',
+              'audio/flac', 'audio/ogg', 'audio/webm', 'audio/aiff', 'audio/x-aiff'])
+on conflict (id) do update
+  set public = true, file_size_limit = 26214400,
+      allowed_mime_types = excluded.allowed_mime_types;
+
+drop policy if exists "anyone can drop a demo" on storage.objects;
+create policy "anyone can drop a demo"
+  on storage.objects for insert
+  with check (bucket_id = 'demos' and (storage.foldername(name))[1] = 'd');
 
 alter table public.private_messages enable row level security;
 
@@ -78,9 +96,37 @@ begin
   end if;
   return coalesce((
     select jsonb_agg(jsonb_build_object(
-      'name', m.name, 'text', m.text, 'url', m.url, 'created_at', m.created_at)
+      'name', m.name, 'text', m.text, 'url', m.url,
+      'file_path', m.file_path, 'created_at', m.created_at)
       order by m.created_at desc)
     from (select * from public.private_messages order by created_at desc limit 100) m
   ), '[]'::jsonb);
 end;
 $$;
+
+-- OPTIONAL: email each message (with the audio attached) to you.
+-- Needs the 'demo-email' Edge Function deployed first — see EMAIL.md.
+-- Harmless if the function doesn't exist; the call just fails quietly.
+create or replace function public.notify_email_dm()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  perform net.http_post(
+    url := 'https://donnxntnewmkzrycugpn.supabase.co/functions/v1/demo-email',
+    body := jsonb_build_object(
+      'name', new.name, 'text', new.text, 'url', new.url, 'file_path', new.file_path),
+    headers := '{"Content-Type": "application/json"}'::jsonb
+  );
+  return new;
+exception when others then
+  return new;
+end;
+$$;
+
+drop trigger if exists dm_notify_email on public.private_messages;
+create trigger dm_notify_email
+  after insert on public.private_messages
+  for each row execute function public.notify_email_dm();

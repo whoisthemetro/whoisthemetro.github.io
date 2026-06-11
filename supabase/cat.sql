@@ -116,7 +116,9 @@ begin
     if v_now < s.hungry_at then
       v_ok := false; v_reason := 'not hungry';
     elsif s.food <= 0.05 then
-      s.hungry_at := v_now + interval '15 minutes';   -- comes back to check
+      -- hungry_at stays in the past: the cat is now actively starving
+      -- and its "fed" meter drains until someone on the internet
+      -- refills the bowl, at which point the next eat succeeds
       v_ok := false; v_reason := 'bowl empty';
     else
       s.food := greatest(0, s.food - 0.15);
@@ -126,7 +128,6 @@ begin
     if v_now < s.thirsty_at then
       v_ok := false; v_reason := 'not thirsty';
     elsif s.water <= 0.05 then
-      s.thirsty_at := v_now + interval '12 minutes';
       v_ok := false; v_reason := 'bowl empty';
     else
       s.water := greatest(0, s.water - 0.18);

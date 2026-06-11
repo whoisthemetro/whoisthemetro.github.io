@@ -801,12 +801,12 @@ export function buildWorld() {
     add(mask);
   }
   // the arcade room is windowless — keep the beam out of it entirely
-  const arcMaskS = new THREE.Mesh(new THREE.BoxGeometry(4.6, H + 0.4, 0.12), maskMat);
-  arcMaskS.position.set(-4.9, H / 2, -2.36);
+  const arcMaskS = new THREE.Mesh(new THREE.BoxGeometry(6.0, H + 0.4, 0.12), maskMat);
+  arcMaskS.position.set(-5.6, H / 2, -2.96);
   arcMaskS.castShadow = true;
   add(arcMaskS);
-  const arcMaskW = new THREE.Mesh(new THREE.BoxGeometry(0.12, H + 0.4, 4.2), maskMat);
-  arcMaskW.position.set(-6.9, H / 2, -0.4);
+  const arcMaskW = new THREE.Mesh(new THREE.BoxGeometry(0.12, H + 0.4, 5.6), maskMat);
+  arcMaskW.position.set(-8.3, H / 2, -0.4);
   arcMaskW.castShadow = true;
   add(arcMaskW);
 
@@ -820,7 +820,7 @@ export function buildWorld() {
   const beam = new THREE.DirectionalLight(0xfff0d8, 0);
   beam.castShadow = true;
   beam.shadow.mapSize.set(2048, 2048);
-  beam.shadow.camera.left = -8; beam.shadow.camera.right = 5;
+  beam.shadow.camera.left = -9.5; beam.shadow.camera.right = 5;
   beam.shadow.camera.top = 5; beam.shadow.camera.bottom = -5;
   beam.shadow.camera.near = 0.5; beam.shadow.camera.far = 30;
   beam.shadow.bias = -0.0004;
@@ -1023,8 +1023,8 @@ export function buildWorld() {
   }
 
   /* --- METRO'S ARCADE: the room beyond the closet --- */
-  // x -6.8..-3.55, z -2.3..1.5, doorway aligned with the closet opening
-  const AR = { x0: -6.8, x1: -X - ALCOVE_D, z0: -2.3, z1: 1.5 };
+  // a proper room: ~4.7 x 5.0 m, doorway aligned with the closet opening
+  const AR = { x0: -8.2, x1: -X - ALCOVE_D, z0: -2.9, z1: 2.1 };
   const arcMatWall = lam(0x191722);
   const arcW = AR.x1 - AR.x0, arcD = AR.z1 - AR.z0;
   // front wall (two segments + lintel around the doorway)
@@ -1078,10 +1078,10 @@ export function buildWorld() {
     strip.position.set((AR.x0 + AR.x1) / 2, 2.3, zz);
     add(strip);
   }
-  const magenta = add(new THREE.PointLight(0xff2da0, 4, 4.5, 2));
-  magenta.position.set(-5.2, 2.2, -1.9);
-  const cyan = add(new THREE.PointLight(0x22d4ff, 4, 4.5, 2));
-  cyan.position.set(-5.2, 2.2, 1.1);
+  const magenta = add(new THREE.PointLight(0xff2da0, 5, 5.5, 2));
+  magenta.position.set(-5.9, 2.2, -2.3);
+  const cyan = add(new THREE.PointLight(0x22d4ff, 5, 5.5, 2));
+  cyan.position.set(-5.9, 2.2, 1.6);
 
   // "METRO'S ARCADE" — neon on the arcade's back wall, and a small
   // sign over the closet in the bedroom
@@ -1173,13 +1173,13 @@ export function buildWorld() {
     add(grp);
   }
   // headliners along the back wall, facing the door
-  cabinet("defender", "DEFENDER", "#ff3434", AR.x0 + 0.42, -1.55, Math.PI / 2);
-  cabinet("doom", "DOOM", "#ff7320", AR.x0 + 0.42, -0.55, Math.PI / 2);
-  cabinet("tron", "TRON", "#22d4ff", AR.x0 + 0.42, 0.45, Math.PI / 2);
-  // pong on the south wall, the dark ones on the north
-  cabinet("pong", "PONG", "#e8e8e8", -4.6, AR.z0 + 0.42, 0);
-  cabinet(null, "PAC-MAN", "#ffe93c", -4.6, AR.z1 - 0.42, Math.PI, true);
-  cabinet(null, "MARIO", "#ff4d4d", -5.7, AR.z1 - 0.42, Math.PI, true);
+  cabinet("defender", "DEFENDER", "#ff3434", AR.x0 + 0.42, -2.0, Math.PI / 2);
+  cabinet("doom", "DOOM", "#ff7320", AR.x0 + 0.42, -0.85, Math.PI / 2);
+  cabinet("tron", "TRON", "#22d4ff", AR.x0 + 0.42, 0.3, Math.PI / 2);
+  cabinet("pong", "PONG", "#e8e8e8", AR.x0 + 0.42, 1.45, Math.PI / 2);
+  // the dark ones wait along the north wall
+  cabinet(null, "PAC-MAN", "#ffe93c", -5.0, AR.z1 - 0.42, Math.PI, true);
+  cabinet(null, "MARIO", "#ff4d4d", -6.4, AR.z1 - 0.42, Math.PI, true);
 
   /* --- the desk rig --- */
   const deskTopY = 0.74;
@@ -1596,6 +1596,7 @@ export function buildWorld() {
   let nextCityAt = 40 + rand(0, 60);
   let onCity = null;
   let planeT = -1, nextPlaneAt = 30 + rand(0, 90);
+  let livePlanes = false;   // true = real LAX data drives the flyovers
   const PLANE_DUR = 15;
 
   function tick(dt) {
@@ -1613,11 +1614,13 @@ export function buildWorld() {
       if (plane01 >= 1) { planeT = -1; plane01 = null; }
       if (elapsed - skyDrawAt > 0.12) { skyDrawAt = elapsed; redrawSky(Math.floor(elapsed * 1.2) % 2 === 0); }
     } else {
-      nextPlaneAt -= dt;
-      if (nextPlaneAt <= 0) {
-        nextPlaneAt = rand(70, 240);
-        planeT = 0;
-        if (onCity) { try { onCity("plane"); } catch (e) {} }
+      if (!livePlanes) {           // ambient fallback when no real data
+        nextPlaneAt -= dt;
+        if (nextPlaneAt <= 0) {
+          nextPlaneAt = rand(180, 480);
+          planeT = 0;
+          if (onCity) { try { onCity("plane"); } catch (e) {} }
+        }
       }
       if (elapsed - skyDrawAt > 0.55) { skyDrawAt = elapsed; redrawSky(Math.floor(elapsed * 1.2) % 2 === 0); }
     }
@@ -1672,10 +1675,11 @@ export function buildWorld() {
   }
 
   // where feet may go: bedroom + closet passage + arcade room
+  // (cabinet walls get ~1.1 m clearance so you can stand at any machine)
   const WALK_RECTS = [
     { x0: -2.3, x1: 2.3, z0: -2.35, z1: 3.0 },
     { x0: AR.x1 - 0.2, x1: -2.2, z0: CZ - OPEN_W / 2 + 0.15, z1: CZ + OPEN_W / 2 - 0.15 },
-    { x0: AR.x0 + 0.85, x1: AR.x1 - 0.25, z0: AR.z0 + 0.55, z1: AR.z1 - 0.55 },
+    { x0: AR.x0 + 1.15, x1: AR.x1 - 0.3, z0: AR.z0 + 0.45, z1: AR.z1 - 1.1 },
   ];
   const isWalkable = (x, z) => WALK_RECTS.some(r => x >= r.x0 && x <= r.x1 && z >= r.z0 && z <= r.z1);
 
@@ -1693,6 +1697,9 @@ export function buildWorld() {
     closetHits: [leftLeaf, rightLeaf], toggleCloset,
     closetOpen: () => closet.open,
     arcadeHits,
+    // real-LAX hooks
+    triggerPlane: () => { if (planeT < 0) { planeT = 0; if (onCity) { try { onCity("plane"); } catch (e) {} } } },
+    setLivePlanes: (v) => { livePlanes = !!v; },
     dmTargets: [monScreen, monBezel, mac],
     // where the cat likes to be
     catSpots: {

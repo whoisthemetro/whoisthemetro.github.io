@@ -187,11 +187,9 @@ export class Cat {
     if (this.moodTimer <= 0) {
       this.moodTimer = rand(20, 55);
       const cared = 0.45
-        - 0.7 * (1 - this.needs.food)
-        - 0.3 * (1 - this.needs.water)
-        - 0.5 * this.needs.litter
-        - (this.needs.hungry && this.needs.food <= 0.05 ? 0.5 : 0)    // starving at an empty bowl
-        - (this.needs.thirsty && this.needs.water <= 0.05 ? 0.3 : 0);
+        - 0.85 * (1 - (this.needs.fed ?? 1))        // starving = miserable
+        - 0.5 * (1 - (this.needs.hydrated ?? 1))
+        - 0.5 * this.needs.litter;
       const target = Math.max(-1, Math.min(1, cared + rand(-0.4, 0.4)));
       this.mood += (target - this.mood) * 0.6;
     }

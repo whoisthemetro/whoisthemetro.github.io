@@ -11,6 +11,7 @@ import { store } from "./store.js";
 import { presence } from "./presence.js";
 import { startAmbience, citySound, pianoNote, purr, setRain, meow, hiss, careSound } from "./ambience.js";
 import { weather } from "./weather.js";
+import { startPlanes } from "./planes.js";
 import { Cat } from "./cat.js";
 import { openArcade, closeArcade, arcadeIsOpen, handleGameMessage } from "./arcade.js";
 import {
@@ -57,14 +58,17 @@ function applyCatState(s) {
   const d = store.decayCat(s);
   world.updateCare(d);
   cat.setNeeds(d);
-  // the hunger meter HUD
+  // cat wellbeing HUD: full while it feeds itself, drains only when
+  // a meal is overdue and the bowl sits empty
   const pct = (v) => `${Math.round(v * 100)}%`;
-  const cls = (v) => v > 0.85 ? "crit" : v > 0.6 ? "low" : "";
+  const well = (v) => v < 0.4 ? "crit" : v < 0.75 ? "low" : "";
+  const dirty = (v) => v > 0.85 ? "crit" : v > 0.6 ? "low" : "";
   $("#cat-meters").innerHTML =
-    `hunger <span class="${cls(d.hunger)}">${pct(d.hunger)}</span>` +
-    ` · thirst <span class="${cls(d.thirst)}">${pct(d.thirst)}</span>` +
-    (d.litter > 0.5 ? ` · litter <span class="${cls(d.litter)}">${pct(d.litter)}</span>` : "") +
-    ((d.hungry && d.food <= 0.05) ? ` · <span class="crit">bowl empty!</span>` : "");
+    `fed <span class="${well(d.fed)}">${pct(d.fed)}</span>` +
+    ` · hydrated <span class="${well(d.hydrated)}">${pct(d.hydrated)}</span>` +
+    (d.litter > 0.5 ? ` · litter <span class="${dirty(d.litter)}">${pct(d.litter)}</span>` : "") +
+    ((d.hungry && d.food <= 0.05) ? ` · <span class="crit">food bowl empty!</span>` : "") +
+    ((d.thirsty && d.water <= 0.05) ? ` · <span class="crit">water bowl empty!</span>` : "");
 }
 setInterval(() => { if (catState) applyCatState(catState); }, 60000);  // re-check the timers
 
@@ -256,7 +260,7 @@ setInterval(() => {
   const hit = castAt(0, 0);
   if (hit && hit.object.userData.cat && hit.distance < 2.2) {
     const d = store.decayCat(catState);
-    aimTip.textContent = `${TAP} to pet the cat · hunger ${Math.round(d.hunger * 100)}%`;
+    aimTip.textContent = `${TAP} to pet the cat · fed ${Math.round(d.fed * 100)}%`;
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.closet && hit.distance < 3) {
     aimTip.textContent = world.closetOpen() ? `${TAP} to close the closet` : `${TAP} to open the closet`;
@@ -526,6 +530,23 @@ async function openDM() {
           a.textContent = m.url;
           div.appendChild(a);
         }
+        if (m.file_path) {
+          const src = store.demoUrl(m.file_path);
+          if (src) {
+            const audio = document.createElement("audio");
+            audio.controls = true;
+            audio.preload = "none";
+            audio.src = src;
+            audio.style.width = "100%";
+            audio.style.marginTop = "8px";
+            div.appendChild(audio);
+            const dl = document.createElement("a");
+            dl.href = src;
+            dl.download = "";
+            dl.textContent = "download file";
+            div.appendChild(dl);
+          }
+        }
         box.appendChild(div);
       }
     } catch (e) {
@@ -546,22 +567,36 @@ function closeDM() {
   if (entered) safeLock();
 }
 $("#dm-close").addEventListener("click", closeDM);
+$("#dm-file").addEventListener("change", (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  if (f.size > 25 * 1024 * 1024) {
+    e.target.value = "";
+    return toast("that file's over 25 MB — bounce it down a little");
+  }
+  $("#dm-file-label").textContent = `🎵 ${f.name} (${(f.size / 1048576).toFixed(1)} MB)`;
+});
+
 $("#dm-send").addEventListener("click", async () => {
   const text = $("#dm-text").value.trim();
   if (!text) return toast("write something first");
   const url = $("#dm-url").value.trim() ? safeUrl($("#dm-url").value) : null;
   if ($("#dm-url").value.trim() && !url) return toast("that link needs to be http(s)");
+  const file = $("#dm-file").files[0] || null;
   const btn = $("#dm-send");
   btn.disabled = true;
+  btn.textContent = file ? "uploading…" : "sending…";
   try {
-    await store.sendDM({ name: $("#dm-name").value.trim().slice(0, 40) || null, text: text.slice(0, 500), url });
-    $("#dm-text").value = ""; $("#dm-url").value = "";
+    await store.sendDM({ name: $("#dm-name").value.trim().slice(0, 40) || null, text: text.slice(0, 500), url }, file);
+    $("#dm-text").value = ""; $("#dm-url").value = ""; $("#dm-file").value = "";
+    $("#dm-file-label").textContent = "or attach an audio file (≤ 25 MB)";
     closeDM();
     toast(store.mode === "supabase" ? "sent. it's on metro's computer now." : "saved locally — connect supabase to really send it");
   } catch (e) {
     toast("couldn't send — try again in a bit");
   } finally {
     btn.disabled = false;
+    btn.textContent = "send to metro";
   }
 });
 
@@ -634,6 +669,8 @@ addEventListener("keydown", (e) => {
   presence.onGame((p) => handleGameMessage(p));
 
   weather.start();
+  // real LAX traffic drives the window flyovers when the API is up
+  startPlanes(() => world.triggerPlane(), (isLive) => world.setLivePlanes(isLive));
 
   // cat needs: load shared state, stay subscribed to everyone's care
   try { applyCatState(await store.getCatState()); }

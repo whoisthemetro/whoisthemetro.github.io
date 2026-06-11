@@ -141,25 +141,31 @@ async function adminDelete(id, pass) {
 const catListeners = new Set();
 const clamp01 = (v) => Math.max(0, Math.min(1, v ?? 0));
 
-// no passive decay — levels, "is it time yet?" flags, plus 0..1 meters
-// showing how close each need is (1 = the cat needs it right now)
+// No passive decay. The cat feeds itself on its timers, so it stays
+// FED as long as the bowls have anything in them. "fed"/"hydrated"
+// are 1.0 while it can take care of itself and only drain while a
+// meal is overdue AND the bowl is empty — i.e. the room let it down.
 function decayCat(s) {
-  if (!s) return { food: 1, water: 1, litter: 0, pets: 0, hungry: false, thirsty: false, bathroom: false, hunger: 0, thirst: 0, bladder: 0 };
+  if (!s) return { food: 1, water: 1, litter: 0, pets: 0, hungry: false, thirsty: false, bathroom: false, fed: 1, hydrated: 1 };
   const now = Date.now();
   const due = (k) => !s[k] || now >= new Date(s[k]).getTime();
-  const meter = (k, avgMin) => !s[k] ? 1
-    : Math.max(0, Math.min(1, 1 - (new Date(s[k]).getTime() - now) / (avgMin * 60000)));
+  // starvation builds over hours past the missed meal
+  const starve = (k, level, hours) => {
+    if (!due(k) || level > 0.05) return 1;
+    const overdueMs = now - new Date(s[k]).getTime();
+    return Math.max(0, 1 - overdueMs / (hours * 3600000));
+  };
+  const food = clamp01(s.food ?? 1);
+  const water = clamp01(s.water ?? 1);
   return {
-    food: clamp01(s.food ?? 1),
-    water: clamp01(s.water ?? 1),
+    food, water,
     litter: clamp01(s.litter ?? 0),
     pets: s.pets ?? 0,
     hungry: due("hungry_at"),
     thirsty: due("thirsty_at"),
     bathroom: due("bathroom_at"),
-    hunger: meter("hungry_at", 72),
-    thirst: meter("thirsty_at", 57),
-    bladder: meter("bathroom_at", 160),
+    fed: starve("hungry_at", food, 6),
+    hydrated: starve("thirsty_at", water, 4),
   };
 }
 
@@ -217,12 +223,14 @@ async function catCare(action) {
   else if (action === "pet") s.pets = (s.pets ?? 0) + 1;
   else if (action === "eat") {
     if (!due("hungry_at")) { ok = false; reason = "not hungry"; }
-    else if ((s.food ?? 0) <= 0.05) { s.hungry_at = new Date(now + 15 * 60000).toISOString(); ok = false; reason = "bowl empty"; }
+    // empty bowl: hungry_at stays in the past so starvation accumulates
+    // until somebody refills — then the next eat instantly succeeds
+    else if ((s.food ?? 0) <= 0.05) { ok = false; reason = "bowl empty"; }
     else { s.food = Math.max(0, s.food - 0.15); s.hungry_at = inHrs(0.75, 1.67); }
   }
   else if (action === "drink") {
     if (!due("thirsty_at")) { ok = false; reason = "not thirsty"; }
-    else if ((s.water ?? 0) <= 0.05) { s.thirsty_at = new Date(now + 12 * 60000).toISOString(); ok = false; reason = "bowl empty"; }
+    else if ((s.water ?? 0) <= 0.05) { ok = false; reason = "bowl empty"; }
     else { s.water = Math.max(0, s.water - 0.18); s.thirsty_at = inHrs(0.58, 1.33); }
   }
   else if (action === "bathroom") {
@@ -245,9 +253,17 @@ function subscribeCat() {
 }
 
 /* ---- private messages: straight to Metro's computer ---- */
-async function sendDM({ name, text, url }) {
+async function sendDM({ name, text, url }, file = null) {
   if (mode === "supabase") {
-    const { error } = await sb.from("private_messages").insert({ name, text, url });
+    let file_path = null;
+    if (file) {
+      const safe = (file.name || "audio").replace(/[^a-zA-Z0-9._-]/g, "_").slice(-60);
+      file_path = `d/${crypto.randomUUID()}-${safe}`;
+      const { error: upErr } = await sb.storage.from("demos")
+        .upload(file_path, file, { contentType: file.type || "audio/mpeg" });
+      if (upErr) throw upErr;
+    }
+    const { error } = await sb.from("private_messages").insert({ name, text, url, file_path });
     if (error) throw error;
     return true;
   }
@@ -257,6 +273,11 @@ async function sendDM({ name, text, url }) {
     localStorage.setItem("metro.dms", JSON.stringify(all.slice(-50)));
   } catch (e) {}
   return true;
+}
+
+function demoUrl(file_path) {
+  if (!file_path || mode !== "supabase") return null;
+  return sb.storage.from("demos").getPublicUrl(file_path).data.publicUrl;
 }
 
 async function readInbox(pass) {
@@ -270,7 +291,7 @@ async function readInbox(pass) {
 
 export const store = {
   init, list, add, imageUrl, adminDelete,
-  sendDM, readInbox,
+  sendDM, readInbox, demoUrl,
   getCatState, catCare, decayCat,
   onCatState: fn => { catListeners.add(fn); return () => catListeners.delete(fn); },
   get mode() { return mode; },
