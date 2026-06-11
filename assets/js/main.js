@@ -3,6 +3,10 @@
    ============================================================ */
 
 import * as THREE from "three";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { buildWorld } from "./world.js";
 import { Controls } from "./controls.js";
 import { NotesWall } from "./notes3d.js";
@@ -45,6 +49,15 @@ const identity = getIdentity();
 controls.pos.x = world.spawn.x;
 controls.pos.z = world.spawn.z;
 controls.yaw = world.spawn.yaw;
+
+// subtle glow over the whole world: only genuinely bright things bloom
+// (screens, neon, signs, LEDs, the sun on the water)
+const postFx = new EffectComposer(renderer);
+postFx.addPass(new RenderPass(world.scene, camera));
+const bloom = new UnrealBloomPass(
+  new THREE.Vector2(innerWidth / 2, innerHeight / 2), 0.35, 0.55, 0.82);
+postFx.addPass(bloom);
+postFx.addPass(new OutputPass());
 
 world.setCityListener((type) => { if (!inBoat) citySound(type); });
 
@@ -101,6 +114,7 @@ addEventListener("resize", () => {
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
+  postFx.setSize(innerWidth, innerHeight);
 });
 
 /* ---------------- ui elements ---------------- */
@@ -1044,5 +1058,5 @@ renderer.setAnimationLoop(() => {
   world.tick(dt);
   ghosts.tick(dt, t);
   cat.tick(dt, t, controls.pose());
-  renderer.render(world.scene, camera);
+  postFx.render();
 });

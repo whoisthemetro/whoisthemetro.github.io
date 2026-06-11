@@ -1104,10 +1104,15 @@ export function buildWorld() {
     strip.position.set((AR.x0 + AR.x1) / 2, 2.3, zz);
     add(strip);
   }
-  const magenta = add(new THREE.PointLight(0xff2da0, 5, 3.4, 2));
-  magenta.position.set(-5.9, 2.2, -2.3);
-  const cyan = add(new THREE.PointLight(0x22d4ff, 5, 3.4, 2));
-  cyan.position.set(-5.9, 2.2, 1.6);
+  const magenta = add(new THREE.PointLight(0xff2da0, 11, 3.4, 2));
+  magenta.position.set(-6.2, 2.2, -2.3);
+  const cyan = add(new THREE.PointLight(0x22d4ff, 11, 3.4, 2));
+  cyan.position.set(-6.2, 2.2, 1.6);
+  // cool ceiling wash so the room reads — throws too short to leak out
+  for (const [fx2, fd] of [[-7.3, 2.8], [-5.8, 2.6], [-4.7, 2.0]]) {
+    const fill2 = add(new THREE.PointLight(0x9aa4c8, 16, fd, 2));
+    fill2.position.set(fx2, 2.4, -0.4);
+  }
 
   // "METRO'S ARCADE" — neon on the arcade's back wall, and a small
   // sign over the closet in the bedroom
@@ -1436,6 +1441,14 @@ export function buildWorld() {
   const SPK_SPACING = 2.3;
   const SPK_Z = ZF + 0.33;
   const SWEET = { x: 0.2, z: SPK_Z + SPK_SPACING * Math.sqrt(3) / 2 };
+  // speaker stands block rays too
+  for (const sx2 of [0.2 - SPK_SPACING / 2, 0.2 + SPK_SPACING / 2]) {
+    const spkBlock = new THREE.Mesh(new THREE.BoxGeometry(0.3, 1.2, 0.3),
+      new THREE.MeshBasicMaterial({ visible: false }));
+    spkBlock.position.set(sx2, 0.6, ZF + 0.33);
+    add(spkBlock);
+    blockers.push(spkBlock);
+  }
   kali(0.2 - SPK_SPACING / 2, Math.PI / 6);    // left of the desk
   kali(0.2 + SPK_SPACING / 2, -Math.PI / 6);   // right of the desk, against the wall
 
@@ -1636,6 +1649,9 @@ export function buildWorld() {
   neonLight.position.set(0, 1.62, 0.4);
   entryDoor.add(neonLight);
 
+  // furniture blocks note-placement rays — walls only, never tables,
+  // beds, desks or gear
+  blockers.push(top, monBezel, kb, midiBody, rb, seat, backRest);
   /* --- the light dimmer on the wall --- */
   // a wall switch by the entry door; the ceiling lamp it controls is
   // off by default (the room runs on window light), but visitors can
@@ -1810,7 +1826,7 @@ export function buildWorld() {
     swSkyTex.needsUpdate = true;
   }
   drawSwSky(10);
-  const seaBackdrop = new THREE.Mesh(new THREE.PlaneGeometry(44, 11),
+  const seaBackdrop = new THREE.Mesh(new THREE.PlaneGeometry(60, 12),
     new THREE.MeshBasicMaterial({ map: swSkyTex }));
   seaBackdrop.position.set(BOAT.x, 4.0, BOAT.z - BD / 2 - 8.0);
   addB(seaBackdrop);
@@ -1865,9 +1881,9 @@ export function buildWorld() {
       g.fillRect(0, 36, 256, 220);
     });
     tx.wrapS = THREE.RepeatWrapping;
-    tx.repeat.set(10, 1);
+    tx.repeat.set(14, 1);
     waveTexes.push({ tx, speed: spec.speed });
-    const band = new THREE.Mesh(new THREE.PlaneGeometry(40, 3),
+    const band = new THREE.Mesh(new THREE.PlaneGeometry(56, 3),
       new THREE.MeshBasicMaterial({ map: tx }));
     band.position.set(BOAT.x, spec.top - 1.5, BOAT.z - BD / 2 - spec.z);
     addB(band);
@@ -1877,9 +1893,9 @@ export function buildWorld() {
   // the shore: a wide strip of land with a falu-red cottage, pines,
   // bushes, rocks — behind the farthest water
   const shoreZ = 7.0;
-  const land = new THREE.Mesh(new THREE.BoxGeometry(22, 0.5, 2.0),
+  const land = new THREE.Mesh(new THREE.BoxGeometry(56, 0.5, 2.0),
     new THREE.MeshBasicMaterial({ color: 0x2e3c2c }));
-  land.position.set(BOAT.x - 2.0, 1.18, BOAT.z - BD / 2 - shoreZ);
+  land.position.set(BOAT.x, 1.18, BOAT.z - BD / 2 - shoreZ);
   addB(land);
   const house = new THREE.Group();
   const hbody = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.55, 0.55),
@@ -1917,7 +1933,7 @@ export function buildWorld() {
   }
   house.position.set(BOAT.x - 1.7, 1.43, BOAT.z - BD / 2 - shoreZ + 0.2);
   addB(house);
-  for (const [tx2, th] of [[-4.6, 0.9], [-3.6, 1.15], [0.4, 1.0], [1.5, 0.8], [2.6, 1.05], [5.2, 0.95]]) {
+  for (const [tx2, th] of [[-13.5, 1.0], [-9.8, 0.85], [-4.6, 0.9], [-3.6, 1.15], [0.4, 1.0], [1.5, 0.8], [2.6, 1.05], [5.2, 0.95], [9.4, 1.1], [12.8, 0.9], [-16.5, 0.95], [16.2, 1.0]]) {
     const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.05, th * 0.35, 6),
       new THREE.MeshBasicMaterial({ color: 0x4a3826 }));
     trunk.position.set(BOAT.x + tx2, 1.43 + th * 0.17, BOAT.z - BD / 2 - shoreZ - 0.3);
@@ -1936,7 +1952,7 @@ export function buildWorld() {
     bush.position.set(BOAT.x + bx, 1.46, BOAT.z - BD / 2 - shoreZ + 0.7);
     addB(bush);
   }
-  for (const [rx, rs] of [[-1.6, 0.14], [0.9, 0.1], [4.2, 0.17], [-4.1, 0.09]]) {
+  for (const [rx, rs] of [[-1.6, 0.14], [0.9, 0.1], [4.2, 0.17], [-4.1, 0.09], [-8.2, 0.15], [7.6, 0.12], [-12.4, 0.1], [11.2, 0.16]]) {
     const rock = new THREE.Mesh(new THREE.SphereGeometry(rs, 7, 5),
       new THREE.MeshBasicMaterial({ color: 0x6a6a70 }));
     rock.scale.set(1.3, 0.55, 1);
@@ -1970,7 +1986,7 @@ export function buildWorld() {
       g.fillRect(x, 64 - h2 / 2 + Math.sin(x * 0.02) * 12, 6, h2);
     }
   });
-  const aurora = new THREE.Mesh(new THREE.PlaneGeometry(26, 4.2),
+  const aurora = new THREE.Mesh(new THREE.PlaneGeometry(56, 4.6),
     new THREE.MeshBasicMaterial({ map: auroraTex, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
   aurora.position.set(BOAT.x, 4.4, BOAT.z - BD / 2 - 6.4);
   addB(aurora);
@@ -2265,7 +2281,7 @@ export function buildWorld() {
   for (const [id, mesh, w, origin, uDir, normal, voids] of [
     ["boat_port", portWall, BD,
       new THREE.Vector3(BOAT.x - BW / 2, 0, BOAT.z + BD / 2), new THREE.Vector3(0, 0, -1), new THREE.Vector3(1, 0, 0),
-      [{ u0: 1.2, u1: 2.4, v0: 0, v1: 1.15 }]],                       // the bed's headboard zone
+      [{ u0: 0.55, u1: 2.85, v0: 0, v1: 1.15 }]],                       // the bed's headboard zone
     ["boat_stb", stbWall, BD,
       new THREE.Vector3(BOAT.x + BW / 2, 0, BOAT.z - BD / 2), new THREE.Vector3(0, 0, 1), new THREE.Vector3(-1, 0, 0),
       [{ u0: 0.8, u1: 1.45, v0: 1.25, v1: 1.95 },                     // the clock
@@ -2298,6 +2314,26 @@ export function buildWorld() {
   bottleHit.position.set(BOAT.x - 1.2, 0.12, BOAT.z - 1.35);
   bottleHit.userData.bottle = true;
   addB(bottleHit);
+
+  // boat furniture is click-solid too
+  blockers.push(counter, counterTop, bedFrame, mattress, duvet, nightstand, btable);
+
+  // dust hanging in the cabin air — life
+  const BDUST = 110;
+  const bDustPos = new Float32Array(BDUST * 3);
+  const bDustVel = [];
+  for (let i = 0; i < BDUST; i++) {
+    bDustPos[i * 3] = BOAT.x + rand(-2.1, 2.1);
+    bDustPos[i * 3 + 1] = rand(0.1, BH - 0.1);
+    bDustPos[i * 3 + 2] = BOAT.z + rand(-1.5, 1.5);
+    bDustVel.push({ x: rand(-0.01, 0.01), y: rand(0.003, 0.016), z: rand(-0.01, 0.01) });
+  }
+  const bDustGeo = new THREE.BufferGeometry();
+  bDustGeo.setAttribute("position", new THREE.BufferAttribute(bDustPos, 3));
+  addB(new THREE.Points(bDustGeo, new THREE.PointsMaterial({
+    color: 0xd8c09a, size: 0.011, transparent: true, opacity: 0.4,
+    blending: THREE.AdditiveBlending, depthWrite: false,
+  })));
 
   // stamp the whole boat (meshes AND lights) onto layer 1
   boatGroup.traverse((o) => { o.layers.set(1); });
@@ -2372,6 +2408,17 @@ export function buildWorld() {
       if (p[i * 3 + 2] > ZB) p[i * 3 + 2] = ZF; else if (p[i * 3 + 2] < ZF) p[i * 3 + 2] = ZB;
     }
     dustGeo.attributes.position.needsUpdate = true;
+    const bp = bDustGeo.attributes.position.array;
+    for (let i = 0; i < BDUST; i++) {
+      const v = bDustVel[i];
+      bp[i * 3] += v.x * dt; bp[i * 3 + 1] += v.y * dt; bp[i * 3 + 2] += v.z * dt;
+      if (bp[i * 3 + 1] > BH - 0.05) bp[i * 3 + 1] = 0.08;
+      if (bp[i * 3] > BOAT.x + 2.1) bp[i * 3] = BOAT.x - 2.1;
+      else if (bp[i * 3] < BOAT.x - 2.1) bp[i * 3] = BOAT.x + 2.1;
+      if (bp[i * 3 + 2] > BOAT.z + 1.5) bp[i * 3 + 2] = BOAT.z - 1.5;
+      else if (bp[i * 3 + 2] < BOAT.z - 1.5) bp[i * 3 + 2] = BOAT.z + 1.5;
+    }
+    bDustGeo.attributes.position.needsUpdate = true;
 
     // rain runs down the glass
     if (rainPane.visible) {
