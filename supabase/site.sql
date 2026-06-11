@@ -121,3 +121,67 @@ create trigger events_guard
 -- already holds history: notes (created_at), scores, cat pets, and
 -- private messages are all timestamped from day one.
 -- ============================================================
+
+-- ---------- Desi's walls take notes too ----------
+alter table public.notes drop constraint if exists notes_wall_check;
+alter table public.notes add constraint notes_wall_check
+  check (wall in ('back', 'west', 'east', 'boat_port', 'boat_stb', 'boat_door'));
+
+-- ---------- messages in bottles ----------
+create table if not exists public.bottles (
+  id         uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  text       text not null check (char_length(text) between 1 and 200)
+);
+alter table public.bottles enable row level security;
+drop policy if exists "anyone can cast a bottle" on public.bottles;
+create policy "anyone can cast a bottle"
+  on public.bottles for insert with check (true);
+-- no public select: you only get the one the sea gives you
+
+create or replace function public.bottle_random()
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_row record;
+begin
+  select text, created_at into v_row
+    from public.bottles
+   order by random() limit 1;
+  if v_row is null then return null; end if;
+  return jsonb_build_object('text', v_row.text, 'created_at', v_row.created_at);
+end;
+$$;
+
+create or replace function public.bottles_guard()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_ip text;
+  v_recent int;
+begin
+  begin
+    v_ip := coalesce(current_setting('request.headers', true)::json ->> 'x-real-ip', 'unknown');
+  exception when others then
+    v_ip := 'unknown';
+  end;
+  select count(*) into v_recent from private.post_log
+   where ip = 'msg:' || v_ip and at > now() - interval '1 day';
+  if v_recent >= 3 then
+    raise exception 'rate limit: bottles';
+  end if;
+  insert into private.post_log (ip) values ('msg:' || v_ip);
+  return new;
+end;
+$$;
+
+drop trigger if exists bottles_guard on public.bottles;
+create trigger bottles_guard
+  before insert on public.bottles
+  for each row execute function public.bottles_guard();

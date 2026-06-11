@@ -36,7 +36,6 @@
       If someone else is in the room right now, you'll see them.
     </p>
     <button id="enter-btn">come in</button>
-    <button id="avatar-btn">make yourself an avatar</button>
     <p class="controls-hint" id="hint-desktop">WASD move &nbsp;·&nbsp; mouse look &nbsp;·&nbsp; click a wall to post &nbsp;·&nbsp; ESC to step out</p>
     <p class="controls-hint" id="hint-mobile">left thumb to walk &nbsp;·&nbsp; right thumb to look &nbsp;·&nbsp; tap a wall to post</p>
     <p class="mode-badge" id="mode-badge"></p>
@@ -117,24 +116,6 @@
 <div id="toast"></div>
 <div id="scratch"></div>
 
-<!-- ====== ready player me ====== -->
-<div id="rpm" class="overlay">
-  <div class="rpm-shell">
-    <button class="x" id="rpm-close">×</button>
-    <iframe id="rpm-frame" allow="camera *; microphone *; clipboard-write" title="avatar creator"></iframe>
-    <div id="rpm-fallback" class="hidden">
-      <p>the embedded creator didn't load, but the long way works fine:</p>
-      <ol>
-        <li><a href="https://readyplayer.me/avatar" target="_blank" rel="noopener">open readyplayer.me ↗</a> and build your avatar</li>
-        <li>when it's done, copy the avatar link (it ends in <b>.glb</b>)</li>
-        <li>paste it here:</li>
-      </ol>
-      <input type="url" id="rpm-url" placeholder="https://models.readyplayer.me/….glb">
-      <button id="rpm-save">use this avatar</button>
-    </div>
-  </div>
-</div>
-
 <!-- ====== light dimmer ====== -->
 <div id="dimmer-ui" class="overlay">
   <div class="panel dim-panel">
@@ -162,6 +143,20 @@
 
 <!-- room-change fade -->
 <div id="fade"></div>
+
+<!-- ====== message in a bottle ====== -->
+<div id="bottle" class="overlay">
+  <div class="panel">
+    <div class="panel-head">
+      <span class="tab active">🍾 washed up against the hull</span>
+      <button class="x" id="bottle-close">×</button>
+    </div>
+    <div id="bottle-msg" class="bottle-msg">…</div>
+    <textarea id="bottle-text" maxlength="200" rows="3"
+      placeholder="cork your own message and throw it back… (one a day)"></textarea>
+    <button id="bottle-send">throw it into the sea</button>
+  </div>
+</div>
 
 <!-- ====== private note to metro ====== -->
 <div id="dm" class="overlay">

@@ -318,6 +318,33 @@ export function drumHit(i = 0) {
   }
 }
 
+// The kettle on THE DESI: a real little boil + whistle.
+export function kettleBoil() {
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  const src = ctx.createBufferSource();
+  src.buffer = noiseBuffer(4);
+  const lp = ctx.createBiquadFilter();
+  lp.type = "lowpass";
+  lp.frequency.setValueAtTime(300, t);
+  lp.frequency.linearRampToValueAtTime(1400, t + 2.6);
+  const g = ctx.createGain();
+  src.connect(lp).connect(g).connect(master);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.035, t + 1.2);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 3.4);
+  src.start(t); src.stop(t + 3.5);
+  const o = ctx.createOscillator();
+  o.frequency.setValueAtTime(1850, t + 2.4);
+  o.frequency.linearRampToValueAtTime(2050, t + 3.2);
+  const og = ctx.createGain();
+  o.connect(og).connect(master);
+  og.gain.setValueAtTime(0, t + 2.4);
+  og.gain.linearRampToValueAtTime(0.022, t + 2.6);
+  og.gain.linearRampToValueAtTime(0, t + 3.3);
+  o.start(t + 2.4); o.stop(t + 3.35);
+}
+
 // Water lapping against a hull — plus the boat's voice: hull creaks
 // every so often, and gulls when the Swedish sun is up.
 let waterNodes = null;

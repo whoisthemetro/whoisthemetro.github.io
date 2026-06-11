@@ -9,7 +9,7 @@ import { NotesWall } from "./notes3d.js";
 import { Ghosts } from "./ghosts.js";
 import { store } from "./store.js";
 import { presence } from "./presence.js";
-import { startAmbience, citySound, pianoNote, purr, setRain, setWater, setRoomTone, meow, hiss, careSound, drumHit } from "./ambience.js";
+import { startAmbience, citySound, pianoNote, purr, setRain, setWater, setRoomTone, kettleBoil, meow, hiss, careSound, drumHit } from "./ambience.js";
 import { weather } from "./weather.js";
 import { startPlanes } from "./planes.js";
 import { Cat } from "./cat.js";
@@ -150,7 +150,7 @@ canvas.addEventListener("click", () => {
 function castAt(ndcX, ndcY) {
   raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera);
   // doors are included as blockers so notes can't be pinned onto them
-  const targets = [cat.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.volcaHit, ...world.arcadeHits, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...notesWall.raycastTargets(), ...world.blockers];
+  const targets = [cat.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.volcaHit, world.bottleHit, ...world.arcadeHits, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...notesWall.raycastTargets(), ...world.blockers];
   const hits = raycaster.intersectObjects(targets, false);
   return hits[0] || null;
 }
@@ -268,6 +268,13 @@ controls.onAction((ndcX, ndcY) => {
     tryBoat();
   } else if (hit.object.userData.boatExit && hit.distance < 2.6) {
     leaveBoat();
+  } else if (hit.object.userData.kettle && hit.distance < 1.9) {
+    kettleBoil();
+    toast("fika in three minutes ☕");
+  } else if (hit.object.userData.faucet && hit.distance < 1.9) {
+    careSound("water");
+  } else if (hit.object.userData.bottle && hit.distance < 2.2) {
+    openBottle();
   } else if (hit.object.userData.volca && hit.distance < 1.8 && hit.uv) {
     // 2 rows × 4 pads, mapped straight off the face texture
     const col = Math.min(3, Math.floor(hit.uv.x * 4.27));
@@ -325,6 +332,12 @@ setInterval(() => {
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.dimmer && hit.distance < 2.6) {
     aimTip.textContent = `${TAP} — light dimmer`;
+    aimTip.classList.add("show");
+  } else if (hit && hit.object.userData.kettle && hit.distance < 1.9) {
+    aimTip.textContent = `${TAP} to put the kettle on`;
+    aimTip.classList.add("show");
+  } else if (hit && hit.object.userData.bottle && hit.distance < 2.2) {
+    aimTip.textContent = `${TAP} — something washed up against the hull`;
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.volca && hit.distance < 1.8) {
     aimTip.textContent = `${TAP} the pads`;
@@ -459,6 +472,7 @@ $("#post-btn").addEventListener("click", async () => {
   try {
     const saved = await store.add(base, blob);
     notesWall.add(saved);
+    refreshNoteVisibility();
     store.logEvent(saved.kind);
     lastPostAt = Date.now();
     // reset for next time
@@ -549,61 +563,6 @@ $("#reader-delete").addEventListener("click", async () => {
   } catch (e) {
     sessionStorage.removeItem("metro.adminpass");
     toast("wrong passphrase");
-  }
-});
-
-/* ---------------- ready player me: get yourself a body ---------------- */
-const RPM_URL = "https://demo.readyplayer.me/avatar?frameApi&clearCache";
-const rpmOverlay = $("#rpm");
-function refreshAvatarBtn() {
-  const b = $("#avatar-btn");
-  if (identity.avatar) {
-    b.textContent = "avatar ready ✓ (tap to change)";
-    b.classList.add("has-avatar");
-  }
-}
-refreshAvatarBtn();
-let rpmReady = false, rpmFallbackTimer = null;
-function saveAvatar(url) {
-  identity.avatar = url;
-  saveIdentity(identity);
-  presence.updateMeta({ avatar: url });   // applies live, no refresh needed
-  hide(rpmOverlay);
-  refreshAvatarBtn();
-  toast("avatar saved — that's you now, everyone can see it.");
-}
-$("#avatar-btn").addEventListener("click", () => {
-  const frame = $("#rpm-frame");
-  rpmReady = false;
-  frame.classList.remove("hidden");
-  $("#rpm-fallback").classList.add("hidden");
-  frame.src = RPM_URL;     // fresh load each open
-  show(rpmOverlay);
-  // if the embed never answers, switch to the paste-a-link path
-  clearTimeout(rpmFallbackTimer);
-  rpmFallbackTimer = setTimeout(() => {
-    if (!rpmReady) {
-      frame.classList.add("hidden");
-      $("#rpm-fallback").classList.remove("hidden");
-    }
-  }, 7000);
-});
-$("#rpm-close").addEventListener("click", () => { clearTimeout(rpmFallbackTimer); hide(rpmOverlay); });
-$("#rpm-save").addEventListener("click", () => {
-  const url = $("#rpm-url").value.trim();
-  if (!/^https:\/\/.+\.glb(\?.*)?$/i.test(url)) return toast("that doesn't look like a .glb avatar link");
-  saveAvatar(url);
-});
-addEventListener("message", (e) => {
-  let msg = null;
-  try { msg = typeof e.data === "string" ? JSON.parse(e.data) : e.data; } catch (err) { return; }
-  if (!msg || msg.source !== "readyplayerme") return;
-  if (msg.eventName === "v1.frame.ready") {
-    rpmReady = true;
-    $("#rpm-frame").contentWindow?.postMessage(
-      JSON.stringify({ target: "readyplayerme", type: "subscribe", eventName: "v1.**" }), "*");
-  } else if (msg.eventName === "v1.avatar.exported") {
-    saveAvatar(msg.data?.url || null);
   }
 });
 
@@ -742,21 +701,68 @@ async function tryBoat() {
     setWater(true);
     store.logEvent("boat");
     setRoomTone(false);                  // the bedroom stays behind, fully
-    world.noteGroup.visible = false;     // no wall-note sprites across the void
+    refreshNoteVisibility();
     toast("welcome aboard THE DESI 🌊");
   });
 }
+// each room shows only its own notes
+function refreshNoteVisibility() {
+  for (const mesh of world.noteGroup.children) {
+    const onBoat = String(mesh.userData.note?.wall || "").startsWith("boat");
+    mesh.visible = inBoat ? onBoat : !onBoat;
+  }
+}
+
 function leaveBoat() {
   fadeTo(() => {
     inBoat = false;
     controls.pos.x = world.bathroomSpawn.x;
     controls.pos.z = world.bathroomSpawn.z;
     controls.yaw = world.bathroomSpawn.yaw;
-    setWater(false);
+    setWater(false);                     // the sea stays on the boat, fully
     setRoomTone(true);
-    world.noteGroup.visible = true;
+    refreshNoteVisibility();
   });
 }
+
+/* ---------------- message in a bottle ---------------- */
+const bottleOverlay = $("#bottle");
+async function openBottle() {
+  modalOpen = true;
+  controls.unlock();
+  $("#bottle-msg").textContent = "…uncorking…";
+  show(bottleOverlay);
+  try {
+    const b = await store.readBottle();
+    $("#bottle-msg").textContent = b && b.text
+      ? `"${b.text}"\n\n— adrift since ${timeAgo(b.created_at)}`
+      : "the bottle is empty. yours could be the first message in this sea.";
+  } catch (e) {
+    $("#bottle-msg").textContent = "the cork won't budge — try again later.";
+  }
+}
+function closeBottle() {
+  hide(bottleOverlay);
+  modalOpen = false;
+  if (entered) safeLock();
+}
+$("#bottle-close").addEventListener("click", closeBottle);
+$("#bottle-send").addEventListener("click", async () => {
+  const text = $("#bottle-text").value.trim().slice(0, 200);
+  if (!text) return toast("write something first");
+  let last = 0;
+  try { last = +localStorage.getItem("metro.bottlecast") || 0; } catch (e) {}
+  if (Date.now() - last < 24 * 3600000) return toast("one bottle a day — the sea has rules");
+  try {
+    await store.castBottle(text);
+    try { localStorage.setItem("metro.bottlecast", String(Date.now())); } catch (e) {}
+    $("#bottle-text").value = "";
+    closeBottle();
+    toast("the sea took it. someone will find it. 🌊");
+  } catch (e) {
+    toast("the tide refused — try again in a bit");
+  }
+});
 
 /* ---------------- flight strip: the jet crossing the glass ---------------- */
 let stripTimer = null;
@@ -892,6 +898,7 @@ addEventListener("keydown", (e) => {
     if (composer.classList.contains("show")) closeComposer(false);
     if (reader.classList.contains("show")) closeReader();
     if (dmOverlay.classList.contains("show")) closeDM();
+    if (bottleOverlay.classList.contains("show")) closeBottle();
     if (dimmerUI.classList.contains("show")) closeDimmer();
     // real DOOM owns ESC (its own menu) — only its × button closes it
     if (arcadeIsOpen() && !arcadeWantsEsc()) closeArcadeOverlay();
@@ -933,12 +940,13 @@ addEventListener("keydown", (e) => {
   try {
     const notes = await store.list();
     notesWall.setAll(notes);
+    refreshNoteVisibility();
   } catch (e) {
     console.warn("[metro] couldn't load the wall:", e);
     toast("couldn't load the wall — refresh to retry");
   }
 
-  store.onNew((n) => { if (!notesWall.has(n.id)) notesWall.add(n); });
+  store.onNew((n) => { if (!notesWall.has(n.id)) { notesWall.add(n); refreshNoteVisibility(); } });
   store.onRemoved((id) => notesWall.remove(id));
 
   presence.join(identity, () => controls.pose());

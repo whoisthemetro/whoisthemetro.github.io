@@ -325,6 +325,31 @@ function logEvent(type) {
   sb.from("events").insert({ type }).then(() => {}, () => {});
 }
 
+/* ---- messages in bottles: one washes up per reader ---- */
+async function castBottle(text) {
+  if (mode === "supabase") {
+    const { error } = await sb.from("bottles").insert({ text });
+    if (error) throw error;
+    return;
+  }
+  try {
+    const all = JSON.parse(localStorage.getItem("metro.bottles") || "[]");
+    all.push({ text, created_at: new Date().toISOString() });
+    localStorage.setItem("metro.bottles", JSON.stringify(all.slice(-40)));
+  } catch (e) {}
+}
+async function readBottle() {
+  if (mode === "supabase") {
+    const { data, error } = await sb.rpc("bottle_random");
+    if (error) throw error;
+    return data;   // { text, created_at } or null
+  }
+  try {
+    const all = JSON.parse(localStorage.getItem("metro.bottles") || "[]");
+    return all.length ? all[Math.floor(Math.random() * all.length)] : null;
+  } catch (e) { return null; }
+}
+
 /* ---- arcade high scores: shared, all-time ---- */
 const scoreListeners = new Set();
 async function submitScore(game, name, score) {
@@ -364,6 +389,7 @@ function subscribeScores() {
 
 export const store = {
   getRoomLight, saveRoomLight, logEvent,
+  castBottle, readBottle,
   onRoomLight: fn => { roomLightListeners.add(fn); return () => roomLightListeners.delete(fn); },
   submitScore, listScores,
   onNewScore: fn => { scoreListeners.add(fn); return () => scoreListeners.delete(fn); },
