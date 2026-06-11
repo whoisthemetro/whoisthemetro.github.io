@@ -307,9 +307,62 @@ const Defender = (() => {
   return { init, update, draw, help: "← → thrust · ↑ ↓ move · SPACE fire · B smart bomb" };
 })();
 
-/* ================= DOOM (raycast corridors, single player) ================= */
+/* ================= DOOM — the real one, via js-dos =================
+   Runs the actual shareware DOOM (DOOM1.WAD, freely distributable)
+   in a DOSBox-wasm emulator. If the CDN is unreachable, the BOOM
+   raycaster below quietly takes its place. */
 
-const Doom = (() => {
+const DOS_JS = "https://v8.js-dos.com/latest/js-dos.js";
+const DOS_CSS = "https://v8.js-dos.com/latest/js-dos.css";
+// self-hosted shareware bundle (DOOM1.WAD is freely distributable) —
+// same-origin, so no CORS surprises
+const DOOM_BUNDLE = "assets/games/doom.jsdos";
+let dosProps = null;
+let dosLoaded = false;
+
+function loadJsDos() {
+  return new Promise((resolve, reject) => {
+    if (dosLoaded && window.Dos) return resolve();
+    const css = document.createElement("link");
+    css.rel = "stylesheet";
+    css.href = DOS_CSS;
+    document.head.appendChild(css);
+    const s = document.createElement("script");
+    s.src = DOS_JS;
+    const timeout = setTimeout(() => reject(new Error("js-dos timeout")), 10000);
+    s.onload = () => { clearTimeout(timeout); dosLoaded = true; resolve(); };
+    s.onerror = () => { clearTimeout(timeout); reject(new Error("js-dos failed")); };
+    document.head.appendChild(s);
+  });
+}
+
+async function openRealDoom() {
+  const box = document.getElementById("dosbox");
+  const help = document.querySelector("#arcade .arcade-help");
+  cv.classList.add("hidden");
+  box.classList.remove("hidden");
+  box.innerHTML = "<div class='dos-loading'>FIRING UP THE DOS MACHINE…</div>";
+  help.textContent = "the actual 1993 DOOM · arrows move · ctrl fire · space open · use the × up top to walk away (ESC is DOOM's own menu)";
+  document.getElementById("arcade").classList.add("show");
+  try {
+    await loadJsDos();
+    box.innerHTML = "";
+    dosProps = await window.Dos(box, { url: DOOM_BUNDLE, autoStart: true });
+  } catch (e) {
+    // CDN down — the homage engine steps in
+    box.classList.add("hidden");
+    box.innerHTML = "";
+    cv.classList.remove("hidden");
+    current = Boom;
+    current.init();
+    help.textContent = current.help + " · ESC to walk away";
+    startLoop();
+  }
+}
+
+/* ================= BOOM (raycast fallback, single player) ================= */
+
+const Boom = (() => {
   const MAP = [
     "################",
     "#..............#",
@@ -709,7 +762,7 @@ const Tron = (() => {
   };
 })();
 
-const GAMES = { defender: Defender, doom: Doom, pong: Pong, tron: Tron };
+const GAMES = { defender: Defender, pong: Pong, tron: Tron };
 
 /* ================= multiplayer plumbing ================= */
 
@@ -748,21 +801,42 @@ function keydown(e) {
 }
 function keyup(e) { keys[e.code] = false; }
 
+function startLoop() {
+  let last = performance.now();
+  const loop = (now) => {
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    current.update(dt);
+    current.draw();
+    raf = requestAnimationFrame(loop);
+  };
+  raf = requestAnimationFrame(loop);
+}
+
 export function openArcade(id, netAdapter) {
   gameId = id;
   net = netAdapter || null;
   peer = null;
-  current = GAMES[id];
-  if (!current) return;
   cv = document.getElementById("arcade-canvas");
   g2 = cv.getContext("2d");
   keys = {};
+  addEventListener("keydown", keydown);
+  addEventListener("keyup", keyup);
+
+  if (id === "doom") {
+    current = null;
+    openRealDoom();
+    return;
+  }
+
+  current = GAMES[id];
+  if (!current) return;
+  document.getElementById("dosbox").classList.add("hidden");
+  cv.classList.remove("hidden");
   current.init();
   document.querySelector("#arcade .arcade-help").textContent =
     current.help + " · ESC to walk away";
   document.getElementById("arcade").classList.add("show");
-  addEventListener("keydown", keydown);
-  addEventListener("keyup", keyup);
 
   if (current.mp && net) {
     net.send({ game: gameId, sub: "sit" });
@@ -774,20 +848,17 @@ export function openArcade(id, netAdapter) {
     }, 50);
   }
 
-  let last = performance.now();
-  const loop = (now) => {
-    const dt = Math.min(0.05, (now - last) / 1000);
-    last = now;
-    current.update(dt);
-    current.draw();
-    raf = requestAnimationFrame(loop);
-  };
-  raf = requestAnimationFrame(loop);
+  startLoop();
   document.querySelectorAll("#arcade .pad").forEach(btn => {
     const code = btn.dataset.code;
     btn.onpointerdown = (e) => { e.preventDefault(); keys[code] = true; };
     btn.onpointerup = btn.onpointercancel = btn.onpointerleave = () => { keys[code] = false; };
   });
+}
+
+// real DOOM owns the ESC key (its menu) — only the × closes it
+export function arcadeWantsEsc() {
+  return !!dosProps;
 }
 
 export function closeArcade() {
@@ -796,6 +867,14 @@ export function closeArcade() {
   if (netTimer) clearInterval(netTimer);
   netTimer = null;
   if (current?.mp && net) net.send({ game: gameId, sub: "leave" });
+  if (dosProps) {
+    try { dosProps.stop?.(); } catch (e) {}
+    dosProps = null;
+  }
+  const box = document.getElementById("dosbox");
+  box.classList.add("hidden");
+  box.innerHTML = "";
+  cv?.classList.remove("hidden");
   peer = null;
   current = null;
   gameId = null;

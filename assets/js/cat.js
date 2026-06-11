@@ -152,6 +152,12 @@ export class Cat {
     return out;
   }
 
+  // Someone elsewhere on the internet petted it — show the love here too.
+  remoteHearts() {
+    this._hearts();
+    if (Math.random() < 0.5) this.fx.purr?.();
+  }
+
   // A treat hits different no matter the mood.
   treatAt(x, z) {
     this.mood = Math.min(1, this.mood + 0.6);

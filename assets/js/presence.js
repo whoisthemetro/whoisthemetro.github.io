@@ -17,6 +17,7 @@ const peerListeners = new Set();
 const poseListeners = new Set();
 const noteListeners = new Set();
 const gameListeners = new Set();
+const actListeners = new Set();
 
 let me = null;
 let getPose = null;
@@ -68,7 +69,12 @@ async function join(identity, poseFn) {
       })
       .on("broadcast", { event: "note" }, ({ payload }) => {
         if (payload.uid !== me.uid) {
-          noteListeners.forEach(fn => { try { fn(payload.uid, payload.i); } catch (e) {} });
+          noteListeners.forEach(fn => { try { fn(payload.uid, payload.i, payload.v); } catch (e) {} });
+        }
+      })
+      .on("broadcast", { event: "act" }, ({ payload }) => {
+        if (payload.uid !== me.uid) {
+          actListeners.forEach(fn => { try { fn(payload); } catch (e) {} });
         }
       })
       .on("broadcast", { event: "arcade" }, ({ payload }) => {
@@ -94,7 +100,9 @@ async function join(identity, poseFn) {
       } else if (m.type === "pose") {
         emitPose(m.uid, m);
       } else if (m.type === "note") {
-        noteListeners.forEach(fn => { try { fn(m.uid, m.i); } catch (e) {} });
+        noteListeners.forEach(fn => { try { fn(m.uid, m.i, m.v); } catch (e) {} });
+      } else if (m.type === "act") {
+        actListeners.forEach(fn => { try { fn(m.payload); } catch (e) {} });
       } else if (m.type === "arcade") {
         gameListeners.forEach(fn => { try { fn(m.payload); } catch (e) {} });
       } else if (m.type === "bye") {
@@ -124,12 +132,21 @@ export const presence = {
   onPeers: fn => { peerListeners.add(fn); return () => peerListeners.delete(fn); },
   onPose:  fn => { poseListeners.add(fn); return () => poseListeners.delete(fn); },
   onNote:  fn => { noteListeners.add(fn); return () => noteListeners.delete(fn); },
-  // a key someone pressed — everyone in the room hears it
-  sendNote(i) {
+  // a key someone pressed — everyone in the room hears it, same voice
+  sendNote(i, v = 0) {
     if (!me) return;
-    const msg = { uid: me.uid, i };
+    const msg = { uid: me.uid, i, v };
     if (chan) chan.send({ type: "broadcast", event: "note", payload: msg });
     else bc?.postMessage({ type: "note", ...msg });
+  },
+  // shared physical actions: curtains, closet, petting the cat —
+  // when someone touches the room, everyone sees it move
+  onAct: fn => { actListeners.add(fn); return () => actListeners.delete(fn); },
+  sendAct(payload) {
+    if (!me) return;
+    const msg = { ...payload, uid: me.uid };
+    if (chan) chan.send({ type: "broadcast", event: "act", payload: msg });
+    else bc?.postMessage({ type: "act", payload: msg });
   },
   // 2-player arcade traffic (sit / join / input / state / leave)
   onGame: fn => { gameListeners.add(fn); return () => gameListeners.delete(fn); },

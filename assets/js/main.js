@@ -13,7 +13,8 @@ import { startAmbience, citySound, pianoNote, purr, setRain, meow, hiss, careSou
 import { weather } from "./weather.js";
 import { startPlanes } from "./planes.js";
 import { Cat } from "./cat.js";
-import { openArcade, closeArcade, arcadeIsOpen, handleGameMessage } from "./arcade.js";
+import { openArcade, closeArcade, arcadeIsOpen, arcadeWantsEsc, handleGameMessage } from "./arcade.js";
+import { PIANO_VOICES } from "./ambience.js";
 import {
   PAPERS, IS_TOUCH, safeUrl, hostOf, timeAgo, toast,
   getIdentity, saveIdentity, shrinkImage,
@@ -45,9 +46,13 @@ controls.yaw = world.spawn.yaw;
 
 world.setCityListener((type) => citySound(type));
 
+// piano voice — sticky per visitor, broadcast with each note
+let pianoVoice = 0;
+try { pianoVoice = (parseInt(localStorage.getItem("metro.voice") || "0", 10) || 0) % PIANO_VOICES.length; } catch (e) {}
+
 // the cat — its key-walking plays the same piano visitors can play
 const cat = new Cat(world.scene, world.catSpots, {
-  plink: (i) => { pianoNote(i % 15); world.pressPianoKey(i % 15); },
+  plink: (i) => { pianoNote(i % 15, pianoVoice); world.pressPianoKey(i % 15); },
   purr, meow, hiss, dig: () => careSound("sand"),
 });
 
@@ -138,7 +143,7 @@ canvas.addEventListener("click", () => {
 function castAt(ndcX, ndcY) {
   raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera);
   // doors are included as blockers so notes can't be pinned onto them
-  const targets = [cat.hitMesh, world.pianoMesh, ...world.arcadeHits, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...notesWall.raycastTargets(), ...world.blockers];
+  const targets = [cat.hitMesh, world.pianoMesh, world.pianoVoiceMesh, ...world.arcadeHits, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...notesWall.raycastTargets(), ...world.blockers];
   const hits = raycaster.intersectObjects(targets, false);
   return hits[0] || null;
 }
@@ -215,6 +220,7 @@ controls.onAction((ndcX, ndcY) => {
     lastPetAt = Date.now();
     const outcome = cat.petOutcome();
     if (outcome === "scratch") gotScratched();
+    else presence.sendAct({ kind: "pet" });
     wrapCare("pet").then(res => {
       if (res && outcome === "love") {
         toast(`purrrr — this cat has been petted ${res.pets} time${res.pets === 1 ? "" : "s"}`);
@@ -223,6 +229,7 @@ controls.onAction((ndcX, ndcY) => {
     }).catch(() => {});
   } else if (hit.object.userData.closet && hit.distance < 3) {
     const open = world.toggleCloset();
+    presence.sendAct({ kind: "closet", open });
     toast(open ? "the closet creaks open…" : "closet closed");
   } else if (hit.object.userData.arcade && hit.distance < 3.2) {
     modalOpen = true;
@@ -237,11 +244,17 @@ controls.onAction((ndcX, ndcY) => {
     openDM();
   } else if (hit.object.userData.piano && hit.distance < 2.4 && hit.uv) {
     const key = Math.max(0, Math.min(14, Math.floor(hit.uv.x * 15)));
-    pianoNote(key);
+    pianoNote(key, pianoVoice);
     world.pressPianoKey(key);
-    presence.sendNote(key);
+    presence.sendNote(key, pianoVoice);
+  } else if (hit.object.userData.pianoVoice && hit.distance < 2.4) {
+    pianoVoice = (pianoVoice + 1) % PIANO_VOICES.length;
+    try { localStorage.setItem("metro.voice", String(pianoVoice)); } catch (e) {}
+    pianoNote(7, pianoVoice);
+    toast(`piano voice: ${PIANO_VOICES[pianoVoice].name}`);
   } else if (hit.object.userData.curtain && hit.distance < 3.2) {
     const closed = world.toggleCurtains();
+    presence.sendAct({ kind: "curtains", closed });
     toast(closed ? "curtains drawn — it's just you and the glow now" : "curtains open");
   } else if (hit.object.userData.care && hit.distance < 2.6) {
     handleCare(hit.object.userData.care);
@@ -276,6 +289,9 @@ setInterval(() => {
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.piano && hit.distance < 2.4) {
     aimTip.textContent = `${TAP} the keys to play`;
+    aimTip.classList.add("show");
+  } else if (hit && hit.object.userData.pianoVoice && hit.distance < 2.4) {
+    aimTip.textContent = `${TAP} to change the piano sound (${PIANO_VOICES[pianoVoice].name})`;
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.curtain && hit.distance < 3.2) {
     aimTip.textContent = world.curtainsClosed() ? `${TAP} to open the curtains` : `${TAP} to draw the curtains`;
@@ -493,6 +509,20 @@ $("#reader-delete").addEventListener("click", async () => {
   }
 });
 
+/* ---------------- flight strip: the jet crossing the glass ---------------- */
+let stripTimer = null;
+function showFlightStrip(info) {
+  const el = $("#flight-strip");
+  el.innerHTML =
+    `<span class="fs-plane">✈</span> <span class="fs-flight">${(info.flight || "").replace(/[<>&]/g, "")}</span>` +
+    (info.type ? ` <span class="fs-type">${String(info.type).replace(/[<>&]/g, "")}</span>` : "") +
+    ` <span class="fs-label">${info.label}</span>` +
+    (info.alt ? ` <span class="fs-alt">${info.alt.toLocaleString()} ft</span>` : "");
+  el.classList.add("show");
+  clearTimeout(stripTimer);
+  stripTimer = setTimeout(() => el.classList.remove("show"), 15000);
+}
+
 /* ---------------- private notes to Metro ---------------- */
 const dmOverlay = $("#dm");
 async function openDM() {
@@ -612,7 +642,8 @@ addEventListener("keydown", (e) => {
     if (composer.classList.contains("show")) closeComposer(false);
     if (reader.classList.contains("show")) closeReader();
     if (dmOverlay.classList.contains("show")) closeDM();
-    if (arcadeIsOpen()) closeArcadeOverlay();
+    // real DOOM owns ESC (its own menu) — only its × button closes it
+    if (arcadeIsOpen() && !arcadeWantsEsc()) closeArcadeOverlay();
   }
 });
 
@@ -665,12 +696,28 @@ addEventListener("keydown", (e) => {
     $("#online-count").textContent = String(peers.size + 1);
   });
   presence.onPose((uid, pose) => ghosts.setPose(uid, pose));
-  presence.onNote((uid, i) => { pianoNote(i); world.pressPianoKey(i); });
+  presence.onNote((uid, i, v) => { pianoNote(i, v ?? 0); world.pressPianoKey(i); });
   presence.onGame((p) => handleGameMessage(p));
+  // the room is one shared physical space: doors, curtains, affection
+  presence.onAct((p) => {
+    if (p.kind === "curtains") {
+      world.setCurtains(p.closed);
+      toast(p.closed ? "someone drew the curtains" : "someone opened the curtains");
+    } else if (p.kind === "closet") {
+      world.setCloset(p.open);
+      toast(p.open ? "someone opened the closet…" : "someone closed the closet");
+    } else if (p.kind === "pet") {
+      cat.remoteHearts();
+    }
+  });
 
   weather.start();
-  // real LAX traffic drives the window flyovers when the API is up
-  startPlanes(() => world.triggerPlane(), (isLive) => world.setLivePlanes(isLive));
+  // real LAX traffic drives the window flyovers when the API is up —
+  // each one gets a flight strip: who it is, what it is, where it's going
+  startPlanes((info) => {
+    world.triggerPlane();
+    if (info) showFlightStrip(info);
+  }, (isLive) => world.setLivePlanes(isLive));
 
   // cat needs: load shared state, stay subscribed to everyone's care
   try { applyCatState(await store.getCatState()); }

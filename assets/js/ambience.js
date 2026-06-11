@@ -30,7 +30,15 @@ export function startAmbience() {
 
   master = ctx.createGain();
   master.gain.value = 0.9;
-  master.connect(ctx.destination);
+  // gentle compressor on the bus: stacked piano notes / sfx can't clip
+  // and pop the output anymore
+  const comp = ctx.createDynamicsCompressor();
+  comp.threshold.value = -18;
+  comp.knee.value = 24;
+  comp.ratio.value = 6;
+  comp.attack.value = 0.003;
+  comp.release.value = 0.2;
+  master.connect(comp).connect(ctx.destination);
 
   // room tone: deep filtered rumble + faint electrical hum
   const src = ctx.createBufferSource();
@@ -57,27 +65,47 @@ export function startAmbience() {
 }
 
 // The MIDI keys under the desk — two C major octaves, low to high.
-// Played by visitors (and walked on by the cat).
+// Played by visitors (and walked on by the cat). Several voices;
+// click the controller body to cycle them.
 const C_MAJOR = [0, 2, 4, 5, 7, 9, 11, 12, 14, 16, 17, 19, 21, 23, 24];
-export function pianoNote(i = 0) {
+export const PIANO_VOICES = [
+  { name: "E-PIANO",   parts: [[1, "sine", 1], [2, "triangle", 0.35]], dec: 1.3, peak: 0.07 },
+  { name: "MUSIC BOX", parts: [[1, "sine", 1], [3, "sine", 0.14], [5.04, "sine", 0.05]], dec: 1.9, peak: 0.06 },
+  { name: "8-BIT",     parts: [[1, "square", 0.55]], dec: 0.45, peak: 0.05 },
+  { name: "SYNTH",     parts: [[1, "sawtooth", 0.6], [1.006, "sawtooth", 0.45]], dec: 0.9, peak: 0.05, lp: 1900 },
+  { name: "ORGAN",     parts: [[1, "sine", 0.7], [2, "sine", 0.5], [4, "sine", 0.22]], dec: 0.6, peak: 0.06 },
+];
+
+export function pianoNote(i = 0, voice = 0) {
   if (!ctx) return;
-  const t = ctx.currentTime;
+  const v = PIANO_VOICES[Math.abs(voice) % PIANO_VOICES.length];
+  const t = ctx.currentTime + 0.005;   // schedule slightly ahead — no past-start clicks
   const f = 261.63 * Math.pow(2, C_MAJOR[Math.max(0, Math.min(14, i))] / 12);
   const g = ctx.createGain();
-  g.connect(master);
-  // fundamental + a soft octave partial = passable e-piano
-  for (const [mult, type, amt] of [[1, "sine", 1], [2, "triangle", 0.35]]) {
+  let out = g;
+  if (v.lp) {
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.value = v.lp;
+    g.connect(lp);
+    out = lp;
+  }
+  out.connect(master);
+  for (const [mult, type, amt] of v.parts) {
     const o = ctx.createOscillator();
     o.type = type;
     o.frequency.value = f * mult;
     const og = ctx.createGain();
     og.gain.value = amt;
     o.connect(og).connect(g);
-    o.start(t); o.stop(t + 1.4);
+    o.start(t); o.stop(t + v.dec + 0.08);
   }
-  g.gain.setValueAtTime(0.0001, t);
-  g.gain.exponentialRampToValueAtTime(0.07, t + 0.012);
-  g.gain.exponentialRampToValueAtTime(0.0001, t + 1.3);
+  // pop-free envelope: true-zero linear attack, exponential decay,
+  // then a short linear tail back to actual zero before the stop
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(v.peak, t + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.0008, t + v.dec);
+  g.gain.linearRampToValueAtTime(0, t + v.dec + 0.05);
 }
 
 // Generic 8-bit blip for the arcade cabinet.

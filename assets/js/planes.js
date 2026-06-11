@@ -1,18 +1,16 @@
 /* ============================================================
    THE METRO — real traffic on the LAX approach
-   Polls the OpenSky Network (free, no key) for aircraft in the
-   corridor over Hawthorne every 5 minutes, estimates when each
-   one passes overhead from its position + ground speed, and
-   fires the window flyover at that moment. When you see a jet
-   cross the glass, there really is one over the house.
+   Polls airplanes.live (free, no key, CORS-open) for aircraft
+   within ~10 nm of the house every 5 minutes, estimates when
+   each one crosses overhead from its position and ground speed,
+   and fires the window flyover at that moment — with the actual
+   flight number, aircraft type and altitude for the flight strip.
 
-   Falls back silently to occasional ambient planes if the API
-   is down or rate-limited.
+   When a jet crosses the glass, one is really up there.
+   Falls back to occasional ambient planes if the API is down.
    ============================================================ */
 
-// box around Hawthorne / the LAX east approach
-const URL = "https://opensky-network.org/api/states/all"
-  + "?lamin=33.84&lomin=-118.62&lamax=34.05&lomax=-118.08";
+const URL = "https://api.airplanes.live/v2/point/33.9164/-118.3526/10";
 const HOME_LON = -118.3526;
 const POLL_MS = 5 * 60 * 1000;
 
@@ -28,20 +26,36 @@ export function startPlanes(onFlyover, onLiveChange) {
       for (const t of timers) clearTimeout(t);
       timers = [];
       let scheduled = 0;
-      for (const s of data.states || []) {
-        // [icao, callsign, country, t1, t2, lon, lat, baroAlt, onGround, vel(m/s), track, ...]
-        const lon = s[5], lat = s[6], alt = s[7], ground = s[8], vel = s[9], track = s[10];
-        if (ground || lon == null || alt == null || alt > 3200 || !vel || vel < 40) continue;
-        // westbound (the landing flow over Hawthorne) heads roughly 200–330°
+      for (const a of data.ac || []) {
+        const alt = a.alt_baro;                       // feet (or "ground")
+        const gs = a.gs;                              // knots
+        const lon = a.lon, lat = a.lat, track = a.track;
+        if (alt === "ground" || typeof alt !== "number" || alt > 7000) continue;
+        if (!gs || gs < 80 || lon == null) continue;
+
         const westbound = track != null && track > 200 && track < 330;
+        const eastbound = track != null && track > 50 && track < 130;
         const overhead = Math.abs(lon - HOME_LON) < 0.04;
-        if (!westbound && !overhead) continue;
-        // meters east of the house, positive = still inbound
+        if (!westbound && !eastbound && !overhead) continue;
+
+        // meters to travel before crossing our longitude
         const distM = (lon - HOME_LON) * 111320 * Math.cos((lat || 33.92) * Math.PI / 180);
-        const etaS = overhead ? 1 : distM > 0 ? distM / vel : -1;
+        const velMs = gs * 0.5144;
+        let etaS;
+        if (overhead) etaS = 1;
+        else if (westbound && distM > 0) etaS = distM / velMs;   // east of us, heading west
+        else if (eastbound && distM < 0) etaS = -distM / velMs;  // west of us, heading east
+        else continue;
+
         if (etaS >= 0 && etaS < POLL_MS / 1000 && scheduled < 7) {
           scheduled++;
-          timers.push(setTimeout(() => { try { onFlyover(); } catch (e) {} }, etaS * 1000));
+          const info = {
+            flight: (a.flight || "").trim() || a.r || "unknown",
+            type: a.t || "",
+            alt: Math.round(alt / 100) * 100,
+            label: westbound ? "ARRIVING LAX" : eastbound ? "DEPARTED LAX" : "OVERHEAD",
+          };
+          timers.push(setTimeout(() => { try { onFlyover(info); } catch (e) {} }, etaS * 1000));
         }
       }
       if (!live) { live = true; onLiveChange?.(true); }

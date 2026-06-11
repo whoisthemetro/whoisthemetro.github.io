@@ -777,6 +777,7 @@ export function buildWorld() {
     curtains.closed = !curtains.closed;
     return curtains.closed;
   }
+  function setCurtains(closed) { curtains.closed = !!closed; }
   const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, WIN.w + 0.7, 8), lam(0x4a443a));
   rod.rotation.z = Math.PI / 2;
   rod.position.set(WIN.cx, WIN.cy + WIN.h / 2 + 0.3, ZF + 0.11);
@@ -1021,6 +1022,7 @@ export function buildWorld() {
     closet.open = !closet.open;
     return closet.open;
   }
+  function setCloset(open) { closet.open = !!open; }
 
   /* --- METRO'S ARCADE: the room beyond the closet --- */
   // a proper room: ~4.7 x 5.0 m, doorway aligned with the closet opening
@@ -1295,9 +1297,11 @@ export function buildWorld() {
     desk.add(cable);
   }
 
-  // midi controller tucked under the desk, keys barely sticking out
+  // midi controller tucked under the desk, keys barely sticking out;
+  // its body is the piano-voice selector
   const midiBody = caster(box(0.96, 0.065, 0.27, lam(0x191b1f)));
   midiBody.position.set(0, 0.46, 0.27);
+  midiBody.userData.pianoVoice = true;
   desk.add(midiBody);
   // two playable C major octaves, low on the left → high on the right
   const keysCanvas = document.createElement("canvas");
@@ -1691,10 +1695,11 @@ export function buildWorld() {
     setWeather,
     getWeather: () => wx,
     careTargets, updateCare,
-    curtainHits, toggleCurtains,
+    curtainHits, toggleCurtains, setCurtains,
     curtainsClosed: () => curtains.closed,
     pianoMesh: midiKeybed, pressPianoKey,
-    closetHits: [leftLeaf, rightLeaf], toggleCloset,
+    pianoVoiceMesh: midiBody,
+    closetHits: [leftLeaf, rightLeaf], toggleCloset, setCloset,
     closetOpen: () => closet.open,
     arcadeHits,
     // real-LAX hooks
