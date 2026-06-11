@@ -914,22 +914,27 @@ export function buildWorld() {
   alcFloor.position.set(-X - ALCOVE_D / 2, 0.005, CZ);
   add(alcFloor);
 
-  // right leaf — stays shut
-  const leafMat = () => new THREE.MeshLambertMaterial({ map: doorTexture(false) });
-  const rightLeaf = box(0.045, OPEN_H, OPEN_W / 2, leafMat());
-  rightLeaf.position.set(-X + 0.035, OPEN_H / 2, CZ - OPEN_W / 4);
-  add(rightLeaf);
-  blockers.push(rightLeaf);
-
-  // left leaf — hinged at its outer edge, swings into the closet
+  // both leaves hinged at their outer edges; click either and the pair
+  // swings open into the closet, away from you
   const closet = { open: false, anim: 0 };
-  const hinge = new THREE.Group();
+  const leafMat = () => new THREE.MeshLambertMaterial({ map: doorTexture(false) });
+
+  const hinge = new THREE.Group();             // left leaf
   hinge.position.set(-X + 0.035, 0, CZ + OPEN_W / 2);
   const leftLeaf = box(0.045, OPEN_H, OPEN_W / 2, leafMat());
   leftLeaf.position.set(0, OPEN_H / 2, -OPEN_W / 4);
   leftLeaf.userData.closet = true;
   hinge.add(leftLeaf);
   add(hinge);
+
+  const hinge2 = new THREE.Group();            // right leaf, mirrored
+  hinge2.position.set(-X + 0.035, 0, CZ - OPEN_W / 2);
+  const rightLeaf = box(0.045, OPEN_H, OPEN_W / 2, leafMat());
+  rightLeaf.position.set(0, OPEN_H / 2, OPEN_W / 4);
+  rightLeaf.userData.closet = true;
+  hinge2.add(rightLeaf);
+  add(hinge2);
+
   function toggleCloset() {
     closet.open = !closet.open;
     return closet.open;
@@ -1439,11 +1444,12 @@ export function buildWorld() {
       applyLights();
     }
 
-    // closet door swinging (open = away from the room, into the closet)
+    // closet doors swinging (open = away from the room, into the closet)
     const cWant = closet.open ? 1 : 0;
     if (Math.abs(closet.anim - cWant) > 0.001) {
       closet.anim += Math.sign(cWant - closet.anim) * Math.min(dt * 1.6, Math.abs(cWant - closet.anim));
       hinge.rotation.y = closet.anim * 1.5;
+      hinge2.rotation.y = -closet.anim * 1.5;
     }
 
     // arcade attract mode flickers away in the closet
@@ -1470,7 +1476,7 @@ export function buildWorld() {
     curtainHits, toggleCurtains,
     curtainsClosed: () => curtains.closed,
     pianoMesh: midiKeybed, pressPianoKey,
-    closetHits: [leftLeaf], toggleCloset,
+    closetHits: [leftLeaf, rightLeaf], toggleCloset,
     closetOpen: () => closet.open,
     arcadeHit,
     // where the cat likes to be
