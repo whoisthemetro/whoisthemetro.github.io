@@ -202,6 +202,22 @@ textarea:focus, input:focus { border-color: var(--amber); }
 #cat-pill .low { color: var(--amber); }
 #cat-pill .crit { color: #e07054; }
 
+/* ---------- private inbox ---------- */
+#dm-send {
+  font-family: "Archivo", sans-serif; font-weight: 800;
+  text-transform: uppercase; letter-spacing: 0.18em; font-size: 13px;
+  background: var(--amber); color: #14110a; border: none;
+  padding: 14px 30px; cursor: pointer; border-radius: 2px; width: 100%;
+}
+#dm-send:disabled { opacity: 0.5; }
+#dm-inbox { max-height: 60vh; overflow-y: auto; }
+.dm-item {
+  border-bottom: 1px solid var(--line); padding: 12px 4px;
+  font-size: 14px; line-height: 1.5;
+}
+.dm-item .dm-meta { font-size: 11px; color: var(--dim); margin-bottom: 4px; }
+.dm-item a { color: var(--amber); word-break: break-all; }
+
 /* ---------- the cabinet in the closet ---------- */
 .arcade-shell {
   position: relative; background: #0a0a10;

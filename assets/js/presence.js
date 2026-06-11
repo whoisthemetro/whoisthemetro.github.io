@@ -16,6 +16,7 @@ const peers = new Map();    // uid -> { name, color, lastSeen }
 const peerListeners = new Set();
 const poseListeners = new Set();
 const noteListeners = new Set();
+const gameListeners = new Set();
 
 let me = null;
 let getPose = null;
@@ -70,6 +71,11 @@ async function join(identity, poseFn) {
           noteListeners.forEach(fn => { try { fn(payload.uid, payload.i); } catch (e) {} });
         }
       })
+      .on("broadcast", { event: "arcade" }, ({ payload }) => {
+        if (payload.uid !== me.uid) {
+          gameListeners.forEach(fn => { try { fn(payload); } catch (e) {} });
+        }
+      })
       .subscribe(async (status) => {
         if (status === "SUBSCRIBED") {
           await chan.track({ name: me.name, color: me.color });
@@ -89,6 +95,8 @@ async function join(identity, poseFn) {
         emitPose(m.uid, m);
       } else if (m.type === "note") {
         noteListeners.forEach(fn => { try { fn(m.uid, m.i); } catch (e) {} });
+      } else if (m.type === "arcade") {
+        gameListeners.forEach(fn => { try { fn(m.payload); } catch (e) {} });
       } else if (m.type === "bye") {
         if (peers.delete(m.uid)) emitPeers();
       }
@@ -123,4 +131,13 @@ export const presence = {
     if (chan) chan.send({ type: "broadcast", event: "note", payload: msg });
     else bc?.postMessage({ type: "note", ...msg });
   },
+  // 2-player arcade traffic (sit / join / input / state / leave)
+  onGame: fn => { gameListeners.add(fn); return () => gameListeners.delete(fn); },
+  sendGame(payload) {
+    if (!me) return;
+    const msg = { ...payload, uid: me.uid };
+    if (chan) chan.send({ type: "broadcast", event: "arcade", payload: msg });
+    else bc?.postMessage({ type: "arcade", payload: msg });
+  },
+  uid: () => me?.uid,
 };

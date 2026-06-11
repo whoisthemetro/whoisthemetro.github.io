@@ -416,6 +416,28 @@ function makeClockScreen() {
 
 /* ---------------- the sky through the window ---------------- */
 
+// Downtown LA, precomputed once so the skyline never flickers between
+// redraws. Two layers: a low far ridge and the recognizable DTLA cluster
+// (one tower gets the slanted Wilshire-Grand crown + red beacon, the
+// tallest flat one gets the US-Bank-style crown ring).
+const LA = (() => {
+  const r = (i) => (Math.abs(Math.sin(i * 127.1) * 43758.5453) % 1);
+  const far = [];
+  for (let i = 0; i < 26; i++) far.push({ x: i * 30 - 12, w: 20 + r(i) * 20, h: 12 + r(i + 50) * 16 });
+  const heights = [78, 64, 96, 58, 110, 72, 122, 66, 88, 96, 54];
+  const dt = [];
+  let x = 340;
+  heights.forEach((h, i) => {
+    const b = { x, w: 24 + r(i + 9) * 16, h, i, win: [] };
+    for (let k = 0; k < (b.h * b.w) / 48; k++) {
+      b.win.push([r(b.i * 7 + k) * b.w * 0.8 + b.w * 0.1, r(b.i * 13 + k * 3) * b.h * 0.85 + 4, r(k + b.i)]);
+    }
+    dt.push(b);
+    x += b.w + 4 + r(i + 30) * 12;
+  });
+  return { far, dt, wilshire: dt.find(b => b.h === 122), usbank: dt.find(b => b.h === 110) };
+})();
+
 function makeSky() {
   const c = document.createElement("canvas");
   c.width = 720; c.height = 280;
@@ -430,7 +452,7 @@ function makeSky() {
     return { x: 360 + (azd / 55) * 340, y: 250 - (altd / 60) * 235 };
   }
 
-  function draw(sun, moon, moonFrac, wx = { clouds: 0, fog: false, rain: 0 }) {
+  function draw(sun, moon, moonFrac, wx = { clouds: 0, fog: false, rain: 0 }, fx = {}) {
     const sunAlt = sun.altitude / (Math.PI / 180);
     let top, bot;
     if (sunAlt > 5)        { top = "#7fb2e0"; bot = "#c8dcec"; }
@@ -465,21 +487,64 @@ function makeSky() {
       g.fillRect(0, 0, 720, 280);
     }
 
-    g.fillStyle = sunAlt > 5 ? "rgba(70,80,95,0.85)" : "#05070c";
-    for (let i = 0; i < 26; i++) {
-      const bw = 14 + ((i * 37) % 38);
-      const bh = 18 + ((i * 53) % 46);
-      g.fillRect(i * 28, 280 - bh, bw, bh);
-    }
-    if (sunAlt < -4) {
-      const glow = g.createLinearGradient(0, 280, 0, 190);
-      glow.addColorStop(0, "rgba(255,160,80,0.35)");
-      glow.addColorStop(1, "rgba(255,160,80,0)");
+    // ---- downtown LA ----
+    const night = sunAlt < -4;
+    if (night) {
+      const glow = g.createLinearGradient(0, 280, 0, 160);
+      glow.addColorStop(0, "rgba(255,150,70,0.4)");
+      glow.addColorStop(1, "rgba(255,150,70,0)");
       g.fillStyle = glow;
-      g.fillRect(0, 190, 720, 90);
-      for (let i = 0; i < 60; i++) {
-        g.fillStyle = `rgba(255,${190 + (i % 3) * 20},120,${0.5 + (i % 5) * 0.1})`;
-        g.fillRect((i * 47) % 716, 280 - ((i * 13) % 52), 2, 2);
+      g.fillRect(0, 160, 720, 120);
+    }
+    g.fillStyle = night ? "#0a0c12" : "rgba(95,105,120,0.75)";
+    for (const b of LA.far) g.fillRect(b.x, 280 - b.h, b.w, b.h);
+    for (const b of LA.dt) {
+      const top = 280 - b.h;
+      g.fillStyle = night ? "#0c0e16" : "rgba(70,80,95,0.92)";
+      if (b === LA.wilshire) {
+        // slanted crown
+        g.beginPath();
+        g.moveTo(b.x, 280); g.lineTo(b.x, top + 14);
+        g.lineTo(b.x + b.w, top); g.lineTo(b.x + b.w, 280);
+        g.closePath(); g.fill();
+      } else {
+        g.fillRect(b.x, top, b.w, b.h);
+        if (b === LA.usbank) {
+          g.fillRect(b.x + b.w / 2 - 1.5, top - 12, 3, 12);   // spire
+          g.fillRect(b.x + 4, top - 4, b.w - 8, 4);           // crown ring
+        }
+      }
+      if (night) {
+        for (const [wxp, wy, wr] of b.win) {
+          if (wr < 0.55) {
+            g.fillStyle = wr < 0.12 ? "rgba(170,210,255,0.8)" : `rgba(255,${200 + (wr * 40) | 0},130,${0.45 + wr * 0.4})`;
+            g.fillRect(b.x + wxp, 280 - wy, 1.8, 2.4);
+          }
+        }
+      }
+      // Wilshire Grand beacon
+      if (b === LA.wilshire && fx.beacon) {
+        g.fillStyle = "#ff2030";
+        g.fillRect(b.x + b.w - 3, top - 3, 4, 4);
+      }
+    }
+
+    // ---- a jet on the LAX approach ----
+    if (fx.plane) {
+      const px = -40 + fx.plane * 800;          // east → west across the glass
+      const py = 46 + fx.plane * 74;            // descending
+      g.fillStyle = night ? "#c8ccd4" : "#e8ecf2";
+      g.fillRect(px - 6, py, 12, 2.4);          // fuselage
+      g.fillRect(px - 1.5, py - 3, 3, 8);       // wings
+      if (Math.floor(fx.plane * 30) % 2) {      // strobes
+        g.fillStyle = "#fff";
+        g.fillRect(px - 8, py - 1, 2.4, 2.4);
+      }
+      g.fillStyle = "#ff3434";
+      g.fillRect(px + 7, py, 2, 2);
+      if (night) {
+        g.fillStyle = "rgba(255,240,200,0.8)";  // landing lights
+        g.fillRect(px - 4, py + 2.6, 8, 1.4);
       }
     }
 
@@ -735,6 +800,15 @@ export function buildWorld() {
     mask.castShadow = true;
     add(mask);
   }
+  // the arcade room is windowless — keep the beam out of it entirely
+  const arcMaskS = new THREE.Mesh(new THREE.BoxGeometry(4.6, H + 0.4, 0.12), maskMat);
+  arcMaskS.position.set(-4.9, H / 2, -2.36);
+  arcMaskS.castShadow = true;
+  add(arcMaskS);
+  const arcMaskW = new THREE.Mesh(new THREE.BoxGeometry(0.12, H + 0.4, 4.2), maskMat);
+  arcMaskW.position.set(-6.9, H / 2, -0.4);
+  arcMaskW.castShadow = true;
+  add(arcMaskW);
 
   /* --- ALL room light comes from outside --- */
   // soft spill just inside the glass — tight radius so it reads as
@@ -746,7 +820,7 @@ export function buildWorld() {
   const beam = new THREE.DirectionalLight(0xfff0d8, 0);
   beam.castShadow = true;
   beam.shadow.mapSize.set(2048, 2048);
-  beam.shadow.camera.left = -5; beam.shadow.camera.right = 5;
+  beam.shadow.camera.left = -8; beam.shadow.camera.right = 5;
   beam.shadow.camera.top = 5; beam.shadow.camera.bottom = -5;
   beam.shadow.camera.near = 0.5; beam.shadow.camera.far = 30;
   beam.shadow.bias = -0.0004;
@@ -757,13 +831,22 @@ export function buildWorld() {
   const skyFill = add(new THREE.HemisphereLight(0x8a96a8, 0x2a241c, 0.3));
 
   let wx = { clouds: 0, rain: 0, fog: false };
+  let skyCache = null;
+  let plane01 = null;        // 0..1 while a jet crosses the glass
+
+  function redrawSky(beaconOn) {
+    if (!skyCache) return;
+    sky.draw(skyCache.sun, skyCache.moon, skyCache.fraction, wx,
+      { beacon: beaconOn, plane: plane01 });
+  }
 
   function updateSky() {
     const now = new Date();
     const sun = getSunPosition(now, LAT, LNG);
     const moon = getMoonPosition(now, LAT, LNG);
     const { fraction } = getMoonIllumination(now);
-    sky.draw(sun, moon, fraction, wx);
+    skyCache = { sun, moon, fraction };
+    sky.draw(sun, moon, fraction, wx, { beacon: true, plane: plane01 });
 
     // aim the beam from where the body actually hangs over LA.
     // The window faces due south; in room coordinates that makes
@@ -891,12 +974,8 @@ export function buildWorld() {
   add(chead);
   blockers.push(chead);
 
-  // alcove shell, outside the room
+  // passage shell — a short corridor through the wall into the arcade
   const alcMat = lam(0x4a443c);
-  const alcBack = plane(OPEN_W, OPEN_H, alcMat);
-  alcBack.rotation.y = Math.PI / 2;
-  alcBack.position.set(-X - ALCOVE_D, OPEN_H / 2, CZ);
-  add(alcBack);
   for (const sz of [-1, 1]) {
     const side = plane(ALCOVE_D, OPEN_H, alcMat.clone());
     side.rotation.y = sz < 0 ? 0 : Math.PI;
@@ -915,8 +994,9 @@ export function buildWorld() {
   add(alcFloor);
 
   // both leaves hinged at their outer edges; click either and the pair
-  // swings open into the closet, away from you
-  const closet = { open: false, anim: 0 };
+  // swings open into the closet, away from you. Open by default — the
+  // arcade is part of the room.
+  const closet = { open: true, anim: 1 };
   const leafMat = () => new THREE.MeshLambertMaterial({ map: doorTexture(false) });
 
   const hinge = new THREE.Group();             // left leaf
@@ -934,68 +1014,172 @@ export function buildWorld() {
   rightLeaf.userData.closet = true;
   hinge2.add(rightLeaf);
   add(hinge2);
+  hinge.rotation.y = 1.5;       // start open
+  hinge2.rotation.y = -1.5;
 
   function toggleCloset() {
     closet.open = !closet.open;
     return closet.open;
   }
 
-  /* --- the cabinet in the closet: DEFENDER --- */
-  const arcadeGrp = new THREE.Group();
-  const cabMat = lam(0x14161a);
-  const cabBody = box(0.62, 1.7, 0.6, cabMat);
-  cabBody.position.y = 0.85;
-  arcadeGrp.add(cabBody);
-  // marquee
-  const marqueeTex = canvasTex(256, 64, (g) => {
-    g.fillStyle = "#120020";
-    g.fillRect(0, 0, 256, 64);
-    g.font = "900 34px monospace";
-    g.textAlign = "center";
-    g.fillStyle = "#ffd23c";
-    g.shadowColor = "#ff3434"; g.shadowBlur = 12;
-    g.fillText("DEFENDER", 128, 44);
-  });
-  const marquee = new THREE.Mesh(new THREE.PlaneGeometry(0.56, 0.16),
-    new THREE.MeshBasicMaterial({ map: marqueeTex }));
-  marquee.position.set(0, 1.6, 0.301);
-  arcadeGrp.add(marquee);
-  // screen (attract mode runs on it)
-  const attract = makeAttractScreen(THREE);
-  const arcScreen = new THREE.Mesh(new THREE.PlaneGeometry(0.46, 0.36),
-    new THREE.MeshBasicMaterial({ map: attract.tex }));
-  arcScreen.position.set(0, 1.18, 0.301);
-  arcScreen.rotation.x = -0.08;
-  arcadeGrp.add(arcScreen);
-  const arcGlow = new THREE.PointLight(0x6688ff, 2.2, 1.6, 2);
-  arcGlow.position.set(0, 1.2, 0.5);
-  arcadeGrp.add(arcGlow);
-  // control deck + coin door
-  const deck = box(0.56, 0.06, 0.3, lam(0x1d2026));
-  deck.rotation.x = 0.18;
-  deck.position.set(0, 0.92, 0.36);
-  arcadeGrp.add(deck);
-  const stick = new THREE.Mesh(new THREE.SphereGeometry(0.022, 8, 8), lam(0xc02030));
-  stick.position.set(-0.12, 1.0, 0.4);
-  arcadeGrp.add(stick);
-  for (const bx of [0.06, 0.13, 0.2]) {
-    const btn = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.012, 10), lam(0xffd23c));
-    btn.rotation.x = 0.18;
-    btn.position.set(bx, 0.965, 0.395);
-    arcadeGrp.add(btn);
+  /* --- METRO'S ARCADE: the room beyond the closet --- */
+  // x -6.8..-3.55, z -2.3..1.5, doorway aligned with the closet opening
+  const AR = { x0: -6.8, x1: -X - ALCOVE_D, z0: -2.3, z1: 1.5 };
+  const arcMatWall = lam(0x191722);
+  const arcW = AR.x1 - AR.x0, arcD = AR.z1 - AR.z0;
+  // front wall (two segments + lintel around the doorway)
+  for (const [w0, w1] of [[AR.z0, CZ - OPEN_W / 2], [CZ + OPEN_W / 2, AR.z1]]) {
+    const seg = plane(w1 - w0, H, arcMatWall.clone());
+    seg.rotation.y = Math.PI / 2;
+    seg.position.set(AR.x1, H / 2, (w0 + w1) / 2);
+    add(seg);
   }
-  const coin = box(0.2, 0.14, 0.01, lam(0x32363c));
-  coin.position.set(0, 0.35, 0.301);
-  arcadeGrp.add(coin);
-  // big easy hitbox
-  const arcadeHit = new THREE.Mesh(new THREE.BoxGeometry(0.7, 1.8, 0.7),
-    new THREE.MeshBasicMaterial({ visible: false }));
-  arcadeHit.position.y = 0.9;
-  arcadeHit.userData.arcade = true;
-  arcadeGrp.add(arcadeHit);
-  arcadeGrp.position.set(-X - 0.55, 0, CZ);
-  arcadeGrp.rotation.y = Math.PI / 2;   // facing out the closet doorway
-  add(arcadeGrp);
+  const lintel = plane(OPEN_W, H - OPEN_H, arcMatWall.clone());
+  lintel.rotation.y = Math.PI / 2;
+  lintel.position.set(AR.x1, OPEN_H + (H - OPEN_H) / 2, CZ);
+  add(lintel);
+  // back, sides, ceiling
+  const arcBack = plane(arcD, H, arcMatWall.clone());
+  arcBack.rotation.y = -Math.PI / 2;
+  arcBack.position.set(AR.x0, H / 2, (AR.z0 + AR.z1) / 2);
+  add(arcBack);
+  for (const [zz, ry] of [[AR.z0, 0], [AR.z1, Math.PI]]) {
+    const side = plane(arcW, H, arcMatWall.clone());
+    side.rotation.y = ry;
+    side.position.set((AR.x0 + AR.x1) / 2, H / 2, zz);
+    add(side);
+  }
+  const arcCeil = plane(arcW, arcD, lam(0x0e0d14));
+  arcCeil.rotation.x = Math.PI / 2;
+  arcCeil.position.set((AR.x0 + AR.x1) / 2, H, (AR.z0 + AR.z1) / 2);
+  add(arcCeil);
+  // arcade carpet — dark with neon confetti
+  const arcFloor = plane(arcW, arcD, new THREE.MeshLambertMaterial({
+    map: canvasTex(512, 512, (g) => {
+      g.fillStyle = "#14122a"; g.fillRect(0, 0, 512, 512);
+      const cols = ["#ff2da0", "#22d4ff", "#ffe93c", "#9d4dff", "#3bff7a"];
+      for (let i = 0; i < 260; i++) {
+        g.strokeStyle = cols[i % cols.length];
+        g.lineWidth = 2.5;
+        const x = Math.random() * 512, y = Math.random() * 512, a = Math.random() * 6.3;
+        g.beginPath();
+        g.moveTo(x, y);
+        g.lineTo(x + Math.cos(a) * 16, y + Math.sin(a) * 16);
+        g.stroke();
+      }
+    }),
+  }));
+  arcFloor.rotation.x = -Math.PI / 2;
+  arcFloor.position.set((AR.x0 + AR.x1) / 2, 0.002, (AR.z0 + AR.z1) / 2);
+  add(arcFloor);
+  // neon trim + mood lights
+  for (const [zz, col] of [[AR.z0 + 0.02, 0xff2da0], [AR.z1 - 0.02, 0x22d4ff]]) {
+    const strip = box(arcW - 0.2, 0.02, 0.02, new THREE.MeshBasicMaterial({ color: col }));
+    strip.position.set((AR.x0 + AR.x1) / 2, 2.3, zz);
+    add(strip);
+  }
+  const magenta = add(new THREE.PointLight(0xff2da0, 4, 4.5, 2));
+  magenta.position.set(-5.2, 2.2, -1.9);
+  const cyan = add(new THREE.PointLight(0x22d4ff, 4, 4.5, 2));
+  cyan.position.set(-5.2, 2.2, 1.1);
+
+  // "METRO'S ARCADE" — neon on the arcade's back wall, and a small
+  // sign over the closet in the bedroom
+  const arcSignTex = canvasTex(512, 96, (g) => {
+    g.fillStyle = "rgba(0,0,0,0)"; g.clearRect(0, 0, 512, 96);
+    g.font = "500 52px 'Six Caps', sans-serif";
+    g.textAlign = "center"; g.textBaseline = "middle";
+    g.letterSpacing = "8px";
+    g.shadowColor = "#ff2da0"; g.shadowBlur = 14;
+    g.strokeStyle = "#ff6ac0"; g.lineWidth = 2.5;
+    g.strokeText("METRO'S ARCADE", 256, 50);
+    g.shadowBlur = 0;
+    g.fillStyle = "#ffe9f6";
+    g.fillText("METRO'S ARCADE", 256, 50);
+  });
+  const arcSign = new THREE.Mesh(new THREE.PlaneGeometry(1.9, 0.36), new THREE.MeshBasicMaterial({
+    map: arcSignTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
+  }));
+  arcSign.rotation.y = Math.PI / 2;
+  arcSign.position.set(AR.x0 + 0.02, 2.25, (AR.z0 + AR.z1) / 2);
+  add(arcSign);
+  const arcSign2 = new THREE.Mesh(new THREE.PlaneGeometry(0.95, 0.18), new THREE.MeshBasicMaterial({
+    map: arcSignTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
+  }));
+  arcSign2.rotation.y = Math.PI / 2;
+  arcSign2.position.set(-X + 0.04, 2.32, CZ);
+  add(arcSign2);
+
+  // cabinet factory — one per game
+  const arcadeHits = [];
+  const attracts = [];
+  function cabinet(game, title, color, x, z, rotY, soon = false) {
+    const grp = new THREE.Group();
+    const body = box(0.62, 1.7, 0.6, lam(soon ? 0x0c0c10 : 0x14161a));
+    body.position.y = 0.85;
+    grp.add(body);
+    const mTex = canvasTex(256, 64, (g) => {
+      g.fillStyle = soon ? "#0a0a0e" : "#120020";
+      g.fillRect(0, 0, 256, 64);
+      g.font = "900 30px monospace";
+      g.textAlign = "center";
+      g.fillStyle = soon ? "#3a3a44" : "#ffd23c";
+      if (!soon) { g.shadowColor = color; g.shadowBlur = 12; }
+      g.fillText(title, 128, 42);
+    });
+    const mq = new THREE.Mesh(new THREE.PlaneGeometry(0.56, 0.16), new THREE.MeshBasicMaterial({ map: mTex }));
+    mq.position.set(0, 1.6, 0.301);
+    grp.add(mq);
+    let scr;
+    if (soon) {
+      scr = new THREE.Mesh(new THREE.PlaneGeometry(0.46, 0.36), new THREE.MeshBasicMaterial({
+        map: canvasTex(128, 96, (g) => {
+          g.fillStyle = "#050507"; g.fillRect(0, 0, 128, 96);
+          g.font = "10px monospace"; g.textAlign = "center";
+          g.fillStyle = "#3a3a44";
+          g.fillText("COMING SOON", 64, 48);
+        }),
+      }));
+    } else {
+      const at = makeAttractScreen(THREE, title, color);
+      attracts.push(at);
+      scr = new THREE.Mesh(new THREE.PlaneGeometry(0.46, 0.36), new THREE.MeshBasicMaterial({ map: at.tex }));
+    }
+    scr.position.set(0, 1.18, 0.301);
+    scr.rotation.x = -0.08;
+    grp.add(scr);
+    const deck = box(0.56, 0.06, 0.3, lam(0x1d2026));
+    deck.rotation.x = 0.18;
+    deck.position.set(0, 0.92, 0.36);
+    grp.add(deck);
+    const stick = new THREE.Mesh(new THREE.SphereGeometry(0.022, 8, 8), lam(0xc02030));
+    stick.position.set(-0.12, 1.0, 0.4);
+    grp.add(stick);
+    for (const bx of [0.06, 0.13, 0.2]) {
+      const btn = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.012, 10), lam(0xffd23c));
+      btn.rotation.x = 0.18;
+      btn.position.set(bx, 0.965, 0.395);
+      grp.add(btn);
+    }
+    const hit = new THREE.Mesh(new THREE.BoxGeometry(0.75, 1.8, 0.75),
+      new THREE.MeshBasicMaterial({ visible: false }));
+    hit.position.y = 0.9;
+    if (soon) hit.userData.arcadeSoon = title;
+    else hit.userData.arcade = game;
+    grp.add(hit);
+    arcadeHits.push(hit);
+    grp.position.set(x, 0, z);
+    grp.rotation.y = rotY;
+    add(grp);
+  }
+  // headliners along the back wall, facing the door
+  cabinet("defender", "DEFENDER", "#ff3434", AR.x0 + 0.42, -1.55, Math.PI / 2);
+  cabinet("doom", "DOOM", "#ff7320", AR.x0 + 0.42, -0.55, Math.PI / 2);
+  cabinet("tron", "TRON", "#22d4ff", AR.x0 + 0.42, 0.45, Math.PI / 2);
+  // pong on the south wall, the dark ones on the north
+  cabinet("pong", "PONG", "#e8e8e8", -4.6, AR.z0 + 0.42, 0);
+  cabinet(null, "PAC-MAN", "#ffe93c", -4.6, AR.z1 - 0.42, Math.PI, true);
+  cabinet(null, "MARIO", "#ff4d4d", -5.7, AR.z1 - 0.42, Math.PI, true);
 
   /* --- the desk rig --- */
   const deskTopY = 0.74;
@@ -1032,7 +1216,9 @@ export function buildWorld() {
   desk.add(monBezel);
   const monScreen = plane(monW, monH, new THREE.MeshBasicMaterial({ map: daw.tex }));
   monScreen.position.set(0, monBezel.position.y, -0.21 + 0.016);
+  monScreen.userData.dm = true;   // click the computer → leave Metro a private note
   desk.add(monScreen);
+  monBezel.userData.dm = true;
   // the screen really does light the desk a little
   const screenGlow = new THREE.PointLight(0x8fb6ff, 3, 2.6, 2);
   screenGlow.position.set(0, deskTopY + 0.45, 0.1);
@@ -1069,6 +1255,7 @@ export function buildWorld() {
   // mac studio + portable monitor on top
   const mac = caster(box(0.2, 0.095, 0.2, new THREE.MeshStandardMaterial({ color: 0xc9ccd1, metalness: 0.6, roughness: 0.45 })));
   mac.position.set(-0.7, deskTopY + 0.0475, -0.12);
+  mac.userData.dm = true;
   desk.add(mac);
   const meterScr = makeMeterScreen();
   const pmBezel = caster(box(0.35, 0.225, 0.012, lam(0x0c0d10)));
@@ -1112,24 +1299,25 @@ export function buildWorld() {
   const midiBody = caster(box(0.96, 0.065, 0.27, lam(0x191b1f)));
   midiBody.position.set(0, 0.46, 0.27);
   desk.add(midiBody);
-  // one playable C major octave, low on the left → high on the right
+  // two playable C major octaves, low on the left → high on the right
   const keysCanvas = document.createElement("canvas");
-  keysCanvas.width = 480; keysCanvas.height = 60;
+  keysCanvas.width = 720; keysCanvas.height = 60;
   const keysTex = new THREE.CanvasTexture(keysCanvas);
   keysTex.colorSpace = THREE.SRGBColorSpace;
+  const N_KEYS = 15;   // C..C across two octaves
   function drawKeys(pressed = -1) {
     const g = keysCanvas.getContext("2d");
-    const kw = 480 / 8;
+    const kw = 720 / N_KEYS;
     g.fillStyle = "#f2f2ef";
-    g.fillRect(0, 0, 480, 60);
+    g.fillRect(0, 0, 720, 60);
     if (pressed >= 0) {
       g.fillStyle = "#ffb347";
       g.fillRect(pressed * kw, 0, kw, 60);
     }
     g.fillStyle = "#0c0c0e";
-    for (let i = 1; i < 8; i++) g.fillRect(i * kw - 2, 0, 4, 60);
-    // black keys: none between E–F (3–4) and B–C (7–8)
-    for (const i of [0, 1, 3, 4, 5]) g.fillRect((i + 1) * kw - 7, 0, 14, 32);
+    for (let i = 1; i < N_KEYS; i++) g.fillRect(i * kw - 2, 0, 3, 60);
+    // black keys: skip E–F and B–C gaps, both octaves
+    for (const i of [0, 1, 3, 4, 5, 7, 8, 10, 11, 12]) g.fillRect((i + 1) * kw - 6, 0, 12, 32);
     keysTex.needsUpdate = true;
   }
   drawKeys();
@@ -1404,9 +1592,11 @@ export function buildWorld() {
 
   /* --- per-frame life --- */
   let elapsed = 0;
-  let dawAt = 0, meterAt = 0, clockAt = 0, skyAt = 0;
+  let dawAt = 0, meterAt = 0, clockAt = 0, skyAt = 0, skyDrawAt = 0;
   let nextCityAt = 40 + rand(0, 60);
   let onCity = null;
+  let planeT = -1, nextPlaneAt = 30 + rand(0, 90);
+  const PLANE_DUR = 15;
 
   function tick(dt) {
     elapsed += dt;
@@ -1415,6 +1605,22 @@ export function buildWorld() {
     if (elapsed - meterAt > 0.15) { meterAt = elapsed; meterScr.draw(); }
     if (elapsed - clockAt > 1) { clockAt = elapsed; clockScr.draw(); }
     if (elapsed - skyAt > 60) { skyAt = elapsed; updateSky(); }
+
+    // beacon blink + jets on the LAX approach
+    if (planeT >= 0) {
+      planeT += dt;
+      plane01 = planeT / PLANE_DUR;
+      if (plane01 >= 1) { planeT = -1; plane01 = null; }
+      if (elapsed - skyDrawAt > 0.12) { skyDrawAt = elapsed; redrawSky(Math.floor(elapsed * 1.2) % 2 === 0); }
+    } else {
+      nextPlaneAt -= dt;
+      if (nextPlaneAt <= 0) {
+        nextPlaneAt = rand(70, 240);
+        planeT = 0;
+        if (onCity) { try { onCity("plane"); } catch (e) {} }
+      }
+      if (elapsed - skyDrawAt > 0.55) { skyDrawAt = elapsed; redrawSky(Math.floor(elapsed * 1.2) % 2 === 0); }
+    }
 
     screenGlow.intensity = 2.6 + Math.sin(elapsed * 2.3) * 0.45 + Math.sin(elapsed * 7.1) * 0.25;
 
@@ -1452,10 +1658,10 @@ export function buildWorld() {
       hinge2.rotation.y = -closet.anim * 1.5;
     }
 
-    // arcade attract mode flickers away in the closet
-    if (closet.anim > 0.05 && elapsed - (tick._arcAt || 0) > 0.12) {
+    // attract modes flicker away in the arcade
+    if (elapsed - (tick._arcAt || 0) > 0.13) {
       tick._arcAt = elapsed;
-      attract.draw();
+      for (const at of attracts) at.draw();
     }
 
     nextCityAt -= dt;
@@ -1465,9 +1671,17 @@ export function buildWorld() {
     }
   }
 
+  // where feet may go: bedroom + closet passage + arcade room
+  const WALK_RECTS = [
+    { x0: -2.3, x1: 2.3, z0: -2.35, z1: 3.0 },
+    { x0: AR.x1 - 0.2, x1: -2.2, z0: CZ - OPEN_W / 2 + 0.15, z1: CZ + OPEN_W / 2 - 0.15 },
+    { x0: AR.x0 + 0.85, x1: AR.x1 - 0.25, z0: AR.z0 + 0.55, z1: AR.z1 - 0.55 },
+  ];
+  const isWalkable = (x, z) => WALK_RECTS.some(r => x >= r.x0 && x <= r.x1 && z >= r.z0 && z <= r.z1);
+
   return {
     scene, walls, blockers, noteGroup, ghostGroup, tick,
-    bounds: ROOM.bounds,
+    bounds: ROOM.bounds, isWalkable,
     spawn: { x: 1.7, z: 2.35, yaw: 0.28 },
     setCityListener: fn => { onCity = fn; },
     setWeather,
@@ -1478,7 +1692,8 @@ export function buildWorld() {
     pianoMesh: midiKeybed, pressPianoKey,
     closetHits: [leftLeaf, rightLeaf], toggleCloset,
     closetOpen: () => closet.open,
-    arcadeHit,
+    arcadeHits,
+    dmTargets: [monScreen, monBezel, mac],
     // where the cat likes to be
     catSpots: {
       chair: { x: SWEET.x, z: SWEET.z, y: 0.51 },

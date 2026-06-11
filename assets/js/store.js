@@ -244,8 +244,33 @@ function subscribeCat() {
   }
 }
 
+/* ---- private messages: straight to Metro's computer ---- */
+async function sendDM({ name, text, url }) {
+  if (mode === "supabase") {
+    const { error } = await sb.from("private_messages").insert({ name, text, url });
+    if (error) throw error;
+    return true;
+  }
+  try {
+    const all = JSON.parse(localStorage.getItem("metro.dms") || "[]");
+    all.push({ name, text, url, created_at: new Date().toISOString() });
+    localStorage.setItem("metro.dms", JSON.stringify(all.slice(-50)));
+  } catch (e) {}
+  return true;
+}
+
+async function readInbox(pass) {
+  if (mode === "supabase") {
+    const { data, error } = await sb.rpc("read_inbox", { pass });
+    if (error) throw error;
+    return data;   // null = wrong passphrase
+  }
+  try { return JSON.parse(localStorage.getItem("metro.dms") || "[]").reverse(); } catch (e) { return []; }
+}
+
 export const store = {
   init, list, add, imageUrl, adminDelete,
+  sendDM, readInbox,
   getCatState, catCare, decayCat,
   onCatState: fn => { catListeners.add(fn); return () => catListeners.delete(fn); },
   get mode() { return mode; },

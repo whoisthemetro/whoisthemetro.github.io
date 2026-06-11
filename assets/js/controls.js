@@ -11,10 +11,11 @@ const EYE = 1.62;
 const SPEED = 3.1;
 
 export class Controls {
-  constructor(camera, canvas, bounds) {
+  constructor(camera, canvas, bounds, walkable = null) {
     this.camera = camera;
     this.canvas = canvas;
     this.bounds = bounds;
+    this.walkable = walkable;   // fn(x,z) — overrides bounds when provided
     this.enabled = false;
     this.yaw = 0;                // start facing the note wall
     this.pitch = 0;
@@ -151,10 +152,16 @@ export class Controls {
       const sprint = this.keys.has("ShiftLeft") || this.keys.has("ShiftRight") ? 1.8 : 1;
       const sp = (SPEED * sprint * dt) / Math.max(1, len);
       const sin = Math.sin(this.yaw), cos = Math.cos(this.yaw);
-      this.pos.x += (sin * -fwd + cos * strafe) * sp;
-      this.pos.z += (cos * -fwd - sin * strafe) * sp;
-      this.pos.x = clamp(this.pos.x, this.bounds.minX, this.bounds.maxX);
-      this.pos.z = clamp(this.pos.z, this.bounds.minZ, this.bounds.maxZ);
+      const dx = (sin * -fwd + cos * strafe) * sp;
+      const dz = (cos * -fwd - sin * strafe) * sp;
+      if (this.walkable) {
+        // slide along walls: try each axis independently
+        if (this.walkable(this.pos.x + dx, this.pos.z)) this.pos.x += dx;
+        if (this.walkable(this.pos.x, this.pos.z + dz)) this.pos.z += dz;
+      } else {
+        this.pos.x = clamp(this.pos.x + dx, this.bounds.minX, this.bounds.maxX);
+        this.pos.z = clamp(this.pos.z + dz, this.bounds.minZ, this.bounds.maxZ);
+      }
     }
     this._applyCamera();
   }

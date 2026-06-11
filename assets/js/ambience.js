@@ -56,13 +56,13 @@ export function startAmbience() {
   hum.start();
 }
 
-// The MIDI keys under the desk — one C major octave, low to high.
+// The MIDI keys under the desk — two C major octaves, low to high.
 // Played by visitors (and walked on by the cat).
-const C_MAJOR = [0, 2, 4, 5, 7, 9, 11, 12];   // C D E F G A B C
+const C_MAJOR = [0, 2, 4, 5, 7, 9, 11, 12, 14, 16, 17, 19, 21, 23, 24];
 export function pianoNote(i = 0) {
   if (!ctx) return;
   const t = ctx.currentTime;
-  const f = 261.63 * Math.pow(2, C_MAJOR[Math.max(0, Math.min(7, i))] / 12);
+  const f = 261.63 * Math.pow(2, C_MAJOR[Math.max(0, Math.min(14, i))] / 12);
   const g = ctx.createGain();
   g.connect(master);
   // fundamental + a soft octave partial = passable e-piano
@@ -235,6 +235,26 @@ export function setRain(level) {   // 0 off, 1 light, 2 heavy
 export function citySound(type = "siren") {
   if (!ctx) return;
   const t = ctx.currentTime;
+
+  if (type === "plane") {
+    // a jet on the LAX approach, heard through the glass
+    const dur = 13;
+    const src = ctx.createBufferSource();
+    src.buffer = noiseBuffer(dur + 1);
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    const g = ctx.createGain();
+    src.connect(lp).connect(g).connect(master);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.05, t + dur * 0.45);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    lp.frequency.setValueAtTime(180, t);
+    lp.frequency.linearRampToValueAtTime(520, t + dur * 0.45);   // doppler-ish
+    lp.frequency.linearRampToValueAtTime(140, t + dur);
+    src.start(t);
+    src.stop(t + dur + 0.2);
+    return;
+  }
 
   if (type === "siren") {
     const dur = 7;

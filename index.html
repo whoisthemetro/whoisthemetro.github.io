@@ -113,6 +113,25 @@
 <div id="toast"></div>
 <div id="scratch"></div>
 
+<!-- ====== private note to metro ====== -->
+<div id="dm" class="overlay">
+  <div class="panel">
+    <div class="panel-head">
+      <span class="tab active" id="dm-title">private note to metro</span>
+      <button class="x" id="dm-close">×</button>
+    </div>
+    <div class="kind-pane" id="dm-compose">
+      <textarea id="dm-text" maxlength="500" rows="4"
+        placeholder="this lands on metro's computer — nobody else ever sees it. drop a track, a demo, a thought…"></textarea>
+      <input type="url" id="dm-url" maxlength="500" placeholder="https:// (optional link)">
+      <input type="text" id="dm-name" maxlength="40" placeholder="who are you? (optional)">
+      <button id="dm-send">send to metro</button>
+      <p class="fine-print">private — only metro can read these.</p>
+    </div>
+    <div class="kind-pane hidden" id="dm-inbox"></div>
+  </div>
+</div>
+
 <!-- ====== the cabinet in the closet ====== -->
 <div id="arcade" class="overlay">
   <div class="arcade-shell">

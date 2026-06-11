@@ -75,3 +75,32 @@ drop trigger if exists notes_notify_discord on public.notes;
 create trigger notes_notify_discord
   after insert on public.notes
   for each row execute function public.notify_discord();
+
+-- private messages ping you too (run inbox.sql first)
+create or replace function public.notify_discord_dm()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_webhook text := 'PASTE_WEBHOOK_URL_HERE';
+begin
+  perform net.http_post(
+    url := v_webhook,
+    body := jsonb_build_object('content',
+      '📬 **private message** from ' || coalesce(nullif(new.name, ''), 'someone')
+      || e'\n> ' || left(new.text, 300)
+      || case when new.url is not null then e'\n' || new.url else '' end),
+    headers := '{"Content-Type": "application/json"}'::jsonb
+  );
+  return new;
+exception when others then
+  return new;
+end;
+$$;
+
+drop trigger if exists dm_notify_discord on public.private_messages;
+create trigger dm_notify_discord
+  after insert on public.private_messages
+  for each row execute function public.notify_discord_dm();

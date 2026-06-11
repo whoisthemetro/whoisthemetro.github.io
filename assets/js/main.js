@@ -12,7 +12,7 @@ import { presence } from "./presence.js";
 import { startAmbience, citySound, pianoNote, purr, setRain, meow, hiss, careSound } from "./ambience.js";
 import { weather } from "./weather.js";
 import { Cat } from "./cat.js";
-import { openArcade, closeArcade, arcadeIsOpen } from "./arcade.js";
+import { openArcade, closeArcade, arcadeIsOpen, handleGameMessage } from "./arcade.js";
 import {
   PAPERS, IS_TOUCH, safeUrl, hostOf, timeAgo, toast,
   getIdentity, saveIdentity, shrinkImage,
@@ -32,7 +32,7 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 const camera = new THREE.PerspectiveCamera(72, innerWidth / innerHeight, 0.05, 120);
 const world = buildWorld(renderer);
-const controls = new Controls(camera, canvas, world.bounds);
+const controls = new Controls(camera, canvas, world.bounds, world.isWalkable);
 const notesWall = new NotesWall(world.noteGroup, world.walls, store);
 const ghosts = new Ghosts(world.ghostGroup);
 const raycaster = new THREE.Raycaster();
@@ -46,7 +46,7 @@ world.setCityListener((type) => citySound(type));
 
 // the cat — its key-walking plays the same piano visitors can play
 const cat = new Cat(world.scene, world.catSpots, {
-  plink: (i) => { pianoNote(i % 8); world.pressPianoKey(i % 8); },
+  plink: (i) => { pianoNote(i % 15); world.pressPianoKey(i % 15); },
   purr, meow, hiss, dig: () => careSound("sand"),
 });
 
@@ -134,7 +134,7 @@ canvas.addEventListener("click", () => {
 function castAt(ndcX, ndcY) {
   raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera);
   // doors are included as blockers so notes can't be pinned onto them
-  const targets = [cat.hitMesh, world.pianoMesh, world.arcadeHit, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...notesWall.raycastTargets(), ...world.blockers];
+  const targets = [cat.hitMesh, world.pianoMesh, ...world.arcadeHits, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...notesWall.raycastTargets(), ...world.blockers];
   const hits = raycaster.intersectObjects(targets, false);
   return hits[0] || null;
 }
@@ -223,9 +223,16 @@ controls.onAction((ndcX, ndcY) => {
   } else if (hit.object.userData.arcade && hit.distance < 3.2) {
     modalOpen = true;
     controls.unlock();
-    openArcade();
+    openArcade(hit.object.userData.arcade, {
+      send: (p) => presence.sendGame(p),
+      myUid: identity.uid,
+    });
+  } else if (hit.object.userData.arcadeSoon && hit.distance < 3.2) {
+    toast(`${hit.object.userData.arcadeSoon} — cabinet's dark. coming soon.`);
+  } else if (hit.object.userData.dm && hit.distance < 3) {
+    openDM();
   } else if (hit.object.userData.piano && hit.distance < 2.4 && hit.uv) {
-    const key = Math.max(0, Math.min(7, Math.floor(hit.uv.x * 8)));
+    const key = Math.max(0, Math.min(14, Math.floor(hit.uv.x * 15)));
     pianoNote(key);
     world.pressPianoKey(key);
     presence.sendNote(key);
@@ -255,7 +262,13 @@ setInterval(() => {
     aimTip.textContent = world.closetOpen() ? `${TAP} to close the closet` : `${TAP} to open the closet`;
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.arcade && hit.distance < 3.2) {
-    aimTip.textContent = `${TAP} to play DEFENDER`;
+    aimTip.textContent = `${TAP} to play ${hit.object.userData.arcade.toUpperCase()}`;
+    aimTip.classList.add("show");
+  } else if (hit && hit.object.userData.arcadeSoon && hit.distance < 3.2) {
+    aimTip.textContent = `${hit.object.userData.arcadeSoon} — coming soon`;
+    aimTip.classList.add("show");
+  } else if (hit && hit.object.userData.dm && hit.distance < 3) {
+    aimTip.textContent = adminMode ? `${TAP} to open your inbox` : `${TAP} to send Metro a private note`;
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.piano && hit.distance < 2.4) {
     aimTip.textContent = `${TAP} the keys to play`;
@@ -476,6 +489,82 @@ $("#reader-delete").addEventListener("click", async () => {
   }
 });
 
+/* ---------------- private notes to Metro ---------------- */
+const dmOverlay = $("#dm");
+async function openDM() {
+  modalOpen = true;
+  controls.unlock();
+  if (adminMode) {
+    // owner: this is your inbox
+    let pass = sessionStorage.getItem("metro.adminpass") || prompt("admin passphrase:");
+    if (!pass) { modalOpen = false; if (entered) safeLock(); return; }
+    $("#dm-title").textContent = "your inbox";
+    $("#dm-compose").classList.add("hidden");
+    const box = $("#dm-inbox");
+    box.classList.remove("hidden");
+    box.innerHTML = "<div class='dm-item'>opening…</div>";
+    show(dmOverlay);
+    try {
+      const msgs = await store.readInbox(pass);
+      if (msgs === null) throw new Error("wrong passphrase");
+      sessionStorage.setItem("metro.adminpass", pass);
+      box.innerHTML = msgs.length ? "" : "<div class='dm-item'>nothing yet — quiet day.</div>";
+      for (const m of msgs) {
+        const div = document.createElement("div");
+        div.className = "dm-item";
+        const meta = document.createElement("div");
+        meta.className = "dm-meta";
+        meta.textContent = `${m.name || "anonymous"} · ${timeAgo(m.created_at)}`;
+        const body = document.createElement("div");
+        body.textContent = m.text;
+        div.append(meta, body);
+        if (m.url && safeUrl(m.url)) {
+          const a = document.createElement("a");
+          a.href = safeUrl(m.url);
+          a.target = "_blank";
+          a.rel = "noopener noreferrer nofollow";
+          a.textContent = m.url;
+          div.appendChild(a);
+        }
+        box.appendChild(div);
+      }
+    } catch (e) {
+      sessionStorage.removeItem("metro.adminpass");
+      box.innerHTML = "<div class='dm-item'>wrong passphrase.</div>";
+    }
+  } else {
+    $("#dm-title").textContent = "private note to metro";
+    $("#dm-compose").classList.remove("hidden");
+    $("#dm-inbox").classList.add("hidden");
+    show(dmOverlay);
+    if (!IS_TOUCH) setTimeout(() => $("#dm-text").focus(), 50);
+  }
+}
+function closeDM() {
+  hide(dmOverlay);
+  modalOpen = false;
+  if (entered) safeLock();
+}
+$("#dm-close").addEventListener("click", closeDM);
+$("#dm-send").addEventListener("click", async () => {
+  const text = $("#dm-text").value.trim();
+  if (!text) return toast("write something first");
+  const url = $("#dm-url").value.trim() ? safeUrl($("#dm-url").value) : null;
+  if ($("#dm-url").value.trim() && !url) return toast("that link needs to be http(s)");
+  const btn = $("#dm-send");
+  btn.disabled = true;
+  try {
+    await store.sendDM({ name: $("#dm-name").value.trim().slice(0, 40) || null, text: text.slice(0, 500), url });
+    $("#dm-text").value = ""; $("#dm-url").value = "";
+    closeDM();
+    toast(store.mode === "supabase" ? "sent. it's on metro's computer now." : "saved locally — connect supabase to really send it");
+  } catch (e) {
+    toast("couldn't send — try again in a bit");
+  } finally {
+    btn.disabled = false;
+  }
+});
+
 function closeArcadeOverlay() {
   closeArcade();
   modalOpen = false;
@@ -487,6 +576,7 @@ addEventListener("keydown", (e) => {
   if (e.key === "Escape" && modalOpen) {
     if (composer.classList.contains("show")) closeComposer(false);
     if (reader.classList.contains("show")) closeReader();
+    if (dmOverlay.classList.contains("show")) closeDM();
     if (arcadeIsOpen()) closeArcadeOverlay();
   }
 });
@@ -541,6 +631,7 @@ addEventListener("keydown", (e) => {
   });
   presence.onPose((uid, pose) => ghosts.setPose(uid, pose));
   presence.onNote((uid, i) => { pianoNote(i); world.pressPianoKey(i); });
+  presence.onGame((p) => handleGameMessage(p));
 
   weather.start();
 
