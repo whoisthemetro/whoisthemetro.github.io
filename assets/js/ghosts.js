@@ -125,11 +125,12 @@ export class Ghosts {
     for (const g of this.byUid.values()) {
       g.grp.position.x += (g.target.x - g.grp.position.x) * k;
       g.grp.position.z += (g.target.z - g.grp.position.z) * k;
+      g.floatY = (g.floatY ?? 0) + (((g.target.y || 0)) - (g.floatY ?? 0)) * k;
       let dy = g.target.yaw - g.grp.rotation.y;
       dy = Math.atan2(Math.sin(dy), Math.cos(dy));
       g.grp.rotation.y += dy * k;
-      // gentle idle bob — they're alive
-      g.grp.position.y = Math.sin(t * 1.8 + g.bobSeed) * 0.025;
+      // gentle idle bob — they're alive (plus zero-g altitude)
+      g.grp.position.y = (g.floatY || 0) + Math.sin(t * 1.8 + g.bobSeed) * 0.025;
     }
   }
 

@@ -37,10 +37,10 @@ function sendPoseLoop() {
   setInterval(() => {
     if (!getPose) return;
     const p = getPose();
-    const key = `${p.x.toFixed(2)},${p.z.toFixed(2)},${p.yaw.toFixed(2)}`;
+    const key = `${p.x.toFixed(2)},${(p.y || 0).toFixed(2)},${p.z.toFixed(2)},${p.yaw.toFixed(2)}`;
     if (key === lastSent) return;     // idle — save bandwidth
     lastSent = key;
-    const msg = { uid: me.uid, x: p.x, z: p.z, yaw: p.yaw };
+    const msg = { uid: me.uid, x: p.x, y: p.y || 0, z: p.z, yaw: p.yaw };
     if (chan) chan.send({ type: "broadcast", event: "pose", payload: msg });
     else bc?.postMessage({ type: "pose", ...msg });
   }, 1000 / POSE_HZ);

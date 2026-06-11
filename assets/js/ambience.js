@@ -318,6 +318,83 @@ export function drumHit(i = 0) {
   }
 }
 
+// THE CREW arena: thrusters, boosts, the disc, the horn.
+let thrustNodes = null;
+export function setThruster(on) {
+  if (!ctx) return;
+  if (!on && thrustNodes) {
+    thrustNodes.g.gain.linearRampToValueAtTime(0.0001, ctx.currentTime + 0.25);
+    const old = thrustNodes;
+    thrustNodes = null;
+    setTimeout(() => { try { old.src.stop(); } catch (e) {} }, 400);
+    return;
+  }
+  if (on && !thrustNodes) {
+    const src = ctx.createBufferSource();
+    src.buffer = noiseBuffer(2);
+    src.loop = true;
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass"; bp.frequency.value = 320; bp.Q.value = 0.6;
+    const g = ctx.createGain();
+    g.gain.value = 0.0001;
+    src.connect(bp).connect(g).connect(master);
+    src.start();
+    g.gain.linearRampToValueAtTime(0.028, ctx.currentTime + 0.15);
+    thrustNodes = { src, g };
+  }
+}
+export function boostSound() {
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  const src = ctx.createBufferSource();
+  src.buffer = noiseBuffer(1);
+  const bp = ctx.createBiquadFilter();
+  bp.type = "bandpass";
+  bp.frequency.setValueAtTime(200, t);
+  bp.frequency.exponentialRampToValueAtTime(1400, t + 0.4);
+  const g = ctx.createGain();
+  src.connect(bp).connect(g).connect(master);
+  g.gain.setValueAtTime(0.07, t);
+  g.gain.exponentialRampToValueAtTime(0.0008, t + 0.55);
+  src.start(t); src.stop(t + 0.6);
+}
+export function discSound(kind) {
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  const o = ctx.createOscillator();
+  o.type = "sine";
+  if (kind === "throw") {
+    o.frequency.setValueAtTime(900, t);
+    o.frequency.exponentialRampToValueAtTime(380, t + 0.25);
+  } else {
+    o.frequency.setValueAtTime(420, t);
+    o.frequency.exponentialRampToValueAtTime(980, t + 0.1);
+  }
+  const g = ctx.createGain();
+  o.connect(g).connect(master);
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(0.05, t + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.0008, t + 0.28);
+  o.start(t); o.stop(t + 0.3);
+}
+export function goalHorn() {
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  for (const [f, d] of [[392, 0], [392, 0.18], [523, 0.36]]) {
+    const o = ctx.createOscillator();
+    o.type = "sawtooth";
+    o.frequency.value = f;
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass"; lp.frequency.value = 1200;
+    const g = ctx.createGain();
+    o.connect(lp).connect(g).connect(master);
+    g.gain.setValueAtTime(0, t + d);
+    g.gain.linearRampToValueAtTime(0.06, t + d + 0.03);
+    g.gain.exponentialRampToValueAtTime(0.0008, t + d + 0.5);
+    o.start(t + d); o.stop(t + d + 0.55);
+  }
+}
+
 // The kettle on THE DESI: a real little boil + whistle.
 export function kettleBoil() {
   if (!ctx) return;

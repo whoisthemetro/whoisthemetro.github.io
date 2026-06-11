@@ -16,6 +16,13 @@ export class Controls {
     this.canvas = canvas;
     this.bounds = bounds;
     this.walkable = walkable;   // fn(x,z) — overrides bounds when provided
+    // zero-g flight (THE CREW arena)
+    this.zerog = false;
+    this.arena = null;            // {x,y,z,hx,hy,hz} when flying
+    this.vel = { x: 0, y: 0, z: 0 };
+    this.flyY = 1.62;
+    this.boostCd = 0;
+    this.thrusting = false;
     this.enabled = false;
     this.yaw = 0;                // start facing the note wall
     this.pitch = 0;
@@ -53,7 +60,7 @@ export class Controls {
     return IS_TOUCH ? this.enabled : document.pointerLockElement === this.canvas;
   }
 
-  pose() { return { x: this.pos.x, z: this.pos.z, yaw: this.yaw }; }
+  pose() { return { x: this.pos.x, y: this.zerog ? this.flyY : 0, z: this.pos.z, yaw: this.yaw }; }
 
   /* ---------- desktop ---------- */
   _bindDesktop() {
@@ -139,6 +146,7 @@ export class Controls {
   /* ---------- per-frame ---------- */
   update(dt) {
     if (!this.enabled) return;
+    if (this.zerog) { this._updateZeroG(dt); return; }
     let fwd = 0, strafe = 0;
     if (this.keys.has("KeyW") || this.keys.has("ArrowUp")) fwd += 1;
     if (this.keys.has("KeyS") || this.keys.has("ArrowDown")) fwd -= 1;
@@ -166,7 +174,64 @@ export class Controls {
     this._applyCamera();
   }
 
+  // pure momentum: thrust with WASD (along your gaze), SPACE up, C down,
+  // SHIFT boost burst, B brakes. Walls bounce you like the real thing.
+  _updateZeroG(dt) {
+    const fwd = (this.keys.has("KeyW") || this.keys.has("ArrowUp") ? 1 : 0)
+              - (this.keys.has("KeyS") || this.keys.has("ArrowDown") ? 1 : 0);
+    const strafe = (this.keys.has("KeyD") || this.keys.has("ArrowRight") ? 1 : 0)
+                 - (this.keys.has("KeyA") || this.keys.has("ArrowLeft") ? 1 : 0);
+    const up = (this.keys.has("Space") ? 1 : 0) - (this.keys.has("KeyC") ? 1 : 0);
+    const sy = Math.sin(this.yaw), cy = Math.cos(this.yaw);
+    const sp = Math.sin(this.pitch), cp = Math.cos(this.pitch);
+    // gaze-aligned thrust
+    const lx = -sy * cp, ly = sp, lz = -cy * cp;
+    const ACC = 7;
+    this.vel.x += (lx * fwd + cy * strafe + this.joy.x * cy - this.joy.y * lx) * ACC * dt;
+    this.vel.y += (ly * fwd + up - this.joy.y * ly) * ACC * dt;
+    this.vel.z += (lz * fwd - sy * strafe + this.joy.x * -sy - this.joy.y * lz) * ACC * dt;
+    this.thrusting = !!(fwd || strafe || up || Math.abs(this.joy.x) > 0.1 || Math.abs(this.joy.y) > 0.1);
+    this.boostCd = Math.max(0, this.boostCd - dt);
+    if ((this.keys.has("ShiftLeft") || this.keys.has("ShiftRight")) && this.boostCd === 0) {
+      this.boostCd = 1.4;
+      this.vel.x += lx * 9; this.vel.y += ly * 9; this.vel.z += lz * 9;
+      this.onBoost?.();
+    }
+    if (this.keys.has("KeyB")) {            // brake
+      const k = Math.pow(0.02, dt);
+      this.vel.x *= k; this.vel.y *= k; this.vel.z *= k;
+    }
+    // cap + integrate + bounce
+    const vmax = 14;
+    const vm = Math.hypot(this.vel.x, this.vel.y, this.vel.z);
+    if (vm > vmax) { const s = vmax / vm; this.vel.x *= s; this.vel.y *= s; this.vel.z *= s; }
+    this.pos.x += this.vel.x * dt;
+    this.flyY += this.vel.y * dt;
+    this.pos.z += this.vel.z * dt;
+    const a = this.arena;
+    if (a) {
+      const m = 0.5, R = 0.72;
+      if (this.pos.x < a.x - a.hx + m) { this.pos.x = a.x - a.hx + m; this.vel.x = Math.abs(this.vel.x) * R; }
+      if (this.pos.x > a.x + a.hx - m) { this.pos.x = a.x + a.hx - m; this.vel.x = -Math.abs(this.vel.x) * R; }
+      if (this.flyY < a.y - a.hy + m) { this.flyY = a.y - a.hy + m; this.vel.y = Math.abs(this.vel.y) * R; }
+      if (this.flyY > a.y + a.hy - m) { this.flyY = a.y + a.hy - m; this.vel.y = -Math.abs(this.vel.y) * R; }
+      if (this.pos.z < a.z - a.hz + m) { this.pos.z = a.z - a.hz + m; this.vel.z = Math.abs(this.vel.z) * R; }
+      if (this.pos.z > a.z + a.hz - m) { this.pos.z = a.z + a.hz - m; this.vel.z = -Math.abs(this.vel.z) * R; }
+    }
+    this.camera.position.set(this.pos.x, this.flyY, this.pos.z);
+    this.camera.rotation.order = "YXZ";
+    this.camera.rotation.y = this.yaw;
+    this.camera.rotation.x = this.pitch;
+  }
+
   _applyCamera() {
+    if (this.zerog) {
+      this.camera.position.set(this.pos.x, this.flyY, this.pos.z);
+      this.camera.rotation.order = "YXZ";
+      this.camera.rotation.y = this.yaw;
+      this.camera.rotation.x = this.pitch;
+      return;
+    }
     this.camera.position.set(this.pos.x, EYE, this.pos.z);
     this.camera.rotation.order = "YXZ";
     this.camera.rotation.y = this.yaw;

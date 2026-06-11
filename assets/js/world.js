@@ -1141,6 +1141,19 @@ export function buildWorld() {
   arcSign2.position.set(-X + 0.04, 2.32, CZ);
   add(arcSign2);
 
+  // the Echo VR poster — knock and know the word
+  const posterTex = new THREE.TextureLoader().load("assets/img/echo.jpg");
+  posterTex.colorSpace = THREE.SRGBColorSpace;
+  const echoPoster = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.85),
+    new THREE.MeshBasicMaterial({ map: posterTex }));
+  echoPoster.rotation.y = Math.PI;
+  echoPoster.position.set(-4.15, 1.5, AR.z1 - 0.02);
+  echoPoster.userData.portalArena = true;
+  add(echoPoster);
+  const posterFrame = box(1.58, 0.93, 0.03, lam(0x0c0e14));
+  posterFrame.position.set(-4.15, 1.5, AR.z1 - 0.045);
+  add(posterFrame);
+
   // cabinet factory — one per game
   const arcadeHits = [];
   const attracts = [];
@@ -2338,6 +2351,187 @@ export function buildWorld() {
   // stamp the whole boat (meshes AND lights) onto layer 1
   boatGroup.traverse((o) => { o.layers.set(1); });
 
+  /* --- THE CREW: a zero-g Echo-style mini arena, far above everything ---
+     Password-gated behind the Echo poster in the arcade. Neon hangar,
+     angled banking corners, a goal ring at each end, and a glowing disc
+     to pass around. Movement out there is pure momentum. --- */
+  const ARENA = { x: 0, y: 80, z: 0, hx: 17, hy: 7, hz: 9 };
+  const panelTex = canvasTex(512, 512, (g) => {
+    g.fillStyle = "#1c2230";
+    g.fillRect(0, 0, 512, 512);
+    g.strokeStyle = "rgba(110,140,180,0.4)";
+    g.lineWidth = 2;
+    for (let i = 0; i <= 8; i++) {
+      g.beginPath(); g.moveTo(i * 64, 0); g.lineTo(i * 64, 512); g.stroke();
+      g.beginPath(); g.moveTo(0, i * 64); g.lineTo(512, i * 64); g.stroke();
+    }
+    // hazard chevrons + panel details
+    for (let i = 0; i < 10; i++) {
+      g.fillStyle = "rgba(40,50,70,0.5)";
+      g.fillRect((i * 197) % 448, (i * 131) % 448, 56, 22);
+    }
+  });
+  panelTex.wrapS = panelTex.wrapT = THREE.RepeatWrapping;
+  const arenaMat = new THREE.MeshStandardMaterial({
+    map: panelTex, color: 0x8a93a8, metalness: 0.6, roughness: 0.55, side: THREE.DoubleSide,
+  });
+  const arenaGroup = new THREE.Group();
+  scene.add(arenaGroup);
+  const addA = (m) => { arenaGroup.add(m); return m; };
+  const A = ARENA;
+  // shell
+  for (const [w, h, px2, py2, pz2, rx, ry] of [
+    [2 * A.hx, 2 * A.hz, A.x, A.y - A.hy, A.z, -Math.PI / 2, 0],   // floor
+    [2 * A.hx, 2 * A.hz, A.x, A.y + A.hy, A.z, Math.PI / 2, 0],    // ceiling
+    [2 * A.hx, 2 * A.hy, A.x, A.y, A.z - A.hz, 0, 0],
+    [2 * A.hx, 2 * A.hy, A.x, A.y, A.z + A.hz, 0, Math.PI],
+    [2 * A.hz, 2 * A.hy, A.x - A.hx, A.y, A.z, 0, Math.PI / 2],
+    [2 * A.hz, 2 * A.hy, A.x + A.hx, A.y, A.z, 0, -Math.PI / 2],
+  ]) {
+    const wallA = new THREE.Mesh(new THREE.PlaneGeometry(w, h), arenaMat);
+    wallA.material.map.repeat.set(w / 6, h / 6);
+    wallA.position.set(px2, py2, pz2);
+    wallA.rotation.x = rx; wallA.rotation.y = ry;
+    addA(wallA);
+  }
+  // angled banking corners (long bevels along the four x-axis edges)
+  const bevelMat = new THREE.MeshStandardMaterial({ color: 0x2a3142, metalness: 0.7, roughness: 0.4 });
+  for (const [by, bz] of [[A.hy, A.hz], [A.hy, -A.hz], [-A.hy, A.hz], [-A.hy, -A.hz]]) {
+    const bevel = new THREE.Mesh(new THREE.BoxGeometry(2 * A.hx, 2.6, 2.6), bevelMat);
+    bevel.position.set(A.x, A.y + by, A.z + bz);
+    bevel.rotation.x = Math.PI / 4;
+    addA(bevel);
+  }
+  // neon trim along the edges — orange end, blue end, white ribs
+  const trim = (x1, y1, z1, x2, y2, z2, color) => {
+    const len = Math.hypot(x2 - x1, y2 - y1, z2 - z1);
+    const t2 = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, len),
+      new THREE.MeshBasicMaterial({ color }));
+    t2.position.set((x1 + x2) / 2, (y1 + y2) / 2, (z1 + z2) / 2);
+    t2.lookAt(x2, y2, z2);
+    addA(t2);
+  };
+  for (const sy of [-A.hy + 1.3, A.hy - 1.3]) {
+    trim(A.x - A.hx + 0.05, A.y + sy, A.z - A.hz, A.x - A.hx + 0.05, A.y + sy, A.z + A.hz, 0xff7320);
+    trim(A.x + A.hx - 0.05, A.y + sy, A.z - A.hz, A.x + A.hx - 0.05, A.y + sy, A.z + A.hz, 0x22a4ff);
+  }
+  for (let i = -2; i <= 2; i++) {
+    trim(A.x + i * 6, A.y + A.hy - 0.04, A.z - A.hz, A.x + i * 6, A.y + A.hy - 0.04, A.z + A.hz, 0x8ab8ff);
+  }
+  // center ring hologram
+  const centerRing = new THREE.Mesh(new THREE.TorusGeometry(2.4, 0.06, 8, 48),
+    new THREE.MeshBasicMaterial({ color: 0x9adfff, transparent: true, opacity: 0.6 }));
+  centerRing.rotation.y = Math.PI / 2;
+  centerRing.position.set(A.x, A.y, A.z);
+  addA(centerRing);
+  // goals: glowing rings recessed into each end wall
+  const goalO = new THREE.Mesh(new THREE.TorusGeometry(1.7, 0.16, 10, 40),
+    new THREE.MeshBasicMaterial({ color: 0xff7320 }));
+  goalO.rotation.y = Math.PI / 2;
+  goalO.position.set(A.x - A.hx + 0.4, A.y, A.z);
+  addA(goalO);
+  const goalB = goalO.clone();
+  goalB.material = new THREE.MeshBasicMaterial({ color: 0x22a4ff });
+  goalB.position.x = A.x + A.hx - 0.4;
+  addA(goalB);
+  for (const [gx, gc] of [[A.x - A.hx + 1.2, 0xff7320], [A.x + A.hx - 1.2, 0x22a4ff]]) {
+    const gl = new THREE.PointLight(gc, 14, 9, 2);
+    gl.position.set(gx, A.y, A.z);
+    addA(gl);
+  }
+  // floating obstacles to bank around
+  for (const [ox, oy, oz, s2] of [[-5, 1.5, 2.5, 1.6], [4, -2, -3, 2.0], [0.5, 2.5, -1, 1.2]]) {
+    const ob = new THREE.Mesh(new THREE.BoxGeometry(s2, s2 * 0.7, s2 * 0.5), bevelMat);
+    ob.position.set(A.x + ox, A.y + oy, A.z + oz);
+    ob.rotation.set(0.4, 0.7, 0.2);
+    addA(ob);
+    const edge = new THREE.Mesh(new THREE.BoxGeometry(s2 + 0.04, 0.05, 0.05),
+      new THREE.MeshBasicMaterial({ color: 0x8ab8ff }));
+    edge.position.copy(ob.position);
+    edge.rotation.copy(ob.rotation);
+    addA(edge);
+  }
+  // fill light + space dust
+  for (const fx3 of [-10, 0, 10]) {
+    const af = new THREE.PointLight(0xaab8d8, 70, 34, 2);
+    af.position.set(A.x + fx3, A.y + A.hy - 1.5, A.z);
+    addA(af);
+  }
+  const ADUST = 240;
+  const aDustPos = new Float32Array(ADUST * 3);
+  for (let i = 0; i < ADUST; i++) {
+    aDustPos[i * 3] = A.x + rand(-A.hx, A.hx);
+    aDustPos[i * 3 + 1] = A.y + rand(-A.hy, A.hy);
+    aDustPos[i * 3 + 2] = A.z + rand(-A.hz, A.hz);
+  }
+  const aDustGeo = new THREE.BufferGeometry();
+  aDustGeo.setAttribute("position", new THREE.BufferAttribute(aDustPos, 3));
+  addA(new THREE.Points(aDustGeo, new THREE.PointsMaterial({
+    color: 0x9ab8d8, size: 0.03, transparent: true, opacity: 0.35,
+    blending: THREE.AdditiveBlending, depthWrite: false,
+  })));
+
+  // the scoreboard
+  const aScoreCanvas = document.createElement("canvas");
+  aScoreCanvas.width = 512; aScoreCanvas.height = 128;
+  const aScoreTex = new THREE.CanvasTexture(aScoreCanvas);
+  aScoreTex.colorSpace = THREE.SRGBColorSpace;
+  function setArenaScore(o, b2) {
+    const g = aScoreCanvas.getContext("2d");
+    g.fillStyle = "#060810";
+    g.fillRect(0, 0, 512, 128);
+    g.font = "900 84px monospace";
+    g.textAlign = "center"; g.textBaseline = "middle";
+    g.fillStyle = "#ff7320";
+    g.fillText(String(o), 140, 70);
+    g.fillStyle = "#9aa3ad";
+    g.fillText("–", 256, 64);
+    g.fillStyle = "#22a4ff";
+    g.fillText(String(b2), 372, 70);
+    aScoreTex.needsUpdate = true;
+  }
+  setArenaScore(0, 0);
+  const aBoard = new THREE.Mesh(new THREE.PlaneGeometry(5, 1.25),
+    new THREE.MeshBasicMaterial({ map: aScoreTex }));
+  aBoard.position.set(A.x, A.y + A.hy - 1.8, A.z - A.hz + 0.1);
+  addA(aBoard);
+
+  // THE DISC — glowing, gradient ring, the whole point
+  const discGroup = new THREE.Group();
+  const discBody = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.24, 0.05, 24), bevelMat);
+  const discRing = new THREE.Mesh(new THREE.TorusGeometry(0.21, 0.045, 10, 30),
+    new THREE.MeshBasicMaterial({ color: 0xffb030 }));
+  discRing.rotation.x = Math.PI / 2;
+  const discCore = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.06, 16),
+    new THREE.MeshBasicMaterial({ color: 0xfff2cc }));
+  const discGlow = new THREE.PointLight(0xffb030, 6, 5, 2);
+  discGroup.add(discBody, discRing, discCore, discGlow);
+  discGroup.position.set(A.x, A.y, A.z);
+  addA(discGroup);
+  const discHit = new THREE.Mesh(new THREE.SphereGeometry(0.7, 8, 8),
+    new THREE.MeshBasicMaterial({ visible: false }));
+  discHit.userData.disc = true;
+  addA(discHit);
+
+  // exit airlock panel
+  const exitPanel = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 2.2), new THREE.MeshBasicMaterial({
+    map: canvasTex(128, 192, (g) => {
+      g.fillStyle = "#0a1018"; g.fillRect(0, 0, 128, 192);
+      g.strokeStyle = "#54e08a"; g.lineWidth = 6;
+      g.strokeRect(8, 8, 112, 176);
+      g.font = "900 22px monospace"; g.textAlign = "center";
+      g.fillStyle = "#54e08a";
+      g.fillText("AIRLOCK", 64, 90);
+      g.font = "13px monospace";
+      g.fillText("» ARCADE", 64, 116);
+    }),
+  }));
+  exitPanel.position.set(A.x, A.y - 1, A.z + A.hz - 0.06);
+  exitPanel.rotation.y = Math.PI;
+  exitPanel.userData.arenaExit = true;
+  addA(exitPanel);
+  arenaGroup.traverse((o) => { o.layers.set(2); });
+
   /* --- dust --- */
   const DUST = 240;
   const dustPos = new Float32Array(DUST * 3);
@@ -2524,6 +2718,12 @@ export function buildWorld() {
     boatExitHit: boatDoor,
     volcaHit: volcaFace, pressVolcaPad,
     bottleHit,
+    // THE CREW arena
+    arenaInfo: ARENA,
+    arenaSpawn: { x: ARENA.x - 11, y: ARENA.y, z: ARENA.z, yaw: -Math.PI / 2 },
+    arcadeReturn: { x: -4.6, z: 0.6, yaw: Math.PI },
+    discGroup, discHit, setArenaScore,
+    echoPoster, arenaExit: exitPanel,
     updateScores,
     setParallax,
     boatSpawn: { x: BOAT.x, z: BOAT.z + 0.4, yaw: 0 },

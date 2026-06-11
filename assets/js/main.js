@@ -13,7 +13,7 @@ import { NotesWall } from "./notes3d.js";
 import { Ghosts } from "./ghosts.js";
 import { store } from "./store.js";
 import { presence } from "./presence.js";
-import { startAmbience, citySound, pianoNote, purr, setRain, setWater, setRoomTone, kettleBoil, meow, hiss, careSound, drumHit } from "./ambience.js";
+import { startAmbience, citySound, pianoNote, purr, setRain, setWater, setRoomTone, kettleBoil, setThruster, boostSound, discSound, goalHorn, meow, hiss, careSound, drumHit } from "./ambience.js";
 import { weather } from "./weather.js";
 import { startPlanes } from "./planes.js";
 import { Cat } from "./cat.js";
@@ -37,7 +37,8 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 const camera = new THREE.PerspectiveCamera(72, innerWidth / innerHeight, 0.05, 120);
-camera.layers.enable(1);   // see the boat layer too (its lights stay its own)
+camera.layers.enable(1);   // boat layer
+camera.layers.enable(2);   // arena layer
 const world = buildWorld(renderer);
 const controls = new Controls(camera, canvas, world.bounds, world.isWalkable);
 const notesWall = new NotesWall(world.noteGroup, world.walls, store);
@@ -59,7 +60,7 @@ const bloom = new UnrealBloomPass(
 postFx.addPass(bloom);
 postFx.addPass(new OutputPass());
 
-world.setCityListener((type) => { if (!inBoat) citySound(type); });
+world.setCityListener((type) => { if (!inBoat && !inArena) citySound(type); });
 
 // piano voice — sticky per visitor, broadcast with each note
 let pianoVoice = 0;
@@ -67,7 +68,7 @@ try { pianoVoice = (parseInt(localStorage.getItem("metro.voice") || "0", 10) || 
 
 // the cat — its key-walking plays the same piano visitors can play.
 // All bedroom sounds are gated: aboard THE DESI you hear only the sea.
-const bedroomSound = (fn) => (...a) => { if (!inBoat) fn(...a); };
+const bedroomSound = (fn) => (...a) => { if (!inBoat && !inArena) fn(...a); };
 const cat = new Cat(world.scene, world.catSpots, {
   plink: bedroomSound((i) => { pianoNote(i % 15, pianoVoice); world.pressPianoKey(i % 15); }),
   purr: bedroomSound(purr),
@@ -164,7 +165,7 @@ canvas.addEventListener("click", () => {
 function castAt(ndcX, ndcY) {
   raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera);
   // doors are included as blockers so notes can't be pinned onto them
-  const targets = [cat.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.volcaHit, world.bottleHit, ...world.arcadeHits, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...notesWall.raycastTargets(), ...world.blockers];
+  const targets = [cat.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.volcaHit, world.bottleHit, world.echoPoster, world.arenaExit, world.discHit, ...world.arcadeHits, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...notesWall.raycastTargets(), ...world.blockers];
   const hits = raycaster.intersectObjects(targets, false);
   return hits[0] || null;
 }
@@ -282,6 +283,13 @@ controls.onAction((ndcX, ndcY) => {
     tryBoat();
   } else if (hit.object.userData.boatExit && hit.distance < 2.6) {
     leaveBoat();
+  } else if (hit.object.userData.portalArena && hit.distance < 3) {
+    tryArena();
+  } else if (hit.object.userData.arenaExit && hit.distance < 4) {
+    leaveArena();
+  } else if (hit.object.userData.disc && hit.distance < 3.2) {
+    if (!disc.holder) grabDisc();
+    else if (disc.holder === identity.uid) throwDisc();
   } else if (hit.object.userData.kettle && hit.distance < 1.9) {
     kettleBoil();
     toast("fika in three minutes ☕");
@@ -346,6 +354,15 @@ setInterval(() => {
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.dimmer && hit.distance < 2.6) {
     aimTip.textContent = `${TAP} — light dimmer`;
+    aimTip.classList.add("show");
+  } else if (hit && hit.object.userData.portalArena && hit.distance < 3) {
+    aimTip.textContent = "ECHO VR — it wants a password";
+    aimTip.classList.add("show");
+  } else if (hit && hit.object.userData.arenaExit && hit.distance < 4) {
+    aimTip.textContent = `${TAP} — airlock back to the arcade`;
+    aimTip.classList.add("show");
+  } else if (hit && hit.object.userData.disc && hit.distance < 3.2) {
+    aimTip.textContent = disc.holder === identity.uid ? `${TAP} to THROW` : disc.holder ? "someone has it" : `${TAP} to grab the disc`;
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.kettle && hit.distance < 1.9) {
     aimTip.textContent = `${TAP} to put the kettle on`;
@@ -723,7 +740,7 @@ async function tryBoat() {
 function refreshNoteVisibility() {
   for (const mesh of world.noteGroup.children) {
     const onBoat = String(mesh.userData.note?.wall || "").startsWith("boat");
-    mesh.visible = inBoat ? onBoat : !onBoat;
+    mesh.visible = inArena ? false : inBoat ? onBoat : !onBoat;
   }
 }
 
@@ -736,6 +753,125 @@ function leaveBoat() {
     setWater(false);                     // the sea stays on the boat, fully
     setRoomTone(true);
     refreshNoteVisibility();
+  });
+}
+
+/* ---------------- THE CREW: the zero-g arena ---------------- */
+const ARENA_HASH = "c5b3f81a7961dae3a0141f75dae36d909357ee9b92380fc428d967e518c5801b";
+let inArena = false;
+const A = world.arenaInfo;
+const disc = {
+  holder: null,
+  pos: new THREE.Vector3(A.x, A.y, A.z),
+  vel: new THREE.Vector3(),
+  lastGoal: 0,
+};
+const arenaScore = { o: 0, b: 0 };
+async function tryArena() {
+  const pass = prompt("the poster hums. password:");
+  if (!pass) return;
+  if (await sha256(pass.trim().toLowerCase()) !== ARENA_HASH) {
+    return toast("the poster stays a poster.");
+  }
+  fadeTo(() => {
+    inArena = true;
+    controls.zerog = true;
+    controls.arena = A;
+    controls.vel = { x: 0, y: 0, z: 0 };
+    controls.pos.x = world.arenaSpawn.x;
+    controls.pos.z = world.arenaSpawn.z;
+    controls.flyY = world.arenaSpawn.y;
+    controls.yaw = world.arenaSpawn.yaw;
+    controls.pitch = 0;
+    setRoomTone(false);
+    refreshNoteVisibility();
+    store.logEvent("boat");   // counts as a portal trip
+    toast("welcome to THE CREW · WASD thrust · SPACE/C up/down · SHIFT boost · B brake");
+  });
+}
+function leaveArena() {
+  // don't walk off with the disc
+  if (disc.holder === identity.uid) {
+    disc.holder = null;
+    disc.pos.set(A.x, A.y, A.z);
+    disc.vel.set(0, 0, 0);
+    presence.sendAct({ kind: "disc", sub: "throw", p: [A.x, A.y, A.z], v: [0, 0, 0] });
+  }
+  fadeTo(() => {
+    inArena = false;
+    controls.zerog = false;
+    setThruster(false);
+    controls.pos.x = world.arcadeReturn.x;
+    controls.pos.z = world.arcadeReturn.z;
+    controls.yaw = world.arcadeReturn.yaw;
+    controls.pitch = 0;
+    setRoomTone(true);
+    refreshNoteVisibility();
+  });
+}
+controls.onBoost = () => { if (inArena) boostSound(); };
+
+function discTick(dt) {
+  const g = world.discGroup;
+  if (disc.holder) {
+    if (disc.holder === identity.uid) {
+      // riding my hand: just in front and below my gaze
+      const dir = new THREE.Vector3();
+      camera.getWorldDirection(dir);
+      disc.pos.copy(camera.position).addScaledVector(dir, 1.05);
+      disc.pos.y -= 0.3;
+    } else {
+      const ghostPos = ghosts.byUid.get(disc.holder)?.grp.position;
+      if (ghostPos) disc.pos.set(ghostPos.x, ghostPos.y + 1.1, ghostPos.z);
+    }
+  } else {
+    disc.pos.addScaledVector(disc.vel, dt);
+    disc.vel.multiplyScalar(Math.pow(0.995, dt * 60));
+    const m2 = 0.35, R = 0.8;
+    if (disc.pos.x < A.x - A.hx + m2) { disc.pos.x = A.x - A.hx + m2; disc.vel.x = Math.abs(disc.vel.x) * R; }
+    if (disc.pos.x > A.x + A.hx - m2) { disc.pos.x = A.x + A.hx - m2; disc.vel.x = -Math.abs(disc.vel.x) * R; }
+    if (disc.pos.y < A.y - A.hy + m2) { disc.pos.y = A.y - A.hy + m2; disc.vel.y = Math.abs(disc.vel.y) * R; }
+    if (disc.pos.y > A.y + A.hy - m2) { disc.pos.y = A.y + A.hy - m2; disc.vel.y = -Math.abs(disc.vel.y) * R; }
+    if (disc.pos.z < A.z - A.hz + m2) { disc.pos.z = A.z - A.hz + m2; disc.vel.z = Math.abs(disc.vel.z) * R; }
+    if (disc.pos.z > A.z + A.hz - m2) { disc.pos.z = A.z + A.hz - m2; disc.vel.z = -Math.abs(disc.vel.z) * R; }
+    // goals: through either glowing ring
+    const ringR = Math.hypot(disc.pos.y - A.y, disc.pos.z - A.z);
+    if (Date.now() - disc.lastGoal > 3000 && ringR < 1.55) {
+      if (disc.pos.x < A.x - A.hx + 0.9) scoreGoal("b", true);
+      else if (disc.pos.x > A.x + A.hx - 0.9) scoreGoal("o", true);
+    }
+  }
+  g.position.copy(disc.pos);
+  g.rotation.y += dt * 4;
+  world.discHit.position.copy(disc.pos);
+}
+function scoreGoal(team, announce) {
+  disc.lastGoal = Date.now();
+  arenaScore[team]++;
+  world.setArenaScore(arenaScore.o, arenaScore.b);
+  if (inArena) goalHorn();
+  disc.holder = null;
+  disc.pos.set(A.x, A.y, A.z);
+  disc.vel.set(0, 0, 0);
+  if (announce) presence.sendAct({ kind: "goal", team, o: arenaScore.o, b: arenaScore.b });
+}
+function grabDisc() {
+  disc.holder = identity.uid;
+  if (inArena) discSound("catch");
+  presence.sendAct({ kind: "disc", sub: "hold", holder: identity.uid });
+}
+function throwDisc() {
+  const dir = new THREE.Vector3();
+  camera.getWorldDirection(dir);
+  disc.holder = null;
+  disc.pos.copy(camera.position).addScaledVector(dir, 1.3);
+  disc.vel.copy(dir).multiplyScalar(13)
+    .add(new THREE.Vector3(controls.vel.x, controls.vel.y, controls.vel.z));
+  if (inArena) discSound("throw");
+  presence.sendAct({
+    kind: "disc", sub: "throw",
+    p: [disc.pos.x, disc.pos.y, disc.pos.z],
+    v: [disc.vel.x, disc.vel.y, disc.vel.z],
   });
 }
 
@@ -970,7 +1106,7 @@ addEventListener("keydown", (e) => {
   });
   presence.onPose((uid, pose) => ghosts.setPose(uid, pose));
   presence.onNote((uid, i, v) => {
-    if (inBoat) return;          // the bedroom piano stays in the bedroom
+    if (inBoat || inArena) return;   // the bedroom piano stays in the bedroom
     pianoNote(i, v ?? 0);
     world.pressPianoKey(i);
   });
@@ -989,6 +1125,22 @@ addEventListener("keydown", (e) => {
       dimLevel = p.level;
       world.setRoomLight(p.level, p.color);
       $("#dim-level").value = Math.round(p.level * 100);
+    } else if (p.kind === "disc") {
+      if (p.sub === "hold") { disc.holder = p.holder; if (inArena) discSound("catch"); }
+      else if (p.sub === "throw") {
+        disc.holder = null;
+        disc.pos.set(p.p[0], p.p[1], p.p[2]);
+        disc.vel.set(p.v[0], p.v[1], p.v[2]);
+        if (inArena) discSound("throw");
+      }
+    } else if (p.kind === "goal") {
+      disc.lastGoal = Date.now();
+      arenaScore.o = p.o; arenaScore.b = p.b;
+      world.setArenaScore(p.o, p.b);
+      disc.holder = null;
+      disc.pos.set(A.x, A.y, A.z);
+      disc.vel.set(0, 0, 0);
+      if (inArena) goalHorn();
     } else if (p.kind === "volca") {
       if (!inBoat) return;       // and the boat's sampler stays on the boat
       drumHit(p.pad);
@@ -1003,7 +1155,7 @@ addEventListener("keydown", (e) => {
   refreshScores();
   store.onNewScore(refreshScores);
   setScoreHook((game, score) => {
-    store.submitScore(game, (identity.name || "anon").slice(0, 24), score)
+    store.submitScore(game, (identity.name || "anon").slice(0, 24), score, identity.uid)
       .then(refreshScores)
       .catch(() => {});
   });
@@ -1013,7 +1165,7 @@ addEventListener("keydown", (e) => {
   // each one gets a flight strip: who it is, what it is, where it's going
   startPlanes((info) => {
     world.triggerPlane();
-    if (info && !inBoat) showFlightStrip(info);   // LA traffic is not Sweden's business
+    if (info && !inBoat && !inArena) showFlightStrip(info);
   }, (isLive) => world.setLivePlanes(isLive));
 
   // the lights come back exactly as the room left them
@@ -1058,5 +1210,7 @@ renderer.setAnimationLoop(() => {
   world.tick(dt);
   ghosts.tick(dt, t);
   cat.tick(dt, t, controls.pose());
+  discTick(dt);
+  if (inArena) setThruster(controls.thrusting);
   postFx.render();
 });

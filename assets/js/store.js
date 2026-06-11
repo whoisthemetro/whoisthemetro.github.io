@@ -352,15 +352,18 @@ async function readBottle() {
 
 /* ---- arcade high scores: shared, all-time ---- */
 const scoreListeners = new Set();
-async function submitScore(game, name, score) {
+async function submitScore(game, name, score, uid) {
   if (mode === "supabase") {
-    const { error } = await sb.from("scores").insert({ game, name, score });
+    // one row per player per game — their best survives
+    const { error } = await sb.rpc("submit_score", { p_game: game, p_uid: uid || null, p_name: name, p_score: score });
     if (error) throw error;
     return;
   }
   try {
-    const all = JSON.parse(localStorage.getItem("metro.scores") || "[]");
-    all.push({ game, name, score, created_at: new Date().toISOString() });
+    let all = JSON.parse(localStorage.getItem("metro.scores") || "[]");
+    const i = all.findIndex(s2 => s2.game === game && s2.uid === uid);
+    if (i >= 0) { all[i].score = Math.max(all[i].score, score); all[i].name = name; }
+    else all.push({ game, name, score, uid, created_at: new Date().toISOString() });
     localStorage.setItem("metro.scores", JSON.stringify(all.slice(-100)));
   } catch (e) {}
 }

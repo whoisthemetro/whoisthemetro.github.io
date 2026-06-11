@@ -185,3 +185,25 @@ drop trigger if exists bottles_guard on public.bottles;
 create trigger bottles_guard
   before insert on public.bottles
   for each row execute function public.bottles_guard();
+
+-- ---------- one leaderboard row per player: keep their best ----------
+alter table public.scores add column if not exists uid text;
+create unique index if not exists scores_game_uid
+  on public.scores (game, uid) where uid is not null;
+
+create or replace function public.submit_score(p_game text, p_uid text, p_name text, p_score int)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  insert into public.scores (game, name, score, uid)
+  values (p_game, left(coalesce(p_name, 'anon'), 24), p_score, left(p_uid, 40))
+  on conflict (game, uid) where uid is not null
+  do update set
+    score = greatest(public.scores.score, excluded.score),
+    name = excluded.name,
+    created_at = now();
+end;
+$$;
