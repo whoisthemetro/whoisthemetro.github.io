@@ -1146,12 +1146,13 @@ export function buildWorld() {
   posterTex.colorSpace = THREE.SRGBColorSpace;
   const echoPoster = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.85),
     new THREE.MeshBasicMaterial({ map: posterTex }));
-  // south wall — on your right as you walk in
-  echoPoster.position.set(-4.15, 1.5, AR.z0 + 0.02);
+  // south wall — on your right as you walk in; centered, and floated
+  // off the wall so it can't z-fight with the planks up close
+  echoPoster.position.set((AR.x0 + AR.x1) / 2, 1.5, AR.z0 + 0.1);
   echoPoster.userData.portalArena = true;
   add(echoPoster);
   const posterFrame = box(1.58, 0.93, 0.03, lam(0x0c0e14));
-  posterFrame.position.set(-4.15, 1.5, AR.z0 + 0.005);
+  posterFrame.position.set((AR.x0 + AR.x1) / 2, 1.5, AR.z0 + 0.07);
   add(posterFrame);
 
   // cabinet factory — one per game
