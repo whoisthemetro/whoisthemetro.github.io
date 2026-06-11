@@ -58,6 +58,7 @@ async function init() {
   }
   subscribeCat();
   subscribeScores();
+  subscribeRoomLight();
   return mode;
 }
 
@@ -290,6 +291,40 @@ async function readInbox(pass) {
   try { return JSON.parse(localStorage.getItem("metro.dms") || "[]").reverse(); } catch (e) { return []; }
 }
 
+/* ---- the room light: persists for everyone, survives refresh ---- */
+const roomLightListeners = new Set();
+async function getRoomLight() {
+  if (mode === "supabase") {
+    const { data, error } = await sb.from("room_state").select("*").eq("id", 1).single();
+    if (error) throw error;
+    return data;
+  }
+  try { return JSON.parse(localStorage.getItem("metro.roomlight") || "null"); } catch (e) { return null; }
+}
+async function saveRoomLight(level, color) {
+  if (mode === "supabase") {
+    const { error } = await sb.rpc("set_room_light", { level, color });
+    if (error) throw error;
+    return;
+  }
+  try { localStorage.setItem("metro.roomlight", JSON.stringify({ light_level: level, light_color: color })); } catch (e) {}
+}
+function subscribeRoomLight() {
+  if (mode === "supabase" && sb) {
+    sb.channel("room-state")
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "room_state" },
+        payload => { if (payload.new) roomLightListeners.forEach(fn => { try { fn(payload.new); } catch (e) {} }); })
+      .subscribe();
+  }
+}
+
+/* ---- lightweight metrics: what the room gets up to ---- */
+function logEvent(type) {
+  if (mode !== "supabase") return;
+  // fire-and-forget; failures are nobody's problem
+  sb.from("events").insert({ type }).then(() => {}, () => {});
+}
+
 /* ---- arcade high scores: shared, all-time ---- */
 const scoreListeners = new Set();
 async function submitScore(game, name, score) {
@@ -328,6 +363,8 @@ function subscribeScores() {
 }
 
 export const store = {
+  getRoomLight, saveRoomLight, logEvent,
+  onRoomLight: fn => { roomLightListeners.add(fn); return () => roomLightListeners.delete(fn); },
   submitScore, listScores,
   onNewScore: fn => { scoreListeners.add(fn); return () => scoreListeners.delete(fn); },
   _subscribeScores: subscribeScores,

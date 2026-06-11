@@ -33,11 +33,13 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 const camera = new THREE.PerspectiveCamera(72, innerWidth / innerHeight, 0.05, 120);
+camera.layers.enable(1);   // see the boat layer too (its lights stay its own)
 const world = buildWorld(renderer);
 const controls = new Controls(camera, canvas, world.bounds, world.isWalkable);
 const notesWall = new NotesWall(world.noteGroup, world.walls, store);
 const ghosts = new Ghosts(world.ghostGroup);
 const raycaster = new THREE.Raycaster();
+raycaster.layers.enableAll();   // clickables exist on both light layers
 const identity = getIdentity();
 
 controls.pos.x = world.spawn.x;
@@ -179,6 +181,7 @@ async function handleCare(kind) {
     if (kind === "food") {
       if (d.food >= 0.6) return toast("the food bowl is still pretty full");
       careSound("kibble");
+      store.logEvent("feed");
       applyCatState(await wrapCare("feed"));
       toast("you filled the food bowl 🐾");
     } else if (kind === "water") {
@@ -189,6 +192,7 @@ async function handleCare(kind) {
     } else if (kind === "litter") {
       if (d.litter <= 0.15) return toast("the litter box is clean");
       careSound("sand");
+      store.logEvent("clean");
       applyCatState(await wrapCare("clean"));
       toast("litter box: spotless. you're a good person.");
     } else if (kind === "treats") {
@@ -226,6 +230,7 @@ controls.onAction((ndcX, ndcY) => {
     const outcome = cat.petOutcome();
     if (outcome === "scratch") gotScratched();
     else presence.sendAct({ kind: "pet" });
+    if (outcome === "love") store.logEvent("pet");
     wrapCare("pet").then(res => {
       if (res && outcome === "love") {
         toast(`purrrr — this cat has been petted ${res.pets} time${res.pets === 1 ? "" : "s"}`);
@@ -239,6 +244,7 @@ controls.onAction((ndcX, ndcY) => {
   } else if (hit.object.userData.arcade && hit.distance < 3.2) {
     modalOpen = true;
     controls.unlock();
+    store.logEvent("arcade_" + hit.object.userData.arcade);
     openArcade(hit.object.userData.arcade, {
       send: (p) => presence.sendGame(p),
       myUid: identity.uid,
@@ -252,6 +258,10 @@ controls.onAction((ndcX, ndcY) => {
     pianoNote(key, pianoVoice);
     world.pressPianoKey(key);
     presence.sendNote(key, pianoVoice);
+    if (Date.now() - (window.__pianoLogAt || 0) > 60000) {
+      window.__pianoLogAt = Date.now();
+      store.logEvent("piano");
+    }
   } else if (hit.object.userData.dimmer && hit.distance < 2.6) {
     openDimmer();
   } else if (hit.object.userData.portal === "boat" && hit.distance < 2.6) {
@@ -273,6 +283,7 @@ controls.onAction((ndcX, ndcY) => {
     toast(`piano voice: ${PIANO_VOICES[pianoVoice].name}`);
   } else if (hit.object.userData.curtain && hit.distance < 3.2) {
     const closed = world.toggleCurtains();
+    store.logEvent("curtains");
     presence.sendAct({ kind: "curtains", closed });
     toast(closed ? "curtains drawn — it's just you and the glow now" : "curtains open");
   } else if (hit.object.userData.care && hit.distance < 2.6) {
@@ -448,6 +459,7 @@ $("#post-btn").addEventListener("click", async () => {
   try {
     const saved = await store.add(base, blob);
     notesWall.add(saved);
+    store.logEvent(saved.kind);
     lastPostAt = Date.now();
     // reset for next time
     noteText.value = ""; charCount.textContent = "0";
@@ -611,7 +623,7 @@ const hueToHex = (h) => {
   const to = (v) => Math.round(v * 255).toString(16).padStart(2, "0");
   return `#${to(chan(0))}${to(chan(8))}${to(chan(4))}`;
 };
-let dimSendT = 0;
+let dimSendT = 0, dimSaveT = 0;
 function applyDimmer(broadcast) {
   const color = hueToHex(dimHue);
   world.setRoomLight(dimLevel, color);
@@ -620,6 +632,12 @@ function applyDimmer(broadcast) {
   if (broadcast && Date.now() - dimSendT > 200) {
     dimSendT = Date.now();
     presence.sendAct({ kind: "dimmer", level: dimLevel, color });
+  }
+  // persist (throttled): the lights stay how the room left them,
+  // even for people who arrive tomorrow
+  if (broadcast && Date.now() - dimSaveT > 1500) {
+    dimSaveT = Date.now();
+    store.saveRoomLight(dimLevel, color).catch(() => {});
   }
 }
 function openDimmer() {
@@ -631,8 +649,11 @@ function openDimmer() {
 function closeDimmer() {
   hide(dimmerUI);
   modalOpen = false;
-  // send the final state so everyone lands on exactly what you chose
-  presence.sendAct({ kind: "dimmer", level: dimLevel, color: hueToHex(dimHue) });
+  // send + persist the final state so everyone (now and later) gets it
+  const color = hueToHex(dimHue);
+  presence.sendAct({ kind: "dimmer", level: dimLevel, color });
+  store.saveRoomLight(dimLevel, color).catch(() => {});
+  store.logEvent("light");
   if (entered) safeLock();
 }
 $("#dimmer-close").addEventListener("click", closeDimmer);
@@ -681,6 +702,7 @@ chatInput.addEventListener("keydown", (e) => {
     if (text) {
       presence.sendChat(text);
       pushChat(identity.name || "you", identity.color, text, true);
+      store.logEvent("chat");
     }
     closeChat();
   } else if (e.key === "Escape") {
@@ -718,6 +740,7 @@ async function tryBoat() {
     controls.pos.z = world.boatSpawn.z;
     controls.yaw = world.boatSpawn.yaw;
     setWater(true);
+    store.logEvent("boat");
     setRoomTone(false);                  // the bedroom stays behind, fully
     world.noteGroup.visible = false;     // no wall-note sprites across the void
     toast("welcome aboard THE DESI 🌊");
@@ -844,6 +867,7 @@ $("#dm-send").addEventListener("click", async () => {
   btn.textContent = file ? "uploading…" : "sending…";
   try {
     await store.sendDM({ name: $("#dm-name").value.trim().slice(0, 40) || null, text: text.slice(0, 500), url }, file);
+    store.logEvent("dm");
     $("#dm-text").value = ""; $("#dm-url").value = ""; $("#dm-file").value = "";
     $("#dm-file-label").textContent = "or attach an audio file (≤ 25 MB)";
     closeDM();
@@ -969,6 +993,21 @@ addEventListener("keydown", (e) => {
     world.triggerPlane();
     if (info && !inBoat) showFlightStrip(info);   // LA traffic is not Sweden's business
   }, (isLive) => world.setLivePlanes(isLive));
+
+  // the lights come back exactly as the room left them
+  store.getRoomLight().then(s => {
+    if (!s) return;
+    dimLevel = s.light_level ?? 0;
+    world.setRoomLight(dimLevel, s.light_color);
+    $("#dim-level").value = Math.round(dimLevel * 100);
+  }).catch(() => {});
+  store.onRoomLight((s) => {
+    dimLevel = s.light_level ?? 0;
+    world.setRoomLight(dimLevel, s.light_color);
+    $("#dim-level").value = Math.round(dimLevel * 100);
+  });
+
+  store.logEvent("visit");
 
   // cat needs: load shared state, stay subscribed to everyone's care
   try { applyCatState(await store.getCatState()); }
