@@ -955,7 +955,8 @@ export function buildWorld() {
     blockers.push(leaf);
     return grp;
   }
-  door(0.82, 2.03, -X + 0.035, -2.1, Math.PI / 2);
+  const bathroomDoor = door(0.82, 2.03, -X + 0.035, -2.1, Math.PI / 2);
+  bathroomDoor.children[0].userData.portal = "boat";   // the unorthodox way in
   const entryDoor = door(0.86, 2.03, X - 0.035, 2.3, -Math.PI / 2);
 
   /* --- the closet (z -1.15..0.35 on the west wall) ---
@@ -1174,14 +1175,11 @@ export function buildWorld() {
     grp.rotation.y = rotY;
     add(grp);
   }
-  // headliners along the back wall, facing the door
+  // the four machines along the back wall, facing the door
   cabinet("defender", "DEFENDER", "#ff3434", AR.x0 + 0.42, -2.0, Math.PI / 2);
   cabinet("doom", "DOOM", "#ff7320", AR.x0 + 0.42, -0.85, Math.PI / 2);
   cabinet("tron", "TRON", "#22d4ff", AR.x0 + 0.42, 0.3, Math.PI / 2);
   cabinet("pong", "PONG", "#e8e8e8", AR.x0 + 0.42, 1.45, Math.PI / 2);
-  // the dark ones wait along the north wall
-  cabinet(null, "PAC-MAN", "#ffe93c", -5.0, AR.z1 - 0.42, Math.PI, true);
-  cabinet(null, "MARIO", "#ff4d4d", -6.4, AR.z1 - 0.42, Math.PI, true);
 
   /* --- the desk rig --- */
   const deskTopY = 0.74;
@@ -1573,6 +1571,163 @@ export function buildWorld() {
   neonLight.position.set(0, 1.62, 0.4);
   entryDoor.add(neonLight);
 
+  /* --- the light dimmer on the wall --- */
+  // a wall switch by the entry door; the ceiling lamp it controls is
+  // off by default (the room runs on window light), but visitors can
+  // bring it up and tint it — and everyone sees the change
+  const fixture = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.19, 0.05, 16), lam(0xd8d2c4));
+  fixture.position.set(0, H - 0.03, 0.4);
+  add(fixture);
+  const fixtureGlow = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.012, 16),
+    new THREE.MeshBasicMaterial({ color: 0x222222 }));
+  fixtureGlow.position.set(0, H - 0.058, 0.4);
+  add(fixtureGlow);
+  const roomLamp = add(new THREE.PointLight(0xffe2b8, 0, 9, 2));
+  roomLamp.position.set(0, H - 0.35, 0.4);
+  const dimmerPlate = box(0.025, 0.14, 0.09, lam(0xe8e2d4));
+  dimmerPlate.position.set(X - 0.035, 1.3, 1.78);
+  dimmerPlate.userData.dimmer = true;
+  add(dimmerPlate);
+  const dimmerKnob = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.02, 0.02, 12), lam(0xb8b2a4));
+  dimmerKnob.rotation.z = Math.PI / 2;
+  dimmerKnob.position.set(X - 0.055, 1.3, 1.78);
+  add(dimmerKnob);
+  function setRoomLight(level, colorHex) {
+    const l = Math.max(0, Math.min(1, level));
+    roomLamp.intensity = l * 26;
+    if (colorHex) roomLamp.color.set(colorHex);
+    fixtureGlow.material.color.set(l > 0.02 ? (colorHex || 0xffe2b8) : 0x222222);
+  }
+
+  /* --- THE DESI: a small boat cabin, far from everything ---
+     Password-gated; a tribute. Unlit "baked" materials so it stays
+     warm and cozy no matter what the sun is doing back in the room. --- */
+  const BOAT = { x: 40, z: 0 };
+  const basic = (color) => new THREE.MeshBasicMaterial({ color });
+  const plankTex = canvasTex(512, 256, (g) => {
+    g.fillStyle = "#7a5c3e";
+    g.fillRect(0, 0, 512, 256);
+    for (let y = 0; y < 256; y += 32) {
+      const v = 0.85 + ((y * 7) % 13) / 40;
+      g.fillStyle = `rgb(${122 * v | 0},${92 * v | 0},${62 * v | 0})`;
+      g.fillRect(0, y + 1, 512, 30);
+      g.strokeStyle = "rgba(40,26,14,0.6)";
+      g.strokeRect(0, y, 512, 32);
+      for (let i = 0; i < 12; i++) {
+        g.strokeStyle = "rgba(60,42,24,0.35)";
+        g.beginPath();
+        const yy = y + 4 + Math.random() * 24;
+        g.moveTo(0, yy); g.lineTo(512, yy + (Math.random() - 0.5) * 6);
+        g.stroke();
+      }
+    }
+  });
+  const BW = 3.0, BD = 2.2, BH = 2.15;
+  const boatWallMat = new THREE.MeshBasicMaterial({ map: plankTex });
+  // shell
+  for (const [w, d, x, z, ry] of [
+    [BW, BH, BOAT.x, BOAT.z - BD / 2, 0],            // ocean side (porthole wall)
+    [BW, BH, BOAT.x, BOAT.z + BD / 2, Math.PI],      // door side
+    [BD, BH, BOAT.x - BW / 2, BOAT.z, Math.PI / 2],
+    [BD, BH, BOAT.x + BW / 2, BOAT.z, -Math.PI / 2],
+  ]) {
+    const wallB = new THREE.Mesh(new THREE.PlaneGeometry(w, BH), boatWallMat);
+    wallB.position.set(x, BH / 2, z);
+    wallB.rotation.y = ry;
+    add(wallB);
+  }
+  const boatFloor = new THREE.Mesh(new THREE.PlaneGeometry(BW, BD), new THREE.MeshBasicMaterial({ map: plankTex }));
+  boatFloor.rotation.x = -Math.PI / 2;
+  boatFloor.position.set(BOAT.x, 0.001, BOAT.z);
+  add(boatFloor);
+  const boatCeil = new THREE.Mesh(new THREE.PlaneGeometry(BW, BD), basic(0x4a3826));
+  boatCeil.rotation.x = Math.PI / 2;
+  boatCeil.position.set(BOAT.x, BH, BOAT.z);
+  add(boatCeil);
+
+  // the porthole: brass ring + the ocean, gently rolling
+  const oceanCanvas = document.createElement("canvas");
+  oceanCanvas.width = 256; oceanCanvas.height = 256;
+  const oceanTex = new THREE.CanvasTexture(oceanCanvas);
+  oceanTex.colorSpace = THREE.SRGBColorSpace;
+  function drawOcean(t) {
+    const g = oceanCanvas.getContext("2d");
+    const horizon = 128 + Math.sin(t * 0.45) * 9 + Math.sin(t * 0.9) * 3;
+    const sky = g.createLinearGradient(0, 0, 0, horizon);
+    sky.addColorStop(0, "#f7b16a");
+    sky.addColorStop(0.7, "#f2806a");
+    sky.addColorStop(1, "#d96a8a");
+    g.fillStyle = sky;
+    g.fillRect(0, 0, 256, horizon);
+    const sea = g.createLinearGradient(0, horizon, 0, 256);
+    sea.addColorStop(0, "#3a5a7a");
+    sea.addColorStop(1, "#16283c");
+    g.fillStyle = sea;
+    g.fillRect(0, horizon, 256, 256 - horizon);
+    // sun low on the water + its path
+    g.fillStyle = "#fff0c8";
+    g.beginPath(); g.arc(168, horizon - 18, 13, 0, 7); g.fill();
+    g.fillStyle = "rgba(255,230,170,0.35)";
+    g.fillRect(160, horizon, 18, 256 - horizon);
+    // waves
+    g.strokeStyle = "rgba(220,235,255,0.25)";
+    for (let i = 0; i < 9; i++) {
+      const y = horizon + 8 + i * 13;
+      g.beginPath();
+      for (let x = 0; x <= 256; x += 8) {
+        const yy = y + Math.sin(x * 0.08 + t * 1.4 + i) * 2.2;
+        x === 0 ? g.moveTo(x, yy) : g.lineTo(x, yy);
+      }
+      g.stroke();
+    }
+    oceanTex.needsUpdate = true;
+  }
+  drawOcean(0);
+  const portRing = new THREE.Mesh(new THREE.TorusGeometry(0.34, 0.05, 10, 28),
+    new THREE.MeshBasicMaterial({ color: 0xa8853c }));
+  portRing.position.set(BOAT.x, 1.32, BOAT.z - BD / 2 + 0.02);
+  add(portRing);
+  const portGlass = new THREE.Mesh(new THREE.CircleGeometry(0.33, 28),
+    new THREE.MeshBasicMaterial({ map: oceanTex }));
+  portGlass.position.set(BOAT.x, 1.32, BOAT.z - BD / 2 + 0.015);
+  add(portGlass);
+
+  // bunk, table, lantern, the name
+  const bunk = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.28, 0.8), basic(0x8a3a3a));
+  bunk.position.set(BOAT.x - 0.55, 0.34, BOAT.z + 0.6);
+  add(bunk);
+  const blanket = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.06, 0.82), basic(0xd8c8a0));
+  blanket.position.set(BOAT.x - 0.85, 0.51, BOAT.z + 0.6);
+  add(blanket);
+  const btable = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.26, 0.5, 10), basic(0x5a4026));
+  btable.position.set(BOAT.x + 0.85, 0.25, BOAT.z - 0.4);
+  add(btable);
+  const lantern = new THREE.Group();
+  const lbody = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 0.16, 10), basic(0x3a342a));
+  const lglass = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.09, 10), basic(0xffd27a));
+  lbody.position.y = -0.1; lglass.position.y = -0.1;
+  lantern.add(lbody, lglass);
+  lantern.position.set(BOAT.x + 0.3, BH - 0.05, BOAT.z);
+  add(lantern);
+  const boatSign = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 0.22), new THREE.MeshBasicMaterial({
+    map: canvasTex(512, 112, (g) => {
+      g.fillStyle = "#2a1c10"; g.fillRect(0, 0, 512, 112);
+      g.strokeStyle = "#a8853c"; g.lineWidth = 6; g.strokeRect(8, 8, 496, 96);
+      g.font = "500 64px 'Six Caps', serif"; g.textAlign = "center"; g.textBaseline = "middle";
+      g.fillStyle = "#e8c87a"; g.letterSpacing = "10px";
+      g.fillText("THE DESI", 256, 58);
+    }),
+  }));
+  boatSign.rotation.y = Math.PI;
+  boatSign.position.set(BOAT.x, 1.78, BOAT.z + BD / 2 - 0.02);
+  add(boatSign);
+  // exit door back to the room
+  const boatDoor = new THREE.Mesh(new THREE.BoxGeometry(0.7, 1.7, 0.04), basic(0x4a3520));
+  boatDoor.rotation.y = Math.PI;
+  boatDoor.position.set(BOAT.x + 0.9, 0.85, BOAT.z + BD / 2 - 0.03);
+  boatDoor.userData.boatExit = true;
+  add(boatDoor);
+
   /* --- dust --- */
   const DUST = 240;
   const dustPos = new Float32Array(DUST * 3);
@@ -1671,6 +1826,13 @@ export function buildWorld() {
       for (const at of attracts) at.draw();
     }
 
+    // the sea outside the porthole never stops; the lantern swings with it
+    if (elapsed - (tick._seaAt || 0) > 0.3) {
+      tick._seaAt = elapsed;
+      drawOcean(elapsed);
+    }
+    lantern.rotation.z = Math.sin(elapsed * 0.7) * 0.09;
+
     nextCityAt -= dt;
     if (nextCityAt <= 0) {
       nextCityAt = rand(70, 180);
@@ -1682,8 +1844,12 @@ export function buildWorld() {
   // (cabinet walls get ~1.1 m clearance so you can stand at any machine)
   const WALK_RECTS = [
     { x0: -2.3, x1: 2.3, z0: -2.35, z1: 3.0 },
-    { x0: AR.x1 - 0.2, x1: -2.2, z0: CZ - OPEN_W / 2 + 0.15, z1: CZ + OPEN_W / 2 - 0.15 },
-    { x0: AR.x0 + 1.15, x1: AR.x1 - 0.3, z0: AR.z0 + 0.45, z1: AR.z1 - 1.1 },
+    // passage reaches well into the arcade rect — overlapping rects,
+    // so there's no dead strip at the threshold
+    { x0: AR.x1 - 0.6, x1: -2.2, z0: CZ - OPEN_W / 2 + 0.15, z1: CZ + OPEN_W / 2 - 0.15 },
+    { x0: AR.x0 + 1.15, x1: AR.x1 - 0.15, z0: AR.z0 + 0.45, z1: AR.z1 - 0.45 },
+    // the boat room exists far away; you can only get there by knowing
+    { x0: BOAT.x - 1.35, x1: BOAT.x + 1.35, z0: BOAT.z - 0.95, z1: BOAT.z + 0.95 },
   ];
   const isWalkable = (x, z) => WALK_RECTS.some(r => x >= r.x0 && x <= r.x1 && z >= r.z0 && z <= r.z1);
 
@@ -1705,6 +1871,13 @@ export function buildWorld() {
     // real-LAX hooks
     triggerPlane: () => { if (planeT < 0) { planeT = 0; if (onCity) { try { onCity("plane"); } catch (e) {} } } },
     setLivePlanes: (v) => { livePlanes = !!v; },
+    // the dimmer + the boat
+    setRoomLight,
+    dimmerHit: dimmerPlate,
+    boatExitHit: boatDoor,
+    boatSpawn: { x: BOAT.x, z: BOAT.z + 0.4, yaw: 0 },
+    bathroomSpawn: { x: -1.85, z: -2.1, yaw: -Math.PI / 2 },
+    inBoat: (x) => x > 30,
     dmTargets: [monScreen, monBezel, mac],
     // where the cat likes to be
     catSpots: {

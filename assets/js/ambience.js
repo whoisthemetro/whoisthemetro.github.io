@@ -258,6 +258,38 @@ export function setRain(level) {   // 0 off, 1 light, 2 heavy
   }
 }
 
+// Water lapping against a hull — the boat room's room tone.
+let waterNodes = null;
+export function setWater(on) {
+  if (!ctx) return;
+  if (!on && waterNodes) {
+    waterNodes.g.gain.linearRampToValueAtTime(0.0001, ctx.currentTime + 1.5);
+    const old = waterNodes;
+    waterNodes = null;
+    setTimeout(() => { try { old.src.stop(); old.lfo.stop(); } catch (e) {} }, 2000);
+    return;
+  }
+  if (on && !waterNodes) {
+    const src = ctx.createBufferSource();
+    src.buffer = noiseBuffer(4);
+    src.loop = true;
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.value = 420;
+    const g = ctx.createGain();
+    g.gain.value = 0.0001;
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = 0.23;
+    const lfoG = ctx.createGain();
+    lfoG.gain.value = 0.012;
+    lfo.connect(lfoG).connect(g.gain);
+    src.connect(lp).connect(g).connect(master);
+    src.start(); lfo.start();
+    g.gain.linearRampToValueAtTime(0.03, ctx.currentTime + 2);
+    waterNodes = { src, g, lfo };
+  }
+}
+
 // The city outside, heard through the walls: a far-off siren or a
 // car with too much subwoofer rolling past.
 export function citySound(type = "siren") {

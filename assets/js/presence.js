@@ -60,7 +60,7 @@ async function join(identity, poseFn) {
         for (const uid of Object.keys(state)) {
           if (uid === me.uid) continue;
           const meta = state[uid][0] || {};
-          peers.set(uid, { name: meta.name || "", color: meta.color || "#ffb347" });
+          peers.set(uid, { name: meta.name || "", color: meta.color || "#ffb347", avatar: meta.avatar || null });
         }
         emitPeers();
       })
@@ -84,7 +84,7 @@ async function join(identity, poseFn) {
       })
       .subscribe(async (status) => {
         if (status === "SUBSCRIBED") {
-          await chan.track({ name: me.name, color: me.color });
+          await chan.track({ name: me.name, color: me.color, avatar: me.avatar || null });
         }
       });
   } else if ("BroadcastChannel" in window) {
@@ -95,7 +95,7 @@ async function join(identity, poseFn) {
       if (m.uid === me.uid) return;
       if (m.type === "hb") {
         const known = peers.has(m.uid);
-        peers.set(m.uid, { name: m.name, color: m.color, lastSeen: Date.now() });
+        peers.set(m.uid, { name: m.name, color: m.color, avatar: m.avatar || null, lastSeen: Date.now() });
         if (!known) emitPeers();
       } else if (m.type === "pose") {
         emitPose(m.uid, m);
@@ -109,7 +109,7 @@ async function join(identity, poseFn) {
         if (peers.delete(m.uid)) emitPeers();
       }
     };
-    const hb = () => bc.postMessage({ type: "hb", uid: me.uid, name: me.name, color: me.color });
+    const hb = () => bc.postMessage({ type: "hb", uid: me.uid, name: me.name, color: me.color, avatar: me.avatar || null });
     hb();
     setInterval(() => {
       hb();

@@ -15,7 +15,8 @@
 <script type="importmap">
 {
   "imports": {
-    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
   }
 }
 </script>
@@ -35,6 +36,7 @@
       If someone else is in the room right now, you'll see them.
     </p>
     <button id="enter-btn">come in</button>
+    <button id="avatar-btn">make yourself an avatar</button>
     <p class="controls-hint" id="hint-desktop">WASD move &nbsp;·&nbsp; mouse look &nbsp;·&nbsp; click a wall to post &nbsp;·&nbsp; ESC to step out</p>
     <p class="controls-hint" id="hint-mobile">left thumb to walk &nbsp;·&nbsp; right thumb to look &nbsp;·&nbsp; tap a wall to post</p>
     <p class="mode-badge" id="mode-badge"></p>
@@ -113,6 +115,26 @@
 
 <div id="toast"></div>
 <div id="scratch"></div>
+
+<!-- ====== ready player me ====== -->
+<div id="rpm" class="overlay">
+  <div class="rpm-shell">
+    <button class="x" id="rpm-close">×</button>
+    <iframe id="rpm-frame" allow="camera *; microphone *; clipboard-write" title="avatar creator"></iframe>
+  </div>
+</div>
+
+<!-- ====== light dimmer ====== -->
+<div id="dimmer-ui">
+  <div class="dim-row">
+    <span class="dim-label">lights</span>
+    <input type="range" id="dim-level" min="0" max="100" value="0">
+  </div>
+  <div class="dim-row" id="dim-colors"></div>
+</div>
+
+<!-- room-change fade -->
+<div id="fade"></div>
 
 <!-- ====== private note to metro ====== -->
 <div id="dm" class="overlay">

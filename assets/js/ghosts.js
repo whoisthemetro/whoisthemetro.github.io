@@ -6,6 +6,31 @@
    ============================================================ */
 
 import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import * as SkeletonUtils from "three/addons/utils/SkeletonUtils.js";
+
+const gltfLoader = new GLTFLoader();
+const avatarCache = new Map();   // url -> Promise<THREE.Object3D template>
+
+function loadAvatar(url) {
+  if (!avatarCache.has(url)) {
+    avatarCache.set(url, new Promise((resolve, reject) => {
+      gltfLoader.load(url, (gltf) => {
+        const model = gltf.scene;
+        // Ready Player Me avatars arrive in A-pose — relax the arms
+        model.traverse((o) => {
+          if (o.isBone) {
+            if (/LeftArm$/.test(o.name)) o.rotation.z = 1.15;
+            if (/RightArm$/.test(o.name)) o.rotation.z = -1.15;
+          }
+          if (o.isMesh) { o.frustumCulled = false; }
+        });
+        resolve(model);
+      }, undefined, reject);
+    }));
+  }
+  return avatarCache.get(url);
+}
 
 function nameSprite(name, color) {
   const c = document.createElement("canvas");
@@ -67,6 +92,17 @@ export class Ghosts {
         target: { x: 0, z: 2.5, yaw: 0 },
         bobSeed: Math.random() * 10,
       });
+      // if they made themselves a body, swap the ghost shell for it
+      if (meta.avatar) {
+        loadAvatar(meta.avatar).then((template) => {
+          const rec = this.byUid.get(uid);
+          if (!rec) return;                  // they left while loading
+          const body = SkeletonUtils.clone(template);
+          // hide the glow capsule + head, keep the name label
+          rec.grp.children.forEach((c) => { if (!c.isSprite) c.visible = false; });
+          rec.grp.add(body);
+        }).catch(() => { /* bad url — ghost shell stays */ });
+      }
     }
   }
 
