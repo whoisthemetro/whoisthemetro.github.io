@@ -24,6 +24,7 @@
 import * as THREE from "three";
 import { rand } from "./util.js";
 import { getSunPosition, getMoonPosition, getMoonIllumination } from "./astro.js";
+import { makeAttractScreen } from "./arcade.js";
 
 export const ROOM = {
   X: 2.6, ZF: -3.3, ZB: 3.3, H: 2.7,
@@ -551,14 +552,19 @@ export function buildWorld() {
   const ceil = add(plane(W, D, lam(0xd6cfc0)));
   ceil.rotation.x = Math.PI / 2;
   ceil.position.y = H;
+  ceil.receiveShadow = true;
 
   const walls = [];
-  function postableWall(id, w, mat, setup, origin, uDir, normal) {
-    const mesh = add(plane(w, H, mat));
+  function postableWall(id, w, mat, setup, origin, uDir, normal, opts = {}) {
+    const mesh = add(new THREE.Mesh(opts.geometry || new THREE.PlaneGeometry(w, H), mat));
     setup(mesh);
     mesh.userData.postable = true;
     mesh.receiveShadow = true;
-    walls.push({ id, mesh, w, h: H, origin, uDir, vDir: new THREE.Vector3(0, 1, 0), normal });
+    walls.push({
+      id, mesh, w, h: H, origin, uDir,
+      vDir: new THREE.Vector3(0, 1, 0), normal,
+      voids: opts.voids || [],   // rects (meters) where notes can't live, e.g. doorways
+    });
     return mesh;
   }
 
@@ -572,15 +578,33 @@ export function buildWorld() {
     m => { m.rotation.y = Math.PI; m.position.set(0, H / 2, ZB); },
     new THREE.Vector3(X, 0, ZB), new THREE.Vector3(-1, 0, 0), new THREE.Vector3(0, 0, -1));
 
+  // west wall has a REAL hole where the closet is (z -1.15..0.35, h 2.03):
+  // local x on this wall runs opposite to world z
+  const westShape = new THREE.Shape();
+  westShape.moveTo(-D / 2, -H / 2);
+  westShape.lineTo(D / 2, -H / 2);
+  westShape.lineTo(D / 2, H / 2);
+  westShape.lineTo(-D / 2, H / 2);
+  westShape.closePath();
+  const closetHole = new THREE.Path();
+  closetHole.moveTo(-0.35, -H / 2);
+  closetHole.lineTo(1.15, -H / 2);
+  closetHole.lineTo(1.15, -H / 2 + 2.03);
+  closetHole.lineTo(-0.35, -H / 2 + 2.03);
+  closetHole.closePath();
+  westShape.holes.push(closetHole);
+  const westGeo = new THREE.ShapeGeometry(westShape);
+  const westMap = wallTexture(D, H, [
+    [0.31, 1.0, 0.55, 1.2], [1.17, 1.0, 0.55, 1.2], [2.03, 1.0, 0.55, 1.2],
+    [6.0, 1.0, 0.55, 1.2],
+  ]);
+  westMap.repeat.set(1 / D, 1 / H);     // ShapeGeometry uvs are in shape units
+  westMap.offset.set(0.5, 0.5);
   postableWall("west", D,
-    new THREE.MeshLambertMaterial({
-      map: wallTexture(D, H, [
-        [0.31, 1.0, 0.55, 1.2], [1.17, 1.0, 0.55, 1.2], [2.03, 1.0, 0.55, 1.2],
-        [6.0, 1.0, 0.55, 1.2],
-      ]),
-    }),
+    new THREE.MeshLambertMaterial({ map: westMap }),
     m => { m.rotation.y = Math.PI / 2; m.position.set(-X, H / 2, 0); },
-    new THREE.Vector3(-X, 0, ZB), new THREE.Vector3(0, 0, -1), new THREE.Vector3(1, 0, 0));
+    new THREE.Vector3(-X, 0, ZB), new THREE.Vector3(0, 0, -1), new THREE.Vector3(1, 0, 0),
+    { geometry: westGeo, voids: [{ u0: 2.87, u1: 4.53, v0: 0, v1: 2.12 }] });
 
   postableWall("east", D,
     new THREE.MeshLambertMaterial({
@@ -695,30 +719,33 @@ export function buildWorld() {
 
   // Shadow mask: invisible casters covering the front wall EXCEPT the
   // window, so the beam can only truly enter through the glass — like
-  // real life. Without this the directional light rakes straight through
-  // the wall and lights/shadows the doors.
+  // real life. Thick, double-sided boxes: they occlude reliably from
+  // every sun/moon angle (thin one-sided planes don't).
   const maskMat = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false });
+  maskMat.side = THREE.DoubleSide;
+  maskMat.shadowSide = THREE.DoubleSide;
   for (const [mw, mh, mx, my] of [
-    [(W - WIN.w) / 2, H, -(WIN.w / 2 + (W - WIN.w) / 4), H / 2],   // left of window
-    [(W - WIN.w) / 2, H, WIN.w / 2 + (W - WIN.w) / 4, H / 2],      // right of window
-    [WIN.w, H - (WIN.cy + WIN.h / 2), 0, (H + WIN.cy + WIN.h / 2) / 2],  // above
-    [WIN.w, WIN.cy - WIN.h / 2, 0, (WIN.cy - WIN.h / 2) / 2],      // below
+    [(W - WIN.w) / 2 + 0.4, H + 0.4, -(WIN.w / 2 + (W - WIN.w) / 4) - 0.1, H / 2],  // left of window
+    [(W - WIN.w) / 2 + 0.4, H + 0.4, WIN.w / 2 + (W - WIN.w) / 4 + 0.1, H / 2],     // right of window
+    [WIN.w, H - (WIN.cy + WIN.h / 2) + 0.4, 0, (H + WIN.cy + WIN.h / 2) / 2 + 0.2], // above
+    [WIN.w, WIN.cy - WIN.h / 2, 0, (WIN.cy - WIN.h / 2) / 2],                       // below
   ]) {
-    const mask = plane(mw, mh, maskMat);
-    mask.position.set(mx, my, ZF - 0.06);
+    const mask = new THREE.Mesh(new THREE.BoxGeometry(mw, mh, 0.12), maskMat);
+    mask.position.set(mx, my, ZF - 0.1);
     mask.castShadow = true;
     add(mask);
   }
 
   /* --- ALL room light comes from outside --- */
-  // soft spill just inside the glass
-  const windowLight = add(new THREE.PointLight(0x9fb6e8, 0, 9, 2));
+  // soft spill just inside the glass — tight radius so it reads as
+  // window glow, not a lamp lighting the whole wall
+  const windowLight = add(new THREE.PointLight(0x9fb6e8, 0, 5.5, 2));
   windowLight.position.set(WIN.cx, WIN.cy, ZF + 0.6);
   // the beam: parallel rays from where the sun/moon actually is,
   // throwing real shadows (including the blind slats) into the room
   const beam = new THREE.DirectionalLight(0xfff0d8, 0);
   beam.castShadow = true;
-  beam.shadow.mapSize.set(1024, 1024);
+  beam.shadow.mapSize.set(2048, 2048);
   beam.shadow.camera.left = -5; beam.shadow.camera.right = 5;
   beam.shadow.camera.top = 5; beam.shadow.camera.bottom = -5;
   beam.shadow.camera.near = 0.5; beam.shadow.camera.far = 30;
@@ -845,8 +872,125 @@ export function buildWorld() {
     return grp;
   }
   door(0.82, 2.03, -X + 0.035, -2.1, Math.PI / 2);
-  door(1.5, 2.03, -X + 0.035, -0.4, Math.PI / 2, true);
   const entryDoor = door(0.86, 2.03, X - 0.035, 2.3, -Math.PI / 2);
+
+  /* --- the closet (z -1.15..0.35 on the west wall) ---
+     The left leaf is hinged: click it and it swings AWAY from you,
+     into the closet, revealing what's inside. --- */
+  const CZ = -0.4, OPEN_W = 1.5, OPEN_H = 2.03, ALCOVE_D = 0.95;
+  // frame
+  const cfm = lam(0xc4bba6);
+  for (const fz of [CZ - OPEN_W / 2 - 0.03, CZ + OPEN_W / 2 + 0.03]) {
+    const jamb = box(0.08, OPEN_H + 0.06, 0.06, cfm);
+    jamb.position.set(-X + 0.01, (OPEN_H + 0.06) / 2, fz);
+    add(jamb);
+    blockers.push(jamb);
+  }
+  const chead = box(0.08, 0.06, OPEN_W + 0.12, cfm);
+  chead.position.set(-X + 0.01, OPEN_H + 0.03, CZ);
+  add(chead);
+  blockers.push(chead);
+
+  // alcove shell, outside the room
+  const alcMat = lam(0x4a443c);
+  const alcBack = plane(OPEN_W, OPEN_H, alcMat);
+  alcBack.rotation.y = Math.PI / 2;
+  alcBack.position.set(-X - ALCOVE_D, OPEN_H / 2, CZ);
+  add(alcBack);
+  for (const sz of [-1, 1]) {
+    const side = plane(ALCOVE_D, OPEN_H, alcMat.clone());
+    side.rotation.y = sz < 0 ? 0 : Math.PI;
+    side.position.set(-X - ALCOVE_D / 2, OPEN_H / 2, CZ + sz * OPEN_W / 2);
+    add(side);
+  }
+  const alcTop = plane(ALCOVE_D, OPEN_W, lam(0x3a352e));
+  alcTop.rotation.x = Math.PI / 2;
+  alcTop.rotation.z = Math.PI / 2;
+  alcTop.position.set(-X - ALCOVE_D / 2, OPEN_H, CZ);
+  add(alcTop);
+  const alcFloor = plane(ALCOVE_D, OPEN_W, lam(0x2e2a24));
+  alcFloor.rotation.x = -Math.PI / 2;
+  alcFloor.rotation.z = Math.PI / 2;
+  alcFloor.position.set(-X - ALCOVE_D / 2, 0.005, CZ);
+  add(alcFloor);
+
+  // right leaf — stays shut
+  const leafMat = () => new THREE.MeshLambertMaterial({ map: doorTexture(false) });
+  const rightLeaf = box(0.045, OPEN_H, OPEN_W / 2, leafMat());
+  rightLeaf.position.set(-X + 0.035, OPEN_H / 2, CZ - OPEN_W / 4);
+  add(rightLeaf);
+  blockers.push(rightLeaf);
+
+  // left leaf — hinged at its outer edge, swings into the closet
+  const closet = { open: false, anim: 0 };
+  const hinge = new THREE.Group();
+  hinge.position.set(-X + 0.035, 0, CZ + OPEN_W / 2);
+  const leftLeaf = box(0.045, OPEN_H, OPEN_W / 2, leafMat());
+  leftLeaf.position.set(0, OPEN_H / 2, -OPEN_W / 4);
+  leftLeaf.userData.closet = true;
+  hinge.add(leftLeaf);
+  add(hinge);
+  function toggleCloset() {
+    closet.open = !closet.open;
+    return closet.open;
+  }
+
+  /* --- the cabinet in the closet: DEFENDER --- */
+  const arcadeGrp = new THREE.Group();
+  const cabMat = lam(0x14161a);
+  const cabBody = box(0.62, 1.7, 0.6, cabMat);
+  cabBody.position.y = 0.85;
+  arcadeGrp.add(cabBody);
+  // marquee
+  const marqueeTex = canvasTex(256, 64, (g) => {
+    g.fillStyle = "#120020";
+    g.fillRect(0, 0, 256, 64);
+    g.font = "900 34px monospace";
+    g.textAlign = "center";
+    g.fillStyle = "#ffd23c";
+    g.shadowColor = "#ff3434"; g.shadowBlur = 12;
+    g.fillText("DEFENDER", 128, 44);
+  });
+  const marquee = new THREE.Mesh(new THREE.PlaneGeometry(0.56, 0.16),
+    new THREE.MeshBasicMaterial({ map: marqueeTex }));
+  marquee.position.set(0, 1.6, 0.301);
+  arcadeGrp.add(marquee);
+  // screen (attract mode runs on it)
+  const attract = makeAttractScreen(THREE);
+  const arcScreen = new THREE.Mesh(new THREE.PlaneGeometry(0.46, 0.36),
+    new THREE.MeshBasicMaterial({ map: attract.tex }));
+  arcScreen.position.set(0, 1.18, 0.301);
+  arcScreen.rotation.x = -0.08;
+  arcadeGrp.add(arcScreen);
+  const arcGlow = new THREE.PointLight(0x6688ff, 2.2, 1.6, 2);
+  arcGlow.position.set(0, 1.2, 0.5);
+  arcadeGrp.add(arcGlow);
+  // control deck + coin door
+  const deck = box(0.56, 0.06, 0.3, lam(0x1d2026));
+  deck.rotation.x = 0.18;
+  deck.position.set(0, 0.92, 0.36);
+  arcadeGrp.add(deck);
+  const stick = new THREE.Mesh(new THREE.SphereGeometry(0.022, 8, 8), lam(0xc02030));
+  stick.position.set(-0.12, 1.0, 0.4);
+  arcadeGrp.add(stick);
+  for (const bx of [0.06, 0.13, 0.2]) {
+    const btn = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.012, 10), lam(0xffd23c));
+    btn.rotation.x = 0.18;
+    btn.position.set(bx, 0.965, 0.395);
+    arcadeGrp.add(btn);
+  }
+  const coin = box(0.2, 0.14, 0.01, lam(0x32363c));
+  coin.position.set(0, 0.35, 0.301);
+  arcadeGrp.add(coin);
+  // big easy hitbox
+  const arcadeHit = new THREE.Mesh(new THREE.BoxGeometry(0.7, 1.8, 0.7),
+    new THREE.MeshBasicMaterial({ visible: false }));
+  arcadeHit.position.y = 0.9;
+  arcadeHit.userData.arcade = true;
+  arcadeGrp.add(arcadeHit);
+  arcadeGrp.position.set(-X - 0.55, 0, CZ);
+  arcadeGrp.rotation.y = Math.PI / 2;   // facing out the closet doorway
+  add(arcadeGrp);
 
   /* --- the desk rig --- */
   const deskTopY = 0.74;
@@ -1295,6 +1439,19 @@ export function buildWorld() {
       applyLights();
     }
 
+    // closet door swinging (open = away from the room, into the closet)
+    const cWant = closet.open ? 1 : 0;
+    if (Math.abs(closet.anim - cWant) > 0.001) {
+      closet.anim += Math.sign(cWant - closet.anim) * Math.min(dt * 1.6, Math.abs(cWant - closet.anim));
+      hinge.rotation.y = closet.anim * 1.5;
+    }
+
+    // arcade attract mode flickers away in the closet
+    if (closet.anim > 0.05 && elapsed - (tick._arcAt || 0) > 0.12) {
+      tick._arcAt = elapsed;
+      attract.draw();
+    }
+
     nextCityAt -= dt;
     if (nextCityAt <= 0) {
       nextCityAt = rand(70, 180);
@@ -1313,6 +1470,9 @@ export function buildWorld() {
     curtainHits, toggleCurtains,
     curtainsClosed: () => curtains.closed,
     pianoMesh: midiKeybed, pressPianoKey,
+    closetHits: [leftLeaf], toggleCloset,
+    closetOpen: () => closet.open,
+    arcadeHit,
     // where the cat likes to be
     catSpots: {
       chair: { x: SWEET.x, z: SWEET.z, y: 0.51 },

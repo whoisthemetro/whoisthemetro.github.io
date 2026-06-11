@@ -53,6 +53,7 @@
 <div id="hud">
   <div id="crosshair">+</div>
   <div id="online-pill"><span class="dot"></span><span id="online-count">1</span> in the room</div>
+  <div id="cat-pill">🐈‍⬛ <span id="cat-meters"></span></div>
   <div id="aim-tip">click to read</div>
 </div>
 
@@ -111,6 +112,27 @@
 
 <div id="toast"></div>
 <div id="scratch"></div>
+
+<!-- ====== the cabinet in the closet ====== -->
+<div id="arcade" class="overlay">
+  <div class="arcade-shell">
+    <button class="x" id="arcade-close">×</button>
+    <canvas id="arcade-canvas" width="640" height="400"></canvas>
+    <p class="arcade-help">← → thrust · ↑ ↓ move · SPACE fire · B smart bomb · ESC to walk away</p>
+    <div class="arcade-pads">
+      <div class="pad-group">
+        <button class="pad" data-code="ArrowLeft">◀</button>
+        <button class="pad" data-code="ArrowUp">▲</button>
+        <button class="pad" data-code="ArrowDown">▼</button>
+        <button class="pad" data-code="ArrowRight">▶</button>
+      </div>
+      <div class="pad-group">
+        <button class="pad pad-wide" data-code="KeyB">BOMB</button>
+        <button class="pad pad-wide" data-code="Space">FIRE</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <script src="assets/js/config.js"></script>
 <script type="module" src="assets/js/main.js"></script>

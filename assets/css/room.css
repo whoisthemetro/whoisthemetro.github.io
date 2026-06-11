@@ -193,6 +193,50 @@ textarea:focus, input:focus { border-color: var(--amber); }
 }
 #toast.show { transform: translate(-50%, 0); }
 
+/* ---------- cat status ---------- */
+#cat-pill {
+  position: absolute; left: 16px; bottom: 16px;
+  background: rgba(10, 14, 17, 0.7); border: 1px solid var(--line);
+  border-radius: 999px; padding: 7px 14px; font-size: 12px; color: var(--ink);
+}
+#cat-pill .low { color: var(--amber); }
+#cat-pill .crit { color: #e07054; }
+
+/* ---------- the cabinet in the closet ---------- */
+.arcade-shell {
+  position: relative; background: #0a0a10;
+  border: 10px solid #1c1224; border-radius: 10px;
+  padding: 18px 18px 10px; box-shadow: 0 0 60px rgba(120, 60, 255, 0.25);
+}
+.arcade-shell .x { position: absolute; top: 2px; right: 8px; z-index: 2; }
+#arcade-canvas {
+  display: block; width: min(86vw, 640px); height: auto;
+  image-rendering: pixelated; background: #000;
+  border: 2px solid #2a2a3a;
+}
+.arcade-shell::after {
+  /* scanlines */
+  content: ""; position: absolute; inset: 18px 18px 48px; pointer-events: none;
+  background: repeating-linear-gradient(0deg, rgba(0,0,0,0.18) 0 1px, transparent 1px 3px);
+}
+.arcade-help {
+  text-align: center; font-size: 10px; color: var(--dim);
+  letter-spacing: 0.1em; margin-top: 8px; text-transform: uppercase;
+}
+.arcade-pads { display: none; justify-content: space-between; margin-top: 10px; gap: 12px; }
+.pad-group { display: flex; gap: 8px; }
+.pad {
+  min-width: 52px; height: 52px; border-radius: 10px;
+  background: #1c1f26; border: 1px solid #34384a; color: var(--ink);
+  font-size: 18px; font-family: "Archivo"; touch-action: none;
+}
+.pad:active { background: #34384a; }
+.pad-wide { min-width: 76px; font-size: 13px; letter-spacing: 0.1em; }
+@media (pointer: coarse) {
+  .arcade-pads { display: flex; }
+  .arcade-help { display: none; }
+}
+
 /* ---------- the cat fights back ---------- */
 #scratch {
   position: fixed; inset: 0; z-index: 80; pointer-events: none; opacity: 0;

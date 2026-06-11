@@ -162,8 +162,10 @@ export class NotesWall {
     const [kw, kh] = KIND_SIZE[note.kind] || KIND_SIZE.note;
     const hu = kw / 2 + PAD, hv = kh / 2 + PAD;
     const taken = this.occupied.get(wall.id) || [];
-    const collides = (cu, cv) => taken.some(o =>
-      Math.abs(cu - o.cu) < hu + o.hu && Math.abs(cv - o.cv) < hv + o.hv);
+    const voids = wall.voids || [];
+    const collides = (cu, cv) =>
+      taken.some(o => Math.abs(cu - o.cu) < hu + o.hu && Math.abs(cv - o.cv) < hv + o.hv)
+      || voids.some(r => cu + hu > r.u0 && cu - hu < r.u1 && cv + hv > r.v0 && cv - hv < r.v1);
     const clampU = (cu) => Math.min(wall.w * 0.96 - hu, Math.max(wall.w * 0.04 + hu, cu));
     const clampV = (cv) => Math.min(wall.h * 0.78 - hv, Math.max(wall.h * 0.13 + hv, cv));
 

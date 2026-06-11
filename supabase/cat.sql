@@ -110,32 +110,34 @@ begin
 
   -- the cat's own metabolism: timer-gated so only the first visitor's
   -- cat to act actually changes the world
+  -- visible-life pacing: small bites, short cycles, so visitors
+  -- actually witness the cat living
   elsif action = 'eat' then
     if v_now < s.hungry_at then
       v_ok := false; v_reason := 'not hungry';
     elsif s.food <= 0.05 then
-      s.hungry_at := v_now + interval '25 minutes';   -- comes back to check
+      s.hungry_at := v_now + interval '15 minutes';   -- comes back to check
       v_ok := false; v_reason := 'bowl empty';
     else
-      s.food := greatest(0, s.food - 0.28);
-      s.hungry_at := v_now + make_interval(mins => 180 + floor(random() * 240)::int);
+      s.food := greatest(0, s.food - 0.15);
+      s.hungry_at := v_now + make_interval(mins => 45 + floor(random() * 55)::int);
     end if;
   elsif action = 'drink' then
     if v_now < s.thirsty_at then
       v_ok := false; v_reason := 'not thirsty';
     elsif s.water <= 0.05 then
-      s.thirsty_at := v_now + interval '20 minutes';
+      s.thirsty_at := v_now + interval '12 minutes';
       v_ok := false; v_reason := 'bowl empty';
     else
-      s.water := greatest(0, s.water - 0.3);
-      s.thirsty_at := v_now + make_interval(mins => 120 + floor(random() * 180)::int);
+      s.water := greatest(0, s.water - 0.18);
+      s.thirsty_at := v_now + make_interval(mins => 35 + floor(random() * 45)::int);
     end if;
   elsif action = 'bathroom' then
     if v_now < s.bathroom_at then
       v_ok := false; v_reason := 'no need';
     else
-      s.litter := least(1, s.litter + 0.2);
-      s.bathroom_at := v_now + make_interval(mins => 240 + floor(random() * 300)::int);
+      s.litter := least(1, s.litter + 0.15);
+      s.bathroom_at := v_now + make_interval(mins => 100 + floor(random() * 120)::int);
     end if;
   else
     v_ok := false; v_reason := 'unknown action';

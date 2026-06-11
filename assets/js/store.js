@@ -141,11 +141,14 @@ async function adminDelete(id, pass) {
 const catListeners = new Set();
 const clamp01 = (v) => Math.max(0, Math.min(1, v ?? 0));
 
-// no passive decay — just levels plus "is it time yet?" flags
+// no passive decay — levels, "is it time yet?" flags, plus 0..1 meters
+// showing how close each need is (1 = the cat needs it right now)
 function decayCat(s) {
-  if (!s) return { food: 1, water: 1, litter: 0, pets: 0, hungry: false, thirsty: false, bathroom: false };
+  if (!s) return { food: 1, water: 1, litter: 0, pets: 0, hungry: false, thirsty: false, bathroom: false, hunger: 0, thirst: 0, bladder: 0 };
   const now = Date.now();
   const due = (k) => !s[k] || now >= new Date(s[k]).getTime();
+  const meter = (k, avgMin) => !s[k] ? 1
+    : Math.max(0, Math.min(1, 1 - (new Date(s[k]).getTime() - now) / (avgMin * 60000)));
   return {
     food: clamp01(s.food ?? 1),
     water: clamp01(s.water ?? 1),
@@ -154,6 +157,9 @@ function decayCat(s) {
     hungry: due("hungry_at"),
     thirsty: due("thirsty_at"),
     bathroom: due("bathroom_at"),
+    hunger: meter("hungry_at", 72),
+    thirst: meter("thirsty_at", 57),
+    bladder: meter("bathroom_at", 160),
   };
 }
 
@@ -211,17 +217,17 @@ async function catCare(action) {
   else if (action === "pet") s.pets = (s.pets ?? 0) + 1;
   else if (action === "eat") {
     if (!due("hungry_at")) { ok = false; reason = "not hungry"; }
-    else if ((s.food ?? 0) <= 0.05) { s.hungry_at = new Date(now + 25 * 60000).toISOString(); ok = false; reason = "bowl empty"; }
-    else { s.food = Math.max(0, s.food - 0.28); s.hungry_at = inHrs(3, 7); }
+    else if ((s.food ?? 0) <= 0.05) { s.hungry_at = new Date(now + 15 * 60000).toISOString(); ok = false; reason = "bowl empty"; }
+    else { s.food = Math.max(0, s.food - 0.15); s.hungry_at = inHrs(0.75, 1.67); }
   }
   else if (action === "drink") {
     if (!due("thirsty_at")) { ok = false; reason = "not thirsty"; }
-    else if ((s.water ?? 0) <= 0.05) { s.thirsty_at = new Date(now + 20 * 60000).toISOString(); ok = false; reason = "bowl empty"; }
-    else { s.water = Math.max(0, s.water - 0.3); s.thirsty_at = inHrs(2, 5); }
+    else if ((s.water ?? 0) <= 0.05) { s.thirsty_at = new Date(now + 12 * 60000).toISOString(); ok = false; reason = "bowl empty"; }
+    else { s.water = Math.max(0, s.water - 0.18); s.thirsty_at = inHrs(0.58, 1.33); }
   }
   else if (action === "bathroom") {
     if (!due("bathroom_at")) { ok = false; reason = "no need"; }
-    else { s.litter = Math.min(1, (s.litter ?? 0) + 0.2); s.bathroom_at = inHrs(4, 9); }
+    else { s.litter = Math.min(1, (s.litter ?? 0) + 0.15); s.bathroom_at = inHrs(1.67, 3.67); }
   }
 
   s.updated_at = new Date().toISOString();

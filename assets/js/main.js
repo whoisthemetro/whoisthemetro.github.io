@@ -12,6 +12,7 @@ import { presence } from "./presence.js";
 import { startAmbience, citySound, pianoNote, purr, setRain, meow, hiss, careSound } from "./ambience.js";
 import { weather } from "./weather.js";
 import { Cat } from "./cat.js";
+import { openArcade, closeArcade, arcadeIsOpen } from "./arcade.js";
 import {
   PAPERS, IS_TOUCH, safeUrl, hostOf, timeAgo, toast,
   getIdentity, saveIdentity, shrinkImage,
@@ -56,6 +57,14 @@ function applyCatState(s) {
   const d = store.decayCat(s);
   world.updateCare(d);
   cat.setNeeds(d);
+  // the hunger meter HUD
+  const pct = (v) => `${Math.round(v * 100)}%`;
+  const cls = (v) => v > 0.85 ? "crit" : v > 0.6 ? "low" : "";
+  $("#cat-meters").innerHTML =
+    `hunger <span class="${cls(d.hunger)}">${pct(d.hunger)}</span>` +
+    ` · thirst <span class="${cls(d.thirst)}">${pct(d.thirst)}</span>` +
+    (d.litter > 0.5 ? ` · litter <span class="${cls(d.litter)}">${pct(d.litter)}</span>` : "") +
+    ((d.hungry && d.food <= 0.05) ? ` · <span class="crit">bowl empty!</span>` : "");
 }
 setInterval(() => { if (catState) applyCatState(catState); }, 60000);  // re-check the timers
 
@@ -125,7 +134,7 @@ canvas.addEventListener("click", () => {
 function castAt(ndcX, ndcY) {
   raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera);
   // doors are included as blockers so notes can't be pinned onto them
-  const targets = [cat.hitMesh, world.pianoMesh, ...world.careTargets, ...world.curtainHits, ...notesWall.raycastTargets(), ...world.blockers];
+  const targets = [cat.hitMesh, world.pianoMesh, world.arcadeHit, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...notesWall.raycastTargets(), ...world.blockers];
   const hits = raycaster.intersectObjects(targets, false);
   return hits[0] || null;
 }
@@ -208,6 +217,13 @@ controls.onAction((ndcX, ndcY) => {
         applyCatState(res);
       }
     }).catch(() => {});
+  } else if (hit.object.userData.closet && hit.distance < 3) {
+    const open = world.toggleCloset();
+    toast(open ? "the closet creaks open…" : "closet closed");
+  } else if (hit.object.userData.arcade && hit.distance < 3.2) {
+    modalOpen = true;
+    controls.unlock();
+    openArcade();
   } else if (hit.object.userData.piano && hit.distance < 2.4 && hit.uv) {
     const key = Math.max(0, Math.min(7, Math.floor(hit.uv.x * 8)));
     pianoNote(key);
@@ -232,7 +248,14 @@ setInterval(() => {
   if (!controls.locked || modalOpen) { aimTip.classList.remove("show"); return; }
   const hit = castAt(0, 0);
   if (hit && hit.object.userData.cat && hit.distance < 2.2) {
-    aimTip.textContent = `${TAP} to pet the cat`;
+    const d = store.decayCat(catState);
+    aimTip.textContent = `${TAP} to pet the cat · hunger ${Math.round(d.hunger * 100)}%`;
+    aimTip.classList.add("show");
+  } else if (hit && hit.object.userData.closet && hit.distance < 3) {
+    aimTip.textContent = world.closetOpen() ? `${TAP} to close the closet` : `${TAP} to open the closet`;
+    aimTip.classList.add("show");
+  } else if (hit && hit.object.userData.arcade && hit.distance < 3.2) {
+    aimTip.textContent = `${TAP} to play DEFENDER`;
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.piano && hit.distance < 2.4) {
     aimTip.textContent = `${TAP} the keys to play`;
@@ -453,10 +476,18 @@ $("#reader-delete").addEventListener("click", async () => {
   }
 });
 
+function closeArcadeOverlay() {
+  closeArcade();
+  modalOpen = false;
+  if (entered) safeLock();
+}
+$("#arcade-close").addEventListener("click", closeArcadeOverlay);
+
 addEventListener("keydown", (e) => {
   if (e.key === "Escape" && modalOpen) {
     if (composer.classList.contains("show")) closeComposer(false);
     if (reader.classList.contains("show")) closeReader();
+    if (arcadeIsOpen()) closeArcadeOverlay();
   }
 });
 

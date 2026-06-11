@@ -80,6 +80,21 @@ export function pianoNote(i = 0) {
   g.gain.exponentialRampToValueAtTime(0.0001, t + 1.3);
 }
 
+// Generic 8-bit blip for the arcade cabinet.
+export function beep(freq, dur = 0.1, type = "square", gain = 0.04, slideTo = null) {
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  const o = ctx.createOscillator();
+  o.type = type;
+  o.frequency.setValueAtTime(freq, t);
+  if (slideTo) o.frequency.exponentialRampToValueAtTime(Math.max(20, slideTo), t + dur);
+  const g = ctx.createGain();
+  o.connect(g).connect(master);
+  g.gain.setValueAtTime(gain, t);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.start(t); o.stop(t + dur + 0.02);
+}
+
 // A meow, synthesized from scratch with randomized pitch, contour,
 // vibrato and length — no two meows in the room's history are identical.
 export function meow(excited = false) {
