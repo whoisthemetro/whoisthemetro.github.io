@@ -9,7 +9,7 @@ import { NotesWall } from "./notes3d.js";
 import { Ghosts } from "./ghosts.js";
 import { store } from "./store.js";
 import { presence } from "./presence.js";
-import { startAmbience, citySound, pianoNote, purr, setRain, setWater, meow, hiss, careSound, drumHit } from "./ambience.js";
+import { startAmbience, citySound, pianoNote, purr, setRain, setWater, setRoomTone, meow, hiss, careSound, drumHit } from "./ambience.js";
 import { weather } from "./weather.js";
 import { startPlanes } from "./planes.js";
 import { Cat } from "./cat.js";
@@ -44,16 +44,21 @@ controls.pos.x = world.spawn.x;
 controls.pos.z = world.spawn.z;
 controls.yaw = world.spawn.yaw;
 
-world.setCityListener((type) => citySound(type));
+world.setCityListener((type) => { if (!inBoat) citySound(type); });
 
 // piano voice — sticky per visitor, broadcast with each note
 let pianoVoice = 0;
 try { pianoVoice = (parseInt(localStorage.getItem("metro.voice") || "0", 10) || 0) % PIANO_VOICES.length; } catch (e) {}
 
-// the cat — its key-walking plays the same piano visitors can play
+// the cat — its key-walking plays the same piano visitors can play.
+// All bedroom sounds are gated: aboard THE DESI you hear only the sea.
+const bedroomSound = (fn) => (...a) => { if (!inBoat) fn(...a); };
 const cat = new Cat(world.scene, world.catSpots, {
-  plink: (i) => { pianoNote(i % 15, pianoVoice); world.pressPianoKey(i % 15); },
-  purr, meow, hiss, dig: () => careSound("sand"),
+  plink: bedroomSound((i) => { pianoNote(i % 15, pianoVoice); world.pressPianoKey(i % 15); }),
+  purr: bedroomSound(purr),
+  meow: bedroomSound(meow),
+  hiss: bedroomSound(hiss),
+  dig: bedroomSound(() => careSound("sand")),
 });
 
 // shared cat needs — bowls and litter are the same for every visitor
@@ -143,7 +148,7 @@ canvas.addEventListener("click", () => {
 function castAt(ndcX, ndcY) {
   raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera);
   // doors are included as blockers so notes can't be pinned onto them
-  const targets = [cat.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.volcaHit, world.boatHeadHit, ...world.arcadeHits, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...notesWall.raycastTargets(), ...world.blockers];
+  const targets = [cat.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.volcaHit, ...world.arcadeHits, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...notesWall.raycastTargets(), ...world.blockers];
   const hits = raycaster.intersectObjects(targets, false);
   return hits[0] || null;
 }
@@ -261,8 +266,6 @@ controls.onAction((ndcX, ndcY) => {
     drumHit(pad);
     world.pressVolcaPad(pad);
     presence.sendAct({ kind: "volca", pad });
-  } else if (hit.object.userData.boatHead && hit.distance < 2.2) {
-    toast("the head. it's occupied. it's always occupied.");
   } else if (hit.object.userData.pianoVoice && hit.distance < 2.4) {
     pianoVoice = (pianoVoice + 1) % PIANO_VOICES.length;
     try { localStorage.setItem("metro.voice", String(pianoVoice)); } catch (e) {}
@@ -314,9 +317,6 @@ setInterval(() => {
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.volca && hit.distance < 1.8) {
     aimTip.textContent = `${TAP} the pads`;
-    aimTip.classList.add("show");
-  } else if (hit && hit.object.userData.boatHead && hit.distance < 2.2) {
-    aimTip.textContent = "the head";
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.portal === "boat" && hit.distance < 2.6) {
     aimTip.textContent = "private. it wants a password.";
@@ -718,6 +718,8 @@ async function tryBoat() {
     controls.pos.z = world.boatSpawn.z;
     controls.yaw = world.boatSpawn.yaw;
     setWater(true);
+    setRoomTone(false);                  // the bedroom stays behind, fully
+    world.noteGroup.visible = false;     // no wall-note sprites across the void
     toast("welcome aboard THE DESI 🌊");
   });
 }
@@ -728,6 +730,8 @@ function leaveBoat() {
     controls.pos.z = world.bathroomSpawn.z;
     controls.yaw = world.bathroomSpawn.yaw;
     setWater(false);
+    setRoomTone(true);
+    world.noteGroup.visible = true;
   });
 }
 
@@ -919,7 +923,11 @@ addEventListener("keydown", (e) => {
     $("#online-count").textContent = String(peers.size + 1);
   });
   presence.onPose((uid, pose) => ghosts.setPose(uid, pose));
-  presence.onNote((uid, i, v) => { pianoNote(i, v ?? 0); world.pressPianoKey(i); });
+  presence.onNote((uid, i, v) => {
+    if (inBoat) return;          // the bedroom piano stays in the bedroom
+    pianoNote(i, v ?? 0);
+    world.pressPianoKey(i);
+  });
   presence.onGame((p) => handleGameMessage(p));
   // the room is one shared physical space: doors, curtains, affection
   presence.onAct((p) => {
@@ -930,12 +938,13 @@ addEventListener("keydown", (e) => {
       world.setCloset(p.open);
       toast(p.open ? "someone opened the closet…" : "someone closed the closet");
     } else if (p.kind === "pet") {
-      cat.remoteHearts();
+      if (!inBoat) cat.remoteHearts();
     } else if (p.kind === "dimmer") {
       dimLevel = p.level;
       world.setRoomLight(p.level, p.color);
       $("#dim-level").value = Math.round(p.level * 100);
     } else if (p.kind === "volca") {
+      if (!inBoat) return;       // and the boat's sampler stays on the boat
       drumHit(p.pad);
       world.pressVolcaPad(p.pad);
     }
@@ -958,7 +967,7 @@ addEventListener("keydown", (e) => {
   // each one gets a flight strip: who it is, what it is, where it's going
   startPlanes((info) => {
     world.triggerPlane();
-    if (info) showFlightStrip(info);
+    if (info && !inBoat) showFlightStrip(info);   // LA traffic is not Sweden's business
   }, (isLive) => world.setLivePlanes(isLive));
 
   // cat needs: load shared state, stay subscribed to everyone's care
@@ -977,9 +986,10 @@ renderer.setAnimationLoop(() => {
   t += dt;
   controls.update(dt);
   world.setParallax(camera.position.x);
-  // aboard THE DESI the whole world rolls a little
+  // aboard THE DESI the whole world rolls a little — set absolutely
+  // (never accumulate), so pausing/ESC can't drift you up or down
   if (inBoat) {
-    camera.position.y += Math.sin(t * 0.85) * 0.022 + Math.sin(t * 1.7) * 0.008;
+    camera.position.y = 1.62 + Math.sin(t * 0.85) * 0.022 + Math.sin(t * 1.7) * 0.008;
     camera.rotation.z = Math.sin(t * 0.5) * 0.013;
   } else {
     camera.rotation.z = 0;

@@ -62,6 +62,16 @@ export function startAmbience() {
   humG.gain.value = 0.006;
   hum.connect(humLp).connect(humG).connect(master);
   hum.start();
+  roomToneGains = [g, humG];
+}
+
+// The bedroom's hum and rumble — silenced while you're aboard the boat.
+let roomToneGains = null;
+export function setRoomTone(on) {
+  if (!ctx || !roomToneGains) return;
+  const t = ctx.currentTime;
+  roomToneGains[0].gain.linearRampToValueAtTime(on ? 0.05 : 0.0001, t + 1.2);
+  roomToneGains[1].gain.linearRampToValueAtTime(on ? 0.006 : 0.0001, t + 1.2);
 }
 
 // The MIDI keys under the desk — two C major octaves, low to high.
@@ -308,11 +318,63 @@ export function drumHit(i = 0) {
   }
 }
 
-// Water lapping against a hull — the boat room's room tone.
+// Water lapping against a hull — plus the boat's voice: hull creaks
+// every so often, and gulls when the Swedish sun is up.
 let waterNodes = null;
+let boatFxTimer = null;
+function creak() {
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  const o = ctx.createOscillator();
+  o.type = "sawtooth";
+  o.frequency.setValueAtTime(85 + Math.random() * 40, t);
+  o.frequency.linearRampToValueAtTime(55 + Math.random() * 20, t + 0.7);
+  const lp = ctx.createBiquadFilter();
+  lp.type = "lowpass";
+  lp.frequency.value = 240;
+  const g = ctx.createGain();
+  o.connect(lp).connect(g).connect(master);
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(0.02 + Math.random() * 0.012, t + 0.12);
+  g.gain.exponentialRampToValueAtTime(0.0008, t + 0.8);
+  g.gain.linearRampToValueAtTime(0, t + 0.85);
+  o.start(t); o.stop(t + 0.9);
+}
+function gull() {
+  if (!ctx) return;
+  const cries = 1 + Math.floor(Math.random() * 3);
+  for (let c = 0; c < cries; c++) {
+    const t = ctx.currentTime + c * (0.28 + Math.random() * 0.15);
+    const o = ctx.createOscillator();
+    o.type = "sawtooth";
+    const f0 = 1150 + Math.random() * 250;
+    o.frequency.setValueAtTime(f0, t);
+    o.frequency.linearRampToValueAtTime(f0 * 1.25, t + 0.07);
+    o.frequency.linearRampToValueAtTime(f0 * 0.7, t + 0.26);
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = 1800;
+    bp.Q.value = 2;
+    const g = ctx.createGain();
+    o.connect(bp).connect(g).connect(master);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.012, t + 0.03);
+    g.gain.exponentialRampToValueAtTime(0.0008, t + 0.26);
+    g.gain.linearRampToValueAtTime(0, t + 0.3);
+    o.start(t); o.stop(t + 0.32);
+  }
+}
+function scheduleBoatFx() {
+  boatFxTimer = setTimeout(() => {
+    if (!waterNodes) return;
+    Math.random() < 0.55 ? creak() : gull();
+    scheduleBoatFx();
+  }, 7000 + Math.random() * 16000);
+}
 export function setWater(on) {
   if (!ctx) return;
   if (!on && waterNodes) {
+    clearTimeout(boatFxTimer);
     waterNodes.g.gain.linearRampToValueAtTime(0.0001, ctx.currentTime + 1.5);
     const old = waterNodes;
     waterNodes = null;
@@ -337,6 +399,7 @@ export function setWater(on) {
     src.start(); lfo.start();
     g.gain.linearRampToValueAtTime(0.03, ctx.currentTime + 2);
     waterNodes = { src, g, lfo };
+    scheduleBoatFx();
   }
 }
 

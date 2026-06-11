@@ -1651,10 +1651,12 @@ export function buildWorld() {
   }
 
   /* --- THE DESI: a small boat cabin, far from everything ---
-     Password-gated; a tribute. The windows look out on a SWEDISH sea:
-     sun cycle computed for the Gothenburg archipelago (57.7N, 11.9E)
-     and real Swedish weather from Open-Meteo. Midsummer nights barely
-     get dark up there. Unlit "baked" materials inside. --- */
+     Password-gated; a tribute. The windows are REAL HOLES in the hull
+     wall, looking onto a layered 3D sea — sky backdrop, sun and moon
+     placed by real Swedish astronomy (Gothenburg archipelago), bands
+     of water sliding at different speeds for true parallax, and a
+     shadow-casting light that throws window-shaped patches across the
+     cabin. Swedish weather dims it all. --- */
   const BOAT = { x: 40, z: 0 };
   const SWEDEN = { lat: 57.7, lng: 11.9 };
   let swWx = { clouds: 0.3, rain: 0 };
@@ -1669,7 +1671,8 @@ export function buildWorld() {
       .catch(() => {});
     setTimeout(pollSweden, 15 * 60 * 1000);
   })();
-  const basic = (color) => new THREE.MeshBasicMaterial({ color });
+
+  const BW = 4.6, BD = 3.4, BH = 2.2;
   const plankTex = canvasTex(512, 256, (g) => {
     g.fillStyle = "#7a5c3e";
     g.fillRect(0, 0, 512, 256);
@@ -1688,164 +1691,275 @@ export function buildWorld() {
       }
     }
   });
-  const BW = 4.6, BD = 3.4, BH = 2.2;
-  const boatWallMat = new THREE.MeshBasicMaterial({ map: plankTex });
-  // shell
-  for (const [w, d, x, z, ry] of [
-    [BW, BH, BOAT.x, BOAT.z - BD / 2, 0],            // ocean side (porthole wall)
-    [BW, BH, BOAT.x, BOAT.z + BD / 2, Math.PI],      // door side
-    [BD, BH, BOAT.x - BW / 2, BOAT.z, Math.PI / 2],
-    [BD, BH, BOAT.x + BW / 2, BOAT.z, -Math.PI / 2],
-  ]) {
-    const wallB = new THREE.Mesh(new THREE.PlaneGeometry(w, BH), boatWallMat);
-    wallB.position.set(x, BH / 2, z);
-    wallB.rotation.y = ry;
-    add(wallB);
+  const plankMat = new THREE.MeshLambertMaterial({ map: plankTex, side: THREE.DoubleSide });
+  const bAdd = (m) => { m.receiveShadow = true; scene.add(m); return m; };
+
+  // ---- hull wall with three REAL window holes (y 1.03..1.67) ----
+  const WIN_XS = [-1.5, 0, 1.5], WW = 1.04, WH = 0.64, WCY = 1.35;
+  const hullShape = new THREE.Shape();
+  hullShape.moveTo(-BW / 2, -BH / 2);
+  hullShape.lineTo(BW / 2, -BH / 2);
+  hullShape.lineTo(BW / 2, BH / 2);
+  hullShape.lineTo(-BW / 2, BH / 2);
+  hullShape.closePath();
+  for (const wx of WIN_XS) {
+    const hole = new THREE.Path();
+    hole.moveTo(wx - WW / 2, WCY - BH / 2 - WH / 2);
+    hole.lineTo(wx + WW / 2, WCY - BH / 2 - WH / 2);
+    hole.lineTo(wx + WW / 2, WCY - BH / 2 + WH / 2);
+    hole.lineTo(wx - WW / 2, WCY - BH / 2 + WH / 2);
+    hole.closePath();
+    hullShape.holes.push(hole);
   }
-  const boatFloor = new THREE.Mesh(new THREE.PlaneGeometry(BW, BD), new THREE.MeshBasicMaterial({ map: plankTex }));
+  const hullGeo = new THREE.ShapeGeometry(hullShape);
+  const hullMap = plankTex.clone();
+  hullMap.needsUpdate = true;
+  hullMap.repeat.set(1 / BW, 1 / BH);
+  hullMap.offset.set(0.5, 0.5);
+  hullMap.wrapS = hullMap.wrapT = THREE.RepeatWrapping;
+  const hullWall = new THREE.Mesh(hullGeo, new THREE.MeshLambertMaterial({ map: hullMap, side: THREE.DoubleSide }));
+  hullWall.position.set(BOAT.x, BH / 2, BOAT.z - BD / 2);
+  hullWall.castShadow = true;          // ← this is what makes window-shaped light
+  hullWall.receiveShadow = true;
+  add(hullWall);
+  // window frames
+  for (const wx of WIN_XS) {
+    for (const [fw, fh, fx, fy] of [
+      [WW + 0.1, 0.05, wx, WCY + WH / 2 + 0.025], [WW + 0.1, 0.05, wx, WCY - WH / 2 - 0.025],
+      [0.05, WH + 0.1, wx - WW / 2 - 0.025, WCY], [0.05, WH + 0.1, wx + WW / 2 + 0.025, WCY],
+    ]) {
+      const f = bAdd(box(fw, fh, 0.07, lam(0x4a3826)));
+      f.position.set(BOAT.x + fx, fy, BOAT.z - BD / 2);
+      f.castShadow = true;
+    }
+  }
+
+  // ---- the other walls, floor, ceiling ----
+  const doorWall = bAdd(new THREE.Mesh(new THREE.PlaneGeometry(BW, BH), plankMat));
+  doorWall.rotation.y = Math.PI;
+  doorWall.position.set(BOAT.x, BH / 2, BOAT.z + BD / 2);
+  const portWall = bAdd(new THREE.Mesh(new THREE.PlaneGeometry(BD, BH), plankMat.clone()));
+  portWall.rotation.y = Math.PI / 2;
+  portWall.position.set(BOAT.x - BW / 2, BH / 2, BOAT.z);
+  const stbWall = bAdd(new THREE.Mesh(new THREE.PlaneGeometry(BD, BH), plankMat.clone()));
+  stbWall.rotation.y = -Math.PI / 2;
+  stbWall.position.set(BOAT.x + BW / 2, BH / 2, BOAT.z);
+  const boatFloor = bAdd(new THREE.Mesh(new THREE.PlaneGeometry(BW, BD), plankMat.clone()));
   boatFloor.rotation.x = -Math.PI / 2;
   boatFloor.position.set(BOAT.x, 0.001, BOAT.z);
-  add(boatFloor);
-  const boatCeil = new THREE.Mesh(new THREE.PlaneGeometry(BW, BD), basic(0x4a3826));
+  const boatCeil = bAdd(new THREE.Mesh(new THREE.PlaneGeometry(BW, BD),
+    new THREE.MeshLambertMaterial({ color: 0x4a3826, side: THREE.DoubleSide })));
   boatCeil.rotation.x = Math.PI / 2;
   boatCeil.position.set(BOAT.x, BH, BOAT.z);
-  add(boatCeil);
 
-  // the windows: a wide Swedish sea, gently rolling, real sun + weather
-  const oceanCanvas = document.createElement("canvas");
-  oceanCanvas.width = 512; oceanCanvas.height = 256;
-  const oceanTex = new THREE.CanvasTexture(oceanCanvas);
-  oceanTex.colorSpace = THREE.SRGBColorSpace;
-  function drawOcean(t) {
-    const g = oceanCanvas.getContext("2d");
-    const W2 = 512, H2 = 256;
-    const sun = getSunPosition(new Date(), SWEDEN.lat, SWEDEN.lng);
-    const altD = sun.altitude / (Math.PI / 180);
-    const horizon = 128 + Math.sin(t * 0.45) * 9 + Math.sin(t * 0.9) * 3;
-
-    // sky by real Swedish sun altitude
-    let top, mid, seaTop, seaBot;
-    if (altD > 8)       { top = "#7ab8e8"; mid = "#bcd8ec"; seaTop = "#3a6a8a"; seaBot = "#1c3a52"; }
-    else if (altD > 0)  { top = "#f7b16a"; mid = "#f2806a"; seaTop = "#3a5a7a"; seaBot = "#16283c"; }
-    else if (altD > -8) { top = "#3a4a6e"; mid = "#d97a6a"; seaTop = "#26405c"; seaBot = "#0e1c2c"; }
-    else                { top = "#0c1426"; mid = "#1c2a44"; seaTop = "#10202e"; seaBot = "#060e16"; }
-    // clouds darken the whole thing
-    const dim = 1 - swWx.clouds * 0.45;
-    const sky = g.createLinearGradient(0, 0, 0, horizon);
-    sky.addColorStop(0, top); sky.addColorStop(1, mid);
-    g.fillStyle = sky;
-    g.fillRect(0, 0, W2, horizon);
-    if (swWx.clouds > 0.15) {
-      g.fillStyle = `rgba(60,66,80,${swWx.clouds * 0.55})`;
-      for (let i = 0; i < swWx.clouds * 10; i++) {
+  // ---- the sea outside: layered, alive, astronomically honest ----
+  // sky backdrop
+  const swSkyCanvas = document.createElement("canvas");
+  swSkyCanvas.width = 512; swSkyCanvas.height = 256;
+  const swSkyTex = new THREE.CanvasTexture(swSkyCanvas);
+  swSkyTex.colorSpace = THREE.SRGBColorSpace;
+  const swStars = Array.from({ length: 70 }, () => [Math.random() * 512, Math.random() * 170, Math.random()]);
+  function drawSwSky(altD) {
+    const g = swSkyCanvas.getContext("2d");
+    let top, bot;
+    if (altD > 8)       { top = "#6fb0e4"; bot = "#c2dcee"; }
+    else if (altD > 0)  { top = "#7898c2"; bot = "#f2b380"; }
+    else if (altD > -8) { top = "#2c3c60"; bot = "#d97a6a"; }
+    else                { top = "#0a1222"; bot = "#1a2840"; }
+    const grad = g.createLinearGradient(0, 0, 0, 256);
+    grad.addColorStop(0, top); grad.addColorStop(1, bot);
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 512, 256);
+    if (altD < -7 && swWx.clouds < 0.6) {
+      for (const [x, y, r] of swStars) {
+        g.fillStyle = `rgba(255,255,255,${(0.3 + r * 0.5) * (1 - swWx.clouds)})`;
+        g.fillRect(x, y, r > 0.8 ? 2 : 1.3, r > 0.8 ? 2 : 1.3);
+      }
+    }
+    if (swWx.clouds > 0.12) {
+      const cc = altD > 0 ? 215 : 36;
+      for (let i = 0; i < swWx.clouds * 12; i++) {
+        g.fillStyle = `rgba(${cc},${cc},${cc + 6},${0.12 + swWx.clouds * 0.2})`;
         g.beginPath();
-        g.ellipse(((i * 173) % 560) - 20, 18 + (i * 41) % (horizon * 0.6), 90, 18, 0, 0, 7);
+        g.ellipse(((i * 167) % 560) - 24, 16 + (i * 53) % 130, 80 + (i * 31) % 50, 14 + (i * 13) % 12, 0, 0, 7);
         g.fill();
       }
     }
-    const sea = g.createLinearGradient(0, horizon, 0, H2);
-    sea.addColorStop(0, seaTop); sea.addColorStop(1, seaBot);
-    g.fillStyle = sea;
-    g.fillRect(0, horizon, W2, H2 - horizon);
-
-    // the sun, where it really is over the archipelago
-    if (altD > -1 && swWx.clouds < 0.85) {
-      const sy = horizon - Math.min(90, altD * 4 + 8);
-      g.fillStyle = altD > 8 ? "#fffbe8" : "#fff0c8";
-      g.globalAlpha = dim;
-      g.beginPath(); g.arc(330, sy, 14, 0, 7); g.fill();
-      g.fillStyle = "rgba(255,230,170,0.3)";
-      g.fillRect(322, horizon, 18, H2 - horizon);
-      g.globalAlpha = 1;
-    }
-    // distant skerries
-    g.fillStyle = "rgba(20,28,34,0.9)";
-    g.beginPath();
-    g.ellipse(80, horizon, 60, 7, 0, 0, 7); g.fill();
-    g.beginPath();
-    g.ellipse(470, horizon - 1, 40, 5, 0, 0, 7); g.fill();
-    // waves
-    g.strokeStyle = "rgba(220,235,255,0.22)";
-    for (let i = 0; i < 9; i++) {
-      const y = horizon + 8 + i * 13;
-      g.beginPath();
-      for (let x = 0; x <= W2; x += 8) {
-        const yy = y + Math.sin(x * 0.06 + t * 1.4 + i) * 2.4;
-        x === 0 ? g.moveTo(x, yy) : g.lineTo(x, yy);
+    swSkyTex.needsUpdate = true;
+  }
+  drawSwSky(10);
+  const seaBackdrop = new THREE.Mesh(new THREE.PlaneGeometry(16, 7),
+    new THREE.MeshBasicMaterial({ map: swSkyTex }));
+  seaBackdrop.position.set(BOAT.x, 3.0, BOAT.z - BD / 2 - 6.5);
+  add(seaBackdrop);
+  // sun + moon, where Sweden actually has them
+  const swSun = new THREE.Mesh(new THREE.CircleGeometry(0.32, 24),
+    new THREE.MeshBasicMaterial({ color: 0xfff2cc, transparent: true }));
+  swSun.position.set(BOAT.x, 2, BOAT.z - BD / 2 - 6.3);
+  add(swSun);
+  const swMoon = new THREE.Mesh(new THREE.CircleGeometry(0.22, 24),
+    new THREE.MeshBasicMaterial({ color: 0xe8eef8, transparent: true }));
+  swMoon.position.set(BOAT.x, 2, BOAT.z - BD / 2 - 6.25);
+  add(swMoon);
+  // skerries on the horizon
+  for (const [sx, sw2] of [[-3.4, 2.4], [3.8, 1.6]]) {
+    const sk = new THREE.Mesh(new THREE.SphereGeometry(sw2 / 2, 12, 8), new THREE.MeshBasicMaterial({ color: 0x141c22 }));
+    sk.scale.y = 0.12;
+    sk.position.set(BOAT.x + sx, 1.06, BOAT.z - BD / 2 - 5.6);
+    add(sk);
+  }
+  // bands of water at different depths = true parallax through the holes
+  const waveTexes = [];
+  const waveBands = [];
+  const bandSpecs = [
+    { z: 1.0, y: 0.98, h: 0.5, w: 12, base: "#39597a", speed: 0.045, bobA: 0.020, bobF: 0.9 },
+    { z: 2.2, y: 1.00, h: 0.45, w: 13, base: "#2e4a68", speed: 0.030, bobA: 0.016, bobF: 0.7 },
+    { z: 3.6, y: 1.02, h: 0.4, w: 14, base: "#243c56", speed: 0.018, bobA: 0.011, bobF: 0.55 },
+    { z: 5.2, y: 1.04, h: 0.35, w: 15, base: "#1b2e44", speed: 0.009, bobA: 0.007, bobF: 0.4 },
+  ];
+  for (const spec of bandSpecs) {
+    const tx = canvasTex(256, 48, (g) => {
+      g.fillStyle = spec.base;
+      g.fillRect(0, 0, 256, 48);
+      g.strokeStyle = "rgba(225,240,255,0.30)";
+      g.lineWidth = 1.6;
+      for (let i = 0; i < 3; i++) {
+        g.beginPath();
+        for (let x = 0; x <= 256; x += 6) {
+          const y = 8 + i * 14 + Math.sin(x * 0.07 + i * 2.1) * 3.4;
+          x === 0 ? g.moveTo(x, y) : g.lineTo(x, y);
+        }
+        g.stroke();
       }
-      g.stroke();
+      g.fillStyle = "rgba(255,255,255,0.12)";
+      for (let i = 0; i < 26; i++) g.fillRect((i * 37) % 256, (i * 17) % 44, 4, 1.6);
+    });
+    tx.wrapS = THREE.RepeatWrapping;
+    tx.repeat.x = spec.w / 4;
+    waveTexes.push({ tx, speed: spec.speed });
+    const band = new THREE.Mesh(new THREE.PlaneGeometry(spec.w, spec.h),
+      new THREE.MeshBasicMaterial({ map: tx }));
+    band.position.set(BOAT.x, spec.y, BOAT.z - BD / 2 - spec.z);
+    add(band);
+    waveBands.push({ mesh: band, ...spec });
+  }
+  // dark water floor filling everything below the bands
+  const seaFill = new THREE.Mesh(new THREE.PlaneGeometry(16, 1.1), new THREE.MeshBasicMaterial({ color: 0x152636 }));
+  seaFill.position.set(BOAT.x, 0.5, BOAT.z - BD / 2 - 0.6);
+  add(seaFill);
+  // enclose the seabox sides so no void leaks in at angles
+  for (const sx of [-1, 1]) {
+    const sideCap = new THREE.Mesh(new THREE.PlaneGeometry(7.5, 7), new THREE.MeshBasicMaterial({ color: 0x0c141e }));
+    sideCap.rotation.y = sx < 0 ? Math.PI / 2 : -Math.PI / 2;
+    sideCap.position.set(BOAT.x + sx * 7.5, 2.6, BOAT.z - BD / 2 - 3.6);
+    add(sideCap);
+  }
+
+  // ---- the boat's own light: the Swedish sun/moon through the holes ----
+  const boatSun = new THREE.DirectionalLight(0xfff0d8, 0);
+  boatSun.castShadow = true;
+  boatSun.shadow.mapSize.set(1024, 1024);
+  boatSun.shadow.camera.left = -4; boatSun.shadow.camera.right = 4;
+  boatSun.shadow.camera.top = 4; boatSun.shadow.camera.bottom = -4;
+  boatSun.shadow.camera.near = 0.5; boatSun.shadow.camera.far = 25;
+  boatSun.shadow.bias = -0.0005;
+  add(boatSun);
+  boatSun.target.position.set(BOAT.x, 0.8, BOAT.z);
+  add(boatSun.target);
+  const boatFill = add(new THREE.PointLight(0xbac8d8, 2.2, 5.5, 2));
+  boatFill.position.set(BOAT.x, BH - 0.3, BOAT.z + 0.4);
+
+  function updateBoatSky() {
+    const now = new Date();
+    const sun = getSunPosition(now, SWEDEN.lat, SWEDEN.lng);
+    const moon = getMoonPosition(now, SWEDEN.lat, SWEDEN.lng);
+    const { fraction } = getMoonIllumination(now);
+    const altD = sun.altitude / (Math.PI / 180);
+    drawSwSky(altD);
+    const place = (mesh, body, big) => {
+      const az = Math.max(-1.0, Math.min(1.0, body.azimuth));
+      mesh.position.x = BOAT.x + Math.sin(az) * 7;
+      mesh.position.y = 1.1 + Math.max(-0.4, Math.min(4.6, Math.tan(Math.max(0.02, body.altitude)) * 6));
+      mesh.visible = body.altitude > -0.03 && Math.abs(body.azimuth) < 1.15;
+      return mesh.visible;
+    };
+    const sunUp = place(swSun, sun);
+    swSun.material.opacity = Math.max(0.25, 1 - swWx.clouds * 0.8);
+    const moonUp = place(swMoon, moon);
+    swMoon.material.opacity = (0.35 + 0.6 * fraction) * (1 - swWx.clouds * 0.7);
+    // the beam through the windows
+    const src = sun.altitude > -0.05 ? sun : moon;
+    const useMoon = !(sun.altitude > -0.05);
+    const az = Math.max(-0.9, Math.min(0.9, src.azimuth));
+    boatSun.position.set(
+      BOAT.x + Math.sin(az) * 9,
+      WCY + Math.tan(Math.max(0.06, src.altitude)) * 9,
+      BOAT.z - BD / 2 - 9);
+    const dim = Math.max(0.2, 1 - 0.7 * swWx.clouds);
+    if (!useMoon && sun.altitude > 0) {
+      boatSun.color.set(0xfff0d8);
+      boatSun.intensity = (0.6 + 1.7 * Math.sin(Math.min(sun.altitude, 1.2))) * dim;
+      boatFill.intensity = 1.6 + 2.2 * Math.sin(Math.min(sun.altitude, 1.2)) * dim;
+      boatFill.color.set(0xc8d4e0);
+    } else if (useMoon && moon.altitude > 0) {
+      boatSun.color.set(0xbfd0ee);
+      boatSun.intensity = (0.1 + 0.5 * Math.sin(moon.altitude) * fraction) * dim;
+      boatFill.intensity = 0.8;
+      boatFill.color.set(0x8a9ab8);
+    } else {
+      boatSun.intensity = 0.06;
+      boatFill.intensity = 0.6;
+      boatFill.color.set(0x6a7890);
     }
-    // swedish rain on the glass
-    if (swWx.rain) {
-      g.strokeStyle = "rgba(210,230,250,0.35)";
-      for (let i = 0; i < 30; i++) {
-        const x = (i * 67 + t * 90) % W2, y = (i * 37) % H2;
-        g.beginPath(); g.moveTo(x, y); g.lineTo(x - 2, y + 14); g.stroke();
-      }
-    }
-    oceanTex.needsUpdate = true;
   }
-  drawOcean(0);
-  // three big windows on the sea side
-  for (const wx of [-1.5, 0, 1.5]) {
-    const frame = new THREE.Mesh(new THREE.BoxGeometry(1.14, 0.74, 0.05), basic(0x4a3826));
-    frame.position.set(BOAT.x + wx, 1.35, BOAT.z - BD / 2 + 0.02);
-    add(frame);
-    const glassW = new THREE.Mesh(new THREE.PlaneGeometry(1.04, 0.64), new THREE.MeshBasicMaterial({ map: oceanTex }));
-    glassW.position.set(BOAT.x + wx, 1.35, BOAT.z - BD / 2 + 0.05);
-    add(glassW);
+  updateBoatSky();
+
+  // ---- interior: galley, bunk, table + volca, clock, lantern, sign ----
+  const counter = bAdd(box(0.55, 0.9, 1.6, lam(0x8a6a4a)));
+  counter.position.set(BOAT.x + BW / 2 - 0.3, 0.45, BOAT.z + 0.55);
+  counter.castShadow = true;
+  const counterTop = bAdd(box(0.58, 0.04, 1.64, lam(0xd8d2c4)));
+  counterTop.position.set(BOAT.x + BW / 2 - 0.3, 0.92, BOAT.z + 0.55);
+  const sink = bAdd(new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.11, 0.06, 14), lam(0x9aa0a8)));
+  sink.position.set(BOAT.x + BW / 2 - 0.3, 0.93, BOAT.z + 0.2);
+  const faucet = bAdd(new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.2, 8), lam(0xb8bec8)));
+  faucet.position.set(BOAT.x + BW / 2 - 0.18, 1.03, BOAT.z + 0.2);
+  const kettle = bAdd(new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 0.13, 10), lam(0xc04030)));
+  kettle.position.set(BOAT.x + BW / 2 - 0.3, 1.0, BOAT.z + 0.9);
+  kettle.castShadow = true;
+
+  const bunk = bAdd(box(0.85, 0.28, 1.9, lam(0x8a3a3a)));
+  bunk.position.set(BOAT.x - BW / 2 + 0.5, 0.34, BOAT.z + 0.35);
+  bunk.castShadow = true;
+  const blanket = bAdd(box(0.87, 0.06, 1.1, lam(0xd8c8a0)));
+  blanket.position.set(BOAT.x - BW / 2 + 0.5, 0.51, BOAT.z + 0.7);
+  const pillow = bAdd(box(0.6, 0.1, 0.35, lam(0xece4d2)));
+  pillow.position.set(BOAT.x - BW / 2 + 0.5, 0.53, BOAT.z - 0.4);
+  // rug
+  const rug = bAdd(new THREE.Mesh(new THREE.CircleGeometry(0.85, 24),
+    new THREE.MeshLambertMaterial({ color: 0x9a4a3a })));
+  rug.rotation.x = -Math.PI / 2;
+  rug.position.set(BOAT.x + 0.25, 0.005, BOAT.z + 0.35);
+  // shelf with books on the door wall
+  const shelf = bAdd(box(1.1, 0.04, 0.18, lam(0x4a3826)));
+  shelf.position.set(BOAT.x - 1.2, 1.5, BOAT.z + BD / 2 - 0.1);
+  for (let i = 0; i < 6; i++) {
+    const book = bAdd(box(0.045, 0.2 + (i % 3) * 0.03, 0.13,
+      lam([0xc04030, 0x3a6a8a, 0xd8a040, 0x4a7a4a, 0x8a5a9a, 0xd8d2c4][i])));
+    book.position.set(BOAT.x - 1.62 + i * 0.07, 1.63, BOAT.z + BD / 2 - 0.1);
   }
 
-  // the galley: counter, sink, cabinet, kettle
-  const counter = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.9, 1.7), basic(0x8a6a4a));
-  counter.position.set(BOAT.x + BW / 2 - 0.3, 0.45, BOAT.z - 0.5);
-  add(counter);
-  const counterTop = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.04, 1.74), basic(0xd8d2c4));
-  counterTop.position.set(BOAT.x + BW / 2 - 0.3, 0.92, BOAT.z - 0.5);
-  add(counterTop);
-  const sink = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.11, 0.06, 14), basic(0x9aa0a8));
-  sink.position.set(BOAT.x + BW / 2 - 0.3, 0.93, BOAT.z - 0.9);
-  add(sink);
-  const faucet = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.2, 8), basic(0xb8bec8));
-  faucet.position.set(BOAT.x + BW / 2 - 0.18, 1.03, BOAT.z - 0.9);
-  add(faucet);
-  const kettle = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 0.13, 10), basic(0xc04030));
-  kettle.position.set(BOAT.x + BW / 2 - 0.3, 1.0, BOAT.z - 0.1);
-  add(kettle);
-  const cupboard = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.5, 1.4), basic(0x6a4e34));
-  cupboard.position.set(BOAT.x + BW / 2 - 0.17, 1.75, BOAT.z - 0.5);
-  add(cupboard);
-
-  // the head (tiny bathroom) in the corner — door stays politely shut
-  const headW1 = new THREE.Mesh(new THREE.PlaneGeometry(1.0, BH), boatWallMat);
-  headW1.position.set(BOAT.x - BW / 2 + 1.0, BH / 2, BOAT.z + BD / 2 - 1.0);
-  headW1.rotation.y = 0;
-  headW1.material = new THREE.MeshBasicMaterial({ map: plankTex, side: THREE.DoubleSide });
-  add(headW1);
-  const headW2 = new THREE.Mesh(new THREE.PlaneGeometry(1.0, BH),
-    new THREE.MeshBasicMaterial({ map: plankTex, side: THREE.DoubleSide }));
-  headW2.rotation.y = Math.PI / 2;
-  headW2.position.set(BOAT.x - BW / 2 + 1.0, BH / 2, BOAT.z + BD / 2 - 0.5);
-  add(headW2);
-  const headDoor = new THREE.Mesh(new THREE.BoxGeometry(0.56, 1.6, 0.04), basic(0x5a4026));
-  headDoor.position.set(BOAT.x - BW / 2 + 1.0, 0.8, BOAT.z + BD / 2 - 0.72);
-  headDoor.rotation.y = Math.PI / 2;
-  headDoor.userData.boatHead = true;
-  add(headDoor);
-
-  // kitchen table + stools + the volca on top
-  const btable = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.05, 0.06, 14), basic(0xd8d2c4));
-  btable.position.set(BOAT.x - 0.2, 0.72, BOAT.z - 0.3);
-  add(btable);
-  const tleg = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.18, 0.72, 10), basic(0x4a3826));
-  tleg.position.set(BOAT.x - 0.2, 0.36, BOAT.z - 0.3);
-  add(tleg);
-  for (const [sx, sz] of [[-0.75, -0.1], [0.3, 0.25]]) {
-    const stool = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.13, 0.45, 10), basic(0x6a4e34));
-    stool.position.set(BOAT.x - 0.2 + sx, 0.22, BOAT.z - 0.3 + sz);
-    add(stool);
+  // table + stools + volca
+  const btable = bAdd(new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.05, 16), lam(0xd8d2c4)));
+  btable.position.set(BOAT.x + 0.25, 0.74, BOAT.z + 0.35);
+  btable.castShadow = true;
+  const tleg = bAdd(new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.2, 0.72, 10), lam(0x4a3826)));
+  tleg.position.set(BOAT.x + 0.25, 0.37, BOAT.z + 0.35);
+  for (const [sx, sz] of [[-0.62, 0.12], [0.42, 0.62]]) {
+    const stool = bAdd(new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.13, 0.45, 10), lam(0x6a4e34)));
+    stool.position.set(BOAT.x + 0.25 + sx, 0.22, BOAT.z + 0.35 + sz);
+    stool.castShadow = true;
   }
-  // volca-style sampler: 8 pads, clickable
   const volcaCanvas = document.createElement("canvas");
   volcaCanvas.width = 256; volcaCanvas.height = 160;
   const volcaTex = new THREE.CanvasTexture(volcaCanvas);
@@ -1857,7 +1971,7 @@ export function buildWorld() {
     g.fillStyle = "#c8c2b4";
     g.font = "700 14px monospace";
     g.fillText("DESI-SAMPLE", 12, 22);
-    for (let i = 0; i < 3; i++) {     // little knobs
+    for (let i = 0; i < 3; i++) {
       g.fillStyle = "#1a1a1e";
       g.beginPath(); g.arc(180 + i * 26, 18, 9, 0, 7); g.fill();
     }
@@ -1875,15 +1989,15 @@ export function buildWorld() {
     volcaTex.needsUpdate = true;
   }
   drawVolca();
-  const volcaBody = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.035, 0.2), basic(0x2a2a30));
-  volcaBody.position.set(BOAT.x - 0.2, 0.78, BOAT.z - 0.3);
+  const volcaBody = bAdd(box(0.3, 0.035, 0.2, lam(0x2a2a30)));
+  volcaBody.position.set(BOAT.x + 0.25, 0.785, BOAT.z + 0.35);
   volcaBody.rotation.y = 0.4;
-  add(volcaBody);
+  volcaBody.castShadow = true;
   const volcaFace = new THREE.Mesh(new THREE.PlaneGeometry(0.29, 0.19),
     new THREE.MeshBasicMaterial({ map: volcaTex }));
   volcaFace.rotation.x = -Math.PI / 2;
   volcaFace.rotation.z = -0.4;
-  volcaFace.position.set(BOAT.x - 0.2, 0.799, BOAT.z - 0.3);
+  volcaFace.position.set(BOAT.x + 0.25, 0.804, BOAT.z + 0.35);
   volcaFace.userData.volca = true;
   add(volcaFace);
   let volcaResetT = null;
@@ -1893,7 +2007,7 @@ export function buildWorld() {
     volcaResetT = setTimeout(() => drawVolca(-1), 150);
   }
 
-  // swedish wall clock — Stockholm time, Mora-minimal face
+  // swedish wall clock — Stockholm time, on the starboard wall
   const clockCanvas = document.createElement("canvas");
   clockCanvas.width = 256; clockCanvas.height = 256;
   const swClockTex = new THREE.CanvasTexture(clockCanvas);
@@ -1935,23 +2049,22 @@ export function buildWorld() {
   const swClock = new THREE.Mesh(new THREE.CircleGeometry(0.26, 28),
     new THREE.MeshBasicMaterial({ map: swClockTex }));
   swClock.rotation.y = -Math.PI / 2;
-  swClock.position.set(BOAT.x + BW / 2 - 0.04, 1.55, BOAT.z + 0.8);
+  swClock.position.set(BOAT.x + BW / 2 - 0.04, 1.6, BOAT.z - 0.6);
   add(swClock);
 
-  // bunk + lantern
-  const bunk = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.28, 0.85), basic(0x8a3a3a));
-  bunk.position.set(BOAT.x - BW / 2 + 1.0, 0.34, BOAT.z - BD / 2 + 0.55);
-  add(bunk);
-  const blanket = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.06, 0.87), basic(0xd8c8a0));
-  blanket.position.set(BOAT.x - BW / 2 + 0.7, 0.51, BOAT.z - BD / 2 + 0.55);
-  add(blanket);
+  // swinging lantern with a real warm light
   const lantern = new THREE.Group();
-  const lbody = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 0.16, 10), basic(0x3a342a));
-  const lglass = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.09, 10), basic(0xffd27a));
+  const lbody = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 0.16, 10), lam(0x3a342a));
+  const lglass = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.09, 10),
+    new THREE.MeshBasicMaterial({ color: 0xffd27a }));
   lbody.position.y = -0.1; lglass.position.y = -0.1;
-  lantern.add(lbody, lglass);
-  lantern.position.set(BOAT.x + 0.3, BH - 0.05, BOAT.z);
+  const lanternLight = new THREE.PointLight(0xffc88a, 4.5, 4.5, 2);
+  lanternLight.position.y = -0.1;
+  lantern.add(lbody, lglass, lanternLight);
+  lantern.position.set(BOAT.x + 0.25, BH - 0.04, BOAT.z + 0.35);
   add(lantern);
+
+  // the name, and the way home
   const boatSign = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 0.22), new THREE.MeshBasicMaterial({
     map: canvasTex(512, 112, (g) => {
       g.fillStyle = "#2a1c10"; g.fillRect(0, 0, 512, 112);
@@ -1962,14 +2075,12 @@ export function buildWorld() {
     }),
   }));
   boatSign.rotation.y = Math.PI;
-  boatSign.position.set(BOAT.x, 1.78, BOAT.z + BD / 2 - 0.02);
+  boatSign.position.set(BOAT.x, 1.85, BOAT.z + BD / 2 - 0.02);
   add(boatSign);
-  // exit door back to the room
-  const boatDoor = new THREE.Mesh(new THREE.BoxGeometry(0.7, 1.7, 0.04), basic(0x4a3520));
+  const boatDoor = bAdd(box(0.7, 1.7, 0.04, lam(0x4a3520)));
   boatDoor.rotation.y = Math.PI;
-  boatDoor.position.set(BOAT.x + 0.9, 0.85, BOAT.z + BD / 2 - 0.03);
+  boatDoor.position.set(BOAT.x + 1.4, 0.85, BOAT.z + BD / 2 - 0.03);
   boatDoor.userData.boatExit = true;
-  add(boatDoor);
 
   /* --- dust --- */
   const DUST = 240;
@@ -2069,16 +2180,24 @@ export function buildWorld() {
       for (const at of attracts) at.draw();
     }
 
-    // the sea outside the windows never stops; the lantern swings with it
-    if (elapsed - (tick._seaAt || 0) > 0.3) {
-      tick._seaAt = elapsed;
-      drawOcean(elapsed);
+    // the sea outside the windows never stops — bands slide and bob at
+    // their own rates, the lantern swings, its light breathes
+    for (let i = 0; i < waveBands.length; i++) {
+      const b = waveBands[i];
+      waveTexes[i].tx.offset.x += waveTexes[i].speed * dt;
+      b.mesh.position.y = b.y + Math.sin(elapsed * b.bobF + i * 1.7) * b.bobA;
+    }
+    if (elapsed - (tick._swSkyAt || 0) > 60) {
+      tick._swSkyAt = elapsed;
+      updateBoatSky();
     }
     if (elapsed - (tick._swClockAt || 0) > 1) {
       tick._swClockAt = elapsed;
       drawSwClock();
     }
     lantern.rotation.z = Math.sin(elapsed * 0.7) * 0.09;
+    lantern.rotation.x = Math.sin(elapsed * 0.53 + 1) * 0.05;
+    lantern.children[2].intensity = 4.5 * (0.9 + 0.1 * Math.sin(elapsed * 5.3) * Math.sin(elapsed * 1.3));
 
     nextCityAt -= dt;
     if (nextCityAt <= 0) {
@@ -2123,7 +2242,6 @@ export function buildWorld() {
     dimmerHit: dimmerPlate,
     boatExitHit: boatDoor,
     volcaHit: volcaFace, pressVolcaPad,
-    boatHeadHit: headDoor,
     updateScores,
     setParallax,
     boatSpawn: { x: BOAT.x, z: BOAT.z + 0.4, yaw: 0 },
