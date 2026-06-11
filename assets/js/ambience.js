@@ -56,21 +56,28 @@ export function startAmbience() {
   hum.start();
 }
 
-// The cat stepping on the MIDI keys — soft pentatonic plinks.
-const PENTA = [0, 3, 5, 7, 10, 12, 15, 17, 19, 22];
-export function plink(i = 0) {
+// The MIDI keys under the desk — one C major octave, low to high.
+// Played by visitors (and walked on by the cat).
+const C_MAJOR = [0, 2, 4, 5, 7, 9, 11, 12];   // C D E F G A B C
+export function pianoNote(i = 0) {
   if (!ctx) return;
   const t = ctx.currentTime;
-  const osc = ctx.createOscillator();
-  osc.type = "sine";
-  osc.frequency.value = 220 * Math.pow(2, PENTA[i % PENTA.length] / 12);
+  const f = 261.63 * Math.pow(2, C_MAJOR[Math.max(0, Math.min(7, i))] / 12);
   const g = ctx.createGain();
-  osc.connect(g).connect(master);
+  g.connect(master);
+  // fundamental + a soft octave partial = passable e-piano
+  for (const [mult, type, amt] of [[1, "sine", 1], [2, "triangle", 0.35]]) {
+    const o = ctx.createOscillator();
+    o.type = type;
+    o.frequency.value = f * mult;
+    const og = ctx.createGain();
+    og.gain.value = amt;
+    o.connect(og).connect(g);
+    o.start(t); o.stop(t + 1.4);
+  }
   g.gain.setValueAtTime(0.0001, t);
-  g.gain.exponentialRampToValueAtTime(0.05, t + 0.01);
-  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.7);
-  osc.start(t);
-  osc.stop(t + 0.75);
+  g.gain.exponentialRampToValueAtTime(0.07, t + 0.012);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 1.3);
 }
 
 // A meow, synthesized from scratch with randomized pitch, contour,

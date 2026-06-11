@@ -963,18 +963,38 @@ export function buildWorld() {
   const midiBody = caster(box(0.96, 0.065, 0.27, lam(0x191b1f)));
   midiBody.position.set(0, 0.46, 0.27);
   desk.add(midiBody);
-  const midiKeys = canvasTex(480, 60, (g) => {
-    g.fillStyle = "#f2f2ef"; g.fillRect(0, 0, 480, 60);
-    g.fillStyle = "#0c0c0e";
-    for (let x = 0; x < 480; x += 19) {
-      g.fillRect(x + 17, 0, 4, 60);
-      if ((x / 19) % 7 !== 2 && (x / 19) % 7 !== 6) g.fillRect(x + 12, 0, 10, 34);
+  // one playable C major octave, low on the left → high on the right
+  const keysCanvas = document.createElement("canvas");
+  keysCanvas.width = 480; keysCanvas.height = 60;
+  const keysTex = new THREE.CanvasTexture(keysCanvas);
+  keysTex.colorSpace = THREE.SRGBColorSpace;
+  function drawKeys(pressed = -1) {
+    const g = keysCanvas.getContext("2d");
+    const kw = 480 / 8;
+    g.fillStyle = "#f2f2ef";
+    g.fillRect(0, 0, 480, 60);
+    if (pressed >= 0) {
+      g.fillStyle = "#ffb347";
+      g.fillRect(pressed * kw, 0, kw, 60);
     }
-  });
-  const midiKeybed = plane(0.9, 0.1, new THREE.MeshLambertMaterial({ map: midiKeys }));
+    g.fillStyle = "#0c0c0e";
+    for (let i = 1; i < 8; i++) g.fillRect(i * kw - 2, 0, 4, 60);
+    // black keys: none between E–F (3–4) and B–C (7–8)
+    for (const i of [0, 1, 3, 4, 5]) g.fillRect((i + 1) * kw - 7, 0, 14, 32);
+    keysTex.needsUpdate = true;
+  }
+  drawKeys();
+  const midiKeybed = plane(0.9, 0.1, new THREE.MeshLambertMaterial({ map: keysTex }));
   midiKeybed.rotation.x = -Math.PI / 2;
   midiKeybed.position.set(0, 0.494, 0.345);
+  midiKeybed.userData.piano = true;
   desk.add(midiKeybed);
+  let keyResetTimer = null;
+  function pressPianoKey(i) {
+    drawKeys(i);
+    clearTimeout(keyResetTimer);
+    keyResetTimer = setTimeout(() => drawKeys(-1), 180);
+  }
 
   desk.position.set(0.2, 0, ZF + 0.49);
   add(desk);
@@ -1292,6 +1312,7 @@ export function buildWorld() {
     careTargets, updateCare,
     curtainHits, toggleCurtains,
     curtainsClosed: () => curtains.closed,
+    pianoMesh: midiKeybed, pressPianoKey,
     // where the cat likes to be
     catSpots: {
       chair: { x: SWEET.x, z: SWEET.z, y: 0.51 },

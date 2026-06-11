@@ -132,31 +132,6 @@ async function adminDelete(id, pass) {
   emitRemoved(id);
 }
 
-/* ---------------- echoes + the cat ---------------- */
-
-async function saveEcho(color, path) {
-  if (mode === "supabase") {
-    const { error } = await sb.from("echoes").insert({ color, path });
-    if (error) throw error;
-    return;
-  }
-  try {
-    const all = JSON.parse(localStorage.getItem("metro.echoes") || "[]");
-    all.push(path);
-    localStorage.setItem("metro.echoes", JSON.stringify(all.slice(-20)));
-  } catch (e) {}
-}
-
-async function listEchoes() {
-  if (mode === "supabase") {
-    const { data, error } = await sb.from("echoes")
-      .select("path").order("created_at", { ascending: false }).limit(40);
-    if (error) throw error;
-    return (data || []).map(r => r.path);
-  }
-  try { return JSON.parse(localStorage.getItem("metro.echoes") || "[]"); } catch (e) { return []; }
-}
-
 /* ---- cat needs: shared in real time across every visitor ----
    Bowls only go down because the cat actually eats and drinks; the
    litter only dirties because the cat actually uses it. The cat runs
@@ -265,7 +240,6 @@ function subscribeCat() {
 
 export const store = {
   init, list, add, imageUrl, adminDelete,
-  saveEcho, listEchoes,
   getCatState, catCare, decayCat,
   onCatState: fn => { catListeners.add(fn); return () => catListeners.delete(fn); },
   get mode() { return mode; },

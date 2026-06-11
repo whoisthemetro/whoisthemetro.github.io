@@ -15,6 +15,7 @@ const POSE_HZ = 8;
 const peers = new Map();    // uid -> { name, color, lastSeen }
 const peerListeners = new Set();
 const poseListeners = new Set();
+const noteListeners = new Set();
 
 let me = null;
 let getPose = null;
@@ -64,6 +65,11 @@ async function join(identity, poseFn) {
       .on("broadcast", { event: "pose" }, ({ payload }) => {
         if (payload.uid !== me.uid) emitPose(payload.uid, payload);
       })
+      .on("broadcast", { event: "note" }, ({ payload }) => {
+        if (payload.uid !== me.uid) {
+          noteListeners.forEach(fn => { try { fn(payload.uid, payload.i); } catch (e) {} });
+        }
+      })
       .subscribe(async (status) => {
         if (status === "SUBSCRIBED") {
           await chan.track({ name: me.name, color: me.color });
@@ -81,6 +87,8 @@ async function join(identity, poseFn) {
         if (!known) emitPeers();
       } else if (m.type === "pose") {
         emitPose(m.uid, m);
+      } else if (m.type === "note") {
+        noteListeners.forEach(fn => { try { fn(m.uid, m.i); } catch (e) {} });
       } else if (m.type === "bye") {
         if (peers.delete(m.uid)) emitPeers();
       }
@@ -107,4 +115,12 @@ export const presence = {
   count: () => peers.size + 1,
   onPeers: fn => { peerListeners.add(fn); return () => peerListeners.delete(fn); },
   onPose:  fn => { poseListeners.add(fn); return () => poseListeners.delete(fn); },
+  onNote:  fn => { noteListeners.add(fn); return () => noteListeners.delete(fn); },
+  // a key someone pressed — everyone in the room hears it
+  sendNote(i) {
+    if (!me) return;
+    const msg = { uid: me.uid, i };
+    if (chan) chan.send({ type: "broadcast", event: "note", payload: msg });
+    else bc?.postMessage({ type: "note", ...msg });
+  },
 };

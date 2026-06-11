@@ -9,9 +9,8 @@ import { NotesWall } from "./notes3d.js";
 import { Ghosts } from "./ghosts.js";
 import { store } from "./store.js";
 import { presence } from "./presence.js";
-import { startAmbience, citySound, plink, purr, setRain, meow, hiss, careSound } from "./ambience.js";
+import { startAmbience, citySound, pianoNote, purr, setRain, meow, hiss, careSound } from "./ambience.js";
 import { weather } from "./weather.js";
-import { startEchoRecording, EchoPlayer } from "./echoes.js";
 import { Cat } from "./cat.js";
 import {
   PAPERS, IS_TOUCH, safeUrl, hostOf, timeAgo, toast,
@@ -44,9 +43,10 @@ controls.yaw = world.spawn.yaw;
 
 world.setCityListener((type) => citySound(type));
 
-// the cat
+// the cat — its key-walking plays the same piano visitors can play
 const cat = new Cat(world.scene, world.catSpots, {
-  plink, purr, meow, hiss, dig: () => careSound("sand"),
+  plink: (i) => { pianoNote(i % 8); world.pressPianoKey(i % 8); },
+  purr, meow, hiss, dig: () => careSound("sand"),
 });
 
 // shared cat needs — bowls and litter are the same for every visitor
@@ -67,11 +67,6 @@ cat.onNeed = (kind) => {
     .then(res => { if (res && res.ok !== false) applyCatState(res); })
     .catch(() => {});
 };
-
-// echoes of everyone who came before
-const echoGroup = new THREE.Group();
-world.scene.add(echoGroup);
-const echoPlayer = new EchoPlayer(echoGroup);
 
 // the real weather outside
 weather.onUpdate((wx) => { world.setWeather(wx); setRain(wx.rain); });
@@ -130,7 +125,7 @@ canvas.addEventListener("click", () => {
 function castAt(ndcX, ndcY) {
   raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera);
   // doors are included as blockers so notes can't be pinned onto them
-  const targets = [cat.hitMesh, ...world.careTargets, ...world.curtainHits, ...notesWall.raycastTargets(), ...world.blockers];
+  const targets = [cat.hitMesh, world.pianoMesh, ...world.careTargets, ...world.curtainHits, ...notesWall.raycastTargets(), ...world.blockers];
   const hits = raycaster.intersectObjects(targets, false);
   return hits[0] || null;
 }
@@ -213,6 +208,11 @@ controls.onAction((ndcX, ndcY) => {
         applyCatState(res);
       }
     }).catch(() => {});
+  } else if (hit.object.userData.piano && hit.distance < 2.4 && hit.uv) {
+    const key = Math.max(0, Math.min(7, Math.floor(hit.uv.x * 8)));
+    pianoNote(key);
+    world.pressPianoKey(key);
+    presence.sendNote(key);
   } else if (hit.object.userData.curtain && hit.distance < 3.2) {
     const closed = world.toggleCurtains();
     toast(closed ? "curtains drawn — it's just you and the glow now" : "curtains open");
@@ -226,30 +226,34 @@ controls.onAction((ndcX, ndcY) => {
   }
 });
 
-// what would a click do right now? (desktop crosshair hint)
+// what would a tap/click do right now? (crosshair hint, desktop AND mobile)
+const TAP = IS_TOUCH ? "tap" : "click";
 setInterval(() => {
-  if (!controls.locked || IS_TOUCH || modalOpen) { aimTip.classList.remove("show"); return; }
+  if (!controls.locked || modalOpen) { aimTip.classList.remove("show"); return; }
   const hit = castAt(0, 0);
   if (hit && hit.object.userData.cat && hit.distance < 2.2) {
-    aimTip.textContent = "click to pet the cat";
+    aimTip.textContent = `${TAP} to pet the cat`;
+    aimTip.classList.add("show");
+  } else if (hit && hit.object.userData.piano && hit.distance < 2.4) {
+    aimTip.textContent = `${TAP} the keys to play`;
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.curtain && hit.distance < 3.2) {
-    aimTip.textContent = world.curtainsClosed() ? "click to open the curtains" : "click to draw the curtains";
+    aimTip.textContent = world.curtainsClosed() ? `${TAP} to open the curtains` : `${TAP} to draw the curtains`;
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.care && hit.distance < 2.6) {
     const d = store.decayCat(catState);
     const k = hit.object.userData.care;
     aimTip.textContent =
-      k === "food" ? `food ${Math.round(d.food * 100)}% — click to refill` :
-      k === "water" ? `water ${Math.round(d.water * 100)}% — click to refill` :
-      k === "litter" ? (d.litter > 0.15 ? "click to clean the litter box" : "litter box — clean") :
+      k === "food" ? `food ${Math.round(d.food * 100)}% — ${TAP} to refill` :
+      k === "water" ? `water ${Math.round(d.water * 100)}% — ${TAP} to refill` :
+      k === "litter" ? (d.litter > 0.15 ? `${TAP} to clean the litter box` : "litter box — clean") :
       `treat jar — ${Math.max(0, treatsLeftToday())} left today`;
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.note) {
-    aimTip.textContent = "click to read";
+    aimTip.textContent = `${TAP} to read`;
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.postable && hit.distance < 4.5) {
-    aimTip.textContent = "click to leave something";
+    aimTip.textContent = `${TAP} to leave something`;
     aimTip.classList.add("show");
   } else {
     aimTip.classList.remove("show");
@@ -505,10 +509,9 @@ addEventListener("keydown", (e) => {
     $("#online-count").textContent = String(peers.size + 1);
   });
   presence.onPose((uid, pose) => ghosts.setPose(uid, pose));
+  presence.onNote((uid, i) => { pianoNote(i); world.pressPianoKey(i); });
 
   weather.start();
-  echoPlayer.load();
-  startEchoRecording(() => controls.pose(), identity.color);
 
   // cat needs: load shared state, stay subscribed to everyone's care
   try { applyCatState(await store.getCatState()); }
@@ -517,7 +520,7 @@ addEventListener("keydown", (e) => {
 })();
 
 /* ---------------- frame loop ---------------- */
-window.METRO_DEBUG = { renderer, camera, world, controls, THREE, cat, echoPlayer, notesWall };
+window.METRO_DEBUG = { renderer, camera, world, controls, THREE, cat, notesWall };
 
 const clock = new THREE.Clock();
 let t = 0;
@@ -528,6 +531,5 @@ renderer.setAnimationLoop(() => {
   world.tick(dt);
   ghosts.tick(dt, t);
   cat.tick(dt, t, controls.pose());
-  echoPlayer.tick(dt);
   renderer.render(world.scene, camera);
 });
