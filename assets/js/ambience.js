@@ -602,6 +602,34 @@ export function punchSound(hit = false) {
   src.start(t); src.stop(t + 0.25);
 }
 
+export function shotSound() {
+  // the plane hunt: a sharp crack in the room, a touch of low thump
+  if (!ctx) return;
+  const t = ctx.currentTime + 0.005;
+  const src = ctx.createBufferSource();
+  src.buffer = noiseBuffer(0.4);
+  const hp = ctx.createBiquadFilter();
+  hp.type = "highpass"; hp.frequency.value = 900;
+  const g = ctx.createGain();
+  src.connect(hp).connect(g).connect(master);
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(0.16, t + 0.004);
+  g.gain.exponentialRampToValueAtTime(0.0008, t + 0.18);
+  g.gain.linearRampToValueAtTime(0, t + 0.22);
+  src.start(t); src.stop(t + 0.3);
+  const o = ctx.createOscillator();
+  o.type = "sine";
+  o.frequency.setValueAtTime(140, t);
+  o.frequency.exponentialRampToValueAtTime(48, t + 0.16);
+  const g2 = ctx.createGain();
+  o.connect(g2).connect(master);
+  g2.gain.setValueAtTime(0, t);
+  g2.gain.linearRampToValueAtTime(0.09, t + 0.006);
+  g2.gain.exponentialRampToValueAtTime(0.0008, t + 0.2);
+  g2.gain.linearRampToValueAtTime(0, t + 0.24);
+  o.start(t); o.stop(t + 0.3);
+}
+
 export function shieldClang() {
   if (!ctx) return;
   const t = ctx.currentTime + 0.005;
@@ -734,6 +762,37 @@ export function citySound(type = "siren") {
     lp.frequency.linearRampToValueAtTime(140, t + dur);
     src.start(t);
     src.stop(t + dur + 0.2);
+    return;
+  }
+
+  if (type === "boom") {
+    // a jet coming down over the city, heard through the glass:
+    // a muffled whump and a long low roll
+    const dur = 2.6;
+    const src = ctx.createBufferSource();
+    src.buffer = noiseBuffer(dur + 1);
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.setValueAtTime(420, t);
+    lp.frequency.exponentialRampToValueAtTime(70, t + dur);
+    const g = ctx.createGain();
+    src.connect(lp).connect(g).connect(master);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.13, t + 0.025);
+    g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
+    g.gain.linearRampToValueAtTime(0, t + dur + 0.1);
+    src.start(t); src.stop(t + dur + 0.2);
+    const o = ctx.createOscillator();
+    o.type = "sine";
+    o.frequency.setValueAtTime(70, t);
+    o.frequency.exponentialRampToValueAtTime(34, t + 1.4);
+    const g2 = ctx.createGain();
+    o.connect(g2).connect(master);
+    g2.gain.setValueAtTime(0, t);
+    g2.gain.linearRampToValueAtTime(0.1, t + 0.03);
+    g2.gain.exponentialRampToValueAtTime(0.0008, t + 1.6);
+    g2.gain.linearRampToValueAtTime(0, t + 1.7);
+    o.start(t); o.stop(t + 1.8);
     return;
   }
 

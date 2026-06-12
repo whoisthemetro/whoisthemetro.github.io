@@ -9,7 +9,7 @@ import { NotesWall } from "./notes3d.js";
 import { Ghosts } from "./ghosts.js";
 import { store } from "./store.js";
 import { presence } from "./presence.js";
-import { startAmbience, citySound, pianoNote, audioNow, purr, setRain, setWater, setRoomTone, kettleBoil, setThruster, boostSound, discSound, goalHorn, meow, hiss, careSound, drumHit, setArcadeZone, punchSound, shieldClang, stunBuzz, edrumHit, guitarPluck } from "./ambience.js";
+import { startAmbience, citySound, pianoNote, audioNow, purr, setRain, setWater, setRoomTone, kettleBoil, setThruster, boostSound, discSound, goalHorn, meow, hiss, careSound, drumHit, setArcadeZone, punchSound, shieldClang, stunBuzz, edrumHit, guitarPluck, shotSound } from "./ambience.js";
 import { SONGS, playSong, stopSong, currentSongId } from "./songs.js";
 import { progress } from "./progress.js";
 import { voice } from "./voice.js";
@@ -209,7 +209,7 @@ canvas.addEventListener("click", () => {
 function castAt(ndcX, ndcY) {
   raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera);
   // doors are included as blockers so notes can't be pinned onto them
-  const targets = [cat.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.volcaHit, world.bottleHit, world.echoPoster, world.discHit, world.blindsHit, ...world.edrumHits, ...world.guitarHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...notesWall.raycastTargets(), ...world.blockers];
+  const targets = [cat.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.volcaHit, world.bottleHit, world.echoPoster, world.discHit, world.blindsHit, world.glassHit, ...world.edrumHits, ...world.guitarHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...notesWall.raycastTargets(), ...world.blockers];
   const hits = raycaster.intersectObjects(targets, false);
   return hits[0] || null;
 }
@@ -403,6 +403,17 @@ controls.onAction((ndcX, ndcY) => {
     store.logEvent("curtains");
     presence.sendAct({ kind: "curtains", closed });
     toast(closed ? "curtains drawn — it's just you and the glow now" : "curtains open");
+  } else if (hit.object.userData.glass && hit.uv) {
+    // the plane hunt: a jet on the glass is fair game
+    const shot = world.shootAtGlass(hit.uv.x, hit.uv.y);
+    if (shot) {
+      shotSound();
+      if (shot === "hit") {
+        setTimeout(() => { if (!inBoat && !inArena) citySound("boom"); }, 300);
+        toast("🛩️💥 got it. somewhere over Inglewood, a pilot is very confused");
+        presence.sendAct({ kind: "planeshot" });
+      }
+    }
   } else if (hit.object.userData.care && hit.distance < 2.6) {
     handleCare(hit.object.userData.care);
   } else if (hit.object.userData.note) {
@@ -448,6 +459,9 @@ setInterval(() => {
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.blinds && hit.distance < 3.2) {
     aimTip.textContent = `${TAP} — blinds`;
+    aimTip.classList.add("show");
+  } else if (hit && hit.object.userData.glass && world.planeUp()) {
+    aimTip.textContent = `${TAP} — take the shot 🛩️`;
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.portalArena && hit.distance < 3) {
     aimTip.textContent = "ECHO VR — step through";
@@ -1536,6 +1550,12 @@ addEventListener("keydown", (e) => {
         ghosts.flash(p.target, 0xff4040);
         punchSound(true);
       }
+    } else if (p.kind === "planeshot") {
+      // someone else took the shot — if our jet is still up, down it
+      if (world.downPlane() && !inBoat && !inArena) {
+        citySound("boom");
+        toast("someone shot the plane out of the sky 🛩️💥");
+      }
     } else if (p.kind === "edrum") {
       if (!inBoat && !inArena) { edrumHit(p.pad); world.pressEdrum(p.pad); }
     } else if (p.kind === "guitar") {
@@ -1571,7 +1591,7 @@ addEventListener("keydown", (e) => {
   // real LAX traffic drives the window flyovers when the API is up —
   // each one gets a flight strip: who it is, what it is, where it's going
   startPlanes((info) => {
-    world.triggerPlane();
+    world.triggerPlane(info && info.dir);
     if (info && !inBoat && !inArena) showFlightStrip(info);
   }, (isLive) => world.setLivePlanes(isLive));
 

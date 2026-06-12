@@ -54,6 +54,9 @@ export function startPlanes(onFlyover, onLiveChange) {
             type: a.t || "",
             alt: Math.round(alt / 100) * 100,
             label: westbound ? "ARRIVING LAX" : eastbound ? "DEPARTED LAX" : "OVERHEAD",
+            // which way it crosses the glass: arrivals sink off to the
+            // west (left → right), departures climb out east (right → left)
+            dir: eastbound ? -1 : 1,
           };
           timers.push(setTimeout(() => { try { onFlyover(info); } catch (e) {} }, etaS * 1000));
         }

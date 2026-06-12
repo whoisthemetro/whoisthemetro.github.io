@@ -539,6 +539,74 @@ function drawZilla(g, z, night) {
   g.restore();
 }
 
+// where the jet sits on the sky canvas at progress t (0..1).
+// dir +1 = arrival sinking west toward LAX (left → right),
+// dir -1 = departure climbing out east (right → left)
+function jetXY(t, dir) {
+  return dir < 0
+    ? { x: 760 - t * 800, y: 120 - t * 74 }
+    : { x: -40 + t * 800, y: 46 + t * 74 };
+}
+
+// an airliner in profile — nose along +x, ~28px long. drawn mirrored
+// for departures, pitched with the path, tumbling when it's been shot.
+function drawJet(g, px, py, dir, night, strobe, tumble = 0) {
+  g.save();
+  g.translate(px, py);
+  g.scale(dir < 0 ? -1 : 1, 1);
+  g.rotate((dir < 0 ? -0.1 : 0.1) + tumble);
+  g.fillStyle = night ? "#c8ccd4" : "#e8ecf2";
+  // fuselage: round nose, long cabin, tapered tail cone
+  g.beginPath();
+  g.moveTo(13.5, 0);
+  g.quadraticCurveTo(13, -1.8, 9, -1.8);
+  g.lineTo(-9, -1.8);
+  g.lineTo(-13, -0.6);
+  g.lineTo(-13, 0.6);
+  g.lineTo(-9, 1.8);
+  g.lineTo(10, 1.8);
+  g.quadraticCurveTo(13, 1.6, 13.5, 0);
+  g.closePath();
+  g.fill();
+  // tail fin, swept back
+  g.beginPath();
+  g.moveTo(-8.5, -1.2);
+  g.lineTo(-12.2, -7.2);
+  g.lineTo(-14.3, -7.2);
+  g.lineTo(-12.8, -1.2);
+  g.closePath();
+  g.fill();
+  // wing, swept back and hanging below the body
+  g.beginPath();
+  g.moveTo(3.5, 0.8);
+  g.lineTo(-4.5, 5.8);
+  g.lineTo(-7.3, 5.8);
+  g.lineTo(-0.5, 0.8);
+  g.closePath();
+  g.fill();
+  // engine slung under the wing, dark intake facing forward
+  g.fillStyle = night ? "#9aa0ac" : "#c4cad4";
+  g.fillRect(0.4, 2.7, 5, 2.3);
+  g.fillStyle = "#1c2028";
+  g.fillRect(4.6, 2.8, 0.9, 2.1);
+  // the cabin: lit windows at night, a tinted strip by day
+  g.fillStyle = night ? "rgba(255,228,160,0.85)" : "rgba(70,84,100,0.5)";
+  g.fillRect(-7.5, -0.95, 15.5, 0.85);
+  // beacon on the fin, strobe at the wing root
+  g.fillStyle = "#ff3434";
+  g.fillRect(-13.9, -8.4, 1.6, 1.6);
+  if (strobe) {
+    g.fillStyle = "#fff";
+    g.fillRect(-2.4, 1.6, 2.2, 2.2);
+  }
+  if (night) {
+    // landing lights reaching ahead
+    g.fillStyle = "rgba(255,240,200,0.75)";
+    g.fillRect(13.5, 0.6, 9, 1.3);
+  }
+  g.restore();
+}
+
 function makeSky() {
   const c = document.createElement("canvas");
   c.width = 720; c.height = 280;
@@ -633,20 +701,40 @@ function makeSky() {
 
     // ---- a jet on the LAX approach ----
     if (fx.plane) {
-      const px = -40 + fx.plane * 800;          // east → west across the glass
-      const py = 46 + fx.plane * 74;            // descending
-      g.fillStyle = night ? "#c8ccd4" : "#e8ecf2";
-      g.fillRect(px - 6, py, 12, 2.4);          // fuselage
-      g.fillRect(px - 1.5, py - 3, 3, 8);       // wings
-      if (Math.floor(fx.plane * 30) % 2) {      // strobes
-        g.fillStyle = "#fff";
-        g.fillRect(px - 8, py - 1, 2.4, 2.4);
-      }
-      g.fillStyle = "#ff3434";
-      g.fillRect(px + 7, py, 2, 2);
-      if (night) {
-        g.fillStyle = "rgba(255,240,200,0.8)";  // landing lights
-        g.fillRect(px - 4, py + 2.6, 8, 1.4);
+      const { t, dir, shot } = fx.plane;
+      if (!shot) {
+        const { x: px, y: py } = jetXY(t, dir);
+        drawJet(g, px, py, dir, night, Math.floor(t * 30) % 2 === 1);
+      } else {
+        // someone took the shot. a bloom of fire, then the long fall —
+        // smoke breadcrumbs all the way down
+        const a = shot.age;
+        const fallT = Math.max(0, a - 0.25);
+        const jx = shot.x + dir * 30 * fallT;
+        const jy = shot.y + 170 * fallT * fallT;
+        g.fillStyle = "rgba(90,90,96,0.45)";
+        for (let i = 1; i <= 7; i++) {
+          const tt = fallT * (i / 7);
+          const sx = shot.x + dir * 30 * tt, sy = shot.y + 170 * tt * tt;
+          g.beginPath();
+          g.arc(sx, sy - 2, 1.5 + (fallT - tt) * 5, 0, 7);
+          g.fill();
+        }
+        if (jy < 292) {
+          drawJet(g, jx, jy, dir, night, false, fallT * 2.2);
+          // burning as it goes
+          g.fillStyle = "rgba(255,120,30,0.8)";
+          g.beginPath();
+          g.arc(jx, jy, 2.6 + ((a * 40) % 2), 0, 7);
+          g.fill();
+        }
+        if (a < 0.8) {
+          const k = 1 - a / 0.8;
+          g.fillStyle = `rgba(255,160,40,${0.85 * k})`;
+          g.beginPath(); g.arc(shot.x, shot.y, 5 + a * 36, 0, 7); g.fill();
+          g.fillStyle = `rgba(255,238,190,${0.9 * k})`;
+          g.beginPath(); g.arc(shot.x, shot.y, (5 + a * 36) * 0.45, 0, 7); g.fill();
+        }
       }
     }
 
@@ -866,6 +954,7 @@ export function buildWorld() {
   sky.tex.offset.x = 0.11;
   const glass = add(plane(WIN.w, WIN.h, new THREE.MeshBasicMaterial({ map: sky.tex })));
   glass.position.set(WIN.cx, WIN.cy, ZF + 0.01);
+  glass.userData.glass = true;   // clickable: the plane hunt
   function setParallax(camX) {
     sky.tex.offset.x = Math.max(0, Math.min(0.22, 0.11 - camX * 0.028));
   }
@@ -1027,12 +1116,17 @@ export function buildWorld() {
   let wx = { clouds: 0, rain: 0, fog: false };
   let skyCache = null;
   let plane01 = null;        // 0..1 while a jet crosses the glass
+  let planeDir = 1;          // +1 arrival (left → right), -1 departure
+  let planeShot = null;      // {x, y, age} once someone takes the shot
   let zilla = null;          // walk state while the kaiju is out there
+
+  const planeFx = () =>
+    plane01 == null ? null : { t: plane01, dir: planeDir, shot: planeShot };
 
   function redrawSky(beaconOn) {
     if (!skyCache) return;
     sky.draw(skyCache.sun, skyCache.moon, skyCache.fraction, wx,
-      { beacon: beaconOn, plane: plane01, zilla });
+      { beacon: beaconOn, plane: planeFx(), zilla });
   }
 
   function updateSky() {
@@ -1041,7 +1135,7 @@ export function buildWorld() {
     const moon = getMoonPosition(now, LAT, LNG);
     const { fraction } = getMoonIllumination(now);
     skyCache = { sun, moon, fraction };
-    sky.draw(sun, moon, fraction, wx, { beacon: true, plane: plane01, zilla });
+    sky.draw(sun, moon, fraction, wx, { beacon: true, plane: planeFx(), zilla });
 
     // aim the beam from where the body actually hangs over LA.
     // The window faces due south; in room coordinates that makes
@@ -3428,14 +3522,24 @@ export function buildWorld() {
 
     // beacon blink + jets on the LAX approach
     if (planeT >= 0) {
-      planeT += dt;
-      plane01 = planeT / PLANE_DUR;
-      if (plane01 >= 1) { planeT = -1; plane01 = null; }
+      if (planeShot) {
+        // the long fall — done when it drops below the skyline
+        planeShot.age += dt;
+        const fallT = Math.max(0, planeShot.age - 0.25);
+        if (planeShot.y + 170 * fallT * fallT > 300 || planeShot.age > 6) {
+          planeT = -1; plane01 = null; planeShot = null;
+        }
+      } else {
+        planeT += dt;
+        plane01 = planeT / PLANE_DUR;
+        if (plane01 >= 1) { planeT = -1; plane01 = null; }
+      }
     } else if (!livePlanes) {      // ambient fallback when no real data
       nextPlaneAt -= dt;
       if (nextPlaneAt <= 0) {
         nextPlaneAt = rand(180, 480);
         planeT = 0;
+        planeDir = Math.random() < 0.5 ? 1 : -1;
         if (onCity) { try { onCity("plane"); } catch (e) {} }
       }
     }
@@ -3631,8 +3735,35 @@ export function buildWorld() {
     closetOpen: () => closet.open,
     arcadeHits,
     // real-LAX hooks
-    triggerPlane: () => { if (planeT < 0) { planeT = 0; if (onCity) { try { onCity("plane"); } catch (e) {} } } },
+    triggerPlane: (dir) => {
+      if (planeT < 0) {
+        planeDir = dir < 0 ? -1 : 1;
+        planeT = 0;
+        if (onCity) { try { onCity("plane"); } catch (e) {} }
+      }
+    },
     setLivePlanes: (v) => { livePlanes = !!v; },
+    // the plane hunt: the window is a shooting gallery if your aim is true
+    glassHit: glass,
+    planeUp: () => planeT >= 0 && !planeShot,
+    // (u, v) is the raycast uv on the glass → sky-canvas pixels, with
+    // the parallax offset baked in. returns "hit" | "miss" | null
+    shootAtGlass: (u, v) => {
+      if (planeT < 0 || plane01 == null || planeShot) return null;
+      const cx = (u * sky.tex.repeat.x + sky.tex.offset.x) * 720;
+      const cy = (1 - v) * 280;
+      const p = jetXY(plane01, planeDir);
+      if (Math.hypot(cx - p.x, cy - p.y) > 26) return "miss";
+      planeShot = { x: p.x, y: p.y, age: 0 };
+      return "hit";
+    },
+    // a remote hunter got one — bring ours down too if it's still up
+    downPlane: () => {
+      if (planeT < 0 || plane01 == null || planeShot) return false;
+      const p = jetXY(plane01, planeDir);
+      planeShot = { x: p.x, y: p.y, age: 0 };
+      return true;
+    },
     triggerZilla: () => { if (zillaT < 0) startZilla(); },
     lavaHit: lampGlass, toggleLava,
     blindsHit: blinds, toggleBlinds, setBlinds,
