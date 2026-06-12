@@ -19,6 +19,7 @@ const noteListeners = new Set();
 const gameListeners = new Set();
 const actListeners = new Set();
 const chatListeners = new Set();
+const voiceListeners = new Set();
 
 let me = null;
 let getPose = null;
@@ -88,6 +89,11 @@ async function join(identity, poseFn) {
           gameListeners.forEach(fn => { try { fn(payload); } catch (e) {} });
         }
       })
+      .on("broadcast", { event: "voice" }, ({ payload }) => {
+        if (payload.uid !== me.uid) {
+          voiceListeners.forEach(fn => { try { fn(payload); } catch (e) {} });
+        }
+      })
       .subscribe(async (status) => {
         if (status === "SUBSCRIBED") {
           await chan.track({ name: me.name, color: me.color, avatar: me.avatar || null });
@@ -113,6 +119,8 @@ async function join(identity, poseFn) {
         chatListeners.forEach(fn => { try { fn(m.payload); } catch (e) {} });
       } else if (m.type === "arcade") {
         gameListeners.forEach(fn => { try { fn(m.payload); } catch (e) {} });
+      } else if (m.type === "voice") {
+        voiceListeners.forEach(fn => { try { fn(m.payload); } catch (e) {} });
       } else if (m.type === "bye") {
         if (peers.delete(m.uid)) emitPeers();
       }
@@ -170,6 +178,14 @@ export const presence = {
     const msg = { ...payload, uid: me.uid };
     if (chan) chan.send({ type: "broadcast", event: "act", payload: msg });
     else bc?.postMessage({ type: "act", payload: msg });
+  },
+  // voice chunks — small base64 opus blobs, walkie-talkie cadence
+  onVoice: fn => { voiceListeners.add(fn); return () => voiceListeners.delete(fn); },
+  sendVoice(payload) {
+    if (!me) return;
+    const msg = { ...payload, uid: me.uid };
+    if (chan) chan.send({ type: "broadcast", event: "voice", payload: msg });
+    else bc?.postMessage({ type: "voice", payload: msg });
   },
   // 2-player arcade traffic (sit / join / input / state / leave)
   onGame: fn => { gameListeners.add(fn); return () => gameListeners.delete(fn); },

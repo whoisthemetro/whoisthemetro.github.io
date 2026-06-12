@@ -12,6 +12,7 @@ import { presence } from "./presence.js";
 import { startAmbience, citySound, pianoNote, audioNow, purr, setRain, setWater, setRoomTone, kettleBoil, setThruster, boostSound, discSound, goalHorn, meow, hiss, careSound, drumHit, setArcadeZone } from "./ambience.js";
 import { SONGS, playSong, stopSong, currentSongId } from "./songs.js";
 import { progress } from "./progress.js";
+import { voice } from "./voice.js";
 import { weather } from "./weather.js";
 import { startPlanes } from "./planes.js";
 import { Cat } from "./cat.js";
@@ -56,6 +57,49 @@ setInterval(() => {
   if (!entered) return;
   setArcadeZone(inBoat || inArena ? 0 : world.arcadeZoneLevel(controls.pos.x, controls.pos.z));
 }, 250);
+
+/* ---------------- voice: hold to talk, tap to leave it open ---------------- */
+voice.init(identity.uid, (p) => presence.sendVoice(p));
+presence.onVoice((p) => voice.handleChunk(p));
+const micBtn = $("#mic-btn");
+function updateMicUI() {
+  micBtn.classList.toggle("live", voice.mode() === "open");
+  micBtn.classList.toggle("ptt", voice.mode() === "ptt");
+}
+let micDownAt = 0;
+micBtn.addEventListener("pointerdown", async (e) => {
+  e.preventDefault();
+  micDownAt = Date.now();
+  if (!voice.isOn()) {
+    if (!(await voice.startTalk(false))) toast("the mic said no — check browser permissions");
+    updateMicUI();
+  }
+});
+micBtn.addEventListener("pointerup", (e) => {
+  e.preventDefault();
+  const tap = Date.now() - micDownAt < 300;
+  if (voice.mode() === "ptt") {
+    if (tap) { voice.leaveOpen(); toast("mic open — tap again to close it"); }
+    else voice.stopTalk();
+  } else if (voice.mode() === "open" && tap) {
+    voice.stopTalk();
+    toast("mic closed");
+  }
+  updateMicUI();
+});
+micBtn.addEventListener("pointercancel", () => {
+  if (voice.mode() === "ptt") voice.stopTalk();
+  updateMicUI();
+});
+// desktop bonus: hold V to talk
+addEventListener("keydown", (e) => {
+  if (e.code === "KeyV" && !e.repeat && controls.locked && !modalOpen && entered && !voice.isOn()) {
+    voice.startTalk(false).then(ok => { if (!ok) toast("the mic said no — check browser permissions"); updateMicUI(); });
+  }
+});
+addEventListener("keyup", (e) => {
+  if (e.code === "KeyV" && voice.mode() === "ptt") { voice.stopTalk(); updateMicUI(); }
+});
 
 // piano voice — sticky per visitor, broadcast with each note
 let pianoVoice = 0;
@@ -801,6 +845,7 @@ async function tryArena() {
     refreshNoteVisibility();
     store.logEvent("boat");   // counts as a portal trip
     progress.bump("trips");
+    voice.setArenaFx(true);    // voices arrive over the arena intercom
     startArenaMusic();
     toast("welcome to THE CREW · WASD thrust · SPACE/CTRL up/down · SHIFT boost · B brake");
     hide(paused);
@@ -819,6 +864,7 @@ function leaveArena() {
   fadeTo(() => {
     inArena = false;
     controls.zerog = false;
+    voice.setArenaFx(false);
     setThruster(false);
     controls.pos.x = world.arcadeReturn.x;
     controls.pos.z = world.arcadeReturn.z;

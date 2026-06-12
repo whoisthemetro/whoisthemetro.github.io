@@ -89,6 +89,9 @@ export const PIANO_VOICES = [
 // the audio clock, for anything that wants to schedule against it
 export function audioNow() { return ctx ? ctx.currentTime : 0; }
 
+// the graph endpoints, for modules that build their own chains (voice)
+export function audioGraph() { return { ctx, master }; }
+
 export function pianoNote(i = 0, voice = 0, vel = 1, when = null) {
   if (!ctx) return;
   const v = PIANO_VOICES[Math.abs(voice) % PIANO_VOICES.length];

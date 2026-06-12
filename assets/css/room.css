@@ -412,3 +412,22 @@ textarea:focus, input:focus { border-color: var(--amber); }
 .pc-item.playing { border-color: var(--amber); background: rgba(255,179,71,0.10); }
 .pc-hint { font-size: 11px; color: var(--dim); letter-spacing: 0.4px; text-transform: none; }
 .pc-item.playing .pc-hint { color: var(--amber); }
+
+/* ====== the mic: hold to talk, tap to leave it open ====== */
+#mic-btn {
+  position: fixed; right: 16px; bottom: 110px; z-index: 30;
+  width: 44px; height: 44px; border-radius: 50%;
+  background: rgba(10, 14, 17, 0.7); border: 1px solid var(--line);
+  font-size: 18px; display: none; cursor: pointer;
+  -webkit-user-select: none; user-select: none; touch-action: none;
+}
+@media (pointer: coarse) { #mic-btn { display: block; } }
+#mic-btn.ptt { border-color: var(--amber); background: rgba(255,179,71,0.25); }
+#mic-btn.live {
+  border-color: #ff5050; background: rgba(255,60,60,0.3);
+  animation: mic-pulse 1.6s ease-in-out infinite;
+}
+@keyframes mic-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255,80,80,0.5); }
+  50% { box-shadow: 0 0 0 9px rgba(255,80,80,0); }
+}
