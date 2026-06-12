@@ -802,7 +802,10 @@ export function buildWorld() {
     ["back", 0.56, 1.0, 0.6, 1.2], ["back", 1.72, 1.0, 0.6, 1.2],
     ["back", 2.88, 1.0, 0.6, 1.2], ["back", 4.04, 1.0, 0.6, 1.2],
     ["west", 0.31, 1.0, 0.55, 1.2], ["west", 1.17, 1.0, 0.55, 1.2],
-    ["west", 2.03, 1.0, 0.55, 1.2], ["west", 6.0, 1.0, 0.55, 1.2],
+    // the corner slab by desi's door sat on top of three real notes —
+    // moved to the bare pier between the closet and her door, slimmed
+    // to fit the strip. nothing lives there, nothing gets hidden.
+    ["west", 2.03, 1.0, 0.55, 1.2], ["west", 4.565, 1.0, 0.28, 1.2],
     ["east", 0.58, 1.0, 0.55, 1.2], ["east", 1.71, 1.0, 0.55, 1.2],
     ["east", 2.85, 1.0, 0.55, 1.2], ["east", 3.98, 1.0, 0.55, 1.2],
   ];
