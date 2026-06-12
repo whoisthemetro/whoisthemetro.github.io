@@ -342,7 +342,7 @@ setInterval(() => {
     aimTip.textContent = `${TAP} — light dimmer`;
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.portalArena && hit.distance < 3) {
-    aimTip.textContent = "ECHO VR — it wants a password";
+    aimTip.textContent = "ECHO VR — step through";
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.arenaExit && hit.distance < 4) {
     aimTip.textContent = `${TAP} — airlock back to the arcade`;
@@ -749,7 +749,6 @@ function leaveBoat() {
 }
 
 /* ---------------- THE CREW: the zero-g arena ---------------- */
-const ARENA_HASH = "c5b3f81a7961dae3a0141f75dae36d909357ee9b92380fc428d967e518c5801b";
 let inArena = false;
 const A = world.arenaInfo;
 const disc = {
@@ -760,14 +759,7 @@ const disc = {
 };
 const arenaScore = { o: 0, b: 0 };
 async function tryArena() {
-  modalOpen = true;                      // keep the pause screen away
-  const pass = prompt("the poster hums. password:");
-  if (!pass) { modalOpen = false; if (entered) safeLock(); return; }
-  if (await sha256(pass.trim().toLowerCase()) !== ARENA_HASH) {
-    modalOpen = false;
-    if (entered) safeLock();
-    return toast("the poster stays a poster.");
-  }
+  // no password anymore — the poster just lets you through
   fadeTo(() => {
     inArena = true;
     controls.zerog = true;
@@ -782,8 +774,7 @@ async function tryArena() {
     refreshNoteVisibility();
     store.logEvent("boat");   // counts as a portal trip
     startArenaMusic();
-    toast("welcome to THE CREW · WASD thrust · SPACE/C up/down · SHIFT boost · B brake");
-    modalOpen = false;
+    toast("welcome to THE CREW · WASD thrust · SPACE/CTRL up/down · SHIFT boost · B brake");
     hide(paused);
     if (entered) safeLock();
   });

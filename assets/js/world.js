@@ -1292,7 +1292,7 @@ export function buildWorld() {
   arcSign2.position.set(-X + 0.04, 2.32, CZ);
   add(arcSign2);
 
-  // the Echo VR poster — knock and know the word
+  // the Echo VR poster — step through, no password anymore
   const posterTex = new THREE.TextureLoader().load("assets/img/echo.jpg");
   posterTex.colorSpace = THREE.SRGBColorSpace;
   const echoPoster = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.85),
