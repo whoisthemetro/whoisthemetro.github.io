@@ -514,6 +514,75 @@ export function setWater(on) {
   }
 }
 
+/* ---------------- the e-kit ---------------- */
+export function edrumHit(pad = 0) {
+  if (!ctx) return;
+  const t = ctx.currentTime + 0.005;
+  const thump = (f0, f1, dur, peak) => {
+    const o = ctx.createOscillator();
+    o.type = "sine";
+    o.frequency.setValueAtTime(f0, t);
+    o.frequency.exponentialRampToValueAtTime(f1, t + dur * 0.8);
+    const g = ctx.createGain();
+    o.connect(g).connect(master);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(peak, t + 0.006);
+    g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
+    g.gain.linearRampToValueAtTime(0, t + dur + 0.04);
+    o.start(t); o.stop(t + dur + 0.06);
+  };
+  const hiss = (hp, dur, peak, type = "highpass") => {
+    const src = ctx.createBufferSource();
+    src.buffer = noiseBuffer(dur + 0.2);
+    const f = ctx.createBiquadFilter();
+    f.type = type; f.frequency.value = hp;
+    const g = ctx.createGain();
+    src.connect(f).connect(g).connect(master);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(peak, t + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
+    g.gain.linearRampToValueAtTime(0, t + dur + 0.04);
+    src.start(t); src.stop(t + dur + 0.1);
+  };
+  if (pad === 0) thump(115, 42, 0.3, 0.16);                            // kick
+  else if (pad === 1) { thump(195, 160, 0.12, 0.07); hiss(1600, 0.16, 0.09, "bandpass"); }  // snare
+  else if (pad === 2) hiss(7200, 0.06, 0.05);                          // closed hat
+  else if (pad === 3) thump(175, 120, 0.24, 0.11);                     // tom hi
+  else if (pad === 4) thump(140, 92, 0.3, 0.11);                      // tom lo
+  else hiss(4200, 0.85, 0.06);                                         // crash
+}
+
+/* ---------------- the telecaster: karplus-strong plucks ---------------- */
+// A minor pentatonic, low A up two octaves — pick a fret, get a note
+const PENTA_AM = [110, 130.81, 146.83, 164.81, 196, 220, 261.63, 293.66, 329.63, 392, 440];
+export function guitarPluck(n = 0) {
+  if (!ctx) return;
+  const f = PENTA_AM[Math.max(0, Math.min(PENTA_AM.length - 1, n | 0))];
+  const sr = ctx.sampleRate;
+  const N = Math.round(sr / f);
+  const dur = 1.7;
+  const buf = ctx.createBuffer(1, Math.ceil(sr * dur), sr);
+  const d = buf.getChannelData(0);
+  const line = new Float32Array(N);
+  for (let i = 0; i < N; i++) line[i] = Math.random() * 2 - 1;
+  let idx = 0;
+  for (let i = 0; i < d.length; i++) {
+    const cur = line[idx];
+    const nxt = line[(idx + 1) % N];
+    d[i] = cur;
+    line[idx] = 0.996 * 0.5 * (cur + nxt);   // the string loses its top end
+    idx = (idx + 1) % N;
+  }
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  const lp = ctx.createBiquadFilter();
+  lp.type = "lowpass"; lp.frequency.value = 4400;
+  const g = ctx.createGain();
+  g.gain.value = 0.17;
+  src.connect(lp).connect(g).connect(master);
+  src.start(ctx.currentTime + 0.005);
+}
+
 /* ---------------- arena combat: swings, clangs, stuns ---------------- */
 export function punchSound(hit = false) {
   if (!ctx) return;

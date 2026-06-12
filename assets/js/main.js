@@ -9,7 +9,7 @@ import { NotesWall } from "./notes3d.js";
 import { Ghosts } from "./ghosts.js";
 import { store } from "./store.js";
 import { presence } from "./presence.js";
-import { startAmbience, citySound, pianoNote, audioNow, purr, setRain, setWater, setRoomTone, kettleBoil, setThruster, boostSound, discSound, goalHorn, meow, hiss, careSound, drumHit, setArcadeZone, punchSound, shieldClang, stunBuzz } from "./ambience.js";
+import { startAmbience, citySound, pianoNote, audioNow, purr, setRain, setWater, setRoomTone, kettleBoil, setThruster, boostSound, discSound, goalHorn, meow, hiss, careSound, drumHit, setArcadeZone, punchSound, shieldClang, stunBuzz, edrumHit, guitarPluck } from "./ambience.js";
 import { SONGS, playSong, stopSong, currentSongId } from "./songs.js";
 import { progress } from "./progress.js";
 import { voice } from "./voice.js";
@@ -209,7 +209,7 @@ canvas.addEventListener("click", () => {
 function castAt(ndcX, ndcY) {
   raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera);
   // doors are included as blockers so notes can't be pinned onto them
-  const targets = [cat.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.volcaHit, world.bottleHit, world.echoPoster, world.discHit, world.blindsHit, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...notesWall.raycastTargets(), ...world.blockers];
+  const targets = [cat.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.volcaHit, world.bottleHit, world.echoPoster, world.discHit, world.blindsHit, ...world.edrumHits, ...world.guitarHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...notesWall.raycastTargets(), ...world.blockers];
   const hits = raycaster.intersectObjects(targets, false);
   return hits[0] || null;
 }
@@ -352,9 +352,17 @@ controls.onAction((ndcX, ndcY) => {
     toast(`tube ${h.tube} — hold on. PUNCH now to push off, or wait for GO and ride the current`);
   } else if (hit.object.userData.kiosk && hit.distance < 3) {
     readyUp(hit.object.userData.kiosk);
-  } else if (hit.object.userData.portal === "boat" && hit.distance < 2.6) {
-    // the door isn't the way in anymore — the computer is
-    toast("locked. the computer on the desk knows the way to her room.");
+  } else if (hit.object.userData.edrum !== undefined && hit.distance < 2.6) {
+    const pad = hit.object.userData.edrum;
+    edrumHit(pad);
+    world.pressEdrum(pad);
+    presence.sendAct({ kind: "edrum", pad });
+  } else if (hit.object.userData.guitar && hit.distance < 2.4) {
+    // higher on the neck, higher the note
+    const n = Math.max(0, Math.min(10, Math.round((hit.point.y - 0.25) * 12)));
+    guitarPluck(n);
+    world.strumTele();
+    presence.sendAct({ kind: "guitar", n });
   } else if (hit.object.userData.boatExit && hit.distance < 2.6) {
     leaveBoat();
   } else if (hit.object.userData.portalArena && hit.distance < 3) {
@@ -474,8 +482,11 @@ setInterval(() => {
   } else if (hit && hit.object.userData.volca && hit.distance < 1.8) {
     aimTip.textContent = `${TAP} the pads`;
     aimTip.classList.add("show");
-  } else if (hit && hit.object.userData.portal === "boat" && hit.distance < 2.6) {
-    aimTip.textContent = "her room — the computer knows the way in.";
+  } else if (hit && hit.object.userData.edrum !== undefined && hit.distance < 2.6) {
+    aimTip.textContent = `${TAP} the pads — e-kit`;
+    aimTip.classList.add("show");
+  } else if (hit && hit.object.userData.guitar && hit.distance < 2.4) {
+    aimTip.textContent = `${TAP} — the tele (A minor pentatonic lives here)`;
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.boatExit && hit.distance < 2.6) {
     aimTip.textContent = `${TAP} to go back to the room`;
@@ -1525,6 +1536,10 @@ addEventListener("keydown", (e) => {
         ghosts.flash(p.target, 0xff4040);
         punchSound(true);
       }
+    } else if (p.kind === "edrum") {
+      if (!inBoat && !inArena) { edrumHit(p.pad); world.pressEdrum(p.pad); }
+    } else if (p.kind === "guitar") {
+      if (!inBoat && !inArena) { guitarPluck(p.n); world.strumTele(); }
     } else if (p.kind === "ready") {
       applyReady(p.team, p.t);
     } else if (p.kind === "match") {
@@ -1599,7 +1614,7 @@ renderer.setAnimationLoop(() => {
   } else {
     camera.rotation.z = 0;
   }
-  world.tick(dt);
+  world.tick(dt, controls.pos);
   ghosts.tick(dt, t);
   cat.tick(dt, t, controls.pose());
   discTick(dt);

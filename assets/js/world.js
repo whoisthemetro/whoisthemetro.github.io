@@ -806,9 +806,24 @@ export function buildWorld() {
     // moved to the bare pier between the closet and her door, slimmed
     // to fit the strip. nothing lives there, nothing gets hidden.
     ["west", 2.03, 1.0, 0.55, 1.2], ["west", 4.565, 1.0, 0.28, 1.2],
+    // where the bathroom door used to be — the room is all studio now
+    ["west", 5.13, 1.0, 0.55, 1.2],
     ["east", 0.58, 1.0, 0.55, 1.2], ["east", 1.71, 1.0, 0.55, 1.2],
     ["east", 2.85, 1.0, 0.55, 1.2], ["east", 3.98, 1.0, 0.55, 1.2],
   ];
+  // soft LED halo behind every slab — thin emissive rails just proud
+  // of the wall, peeking around the slab edges
+  const ledMat = new THREE.MeshBasicMaterial({ color: 0xffc46a, transparent: true, opacity: 0.85 });
+  function ledRim(slab, pw, ph) {
+    for (const [lw, lh, ox, oy] of [
+      [pw + 0.07, 0.02, 0, ph / 2 + 0.035], [pw + 0.07, 0.02, 0, -ph / 2 - 0.035],
+      [0.02, ph + 0.07, pw / 2 + 0.035, 0], [0.02, ph + 0.07, -pw / 2 - 0.035, 0],
+    ]) {
+      const led = new THREE.Mesh(new THREE.BoxGeometry(lw, lh, 0.012), ledMat);
+      led.position.set(ox, oy, -0.022);     // local: tucked behind the slab face
+      slab.add(led);
+    }
+  }
   for (const [wid, pu, pv, pw, ph] of PANEL_DEFS) {
     const wall = walls.find(w2 => w2.id === wid);
     const center = wall.origin.clone()
@@ -822,6 +837,7 @@ export function buildWorld() {
     slab.receiveShadow = true;
     add(slab);
     blockers.push(slab);
+    ledRim(slab, pw, ph);
     // notes keep clear of the slabs
     wall.voids.push({ u0: pu - 0.04, u1: pu + pw + 0.04, v0: pv - 0.04, v1: pv + ph + 0.04 });
   }
@@ -832,6 +848,7 @@ export function buildWorld() {
     slab.castShadow = true;
     add(slab);
     blockers.push(slab);
+    ledRim(slab, 0.55, 1.2);
   }
 
   /* --- the window (faces south over LA) --- */
@@ -886,10 +903,12 @@ export function buildWorld() {
     const want = blindsState.open ? 1 : 0;
     if (Math.abs(blindsState.anim - want) < 0.001) return;
     blindsState.anim += (want - blindsState.anim) * Math.min(1, dt * 5);
-    const k = 1 - blindsState.anim * 0.9;          // gather to 10% width
+    const k = 1 - blindsState.anim * 0.82;         // gather to 18% — still a fat click target
     blinds.scale.x = k;
-    // keep the left edge pinned while the rest folds toward it
-    blinds.position.x = WIN.cx - (WIN.w - 0.06) / 2 + (WIN.w - 0.06) * k / 2;
+    // the stack parks INSIDE the glass, clear of the open-curtain
+    // bundle at the window edge, so it can always be clicked shut
+    const openX = WIN.cx - (WIN.w - 0.06) / 2 + 0.42 + (WIN.w - 0.06) * 0.18 / 2;
+    blinds.position.x = WIN.cx + (openX - WIN.cx) * blindsState.anim;
   }
 
   const frameMat = lam(0xcfc6b2);
@@ -1124,9 +1143,140 @@ export function buildWorld() {
     blockers.push(leaf);
     return grp;
   }
-  const bathroomDoor = door(0.82, 2.03, -X + 0.035, -2.1, Math.PI / 2);
-  bathroomDoor.children[0].userData.portal = "boat";   // the unorthodox way in
+  // the bathroom door is gone — METRO OS is the way to her room now.
+  // an acoustic slab hangs where it stood (see PANEL_DEFS), and the
+  // freed corner holds the e-kit.
   const entryDoor = door(0.86, 2.03, X - 0.035, 2.3, -Math.PI / 2, false, true);  // handle on the left
+
+  /* --- the electronic drum kit, west-front corner --- */
+  const edrumHits = [];
+  const ekit = new THREE.Group();
+  const padMat = () => lam(0x16181d);
+  const rimMat = new THREE.MeshBasicMaterial({ color: 0x39c2ff });
+  function epad(idx, r, x2, z2, y2, tilt = 0) {
+    const grp2 = new THREE.Group();
+    const pad = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 0.035, 18), padMat());
+    grp2.add(pad);
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(r, 0.012, 8, 22), rimMat.clone());
+    rim.rotation.x = Math.PI / 2;
+    rim.position.y = 0.02;
+    grp2.add(rim);
+    const stand = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.02, y2, 8), lam(0x2c2f35));
+    stand.position.y = -y2 / 2;
+    grp2.add(stand);
+    grp2.position.set(x2, y2, z2);
+    grp2.rotation.z = tilt;
+    pad.userData.edrum = idx;
+    rim.userData.edrum = idx;
+    ekit.add(grp2);
+    edrumHits.push(pad, rim);
+    blockers.push(pad);
+    return rim;
+  }
+  const edrumRims = [];
+  edrumRims[1] = epad(1, 0.15, -0.02, 0.26, 0.58);          // snare
+  edrumRims[3] = epad(3, 0.12, -0.18, 0.02, 0.68);          // tom 1
+  edrumRims[4] = epad(4, 0.13, 0.18, 0.0, 0.66);            // tom 2
+  edrumRims[2] = epad(2, 0.11, -0.38, 0.18, 0.78, 0.12);    // hi-hat
+  edrumRims[5] = epad(5, 0.17, 0.34, -0.18, 0.98, -0.25);   // crash
+  // kick tower, front and center
+  const kick = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.19, 0.42, 16), padMat());
+  kick.position.set(0, 0.21, 0.42);
+  kick.userData.edrum = 0;
+  ekit.add(kick);
+  edrumHits.push(kick);
+  blockers.push(kick);
+  const kickRing = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.012, 8, 20), rimMat.clone());
+  kickRing.position.set(0, 0.24, 0.42 + 0.09);
+  kickRing.rotation.x = 0.25;
+  ekit.add(kickRing);
+  edrumRims[0] = kickRing;
+  ekit.position.set(-2.0, 0, -2.72);
+  ekit.rotation.y = 2.2;                  // facing into the room
+  add(ekit);
+  // pad flash when anyone hits it
+  const edrumFlash = new Array(6).fill(0);
+  function pressEdrum(pad) { edrumFlash[Math.max(0, Math.min(5, pad))] = 1; }
+  function tickEdrums(dt) {
+    for (let i = 0; i < 6; i++) {
+      if (edrumFlash[i] <= 0) continue;
+      edrumFlash[i] = Math.max(0, edrumFlash[i] - dt * 5);
+      const rim = edrumRims[i];
+      if (rim) rim.material.color.setHSL(0.55, 1, 0.5 + edrumFlash[i] * 0.45);
+    }
+  }
+
+  /* --- the telecaster, yellow with a white guard, between desk and rack --- */
+  const guitarHits = [];
+  const tele = new THREE.Group();
+  const bodyShape = new THREE.Shape();
+  bodyShape.moveTo(-0.14, -0.18);
+  bodyShape.quadraticCurveTo(-0.21, -0.05, -0.15, 0.07);
+  bodyShape.quadraticCurveTo(-0.11, 0.15, -0.045, 0.155);   // upper bout into the cutaway
+  bodyShape.quadraticCurveTo(0.02, 0.15, 0.05, 0.1);
+  bodyShape.quadraticCurveTo(0.16, 0.13, 0.185, 0.0);
+  bodyShape.quadraticCurveTo(0.19, -0.13, 0.07, -0.185);
+  bodyShape.quadraticCurveTo(-0.04, -0.22, -0.14, -0.18);
+  const teleBody = new THREE.Mesh(
+    new THREE.ExtrudeGeometry(bodyShape, { depth: 0.045, bevelEnabled: true, bevelSize: 0.008, bevelThickness: 0.006 }),
+    lam(0xf2c84b));
+  teleBody.userData.guitar = true;
+  tele.add(teleBody);
+  const guardShape = new THREE.Shape();
+  guardShape.moveTo(-0.13, -0.15);
+  guardShape.quadraticCurveTo(-0.17, -0.03, -0.12, 0.06);
+  guardShape.quadraticCurveTo(-0.08, 0.12, -0.03, 0.12);
+  guardShape.lineTo(0.0, -0.04);
+  guardShape.quadraticCurveTo(-0.02, -0.16, -0.13, -0.15);
+  const guard = new THREE.Mesh(new THREE.ExtrudeGeometry(guardShape, { depth: 0.004, bevelEnabled: false }),
+    lam(0xf4f1e8));
+  guard.position.z = 0.046;
+  guard.userData.guitar = true;
+  tele.add(guard);
+  const neck = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.58, 0.022), lam(0xd8b878));
+  neck.position.set(0.0, 0.155 + 0.29 - 0.02, 0.022);
+  neck.userData.guitar = true;
+  tele.add(neck);
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.13, 0.018), lam(0xe2c685));
+  head.position.set(0.012, 0.155 + 0.58 + 0.04, 0.022);
+  tele.add(head);
+  const fretboard = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.58, 0.005), lam(0x4a3526));
+  fretboard.position.set(0, neck.position.y, 0.036);
+  tele.add(fretboard);
+  for (const sx of [-0.012, 0, 0.012]) {
+    const str = new THREE.Mesh(new THREE.BoxGeometry(0.0022, 0.74, 0.0022),
+      new THREE.MeshBasicMaterial({ color: 0xd9dde2 }));
+    str.position.set(sx, 0.26, 0.052);
+    tele.add(str);
+  }
+  const bridge = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.035, 0.012),
+    new THREE.MeshStandardMaterial({ color: 0xb9bec6, metalness: 0.8, roughness: 0.35 }));
+  bridge.position.set(0.02, -0.12, 0.052);
+  tele.add(bridge);
+  // the A-frame stand
+  for (const sd of [-1, 1]) {
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.011, 0.46, 8), lam(0x23262b));
+    leg.position.set(sd * 0.1, 0.21, -0.06);
+    leg.rotation.z = sd * 0.32;
+    tele.add(leg);
+    const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.011, 0.2, 8), lam(0x23262b));
+    foot.position.set(sd * 0.16, 0.02, 0.02);
+    foot.rotation.x = Math.PI / 2.4;
+    tele.add(foot);
+  }
+  tele.position.set(1.5, 0.21, ZF + 0.42);
+  tele.rotation.x = -0.16;                 // leaning back on the stand
+  tele.rotation.y = 0.18;
+  add(tele);
+  guitarHits.push(teleBody, guard, neck);
+  blockers.push(teleBody);
+  let teleWiggle = 0;
+  function strumTele() { teleWiggle = 1; }
+  function tickTele(dt) {
+    if (teleWiggle <= 0) return;
+    teleWiggle = Math.max(0, teleWiggle - dt * 2.4);
+    tele.rotation.z = Math.sin(teleWiggle * 22) * 0.02 * teleWiggle;
+  }
 
   /* --- the closet (z -1.15..0.35 on the west wall) ---
      The left leaf is hinged: click it and it swings AWAY from you,
@@ -1820,6 +1970,28 @@ export function buildWorld() {
   chair.position.set(SWEET.x, 0, SWEET.z);
   chair.rotation.y = Math.PI;
   add(chair);
+  // bump it and it spins — gas-lift chairs obey the room's physics
+  let chairSpin = 0, prevPX = null, prevPZ = null;
+  function tickChair(dt, ppos) {
+    if (ppos) {
+      const dx = ppos.x - chair.position.x, dz = ppos.z - chair.position.z;
+      const d = Math.hypot(dx, dz);
+      if (prevPX !== null && d < 0.62) {
+        const vx = (ppos.x - prevPX) / Math.max(dt, 0.001), vz = (ppos.z - prevPZ) / Math.max(dt, 0.001);
+        const speed = Math.hypot(vx, vz);
+        if (speed > 0.4 && Math.abs(chairSpin) < 1.5) {
+          // spin direction follows which side you brushed past
+          const side = Math.sign(vx * dz - vz * dx) || 1;
+          chairSpin = side * Math.min(8, 2.5 + speed * 1.8);
+        }
+      }
+      prevPX = ppos.x; prevPZ = ppos.z;
+    }
+    if (Math.abs(chairSpin) > 0.01) {
+      chair.rotation.y += chairSpin * dt;
+      chairSpin *= Math.pow(0.45, dt);     // bearing friction
+    }
+  }
 
   /* --- the cat's corner: litter box, bowls, treat jar --- */
   const careTargets = [];
@@ -3237,8 +3409,11 @@ export function buildWorld() {
   const ZWALK = 14, ZPAUSE = 9;   // seconds: walk in, stop and breathe, walk out
   const startZilla = () => { zillaT = 0; zillaStep = 0; zillaRoared = false; };
 
-  function tick(dt) {
+  function tick(dt, ppos) {
     elapsed += dt;
+    tickEdrums(dt);
+    tickTele(dt);
+    tickChair(dt, ppos);
 
     if (elapsed - dawAt > 0.09) { dawAt = elapsed; daw.draw(); }
     if (elapsed - meterAt > 0.15) { meterAt = elapsed; meterScr.draw(); }
@@ -3455,6 +3630,7 @@ export function buildWorld() {
     triggerZilla: () => { if (zillaT < 0) startZilla(); },
     lavaHit: lampGlass, toggleLava,
     blindsHit: blinds, toggleBlinds, setBlinds,
+    edrumHits, pressEdrum, guitarHits, strumTele,
     addAccessory,
     // how much arcade you should hear from (x, z): 1 inside, a leak
     // through the open closet doorway, near-nothing across the bedroom
