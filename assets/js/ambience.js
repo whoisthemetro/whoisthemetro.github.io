@@ -86,10 +86,14 @@ export const PIANO_VOICES = [
   { name: "ORGAN",     parts: [[1, "sine", 0.7], [2, "sine", 0.5], [4, "sine", 0.22]], dec: 0.6, peak: 0.06 },
 ];
 
-export function pianoNote(i = 0, voice = 0) {
+// the audio clock, for anything that wants to schedule against it
+export function audioNow() { return ctx ? ctx.currentTime : 0; }
+
+export function pianoNote(i = 0, voice = 0, vel = 1, when = null) {
   if (!ctx) return;
   const v = PIANO_VOICES[Math.abs(voice) % PIANO_VOICES.length];
-  const t = ctx.currentTime + 0.005;   // schedule slightly ahead — no past-start clicks
+  // schedule slightly ahead — no past-start clicks
+  const t = Math.max(ctx.currentTime + 0.005, when || 0);
   const f = 261.63 * Math.pow(2, C_MAJOR[Math.max(0, Math.min(14, i))] / 12);
   const g = ctx.createGain();
   let out = g;
@@ -113,7 +117,7 @@ export function pianoNote(i = 0, voice = 0) {
   // pop-free envelope: true-zero linear attack, exponential decay,
   // then a short linear tail back to actual zero before the stop
   g.gain.setValueAtTime(0, t);
-  g.gain.linearRampToValueAtTime(v.peak, t + 0.01);
+  g.gain.linearRampToValueAtTime(v.peak * Math.max(0.01, vel), t + 0.01);
   g.gain.exponentialRampToValueAtTime(0.0008, t + v.dec);
   g.gain.linearRampToValueAtTime(0, t + v.dec + 0.05);
 }

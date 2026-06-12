@@ -9,7 +9,8 @@ import { NotesWall } from "./notes3d.js";
 import { Ghosts } from "./ghosts.js";
 import { store } from "./store.js";
 import { presence } from "./presence.js";
-import { startAmbience, citySound, pianoNote, purr, setRain, setWater, setRoomTone, kettleBoil, setThruster, boostSound, discSound, goalHorn, meow, hiss, careSound, drumHit } from "./ambience.js";
+import { startAmbience, citySound, pianoNote, audioNow, purr, setRain, setWater, setRoomTone, kettleBoil, setThruster, boostSound, discSound, goalHorn, meow, hiss, careSound, drumHit } from "./ambience.js";
+import { SONGS, playSong, stopSong, currentSongId } from "./songs.js";
 import { weather } from "./weather.js";
 import { startPlanes } from "./planes.js";
 import { Cat } from "./cat.js";
@@ -253,7 +254,7 @@ controls.onAction((ndcX, ndcY) => {
   } else if (hit.object.userData.arcadeSoon && hit.distance < 3.2) {
     toast(`${hit.object.userData.arcadeSoon} — cabinet's dark. coming soon.`);
   } else if (hit.object.userData.dm && hit.distance < 3) {
-    openDM();
+    openPC();
   } else if (hit.object.userData.piano && hit.distance < 2.4 && hit.uv) {
     const key = Math.max(0, Math.min(14, Math.floor(hit.uv.x * 15)));
     pianoNote(key, pianoVoice);
@@ -266,7 +267,8 @@ controls.onAction((ndcX, ndcY) => {
   } else if (hit.object.userData.dimmer && hit.distance < 2.6) {
     openDimmer();
   } else if (hit.object.userData.portal === "boat" && hit.distance < 2.6) {
-    tryBoat();
+    // the door isn't the way in anymore — the computer is
+    toast("locked. the computer on the desk knows the way to her room.");
   } else if (hit.object.userData.boatExit && hit.distance < 2.6) {
     leaveBoat();
   } else if (hit.object.userData.portalArena && hit.distance < 3) {
@@ -330,7 +332,7 @@ setInterval(() => {
     aimTip.textContent = `${hit.object.userData.arcadeSoon} — coming soon`;
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.dm && hit.distance < 3) {
-    aimTip.textContent = adminMode ? `${TAP} to open your inbox` : `${TAP} to send Metro a private note`;
+    aimTip.textContent = `${TAP} — the computer · rooms · messages · music`;
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.piano && hit.distance < 2.4) {
     aimTip.textContent = `${TAP} the keys to play`;
@@ -360,7 +362,7 @@ setInterval(() => {
     aimTip.textContent = `${TAP} the pads`;
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.portal === "boat" && hit.distance < 2.6) {
-    aimTip.textContent = "private. it wants a password.";
+    aimTip.textContent = "her room — the computer knows the way in.";
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.boatExit && hit.distance < 2.6) {
     aimTip.textContent = `${TAP} to go back to the room`;
@@ -1021,6 +1023,64 @@ function closeDM() {
   if (entered) safeLock();
 }
 $("#dm-close").addEventListener("click", closeDM);
+
+/* ---------------- the computer: rooms · messages · music ---------------- */
+const pcOverlay = $("#pc");
+// "turn the music to 4%" — song notes peak around 4% full scale,
+// background piano, not a concert
+const MUSIC_VEL = 0.57;
+function refreshSongUI() {
+  const playing = currentSongId();
+  for (const b of $("#pc-songs").children) {
+    const on = b.dataset.song === playing;
+    b.classList.toggle("playing", on);
+    b.querySelector(".pc-hint").textContent = on ? "■ stop" : "▶ play";
+  }
+  const s = SONGS.find(x => x.id === playing);
+  $("#pc-now").textContent = s ? `now playing — ${s.title}` : "";
+}
+function toggleSong(id) {
+  if (currentSongId() === id) { stopSong(); return; }   // stop calls ended → UI refresh
+  playSong(id, {
+    now: audioNow,
+    // the song keeps rolling while you're in another room — you just
+    // don't hear the bedroom piano from there
+    note: (key, vel, when) => { if (!inBoat && !inArena) pianoNote(key, pianoVoice, vel * MUSIC_VEL, when); },
+    visual: (key, delay) => setTimeout(() => { if (!inBoat && !inArena) world.pressPianoKey(key); }, delay),
+    ended: refreshSongUI,
+  });
+  store.logEvent("piano");
+  refreshSongUI();
+}
+for (const s of SONGS) {
+  const b = document.createElement("button");
+  b.className = "pc-item";
+  b.dataset.song = s.id;
+  b.textContent = `🎹 ${s.title}`;
+  const hint = document.createElement("span");
+  hint.className = "pc-hint";
+  hint.textContent = "▶ play";
+  b.appendChild(hint);
+  b.addEventListener("click", () => toggleSong(s.id));
+  $("#pc-songs").appendChild(b);
+}
+function openPC() {
+  modalOpen = true;
+  controls.unlock();
+  $("#pc-inbox").classList.toggle("hidden", !adminMode);
+  refreshSongUI();
+  show(pcOverlay);
+}
+function closePC() {
+  hide(pcOverlay);
+  modalOpen = false;
+  if (entered) safeLock();
+}
+$("#pc-close").addEventListener("click", closePC);
+$("#pc-desi").addEventListener("click", () => { hide(pcOverlay); tryBoat(); });
+$("#pc-echo").addEventListener("click", () => { hide(pcOverlay); modalOpen = false; tryArena(); });
+$("#pc-dm").addEventListener("click", () => { hide(pcOverlay); openDM(); });
+$("#pc-inbox").addEventListener("click", () => { hide(pcOverlay); openDM(); });
 $("#dm-file").addEventListener("change", (e) => {
   const f = e.target.files[0];
   if (!f) return;
@@ -1067,6 +1127,7 @@ addEventListener("keydown", (e) => {
     if (composer.classList.contains("show")) closeComposer(false);
     if (reader.classList.contains("show")) closeReader();
     if (dmOverlay.classList.contains("show")) closeDM();
+    if (pcOverlay.classList.contains("show")) closePC();
     if (bottleOverlay.classList.contains("show")) closeBottle();
     if (dimmerUI.classList.contains("show")) closeDimmer();
     // real DOOM owns ESC (its own menu) — only its × button closes it

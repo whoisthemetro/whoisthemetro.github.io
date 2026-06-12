@@ -391,3 +391,22 @@ textarea:focus, input:focus { border-color: var(--amber); }
 @media (min-width: 701px) {
   #hint-mobile { display: none; }
 }
+
+/* ====== the computer screen menu ====== */
+.pc-sec {
+  margin: 14px 0 6px; font-size: 11px; letter-spacing: 2px;
+  text-transform: uppercase; color: var(--dim);
+  display: flex; justify-content: space-between; align-items: baseline;
+}
+.pc-item {
+  display: flex; justify-content: space-between; align-items: center;
+  width: 100%; text-align: left; padding: 11px 10px; margin: 3px 0;
+  background: rgba(255,255,255,0.025); border: 1px solid var(--line);
+  border-radius: 5px; color: var(--ink); font: inherit; font-size: 14px;
+  cursor: pointer;
+}
+.pc-item:hover { border-color: var(--amber); background: rgba(255,179,71,0.07); }
+.pc-item.hidden { display: none; }
+.pc-item.playing { border-color: var(--amber); background: rgba(255,179,71,0.10); }
+.pc-hint { font-size: 11px; color: var(--dim); letter-spacing: 0.4px; text-transform: none; }
+.pc-item.playing .pc-hint { color: var(--amber); }

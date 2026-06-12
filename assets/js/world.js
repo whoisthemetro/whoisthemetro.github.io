@@ -1450,7 +1450,7 @@ export function buildWorld() {
   desk.add(monBezel);
   const monScreen = plane(monW, monH, new THREE.MeshBasicMaterial({ map: daw.tex }));
   monScreen.position.set(0, monBezel.position.y, -0.21 + 0.016);
-  monScreen.userData.dm = true;   // click the computer → leave Metro a private note
+  monScreen.userData.dm = true;   // click the computer → METRO OS menu (rooms · messages · music)
   desk.add(monScreen);
   monBezel.userData.dm = true;
   // the screen really does light the desk a little
