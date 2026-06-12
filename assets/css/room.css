@@ -225,14 +225,16 @@ textarea:focus, input:focus { border-color: var(--amber); }
 
 /* ---------- room chat ---------- */
 #chat-log {
-  position: absolute; left: 16px; bottom: 56px; z-index: 30;
-  display: flex; flex-direction: column; gap: 3px;
-  max-width: min(46vw, 380px); pointer-events: none;
-  font-size: 13px; line-height: 1.45;
+  /* fixed + above the overlays (z 50): messages stay readable while
+     you're deep in a DOOM run or floating in the arena */
+  position: fixed; left: 16px; bottom: 66px; z-index: 70;
+  display: flex; flex-direction: column; gap: 4px;
+  max-width: min(64vw, 540px); pointer-events: none;
+  font-size: 15px; line-height: 1.5;
 }
 .chat-msg {
-  background: rgba(8, 10, 13, 0.55); border-radius: 4px;
-  padding: 3px 10px; width: fit-content; max-width: 100%;
+  background: rgba(8, 10, 13, 0.72); border-radius: 6px;
+  padding: 6px 12px; width: fit-content; max-width: 100%;
   word-wrap: break-word; text-shadow: 0 1px 2px #000;
   animation: chat-in 0.18s ease-out;
   transition: opacity 1.2s ease;
@@ -244,14 +246,14 @@ textarea:focus, input:focus { border-color: var(--amber); }
   to { transform: translateX(0); opacity: 1; }
 }
 #chat-bar {
-  position: fixed; left: 16px; bottom: 14px; z-index: 60;
-  width: min(70vw, 420px); display: none;
+  position: fixed; left: 16px; bottom: 14px; z-index: 75;
+  width: min(86vw, 560px); display: none;
 }
 #chat-bar.show { display: block; }
 #chat-input {
   width: 100%; background: rgba(10, 14, 17, 0.95);
   border: 1px solid var(--amber); border-radius: 4px;
-  color: var(--ink); padding: 10px 14px; font-size: 14px; outline: none;
+  color: var(--ink); padding: 13px 16px; font-size: 16px; outline: none;
 }
 #chat-btn {
   position: fixed; right: 16px; bottom: 56px; z-index: 30;

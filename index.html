@@ -56,7 +56,6 @@
   <div id="online-pill"><span class="dot"></span><span id="online-count">1</span> in the room</div>
   <div id="cat-pill">🐈‍⬛ <span id="cat-meters"></span></div>
   <div id="flight-strip"></div>
-  <div id="chat-log"></div>
   <div id="aim-tip">click to read</div>
 </div>
 
@@ -135,10 +134,12 @@
   </div>
 </div>
 
-<!-- room chat: press T, or the bubble on mobile -->
+<!-- room chat: press T, or the bubble on mobile. the log lives at the
+     body level so messages stay visible over the arcade and in the arena -->
+<div id="chat-log"></div>
 <button id="chat-btn">💬</button>
 <div id="chat-bar">
-  <input type="text" id="chat-input" maxlength="200" placeholder="say something to the room… (enter to send)">
+  <input type="text" id="chat-input" maxlength="200" placeholder="say something to the room… (enter sends · esc or click away leaves)">
 </div>
 
 <!-- arena lobby music (hidden, faint, looped) -->

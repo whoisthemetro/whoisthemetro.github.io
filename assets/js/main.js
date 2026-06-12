@@ -653,8 +653,8 @@ function pushChat(name, color, text, mine = false) {
   div.appendChild(n);
   div.appendChild(document.createTextNode(text));
   chatLog.appendChild(div);
-  while (chatLog.children.length > 8) chatLog.removeChild(chatLog.firstChild);
-  setTimeout(() => div.classList.add("old"), 14000);
+  while (chatLog.children.length > 12) chatLog.removeChild(chatLog.firstChild);
+  setTimeout(() => div.classList.add("old"), 20000);
 }
 function openChat() {
   if (modalOpen) return;
@@ -692,6 +692,10 @@ addEventListener("keydown", (e) => {
     e.preventDefault();
     openChat();
   }
+});
+// nothing typed? clicking anywhere outside the bar walks away from it
+document.addEventListener("pointerdown", (e) => {
+  if (chatOpen && !chatInput.value.trim() && !chatBar.contains(e.target)) closeChat();
 });
 
 /* ---------------- THE DESI: the boat room ---------------- */
