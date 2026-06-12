@@ -372,6 +372,19 @@ textarea:focus, input:focus { border-color: var(--amber); }
     linear-gradient(105deg, transparent 56%, rgba(200,30,30,0.5) 57%, transparent 59%);
 }
 #scratch.flash { animation: scratch-flash 0.7s ease-out; }
+
+/* ---------- ten soft seconds (the smoking corner) ----------
+   blur and brighten only the edges of vision; the middle stays
+   clear, so the world goes pleasantly fuzzy without going blind */
+#high {
+  position: fixed; inset: 0; z-index: 40; pointer-events: none;
+  backdrop-filter: blur(7px) brightness(1.18) saturate(1.45);
+  -webkit-backdrop-filter: blur(7px) brightness(1.18) saturate(1.45);
+  mask-image: radial-gradient(ellipse at center, transparent 26%, rgba(0,0,0,0.55) 58%, #000 80%);
+  -webkit-mask-image: radial-gradient(ellipse at center, transparent 26%, rgba(0,0,0,0.55) 58%, #000 80%);
+  opacity: 0; transition: opacity 2.4s ease;
+}
+#high.on { opacity: 1; }
 @keyframes scratch-flash {
   0% { opacity: 0; }
   12% { opacity: 1; }

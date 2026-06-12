@@ -9,7 +9,7 @@ import { NotesWall } from "./notes3d.js";
 import { Ghosts } from "./ghosts.js";
 import { store } from "./store.js";
 import { presence } from "./presence.js";
-import { startAmbience, citySound, pianoNote, audioNow, purr, setRain, setWater, setRoomTone, kettleBoil, setThruster, boostSound, discSound, goalHorn, meow, hiss, careSound, drumHit, setArcadeZone, punchSound, shieldClang, stunBuzz, edrumHit, guitarPluck, shotSound } from "./ambience.js";
+import { startAmbience, citySound, pianoNote, audioNow, purr, setRain, setWater, setRoomTone, kettleBoil, setThruster, boostSound, discSound, goalHorn, meow, hiss, careSound, drumHit, setArcadeZone, punchSound, shieldClang, stunBuzz, edrumHit, guitarPluck, shotSound, smokeSound } from "./ambience.js";
 import { SONGS, playSong, stopSong, currentSongId } from "./songs.js";
 import { progress } from "./progress.js";
 import { voice } from "./voice.js";
@@ -209,7 +209,7 @@ canvas.addEventListener("click", () => {
 function castAt(ndcX, ndcY) {
   raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera);
   // doors are included as blockers so notes can't be pinned onto them
-  const targets = [cat.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.volcaHit, world.bottleHit, world.echoPoster, world.discHit, world.blindsHit, world.glassHit, ...world.edrumHits, ...world.guitarHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...notesWall.raycastTargets(), ...world.blockers];
+  const targets = [cat.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.volcaHit, world.bottleHit, world.echoPoster, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...notesWall.raycastTargets(), ...world.blockers];
   const hits = raycaster.intersectObjects(targets, false);
   return hits[0] || null;
 }
@@ -414,6 +414,13 @@ controls.onAction((ndcX, ndcY) => {
         presence.sendAct({ kind: "planeshot" });
       }
     }
+  } else if (hit.object.userData.smoke && hit.distance < 2.4) {
+    const what = hit.object.userData.smoke;
+    smokeSound(what);
+    world.puffSmoke(what);
+    getHigh();
+    presence.sendAct({ kind: "smoke", what });
+    toast(what === "bong" ? "the water does its job 🫧" : "just a little one");
   } else if (hit.object.userData.care && hit.distance < 2.6) {
     handleCare(hit.object.userData.care);
   } else if (hit.object.userData.note) {
@@ -462,6 +469,9 @@ setInterval(() => {
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.glass && world.planeUp()) {
     aimTip.textContent = `${TAP} — take the shot 🛩️`;
+    aimTip.classList.add("show");
+  } else if (hit && hit.object.userData.smoke && hit.distance < 2.4) {
+    aimTip.textContent = hit.object.userData.smoke === "bong" ? `${TAP} — the bong` : `${TAP} — a little joint`;
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.portalArena && hit.distance < 3) {
     aimTip.textContent = "ECHO VR — step through";
@@ -1234,6 +1244,15 @@ $("#bottle-send").addEventListener("click", async () => {
   }
 });
 
+/* ---------------- ten soft seconds ---------------- */
+let highTimer = null;
+function getHigh() {
+  const el = $("#high");
+  el.classList.add("on");
+  clearTimeout(highTimer);
+  highTimer = setTimeout(() => el.classList.remove("on"), 10000);
+}
+
 /* ---------------- flight strip: the jet crossing the glass ---------------- */
 let stripTimer = null;
 function showFlightStrip(info) {
@@ -1549,6 +1568,13 @@ addEventListener("keydown", (e) => {
         // spectator: see the hit land
         ghosts.flash(p.target, 0xff4040);
         punchSound(true);
+      }
+    } else if (p.kind === "smoke") {
+      // a remote puff: the corner bubbles and smokes, but only the
+      // one who pulled gets the soft ten seconds
+      if (!inBoat && !inArena) {
+        world.puffSmoke(p.what);
+        smokeSound(p.what);
       }
     } else if (p.kind === "planeshot") {
       // someone else took the shot — if our jet is still up, down it

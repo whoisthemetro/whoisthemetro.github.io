@@ -1716,6 +1716,153 @@ export function buildWorld() {
     fill2.position.set(fx2, 2.4, -0.4);
   }
 
+  /* --- the smoking corner: two stools flanking the arcade door ---
+     warm downlights in all that neon, a bong on one side, an ashtray
+     and a joint on the other. click → bubbles or crackle, a puff of
+     smoke, and ten soft seconds where the edges of the world blur. */
+  const smokeHits = [];
+  const smokeSpots = {};   // kind -> world position the puffs rise from
+  function smokeStool(z) {
+    const grp = new THREE.Group();
+    const seat = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.19, 0.07, 14), lam(0x6a4a86));
+    seat.position.y = 0.47;
+    seat.castShadow = true;
+    grp.add(seat);
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.42, 8), lam(0x3c4050));
+    pole.position.y = 0.23;
+    grp.add(pole);
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.17, 0.03, 12), lam(0x2c3040));
+    base.position.y = 0.015;
+    grp.add(base);
+    grp.position.set(AR.x1 - 0.75, 0, z);
+    add(grp);
+    blockers.push(seat);
+  }
+  function smokeTable(z, rimColor) {
+    const grp = new THREE.Group();
+    const top = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.03, 14), lam(0x4a4258));
+    top.position.y = 0.52;
+    top.castShadow = true;
+    grp.add(top);
+    // neon edge, so the corner reads from across the room
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.008, 6, 24),
+      new THREE.MeshBasicMaterial({ color: rimColor }));
+    rim.rotation.x = Math.PI / 2;
+    rim.position.y = 0.525;
+    grp.add(rim);
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.5, 8), lam(0x343848));
+    pole.position.y = 0.26;
+    grp.add(pole);
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.18, 0.03, 12), lam(0x282c3a));
+    base.position.y = 0.015;
+    grp.add(base);
+    grp.position.set(AR.x1 - 0.38, 0, z);
+    add(grp);
+    blockers.push(top);
+    return grp;
+  }
+  for (const z of [CZ + 1.7, CZ - 1.7]) {
+    smokeStool(z);
+    // a warm cone in the neon: fixture on the ceiling + short-throw light
+    const fix = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.06, 10), lam(0x0c0e12));
+    fix.position.set(AR.x1 - 0.6, H - 0.03, z);
+    add(fix);
+    const fixGlow = new THREE.Mesh(new THREE.CircleGeometry(0.04, 10),
+      new THREE.MeshBasicMaterial({ color: 0xffc890 }));
+    fixGlow.rotation.x = Math.PI / 2;
+    fixGlow.position.set(AR.x1 - 0.6, H - 0.065, z);
+    add(fixGlow);
+    // hung low enough to actually reach the seats; throw stays shorter
+    // than the gap to the bedroom wall, as the house rules demand
+    const down = add(new THREE.PointLight(0xffb070, 10, 1.5, 2));
+    down.position.set(AR.x1 - 0.6, 1.95, z);
+  }
+  {
+    // the bong, on the north table — green glass, doing its best
+    const t1 = smokeTable(CZ + 1.7, 0x22d4ff);
+    const glass = new THREE.MeshLambertMaterial({ color: 0x6fae7e, transparent: true, opacity: 0.55 });
+    const base = new THREE.Mesh(new THREE.SphereGeometry(0.075, 12, 10), glass);
+    base.position.y = 0.6;
+    base.scale.y = 0.8;
+    t1.add(base);
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.034, 0.3, 10), glass);
+    neck.position.y = 0.76;
+    t1.add(neck);
+    const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.012, 0.09, 8), lam(0x3c3328));
+    bowl.position.set(0.07, 0.63, 0);
+    bowl.rotation.z = -0.8;
+    t1.add(bowl);
+    for (const m of [base, neck, bowl]) { m.userData.smoke = "bong"; smokeHits.push(m); }
+    smokeSpots.bong = new THREE.Vector3(AR.x1 - 0.38, 0.93, CZ + 1.7);
+
+    // ashtray + a waiting joint on the south table
+    const t2 = smokeTable(CZ - 1.7, 0xff2da0);
+    const tray = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.055, 0.03, 12), lam(0x4a4f5a));
+    tray.position.y = 0.55;
+    t2.add(tray);
+    const joint = new THREE.Mesh(new THREE.CylinderGeometry(0.007, 0.009, 0.075, 6), lam(0xe8e2d2));
+    joint.position.set(0.045, 0.575, 0.02);
+    joint.rotation.z = 1.25;
+    joint.rotation.y = 0.5;
+    t2.add(joint);
+    const ember = new THREE.Mesh(new THREE.SphereGeometry(0.008, 6, 5),
+      new THREE.MeshBasicMaterial({ color: 0xff7a30 }));
+    ember.position.set(0.082, 0.59, 0.038);
+    t2.add(ember);
+    for (const m of [tray, joint]) { m.userData.smoke = "joint"; smokeHits.push(m); }
+    smokeSpots.joint = new THREE.Vector3(AR.x1 - 0.32, 0.62, CZ - 1.68);
+  }
+
+  // the smoke itself: soft billboarded puffs that rise, swell and thin
+  const smokeTex = canvasTex(64, 64, (g) => {
+    const r = g.createRadialGradient(32, 32, 4, 32, 32, 30);
+    r.addColorStop(0, "rgba(225,228,235,0.85)");
+    r.addColorStop(0.6, "rgba(210,214,224,0.35)");
+    r.addColorStop(1, "rgba(200,205,215,0)");
+    g.fillStyle = r;
+    g.fillRect(0, 0, 64, 64);
+  });
+  const puffGeo = new THREE.PlaneGeometry(0.12, 0.12);
+  const puffs = [];
+  function puffSmoke(kind) {
+    const src = smokeSpots[kind] || smokeSpots.bong;
+    for (let i = 0; i < 6; i++) {
+      const m = new THREE.Mesh(puffGeo, new THREE.MeshBasicMaterial({
+        map: smokeTex, transparent: true, opacity: 0, depthWrite: false,
+      }));
+      m.position.set(src.x + rand(-0.02, 0.02), src.y, src.z + rand(-0.02, 0.02));
+      m.visible = false;
+      m.userData.p = {
+        t: -i * 0.16, vx: rand(-0.05, 0.05), vy: 0.26 + rand(0, 0.14),
+        vz: rand(-0.05, 0.05), r0: 0.5 + rand(0, 0.5), sway: rand(0, 6),
+      };
+      add(m);
+      puffs.push(m);
+    }
+  }
+  function tickPuffs(dt, ppos) {
+    for (let i = puffs.length - 1; i >= 0; i--) {
+      const m = puffs[i], p = m.userData.p;
+      p.t += dt;
+      if (p.t < 0) continue;
+      if (p.t > 3.4) {
+        scene.remove(m);
+        m.material.dispose();
+        puffs.splice(i, 1);
+        continue;
+      }
+      m.visible = true;
+      m.position.x += (p.vx + Math.sin(p.t * 2.4 + p.sway) * 0.02) * dt;
+      m.position.y += p.vy * dt;
+      m.position.z += p.vz * dt;
+      p.vy *= 1 - 0.22 * dt;
+      const k = p.t / 3.4;
+      m.scale.setScalar(p.r0 + k * 4.2);
+      m.material.opacity = 0.34 * (k < 0.12 ? k / 0.12 : 1 - (k - 0.12) / 0.88);
+      if (ppos) m.lookAt(ppos.x, m.position.y, ppos.z);
+    }
+  }
+
   // "METRO'S ARCADE" — neon on the arcade's back wall, and a small
   // sign over the closet in the bedroom
   const arcSignTex = canvasTex(512, 96, (g) => {
@@ -3703,6 +3850,7 @@ export function buildWorld() {
     tickEdrums(dt);
     tickTele(dt);
     tickChair(dt, ppos);
+    tickPuffs(dt, ppos);
 
     if (elapsed - dawAt > 0.09) { dawAt = elapsed; daw.draw(); }
     if (elapsed - meterAt > 0.15) { meterAt = elapsed; meterScr.draw(); }
@@ -3937,6 +4085,7 @@ export function buildWorld() {
     closetHits: [leftLeaf, rightLeaf], toggleCloset, setCloset,
     closetOpen: () => closet.open,
     arcadeHits,
+    smokeHits, puffSmoke,
     // real-LAX hooks
     triggerPlane: (dir) => {
       if (planeT < 0) {

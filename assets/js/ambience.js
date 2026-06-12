@@ -602,6 +602,56 @@ export function punchSound(hit = false) {
   src.start(t); src.stop(t + 0.25);
 }
 
+export function smokeSound(kind = "bong") {
+  // the smoking corner: water doing its job, or paper on the draw
+  if (!ctx) return;
+  const t = ctx.currentTime + 0.005;
+  if (kind === "bong") {
+    const bed = ctx.createBufferSource();
+    bed.buffer = noiseBuffer(1.7);
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass"; lp.frequency.value = 850;
+    const bg = ctx.createGain();
+    bed.connect(lp).connect(bg).connect(master);
+    bg.gain.setValueAtTime(0, t);
+    bg.gain.linearRampToValueAtTime(0.028, t + 0.15);
+    bg.gain.exponentialRampToValueAtTime(0.0008, t + 1.45);
+    bg.gain.linearRampToValueAtTime(0, t + 1.55);
+    bed.start(t); bed.stop(t + 1.7);
+    for (let i = 0; i < 14; i++) {
+      const bt = t + 0.08 + i * 0.09 + Math.random() * 0.05;
+      const o = ctx.createOscillator();
+      o.type = "sine";
+      const f0 = 180 + Math.random() * 260;
+      o.frequency.setValueAtTime(f0, bt);
+      o.frequency.exponentialRampToValueAtTime(f0 * 2.3, bt + 0.07);
+      const g = ctx.createGain();
+      o.connect(g).connect(master);
+      g.gain.setValueAtTime(0, bt);
+      g.gain.linearRampToValueAtTime(0.032, bt + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0008, bt + 0.085);
+      g.gain.linearRampToValueAtTime(0, bt + 0.1);
+      o.start(bt); o.stop(bt + 0.12);
+    }
+  } else {
+    // the joint: a dry crackle, barely there
+    for (let i = 0; i < 5; i++) {
+      const bt = t + i * 0.12 + Math.random() * 0.06;
+      const src = ctx.createBufferSource();
+      src.buffer = noiseBuffer(0.1);
+      const hp = ctx.createBiquadFilter();
+      hp.type = "highpass"; hp.frequency.value = 2400;
+      const g = ctx.createGain();
+      src.connect(hp).connect(g).connect(master);
+      g.gain.setValueAtTime(0, bt);
+      g.gain.linearRampToValueAtTime(0.02 + Math.random() * 0.015, bt + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0008, bt + 0.07);
+      g.gain.linearRampToValueAtTime(0, bt + 0.09);
+      src.start(bt); src.stop(bt + 0.12);
+    }
+  }
+}
+
 export function shotSound() {
   // the plane hunt: a sharp crack in the room, a touch of low thump
   if (!ctx) return;
