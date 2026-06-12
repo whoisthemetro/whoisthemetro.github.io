@@ -1434,51 +1434,81 @@ export function buildWorld() {
   // freed corner holds the e-kit.
   const entryDoor = door(0.86, 2.03, X - 0.035, 2.3, -Math.PI / 2, false, true);  // handle on the left
 
-  /* --- the electronic drum kit, west-front corner --- */
+  /* --- the electronic drum kit, west-front corner ---
+     an 80s Simmons: black hexagonal pads on a tubular rack, heads
+     tipped up to face whoever walks over, big hex kick front and
+     center. the kit sits in the corner angled into the room. --- */
   const edrumHits = [];
   const ekit = new THREE.Group();
-  const padMat = () => lam(0x16181d);
+  const padMat = () => lam(0x141417);
   const rimMat = new THREE.MeshBasicMaterial({ color: 0x39c2ff });
-  function epad(idx, r, x2, z2, y2, tilt = 0) {
+  const tubeMatE = lam(0x26282e);
+  // hex pad leaning back ~30° from vertical, face toward the player (+z)
+  function epad(idx, r, x2, y2, lean = 1.06) {
     const grp2 = new THREE.Group();
-    const pad = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 0.035, 18), padMat());
+    const pad = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 0.055, 6), padMat());
     grp2.add(pad);
-    const rim = new THREE.Mesh(new THREE.TorusGeometry(r, 0.012, 8, 22), rimMat.clone());
+    // rubber striking face, a shade lighter so the hex reads
+    const face = new THREE.Mesh(new THREE.CylinderGeometry(r - 0.018, r - 0.018, 0.012, 6), lam(0x202126));
+    face.position.y = 0.03;
+    grp2.add(face);
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(r - 0.004, 0.011, 6, 6), rimMat.clone());
     rim.rotation.x = Math.PI / 2;
-    rim.position.y = 0.02;
+    rim.rotation.z = Math.PI / 6;          // align the hex ring with the pad
+    rim.position.y = 0.034;
     grp2.add(rim);
-    const stand = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.02, y2, 8), lam(0x2c2f35));
-    stand.position.y = -y2 / 2;
-    grp2.add(stand);
-    grp2.position.set(x2, y2, z2);
-    grp2.rotation.z = tilt;
+    grp2.position.set(x2, y2, 0.04);
+    grp2.rotation.x = lean;                // head up and at you
     pad.userData.edrum = idx;
+    face.userData.edrum = idx;
     rim.userData.edrum = idx;
     ekit.add(grp2);
-    edrumHits.push(pad, rim);
+    edrumHits.push(pad, face, rim);
     blockers.push(pad);
     return rim;
   }
   const edrumRims = [];
-  edrumRims[1] = epad(1, 0.15, -0.02, 0.26, 0.58);          // snare
-  edrumRims[3] = epad(3, 0.12, -0.18, 0.02, 0.68);          // tom 1
-  edrumRims[4] = epad(4, 0.13, 0.18, 0.0, 0.66);            // tom 2
-  edrumRims[2] = epad(2, 0.11, -0.38, 0.18, 0.78, 0.12);    // hi-hat
-  edrumRims[5] = epad(5, 0.17, 0.34, -0.18, 0.98, -0.25);   // crash
-  // kick tower, front and center
-  const kick = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.19, 0.42, 16), padMat());
-  kick.position.set(0, 0.21, 0.42);
+  // top row across the rack: hat, toms, crash
+  edrumRims[2] = epad(2, 0.115, -0.40, 0.92);
+  edrumRims[3] = epad(3, 0.115, -0.135, 0.95);
+  edrumRims[4] = epad(4, 0.115, 0.135, 0.95);
+  edrumRims[5] = epad(5, 0.115, 0.40, 0.92);
+  // the snare, bigger, low row middle-left
+  edrumRims[1] = epad(1, 0.14, -0.14, 0.64, 1.12);
+  // big hex kick standing nearly vertical, front and center
+  const kickGrp = new THREE.Group();
+  const kick = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.09, 6), padMat());
   kick.userData.edrum = 0;
-  ekit.add(kick);
-  edrumHits.push(kick);
+  kickGrp.add(kick);
+  const kickRing = new THREE.Mesh(new THREE.TorusGeometry(0.215, 0.012, 6, 6), rimMat.clone());
+  kickRing.rotation.x = Math.PI / 2;
+  kickRing.rotation.z = Math.PI / 6;
+  kickRing.position.y = 0.05;
+  kickGrp.add(kickRing);
+  kickGrp.position.set(0.10, 0.26, 0.18);
+  kickGrp.rotation.x = 1.45;               // face square at the player
+  ekit.add(kickGrp);
+  edrumHits.push(kick, kickRing);
   blockers.push(kick);
-  const kickRing = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.012, 8, 20), rimMat.clone());
-  kickRing.position.set(0, 0.24, 0.42 + 0.09);
-  kickRing.rotation.x = 0.25;
-  ekit.add(kickRing);
   edrumRims[0] = kickRing;
-  ekit.position.set(-2.0, 0, -2.72);
-  ekit.rotation.y = 2.2;                  // facing into the room
+  // the tubular rack holding it all up
+  for (const sd of [-1, 1]) {
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.92, 8), tubeMatE);
+    leg.position.set(sd * 0.52, 0.46, 0);
+    ekit.add(leg);
+    const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.42, 8), tubeMatE);
+    foot.position.set(sd * 0.52, 0.02, 0);
+    foot.rotation.x = Math.PI / 2;
+    ekit.add(foot);
+  }
+  for (const by of [0.84, 0.56]) {
+    const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 1.08, 8), tubeMatE);
+    bar.position.set(0, by, 0.01);
+    bar.rotation.z = Math.PI / 2;
+    ekit.add(bar);
+  }
+  ekit.position.set(-1.95, 0, -2.6);
+  ekit.rotation.y = 0.85;                 // out of the corner, into the room
   add(ekit);
   // pad flash when anyone hits it
   const edrumFlash = new Array(6).fill(0);
@@ -1550,9 +1580,11 @@ export function buildWorld() {
     foot.rotation.x = Math.PI / 2.4;
     tele.add(foot);
   }
-  tele.position.set(1.5, 0.21, ZF + 0.42);
+  // parked in the pocket between the right monitor and the rack —
+  // forward of the speaker cab so nothing clips through the body
+  tele.position.set(1.58, 0.21, ZF + 0.58);
   tele.rotation.x = -0.16;                 // leaning back on the stand
-  tele.rotation.y = 0.18;
+  tele.rotation.y = 0.3;
   add(tele);
   guitarHits.push(teleBody, guard, neck);
   blockers.push(teleBody);
@@ -3273,7 +3305,8 @@ export function buildWorld() {
   const DOME_R = 8;            // the goal domes capping each end
   const GOAL_X = 34;           // ring planes, inside the domes
   const BUBBLE_R = 14;         // outside this sphere a goal pays three
-  const TUBE_Z = [-2.8, 0, 2.8];
+  const TUBE_Z = [-3.6, 0, 3.6];   // spread so the fat tubes don't touch
+  const TUBE_R = 1.7;              // big enough to fly through without kissing the wall
   const TUBE_Y = -4.2;         // tubes run under the goal, clean sightline
   const TUBE_X0 = 38.5, TUBE_X1 = 49;
   const LOCKER = { cx: 54.5, hx: 5.5, hy: 6, hz: 6 };
@@ -3316,10 +3349,11 @@ export function buildWorld() {
   ];
   for (const s of [-1, 1]) {
     for (const tz of TUBE_Z) {
-      VOLS.push({ t: "b", x0: Math.min(s * (TUBE_X0 - 2), s * (TUBE_X1 + 1.5)), x1: Math.max(s * (TUBE_X0 - 2), s * (TUBE_X1 + 1.5)),
-                  y0: TUBE_Y - 1.0, y1: TUBE_Y + 1.0, z0: tz - 1.0, z1: tz + 1.0 });
+      // noDisc: the disc plays in the arena — it never rides the tubes
+      VOLS.push({ t: "b", noDisc: true, x0: Math.min(s * (TUBE_X0 - 2), s * (TUBE_X1 + 1.5)), x1: Math.max(s * (TUBE_X0 - 2), s * (TUBE_X1 + 1.5)),
+                  y0: TUBE_Y - 1.6, y1: TUBE_Y + 1.6, z0: tz - 1.6, z1: tz + 1.6 });
     }
-    VOLS.push({ t: "b", x0: s * LOCKER.cx - LOCKER.hx, x1: s * LOCKER.cx + LOCKER.hx,
+    VOLS.push({ t: "b", noDisc: true, x0: s * LOCKER.cx - LOCKER.hx, x1: s * LOCKER.cx + LOCKER.hx,
                 y0: -LOCKER.hy, y1: LOCKER.hy, z0: -LOCKER.hz, z1: LOCKER.hz });
   }
   // floating islands — the cube clusters from the top-down, mirrored
@@ -3345,10 +3379,11 @@ export function buildWorld() {
   }
   // keep (pos, vel) inside the union and outside the islands.
   // pos is absolute world coords, mutated in place. r = body radius.
-  function arenaClamp(pos, vel, r = 0.55) {
+  function arenaClamp(pos, vel, r = 0.55, isDisc = false) {
     const p = { x: pos.x - A.x, y: pos.y - A.y, z: pos.z - A.z };
     let inside = false, best = null, bestD = Infinity;
     for (const v of VOLS) {
+      if (isDisc && v.noDisc) continue;   // the disc stays out of the tunnels
       const c = volClamp(v, p, r);
       if (c.in) { inside = true; break; }
       const d = (c.x - p.x) ** 2 + (c.y - p.y) ** 2 + (c.z - p.z) ** 2;
@@ -3433,13 +3468,24 @@ export function buildWorld() {
     plateShape.absarc(0, 0, DOME_R, 0, Math.PI * 2, false);
     for (const tz of TUBE_Z) {
       const th = new THREE.Path();
-      th.absarc(tz, TUBE_Y, 1.27, 0, Math.PI * 2, true);
+      th.absarc(tz, TUBE_Y, TUBE_R + 0.05, 0, Math.PI * 2, true);
       plateShape.holes.push(th);
     }
     const plate = new THREE.Mesh(new THREE.ShapeGeometry(plateShape, 24), endMat);
     plate.rotation.y = s > 0 ? -Math.PI / 2 : Math.PI / 2;
     plate.position.set(A.x + s * 38.5, A.y, A.z);
     addA(plate);
+    // the Echo look: glowing circles ringing each tube mouth on the
+    // back plate, a bright one tight to the hole and a soft echo of it
+    for (const tz of TUBE_Z) {
+      for (const [rr, tube2, op] of [[TUBE_R + 0.22, 0.05, 0.95], [TUBE_R + 0.55, 0.03, 0.4]]) {
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(rr, tube2, 8, 36),
+          new THREE.MeshBasicMaterial({ color: 0x6fd8ff, transparent: true, opacity: op, depthWrite: false }));
+        ring.rotation.y = Math.PI / 2;
+        ring.position.set(A.x + s * 38.42, A.y + TUBE_Y, A.z + tz);
+        addA(ring);
+      }
+    }
   }
   // banking bevels along the four long edges
   for (const [by, bz] of [[A.hy, A.hz], [A.hy, -A.hz], [-A.hy, A.hz], [-A.hy, -A.hz]]) {
@@ -3577,26 +3623,26 @@ export function buildWorld() {
     const teamCol = s < 0 ? 0xff7320 : 0x22a4ff;
     TUBE_Z.forEach((tz, ti) => {
       const len = TUBE_X1 - TUBE_X0;
-      const tube = new THREE.Mesh(new THREE.CylinderGeometry(1.25, 1.25, len, 12, 1, true), tubeMat);
+      const tube = new THREE.Mesh(new THREE.CylinderGeometry(TUBE_R, TUBE_R, len, 14, 1, true), tubeMat);
       tube.rotation.z = Math.PI / 2;
       tube.position.set(A.x + s * (TUBE_X0 + len / 2), A.y + TUBE_Y, A.z + tz);
       addA(tube);
       for (const mx of [TUBE_X0, TUBE_X1]) {
-        const mouth = new THREE.Mesh(new THREE.TorusGeometry(1.25, 0.07, 8, 24),
+        const mouth = new THREE.Mesh(new THREE.TorusGeometry(TUBE_R, 0.09, 8, 28),
           new THREE.MeshBasicMaterial({ color: teamCol }));
         mouth.rotation.y = Math.PI / 2;
         mouth.position.set(A.x + s * mx, A.y + TUBE_Y, A.z + tz);
         addA(mouth);
       }
       // the launch ring — push past this one
-      const lring = new THREE.Mesh(new THREE.TorusGeometry(1.05, 0.06, 8, 24),
+      const lring = new THREE.Mesh(new THREE.TorusGeometry(TUBE_R - 0.25, 0.06, 8, 24),
         new THREE.MeshBasicMaterial({ color: 0x55e0d8, transparent: true, opacity: 0.85 }));
       lring.rotation.y = Math.PI / 2;
       lring.position.set(A.x + s * (TUBE_X1 - 3.4), A.y + TUBE_Y, A.z + tz);
       addA(lring);
       // yellow handholds BEHIND the ring (locker side)
       const hx2 = s * (TUBE_X1 - 1.8);
-      for (const hz2 of [-0.55, 0.55]) {
+      for (const hz2 of [-0.95, 0.95]) {
         const handle = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.55, 0.14),
           new THREE.MeshBasicMaterial({ color: 0xffd23c }));
         handle.position.set(A.x + hx2, A.y + TUBE_Y, A.z + tz + hz2);
@@ -3605,7 +3651,7 @@ export function buildWorld() {
         grabHandles.push(handle);
       }
       // the barrier that drops when the round starts
-      const barrier = new THREE.Mesh(new THREE.CircleGeometry(1.22, 20),
+      const barrier = new THREE.Mesh(new THREE.CircleGeometry(TUBE_R - 0.05, 22),
         new THREE.MeshBasicMaterial({ color: teamCol, transparent: true, opacity: 0.3, side: THREE.DoubleSide, depthWrite: false }));
       barrier.rotation.y = Math.PI / 2;
       barrier.position.set(A.x + s * (TUBE_X0 + 0.4), A.y + TUBE_Y, A.z + tz);
@@ -3618,10 +3664,10 @@ export function buildWorld() {
   // which tube (if any) is this point inside? main.js runs the current
   function inTube(x, y, z) {
     const lx = x - A.x, ly = y - A.y - TUBE_Y, lz0 = z - A.z;
-    if (Math.abs(lx) < TUBE_X0 - 1 || Math.abs(lx) > TUBE_X1 + 0.5 || Math.abs(ly) > 1.05) return null;
+    if (Math.abs(lx) < TUBE_X0 - 1 || Math.abs(lx) > TUBE_X1 + 0.5 || Math.abs(ly) > 1.7) return null;
     for (const tz of TUBE_Z) {
       const off = Math.hypot(ly, lz0 - tz);
-      if (off < 1.05) return { dir: -Math.sign(lx), off, exitX: A.x - Math.sign(lx) * (TUBE_X0 - 1) };
+      if (off < 1.55) return { dir: -Math.sign(lx), off, exitX: A.x - Math.sign(lx) * (TUBE_X0 - 1) };
     }
     return null;
   }
@@ -3652,7 +3698,7 @@ export function buildWorld() {
     lkShape.closePath();
     for (const tz of TUBE_Z) {
       const lh = new THREE.Path();
-      lh.absarc(tz, TUBE_Y, 1.27, 0, Math.PI * 2, true);
+      lh.absarc(tz, TUBE_Y, TUBE_R + 0.05, 0, Math.PI * 2, true);
       lkShape.holes.push(lh);
     }
     const lkWall = new THREE.Mesh(new THREE.ShapeGeometry(lkShape, 24), lkMat);

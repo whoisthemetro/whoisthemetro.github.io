@@ -27,13 +27,17 @@ const $ = (s) => document.querySelector(s);
 
 /* ---------------- renderer / scene ---------------- */
 const canvas = $("#scene");
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+// phones: skip MSAA, cap the pixel ratio, take the cheap shadow filter —
+// the room reads the same and the battery lives twice as long
+const renderer = new THREE.WebGLRenderer({
+  canvas, antialias: !IS_TOUCH, powerPreference: "high-performance",
+});
+renderer.setPixelRatio(Math.min(devicePixelRatio, IS_TOUCH ? 1.5 : 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.type = IS_TOUCH ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
 
 const camera = new THREE.PerspectiveCamera(72, innerWidth / innerHeight, 0.05, 120);
 camera.layers.enable(1);   // boat layer
@@ -1060,7 +1064,7 @@ function discTick(dt) {
     disc.pos.addScaledVector(disc.vel, dt);
     disc.vel.multiplyScalar(Math.pow(0.995, dt * 60));
     // same union of volumes the players fly — banks off islands too
-    world.arenaClamp(disc.pos, disc.vel, 0.3);
+    world.arenaClamp(disc.pos, disc.vel, 0.3, true);   // true: tubes are off-limits to the disc
     // goals: through either ring inside the domes. release point
     // outside the 3-point bubble pays 3, inside pays 2
     const ringR = Math.hypot(disc.pos.y - A.y, disc.pos.z - A.z);

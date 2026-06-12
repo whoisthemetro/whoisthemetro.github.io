@@ -544,12 +544,26 @@ export function edrumHit(pad = 0) {
     g.gain.linearRampToValueAtTime(0, t + dur + 0.04);
     src.start(t); src.stop(t + dur + 0.1);
   };
-  if (pad === 0) thump(115, 42, 0.3, 0.16);                            // kick
-  else if (pad === 1) { thump(195, 160, 0.12, 0.07); hiss(1600, 0.16, 0.09, "bandpass"); }  // snare
-  else if (pad === 2) hiss(7200, 0.06, 0.05);                          // closed hat
-  else if (pad === 3) thump(175, 120, 0.24, 0.11);                     // tom hi
-  else if (pad === 4) thump(140, 92, 0.3, 0.11);                      // tom lo
-  else hiss(4200, 0.85, 0.06);                                         // crash
+  // the beater click that makes a hit feel like a HIT
+  const click = (f, peak = 0.08) => {
+    const src = ctx.createBufferSource();
+    src.buffer = noiseBuffer(0.05);
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass"; bp.frequency.value = f; bp.Q.value = 1.4;
+    const g = ctx.createGain();
+    src.connect(bp).connect(g).connect(master);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(peak, t + 0.003);
+    g.gain.exponentialRampToValueAtTime(0.0008, t + 0.03);
+    g.gain.linearRampToValueAtTime(0, t + 0.04);
+    src.start(t); src.stop(t + 0.06);
+  };
+  if (pad === 0) { thump(150, 40, 0.32, 0.34); click(2400, 0.10); }    // kick
+  else if (pad === 1) { thump(215, 150, 0.13, 0.16); hiss(1800, 0.18, 0.2, "bandpass"); click(3600, 0.07); }  // snare
+  else if (pad === 2) { hiss(7200, 0.055, 0.11); click(9000, 0.04); }  // closed hat
+  else if (pad === 3) { thump(185, 115, 0.26, 0.24); click(2800, 0.06); }  // tom hi
+  else if (pad === 4) { thump(145, 85, 0.32, 0.24); click(2400, 0.06); }   // tom lo
+  else { hiss(4200, 0.9, 0.13); click(6500, 0.05); }                   // crash
 }
 
 /* ---------------- the telecaster: karplus-strong plucks ---------------- */
