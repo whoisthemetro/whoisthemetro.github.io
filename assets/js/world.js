@@ -23,7 +23,7 @@
 
 import * as THREE from "three";
 import { rand } from "./util.js";
-import { getSunPosition, getMoonPosition, getMoonIllumination } from "./astro.js";
+import { getSunPosition, getMoonPosition, getMoonIllumination, getStarPosition, getPlanetPositions, STARS } from "./astro.js";
 import { makeAttractScreen } from "./arcade.js";
 
 export const ROOM = {
@@ -1181,6 +1181,121 @@ export function buildWorld() {
   // sky bounce — the only "ambient", and it follows the sky too
   const skyFill = add(new THREE.HemisphereLight(0x8a96a8, 0x2a241c, 0.3));
 
+  /* --- the astro ceiling: a star projector for the real sky ---
+     After dusk the bedroom ceiling carries tonight's actual stars:
+     25 bright ones placed by sidereal time, the Big Dipper joined
+     up and named, the moon with its true phase, and the naked-eye
+     planets from a pocket ephemeris. Fisheye look-up projection —
+     zenith mid-ceiling, horizons at the walls. The room faces the
+     window south (-z); west is +x, like the sunlight already knows. */
+  const astroCanvas = document.createElement("canvas");
+  astroCanvas.width = 640; astroCanvas.height = 800;
+  const astroTex = new THREE.CanvasTexture(astroCanvas);
+  astroTex.colorSpace = THREE.SRGBColorSpace;
+  const astroPlane = add(new THREE.Mesh(
+    new THREE.PlaneGeometry(W - 0.12, D - 0.12),
+    new THREE.MeshBasicMaterial({
+      map: astroTex, transparent: true, opacity: 0,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    })));
+  astroPlane.rotation.x = Math.PI / 2;          // face the floor
+  astroPlane.position.set(0, H - 0.02, 0);
+  astroPlane.visible = false;
+
+  function drawAstro() {
+    const g = astroCanvas.getContext("2d");
+    const cw = 640, ch = 800, cx = cw / 2, cy = ch / 2;
+    const Rx = cx * 0.94, Ry = cy * 0.94;
+    g.clearRect(0, 0, cw, ch);
+    const now = new Date();
+
+    // alt/az → ceiling spot: zenith center, horizon at the walls.
+    // az is from south toward west; canvas top = north, right = west
+    const spot = (p) => {
+      if (p.altitude < 0.035) return null;
+      const f = 1 - p.altitude / (Math.PI / 2);
+      return { x: cx + Math.sin(p.azimuth) * f * Rx, y: cy + Math.cos(p.azimuth) * f * Ry };
+    };
+    const dot = (s, r, tint, soft = 2.6) => {
+      const glow = g.createRadialGradient(s.x, s.y, 0, s.x, s.y, r * soft);
+      glow.addColorStop(0, tint);
+      glow.addColorStop(0.35, tint.startsWith("rgba") ? tint : tint + "99");
+      glow.addColorStop(1, "rgba(0,0,0,0)");
+      g.fillStyle = glow;
+      g.beginPath(); g.arc(s.x, s.y, r * soft, 0, 7); g.fill();
+    };
+    const label = (s, text, dy = 16) => {
+      g.fillStyle = "rgba(190,205,235,0.6)";
+      g.font = "11px Archivo, sans-serif";
+      g.textAlign = "center";
+      g.fillText(text, s.x, s.y + dy);
+    };
+
+    // cardinal letters around the rim, so you can orient yourself
+    g.fillStyle = "rgba(170,185,215,0.5)";
+    g.font = "13px Archivo, sans-serif";
+    g.textAlign = "center";
+    g.fillText("n", cx, 22);
+    g.fillText("s", cx, ch - 12);
+    g.fillText("w", cw - 14, cy + 4);
+    g.fillText("e", 14, cy + 4);
+
+    // the stars — the dipper's seven are the catalog tail
+    const spots = STARS.map(([name, ra, dec, mag, tint]) => {
+      const s = spot(getStarPosition(now, LAT, LNG, ra, dec));
+      if (s) dot(s, Math.max(1.6, 4.6 - mag * 1.1), tint);
+      return s;
+    });
+    for (const [i, name] of [[0, "sirius"], [2, "arcturus"], [3, "vega"], [10, "antares"], [17, "polaris"]]) {
+      if (spots[i]) label(spots[i], name);
+    }
+
+    // join the dipper: bowl, then the handle's long curve
+    const dip = spots.slice(18);
+    g.strokeStyle = "rgba(150,170,210,0.30)";
+    g.lineWidth = 1.2;
+    for (const [a, b] of [[0, 1], [1, 2], [2, 3], [3, 0], [3, 4], [4, 5], [5, 6]]) {
+      if (dip[a] && dip[b]) {
+        g.beginPath(); g.moveTo(dip[a].x, dip[a].y); g.lineTo(dip[b].x, dip[b].y); g.stroke();
+      }
+    }
+    if (dip[3] && dip[4]) {
+      label({ x: (dip[3].x + dip[4].x) / 2, y: (dip[3].y + dip[4].y) / 2 }, "the big dipper", 24);
+    }
+
+    // wandering stars, named — the part no toy projector gets right
+    for (const p of getPlanetPositions(now, LAT, LNG)) {
+      const s = spot(p);
+      if (!s) continue;
+      dot(s, Math.max(2, 4.2 - p.mag * 0.9), p.tint);
+      label(s, p.name);
+    }
+
+    // the moon, with tonight's actual face
+    const mpos = getMoonPosition(now, LAT, LNG);
+    const ms = spot(mpos);
+    if (ms) {
+      const frac = getMoonIllumination(now).fraction;
+      dot(ms, 9, "rgba(235,240,250,0.9)", 2.0);
+      g.fillStyle = "rgba(232,238,250,0.95)";
+      g.beginPath(); g.arc(ms.x, ms.y, 9, 0, 7); g.fill();
+      g.fillStyle = "rgba(8,9,14,0.9)";
+      g.beginPath();
+      g.arc(ms.x + 18 * (1 - frac) * (frac < 0.5 ? 1 : -1) * 0.6, ms.y, 9, 0, 7);
+      g.fill();
+      label(ms, "moon", 24);
+    }
+    astroTex.needsUpdate = true;
+  }
+
+  // dusk fades it in, dawn takes it back
+  function updateAstro(sunAlt) {
+    const k = Math.max(0, Math.min(1, (-sunAlt * 57.3 - 4) / 6));
+    astroPlane.material.opacity = k * 0.92;
+    astroPlane.visible = k > 0.02;
+    if (astroPlane.visible) drawAstro();
+  }
+
   let wx = { clouds: 0, rain: 0, fog: false };
   let skyCache = null;
   let plane01 = null;        // 0..1 while a jet crosses the glass
@@ -1258,6 +1373,8 @@ export function buildWorld() {
     beam.intensity *= dim;
     windowLight.intensity *= Math.max(0.3, 1 - 0.45 * wx.clouds);
     skyFill.intensity *= Math.max(0.5, 1 - 0.3 * wx.clouds);
+
+    updateAstro(sunAlt);
 
     // remember the open-curtain levels; the curtains gate them per-frame
     lightBase.beam = beam.intensity;
@@ -3852,6 +3969,8 @@ export function buildWorld() {
     },
     triggerZilla: () => { if (zillaT < 0) startZilla(); },
     triggerBat: () => { if (batT < 0) batT = 0; },
+    // force the star projector on (smoke tests, impatient daylight hours)
+    forceAstro: () => { astroPlane.visible = true; astroPlane.material.opacity = 0.92; drawAstro(); },
     lavaHit: lampGlass, toggleLava,
     blindsHit: blinds, toggleBlinds, setBlinds,
     edrumHits, pressEdrum, guitarHits, strumTele,
