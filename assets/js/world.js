@@ -769,7 +769,8 @@ export function buildWorld() {
       geometry: westGeo,
       voids: [
         { u0: 2.87, u1: 4.53, v0: 0, v1: 2.12 },   // closet doorway
-        { u0: 4.88, u1: 5.92, v0: 0, v1: 2.12 },   // bathroom door
+        // the bathroom door is gone (it's all studio now) — that stretch
+        // is bare wall again, so notes are welcome back on it
       ],
     });
 
@@ -779,7 +780,12 @@ export function buildWorld() {
     }),
     m => { m.rotation.y = -Math.PI / 2; m.position.set(X, H / 2, 0); },
     new THREE.Vector3(X, 0, ZF), new THREE.Vector3(0, 0, 1), new THREE.Vector3(-1, 0, 0),
-    { voids: [{ u0: 5.06, u1: 6.14, v0: 0, v1: 2.12 }] });   // entry door
+    {
+      voids: [
+        { u0: 5.06, u1: 6.14, v0: 0, v1: 2.12 },     // entry door
+        { u0: 4.50, u1: 5.08, v0: 1.26, v1: 1.84 },  // the gold record's spot
+      ],
+    });
 
   const front = add(plane(W, H, new THREE.MeshLambertMaterial({
     map: wallTexture(W, H),

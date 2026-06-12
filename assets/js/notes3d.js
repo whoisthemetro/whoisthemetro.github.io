@@ -183,6 +183,19 @@ export class NotesWall {
         if (!collides(tu, tv)) return { cu: tu, cv: tv, hu, hv };
       }
     }
+
+    // the spiral lost its way — sweep every legal patch on the wall and
+    // take the free one nearest home. clamping bends the spiral along the
+    // edges, so on a crowded wall it can miss pockets that really exist.
+    const cells = [];
+    for (let tv = wall.h * 0.13 + hv; tv <= wall.h * 0.78 - hv; tv += 0.05)
+      for (let tu = wall.w * 0.04 + hu; tu <= wall.w * 0.96 - hu; tu += 0.05)
+        cells.push([tu, tv]);
+    cells.sort((p, q) =>
+      ((p[0] - cu) ** 2 + (p[1] - cv) ** 2) - ((q[0] - cu) ** 2 + (q[1] - cv) ** 2));
+    for (const [tu, tv] of cells)
+      if (!collides(tu, tv)) return { cu: tu, cv: tv, hu, hv };
+
     return { cu, cv, hu, hv };   // wall truly full — overlap beats losing the note
   }
 
