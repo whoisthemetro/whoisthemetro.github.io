@@ -298,6 +298,8 @@ controls.onAction((ndcX, ndcY) => {
     try { localStorage.setItem("metro.voice", String(pianoVoice)); } catch (e) {}
     pianoNote(7, pianoVoice);
     toast(`piano voice: ${PIANO_VOICES[pianoVoice].name}`);
+  } else if (hit.object.userData.lava && hit.distance < 2.4) {
+    toast(world.toggleLava() ? "the wax wakes up 🌋" : "lava lamp off");
   } else if (hit.object.userData.curtain && hit.distance < 3.2) {
     const closed = world.toggleCurtains();
     store.logEvent("curtains");
@@ -342,6 +344,9 @@ setInterval(() => {
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.dimmer && hit.distance < 2.6) {
     aimTip.textContent = `${TAP} — light dimmer`;
+    aimTip.classList.add("show");
+  } else if (hit && hit.object.userData.lava && hit.distance < 2.4) {
+    aimTip.textContent = `${TAP} — lava lamp`;
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.portalArena && hit.distance < 3) {
     aimTip.textContent = "ECHO VR — step through";

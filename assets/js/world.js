@@ -1642,6 +1642,59 @@ export function buildWorld() {
   rack.rotation.y = -0.25;
   add(rack);
 
+  /* --- the lava lamp, left side of the rack top. it works. --- */
+  const lava = new THREE.Group();
+  const lampGold = lam(0x8a6a3a);
+  const lampBase = new THREE.Mesh(new THREE.CylinderGeometry(0.034, 0.05, 0.07, 14), lampGold);
+  lampBase.position.y = 0.035;
+  lava.add(lampBase);
+  const lampCap = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.03, 0.045, 14), lampGold);
+  lampCap.position.y = 0.07 + 0.155 + 0.022;
+  lava.add(lampCap);
+  // the fluid — warm, dim, see-through
+  const lampGlass = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.028, 0.044, 0.155, 14),
+    new THREE.MeshBasicMaterial({ color: 0xb33a14, transparent: true, opacity: 0.34, depthWrite: false }));
+  lampGlass.position.y = 0.07 + 0.0775;
+  lampGlass.userData.lava = true;
+  lava.add(lampGlass);
+  // the wax — blobs on their own slow clocks
+  const lavaBlobs = [];
+  const blobMat = new THREE.MeshBasicMaterial({ color: 0xff8a3c });
+  for (let i = 0; i < 5; i++) {
+    const r = 0.011 + (i % 3) * 0.004;
+    const b = new THREE.Mesh(new THREE.SphereGeometry(r, 10, 10), blobMat);
+    b.userData.blob = { speed: 0.16 + i * 0.07, phase: i * 1.7, r };
+    lava.add(b);
+    lavaBlobs.push(b);
+  }
+  const lavaLight = new THREE.PointLight(0xff8040, 0.85, 0.95, 2);  // short throw, stays on the rack
+  lavaLight.position.y = 0.15;
+  lava.add(lavaLight);
+  lava.position.set(-0.17, 0.68, -0.12);
+  rack.add(lava);
+  blockers.push(lampGlass);
+  let lavaOn = true;
+  function toggleLava() {
+    lavaOn = !lavaOn;
+    lavaLight.intensity = lavaOn ? 0.85 : 0;
+    blobMat.color.set(lavaOn ? 0xff8a3c : 0x5a2c16);
+    lampGlass.material.opacity = lavaOn ? 0.34 : 0.18;
+    return lavaOn;
+  }
+  function tickLava(elapsed) {
+    if (!lavaOn) return;
+    for (const b of lavaBlobs) {
+      const { speed, phase, r } = b.userData.blob;
+      const k = Math.sin(elapsed * speed + phase);
+      b.position.y = 0.07 + 0.03 + (k * 0.5 + 0.5) * 0.085;
+      b.position.x = Math.sin(elapsed * speed * 0.7 + phase * 2) * 0.012;
+      b.position.z = Math.cos(elapsed * speed * 0.6 + phase) * 0.012;
+      b.scale.y = 1 + 0.35 * Math.sin(elapsed * speed * 1.9 + phase);  // wax stretch
+    }
+    lavaLight.intensity = 0.8 + 0.12 * Math.sin(elapsed * 0.9);
+  }
+
   /* --- ergo chair, pushed aside --- */
   const chair = new THREE.Group();
   const seat = caster(box(0.48, 0.07, 0.46, lam(0x1c1e22)));
@@ -2797,6 +2850,7 @@ export function buildWorld() {
     }
 
     screenGlow.intensity = 2.6 + Math.sin(elapsed * 2.3) * 0.45 + Math.sin(elapsed * 7.1) * 0.25;
+    tickLava(elapsed);
 
     if (Math.random() < 0.004) neonLight.intensity = 0.3;
     else neonLight.intensity = 1.3 * (0.88 + 0.12 * Math.sin(elapsed * 1.9));
@@ -2951,6 +3005,7 @@ export function buildWorld() {
     triggerPlane: () => { if (planeT < 0) { planeT = 0; if (onCity) { try { onCity("plane"); } catch (e) {} } } },
     setLivePlanes: (v) => { livePlanes = !!v; },
     triggerZilla: () => { if (zillaT < 0) startZilla(); },
+    lavaHit: lampGlass, toggleLava,
     // the dimmer + the boat
     setRoomLight,
     dimmerHit: dimmerPlate,
