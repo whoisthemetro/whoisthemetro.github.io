@@ -1127,25 +1127,37 @@ export function buildWorld() {
   add(chead);
   blockers.push(chead);
 
-  // passage shell — a short corridor through the wall into the arcade
+  // passage shell — a short corridor through the wall into the arcade.
+  // it used to poke 15 cm into the bedroom like a bunker mouth; now every
+  // piece stops just SHY of the bedroom wall plane, so the white wall
+  // hides the shell and the tan door frame is the only border you see.
+  // each piece ends at a slightly different x so no faces are coplanar.
   const alcMat = lam(0x4a443c);
-  // solid boxes with overlap past both wall faces — no seams, no gaps
-  const corrLen = ALCOVE_D + 0.3;
-  const corrX = -X - ALCOVE_D / 2;
+  const corrPiece = (i) => {
+    // BOTH ends staggered — shared end planes were the original z-fight
+    const x0 = -X - ALCOVE_D - 0.03 - i * 0.004;  // arcade-side end
+    const x1 = -X - 0.005 - i * 0.004;            // bedroom-side end, behind the wall
+    return { len: x1 - x0, cx: (x1 + x0) / 2 };
+  };
+  const cp0 = corrPiece(0);
   for (const sz of [-1, 1]) {
-    const side = box(corrLen, OPEN_H + 0.1, 0.1, alcMat.clone());
-    side.position.set(corrX, OPEN_H / 2, CZ + sz * (OPEN_W / 2 + 0.05));
+    const side = box(cp0.len, OPEN_H + 0.1, 0.1, alcMat.clone());
+    side.position.set(cp0.cx, OPEN_H / 2, CZ + sz * (OPEN_W / 2 + 0.05));
     add(side);
   }
-  const alcTop = box(corrLen, 0.12, OPEN_W + 0.3, lam(0x3a352e));
-  alcTop.position.set(corrX, OPEN_H + 0.06, CZ);
+  const cp1 = corrPiece(1);
+  const alcTop = box(cp1.len, 0.12, OPEN_W + 0.2, lam(0x3a352e));
+  alcTop.position.set(cp1.cx, OPEN_H + 0.06, CZ);
   add(alcTop);
-  const alcFloor = box(corrLen, 0.06, OPEN_W + 0.3, lam(0x2e2a24));
-  alcFloor.position.set(corrX, -0.02, CZ);
+  const cp2 = corrPiece(2);
+  const alcFloor = box(cp2.len, 0.06, OPEN_W + 0.2, lam(0x2e2a24));
+  alcFloor.position.set(cp2.cx, -0.02, CZ);
   add(alcFloor);
-  // header above the corridor, filling up to the ceiling line on both sides
-  const corrHeader = box(corrLen, H - OPEN_H + 0.2, OPEN_W + 0.3, alcMat.clone());
-  corrHeader.position.set(corrX, OPEN_H + (H - OPEN_H) / 2 + 0.06, CZ);
+  // header sealing the gap above the passage — covers the arcade side,
+  // invisible from the bedroom
+  const cp3 = corrPiece(3);
+  const corrHeader = box(cp3.len, H - OPEN_H + 0.2, OPEN_W + 0.16, alcMat.clone());
+  corrHeader.position.set(cp3.cx, OPEN_H + (H - OPEN_H) / 2 + 0.06, CZ);
   add(corrHeader);
   // threshold strip where carpet meets arcade carpet
   const threshold = box(0.1, 0.025, OPEN_W, lam(0x8a6a4a));

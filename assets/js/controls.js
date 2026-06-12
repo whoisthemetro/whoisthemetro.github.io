@@ -181,7 +181,8 @@ export class Controls {
               - (this.keys.has("KeyS") || this.keys.has("ArrowDown") ? 1 : 0);
     const strafe = (this.keys.has("KeyD") || this.keys.has("ArrowRight") ? 1 : 0)
                  - (this.keys.has("KeyA") || this.keys.has("ArrowLeft") ? 1 : 0);
-    const up = (this.keys.has("Space") ? 1 : 0) - (this.keys.has("KeyC") ? 1 : 0);
+    const up = (this.keys.has("Space") ? 1 : 0)
+             - (this.keys.has("KeyC") || this.keys.has("ControlLeft") || this.keys.has("ControlRight") ? 1 : 0);
     const sy = Math.sin(this.yaw), cy = Math.cos(this.yaw);
     const sp = Math.sin(this.pitch), cp = Math.cos(this.pitch);
     // gaze-aligned thrust
