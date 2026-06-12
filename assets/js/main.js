@@ -11,6 +11,7 @@ import { store } from "./store.js";
 import { presence } from "./presence.js";
 import { startAmbience, citySound, pianoNote, audioNow, purr, setRain, setWater, setRoomTone, kettleBoil, setThruster, boostSound, discSound, goalHorn, meow, hiss, careSound, drumHit, setArcadeZone } from "./ambience.js";
 import { SONGS, playSong, stopSong, currentSongId } from "./songs.js";
+import { progress } from "./progress.js";
 import { weather } from "./weather.js";
 import { startPlanes } from "./planes.js";
 import { Cat } from "./cat.js";
@@ -148,6 +149,12 @@ $("#enter-btn").addEventListener("click", () => {
   hide(intro);
   hud.classList.add("show");
   safeLock();
+  // earned accessories: rebuild what this visitor already owns,
+  // celebrate anything new they unlock from here on
+  progress.start((acc, isNew) => {
+    world.addAccessory(acc.id);
+    if (isNew) toast(`🔓 the room grew something: ${acc.title}`);
+  });
 });
 $("#resume-btn").addEventListener("click", () => { hide(paused); safeLock(); });
 canvas.addEventListener("click", () => {
@@ -238,7 +245,7 @@ controls.onAction((ndcX, ndcY) => {
     const outcome = cat.petOutcome();
     if (outcome === "scratch") gotScratched();
     else presence.sendAct({ kind: "pet" });
-    if (outcome === "love") store.logEvent("pet");
+    if (outcome === "love") { store.logEvent("pet"); progress.bump("pets"); }
     wrapCare("pet").then(res => {
       if (res && outcome === "love") {
         toast(`purrrr — this cat has been petted ${res.pets} time${res.pets === 1 ? "" : "s"}`);
@@ -253,6 +260,7 @@ controls.onAction((ndcX, ndcY) => {
     modalOpen = true;
     controls.unlock();
     store.logEvent("arcade_" + hit.object.userData.arcade);
+    progress.bump("arcade");
     openArcade(hit.object.userData.arcade, {
       send: (p) => presence.sendGame(p),
       myUid: identity.uid,
@@ -266,6 +274,7 @@ controls.onAction((ndcX, ndcY) => {
     pianoNote(key, pianoVoice);
     world.pressPianoKey(key);
     presence.sendNote(key, pianoVoice);
+    progress.bump("piano");
     if (Date.now() - (window.__pianoLogAt || 0) > 60000) {
       window.__pianoLogAt = Date.now();
       store.logEvent("piano");
@@ -737,6 +746,7 @@ async function tryBoat() {
     controls.yaw = world.boatSpawn.yaw;
     setWater(true);
     store.logEvent("boat");
+    progress.bump("trips");
     setRoomTone(false);                  // the bedroom stays behind, fully
     refreshNoteVisibility();
     toast("welcome aboard THE DESI 🌊");
@@ -790,6 +800,7 @@ async function tryArena() {
     setRoomTone(false);
     refreshNoteVisibility();
     store.logEvent("boat");   // counts as a portal trip
+    progress.bump("trips");
     startArenaMusic();
     toast("welcome to THE CREW · WASD thrust · SPACE/CTRL up/down · SHIFT boost · B brake");
     hide(paused);

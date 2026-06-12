@@ -1695,6 +1695,90 @@ export function buildWorld() {
     lavaLight.intensity = 0.8 + 0.12 * Math.sin(elapsed * 0.9);
   }
 
+  /* --- earned accessories: small low-poly things the room grows
+     around regulars (progress.js decides when). created on demand,
+     after the toon pass — they stay Lambert like the notes and cat --- */
+  const accessorySpin = [];
+  const accessoriesIn = new Set();
+  function addAccessory(id) {
+    if (accessoriesIn.has(id)) return;
+    accessoriesIn.add(id);
+    if (id === "plant") {
+      const g = new THREE.Group();
+      const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.038, 0.07, 9), lam(0xb06a42));
+      pot.position.y = 0.035;
+      g.add(pot);
+      for (let i = 0; i < 5; i++) {
+        const leaf = new THREE.Mesh(new THREE.ConeGeometry(0.016, 0.16 + (i % 3) * 0.05, 5), lam(0x3f7a4a));
+        const a = (i / 5) * Math.PI * 2;
+        leaf.position.set(Math.cos(a) * 0.02, 0.13 + (i % 3) * 0.02, Math.sin(a) * 0.02);
+        leaf.rotation.set(Math.cos(a) * 0.22, 0, Math.sin(a) * 0.22);
+        g.add(leaf);
+      }
+      g.position.set(1.35, 0.83, ZF + 0.07);
+      add(g);
+    } else if (id === "yarn") {
+      const g = new THREE.Group();
+      const ball = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), lam(0xc23b4e));
+      ball.position.y = 0.05;
+      g.add(ball);
+      for (const rx of [0.5, 1.9]) {
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(0.05, 0.006, 5, 14), lam(0xd8556a));
+        ring.position.y = 0.05;
+        ring.rotation.x = rx;
+        g.add(ring);
+      }
+      g.position.set(-1.85, 0, 2.6);
+      add(g);
+    } else if (id === "gold") {
+      const g = new THREE.Group();
+      const frame = box(0.04, 0.5, 0.5, lam(0x1a1c20));
+      g.add(frame);
+      const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.01, 22),
+        new THREE.MeshStandardMaterial({ color: 0xd8b04a, metalness: 0.8, roughness: 0.3 }));
+      disc.rotation.z = Math.PI / 2;
+      disc.position.x = -0.03;
+      g.add(disc);
+      const label = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.012, 14), lam(0x822));
+      label.rotation.z = Math.PI / 2;
+      label.position.x = -0.032;
+      g.add(label);
+      g.position.set(X - 0.05, 1.55, 1.49);   // the bare strip by the entry door
+      add(g);
+      blockers.push(frame);                    // notes keep off it
+    } else if (id === "disco") {
+      const g = new THREE.Group();
+      const wire = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.18, 5), lam(0x44464c));
+      wire.position.y = 0.16;
+      g.add(wire);
+      const ball = new THREE.Mesh(new THREE.SphereGeometry(0.11, 10, 8),
+        new THREE.MeshStandardMaterial({ color: 0xc8ccd8, metalness: 0.9, roughness: 0.18, flatShading: true }));
+      g.add(ball);
+      g.position.set((AR.x0 + AR.x1) / 2, H - 0.32, (AR.z0 + AR.z1) / 2);
+      add(g);
+      accessorySpin.push(ball);
+    } else if (id === "trophy") {
+      const g = new THREE.Group();
+      const gold = new THREE.MeshStandardMaterial({ color: 0xd8b04a, metalness: 0.75, roughness: 0.35 });
+      const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.02, 0.05, 9), gold);
+      cup.position.y = 0.085;
+      g.add(cup);
+      const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.012, 0.04, 7), gold);
+      stem.position.y = 0.04;
+      g.add(stem);
+      const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.03, 0.018, 9), lam(0x2a2118));
+      foot.position.y = 0.01;
+      g.add(foot);
+      for (const s of [-1, 1]) {
+        const handle = new THREE.Mesh(new THREE.TorusGeometry(0.016, 0.004, 5, 10), gold);
+        handle.position.set(s * 0.038, 0.09, 0);
+        g.add(handle);
+      }
+      g.position.set(0.18, 0.68, -0.1);
+      rack.add(g);
+    }
+  }
+
   /* --- ergo chair, pushed aside --- */
   const chair = new THREE.Group();
   const seat = caster(box(0.48, 0.07, 0.46, lam(0x1c1e22)));
@@ -2851,6 +2935,7 @@ export function buildWorld() {
 
     screenGlow.intensity = 2.6 + Math.sin(elapsed * 2.3) * 0.45 + Math.sin(elapsed * 7.1) * 0.25;
     tickLava(elapsed);
+    for (const m of accessorySpin) m.rotation.y = elapsed * 0.6;
 
     if (Math.random() < 0.004) neonLight.intensity = 0.3;
     else neonLight.intensity = 1.3 * (0.88 + 0.12 * Math.sin(elapsed * 1.9));
@@ -3006,6 +3091,7 @@ export function buildWorld() {
     setLivePlanes: (v) => { livePlanes = !!v; },
     triggerZilla: () => { if (zillaT < 0) startZilla(); },
     lavaHit: lampGlass, toggleLava,
+    addAccessory,
     // how much arcade you should hear from (x, z): 1 inside, a leak
     // through the open closet doorway, near-nothing across the bedroom
     arcadeZoneLevel: (x, z) => {
