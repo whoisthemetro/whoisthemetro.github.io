@@ -533,6 +533,38 @@ export function citySound(type = "siren") {
     return;
   }
 
+  if (type === "zilla") {
+    // something enormous, miles out, heard twice through the glass:
+    // the roar, then the deep rumble of the fire underneath it
+    for (const det of [0, 7]) {
+      const osc = ctx.createOscillator();
+      osc.type = "sawtooth";
+      osc.frequency.setValueAtTime(95 + det, t);
+      osc.frequency.linearRampToValueAtTime(120 + det, t + 0.7);
+      osc.frequency.exponentialRampToValueAtTime(48, t + 3.4);
+      const lp = ctx.createBiquadFilter();
+      lp.type = "lowpass"; lp.frequency.value = 260; lp.Q.value = 4;
+      const g = ctx.createGain();
+      osc.connect(lp).connect(g).connect(master);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.035, t + 0.5);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 3.6);
+      osc.start(t); osc.stop(t + 4);
+    }
+    const dur = 7;
+    const src = ctx.createBufferSource();
+    src.buffer = noiseBuffer(dur + 1);
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass"; lp.frequency.value = 90;
+    const g = ctx.createGain();
+    src.connect(lp).connect(g).connect(master);
+    g.gain.setValueAtTime(0.0001, t + 2.2);
+    g.gain.exponentialRampToValueAtTime(0.11, t + 4);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.start(t + 2.2); src.stop(t + dur + 0.2);
+    return;
+  }
+
   if (type === "siren") {
     const dur = 7;
     const osc = ctx.createOscillator();

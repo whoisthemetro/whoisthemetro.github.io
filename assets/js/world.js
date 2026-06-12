@@ -438,6 +438,107 @@ const LA = (() => {
   return { far, dt, wilshire: dt.find(b => b.h === 122), usbank: dt.find(b => b.h === 110) };
 })();
 
+// the kaiju. drawn between the far ridge and downtown, so the towers
+// stay in front of him — he's miles out, the city's problem, not ours.
+// once in a long while he crosses the glass, stops, and lights it up.
+function drawZilla(g, z, night) {
+  const s = 0.9;
+  const bob = Math.abs(Math.sin(z.step)) * -2.6;     // heavy step
+  const sway = Math.sin(z.step * 0.5) * 4;
+  const lift = z.roar * 16;                          // rears up to breathe
+  // solid fill — the limbs overlap each other, alpha would patchwork
+  const body = night ? "#10131d" : "#596575";
+  g.save();
+  g.translate(z.x, 281 + bob * s);
+  g.scale(s, s);
+  g.fillStyle = body;
+
+  // legs under everything, striding while he walks
+  const sw = Math.sin(z.step) * (1 - z.roar);
+  for (const d of [1, -1]) {
+    const fx = d * sw * 15 + 5;
+    g.beginPath();
+    g.moveTo(-4 - d * 6, -84);
+    g.quadraticCurveTo(fx - 16 + d * 4, -42, fx - 13, 0);
+    g.lineTo(fx + 13, 0);
+    g.quadraticCurveTo(20 + d * 4, -56, 16 - d * 6, -86);
+    g.closePath(); g.fill();
+  }
+
+  // tail, heavy at the hip, swaying out behind him
+  g.beginPath();
+  g.moveTo(-4, -98);
+  g.quadraticCurveTo(-58, -76 + sway, -116, -34 + sway * 2);
+  g.quadraticCurveTo(-140, -16 + sway * 2.6, -150, -5 + sway * 3);
+  g.quadraticCurveTo(-128, -9 + sway * 2.2, -92, -28 + sway * 1.6);
+  g.quadraticCurveTo(-50, -50 + sway * 0.8, -6, -62);
+  g.closePath(); g.fill();
+
+  // body, neck, head — the head climbs when he's about to breathe
+  g.beginPath();
+  g.moveTo(-12, -62);
+  g.quadraticCurveTo(-20, -108, -2, -138);
+  g.quadraticCurveTo(8, -158 - lift, 24, -166 - lift);
+  g.lineTo(38, -164 - lift);
+  g.lineTo(56, -150 - lift + z.roar * 5);            // jaw drops a touch
+  g.lineTo(40, -144 - lift);
+  g.lineTo(32, -130 - lift * 0.5);
+  g.quadraticCurveTo(36, -98, 28, -70);
+  g.quadraticCurveTo(14, -54, -12, -62);
+  g.closePath(); g.fill();
+
+  // those famous little arms
+  g.beginPath();
+  g.moveTo(24, -116); g.lineTo(38, -102); g.lineTo(32, -96); g.lineTo(20, -106);
+  g.closePath(); g.fill();
+
+  // dorsal plates, tail to crown; they charge blue before the fire
+  for (const [px, py, pr] of [
+    [-104, -28, 7], [-76, -46, 9], [-46, -58, 11], [-18, -70, 12],
+    [-22, -100, 13], [-12, -128, 11], [2, -150, 8],
+  ]) {
+    g.fillStyle = z.charge > 0.02
+      ? `rgba(${140 + 80 * z.charge | 0},${200 + 40 * z.charge | 0},255,${0.45 + 0.55 * z.charge})`
+      : body;
+    g.beginPath();
+    g.moveTo(px - pr, py + 3);
+    g.lineTo(px - pr * 0.1, py - pr * 1.8);
+    g.lineTo(px + pr, py + 3);
+    g.closePath(); g.fill();
+  }
+
+  if (night) {                                       // one mean little eye
+    g.fillStyle = "rgba(255,170,70,0.9)";
+    g.fillRect(36, -158 - lift, 3, 3);
+  }
+
+  // atomic breath, angled down into downtown
+  if (z.flame > 0.02) {
+    const jx = 56, jy = -148 - lift;
+    const len = 150 * z.flame, drop = 58 * z.flame, fl = z.flick;
+    const grad = g.createLinearGradient(jx, jy, jx + len, jy + drop);
+    grad.addColorStop(0, "rgba(255,255,235,0.95)");
+    grad.addColorStop(0.25, "rgba(190,235,255,0.9)");
+    grad.addColorStop(0.65, "rgba(120,190,255,0.6)");
+    grad.addColorStop(1, "rgba(80,140,255,0)");
+    g.fillStyle = grad;
+    g.beginPath();
+    g.moveTo(jx, jy - 3);
+    for (let i = 1; i <= 4; i++)
+      g.lineTo(jx + (len * i) / 4, jy + (drop * i) / 4 - 6 - i * 4 - fl * 6 * (i % 2));
+    g.lineTo(jx + len + 10, jy + drop + 5);
+    for (let i = 4; i >= 1; i--)
+      g.lineTo(jx + (len * i) / 4, jy + (drop * i) / 4 + 8 + i * 5 + fl * 7 * ((i + 1) % 2));
+    g.closePath(); g.fill();
+    const glow = g.createRadialGradient(jx + len, jy + drop, 4, jx + len, jy + drop, 80);
+    glow.addColorStop(0, `rgba(150,200,255,${0.45 * z.flame})`);
+    glow.addColorStop(1, "rgba(150,200,255,0)");
+    g.fillStyle = glow;
+    g.fillRect(jx + len - 80, jy + drop - 80, 160, 160);
+  }
+  g.restore();
+}
+
 function makeSky() {
   const c = document.createElement("canvas");
   c.width = 720; c.height = 280;
@@ -498,6 +599,7 @@ function makeSky() {
     }
     g.fillStyle = night ? "#0a0c12" : "rgba(95,105,120,0.75)";
     for (const b of LA.far) g.fillRect(b.x, 280 - b.h, b.w, b.h);
+    if (fx.zilla) drawZilla(g, fx.zilla, night);   // behind downtown, always
     for (const b of LA.dt) {
       const top = 280 - b.h;
       g.fillStyle = night ? "#0c0e16" : "rgba(70,80,95,0.92)";
@@ -882,11 +984,12 @@ export function buildWorld() {
   let wx = { clouds: 0, rain: 0, fog: false };
   let skyCache = null;
   let plane01 = null;        // 0..1 while a jet crosses the glass
+  let zilla = null;          // walk state while the kaiju is out there
 
   function redrawSky(beaconOn) {
     if (!skyCache) return;
     sky.draw(skyCache.sun, skyCache.moon, skyCache.fraction, wx,
-      { beacon: beaconOn, plane: plane01 });
+      { beacon: beaconOn, plane: plane01, zilla });
   }
 
   function updateSky() {
@@ -895,7 +998,7 @@ export function buildWorld() {
     const moon = getMoonPosition(now, LAT, LNG);
     const { fraction } = getMoonIllumination(now);
     skyCache = { sun, moon, fraction };
-    sky.draw(sun, moon, fraction, wx, { beacon: true, plane: plane01 });
+    sky.draw(sun, moon, fraction, wx, { beacon: true, plane: plane01, zilla });
 
     // aim the beam from where the body actually hangs over LA.
     // The window faces due south; in room coordinates that makes
@@ -2615,6 +2718,10 @@ export function buildWorld() {
   let planeT = -1, nextPlaneAt = 30 + rand(0, 90);
   let livePlanes = false;   // true = real LAX data drives the flyovers
   const PLANE_DUR = 15;
+  // the kaiju: rare, unhurried, never on a schedule you can predict
+  let zillaT = -1, nextZillaAt = 480 + rand(0, 900), zillaStep = 0, zillaRoared = false;
+  const ZWALK = 14, ZPAUSE = 9;   // seconds: walk in, stop and breathe, walk out
+  const startZilla = () => { zillaT = 0; zillaStep = 0; zillaRoared = false; };
 
   function tick(dt) {
     elapsed += dt;
@@ -2629,17 +2736,49 @@ export function buildWorld() {
       planeT += dt;
       plane01 = planeT / PLANE_DUR;
       if (plane01 >= 1) { planeT = -1; plane01 = null; }
-      if (elapsed - skyDrawAt > 0.12) { skyDrawAt = elapsed; redrawSky(Math.floor(elapsed * 1.2) % 2 === 0); }
-    } else {
-      if (!livePlanes) {           // ambient fallback when no real data
-        nextPlaneAt -= dt;
-        if (nextPlaneAt <= 0) {
-          nextPlaneAt = rand(180, 480);
-          planeT = 0;
-          if (onCity) { try { onCity("plane"); } catch (e) {} }
-        }
+    } else if (!livePlanes) {      // ambient fallback when no real data
+      nextPlaneAt -= dt;
+      if (nextPlaneAt <= 0) {
+        nextPlaneAt = rand(180, 480);
+        planeT = 0;
+        if (onCity) { try { onCity("plane"); } catch (e) {} }
       }
-      if (elapsed - skyDrawAt > 0.55) { skyDrawAt = elapsed; redrawSky(Math.floor(elapsed * 1.2) % 2 === 0); }
+    }
+
+    // the kaiju, once in a long while: in from the east, a pause to
+    // remind downtown who's bigger, out to the west
+    if (zillaT >= 0) {
+      zillaT += dt;
+      const t = zillaT;
+      if (t >= ZWALK * 2 + ZPAUSE) { zillaT = -1; zilla = null; }
+      else {
+        const walking = t < ZWALK || t >= ZWALK + ZPAUSE;
+        if (walking) zillaStep += dt * 4.6;
+        if (t >= ZWALK && !zillaRoared) {
+          zillaRoared = true;
+          if (onCity) { try { onCity("zilla"); } catch (e) {} }
+        }
+        const p = t - ZWALK;       // seconds into the pause
+        const env = (a, b, atk, rel) => (p < a || p > b) ? 0 : Math.min(1, (p - a) / atk, (b - p) / rel);
+        zilla = {
+          x: t < ZWALK ? -130 + (480 / ZWALK) * t
+            : t < ZWALK + ZPAUSE ? 350
+            : 350 + (530 / ZWALK) * (t - ZWALK - ZPAUSE),
+          step: zillaStep,
+          roar: env(1.2, ZPAUSE - 0.4, 0.9, 0.9),
+          charge: env(1.0, ZPAUSE - 1.0, 1.5, 1.0),
+          flame: env(2.6, ZPAUSE - 0.8, 0.5, 0.9),
+          flick: 0.5 + 0.5 * Math.sin(elapsed * 31) * Math.sin(elapsed * 17),
+        };
+      }
+    } else {
+      nextZillaAt -= dt;
+      if (nextZillaAt <= 0) { nextZillaAt = 480 + rand(0, 900); startZilla(); }
+    }
+
+    if (elapsed - skyDrawAt > (planeT >= 0 || zillaT >= 0 ? 0.12 : 0.55)) {
+      skyDrawAt = elapsed;
+      redrawSky(Math.floor(elapsed * 1.2) % 2 === 0);
     }
 
     screenGlow.intensity = 2.6 + Math.sin(elapsed * 2.3) * 0.45 + Math.sin(elapsed * 7.1) * 0.25;
@@ -2796,6 +2935,7 @@ export function buildWorld() {
     // real-LAX hooks
     triggerPlane: () => { if (planeT < 0) { planeT = 0; if (onCity) { try { onCity("plane"); } catch (e) {} } } },
     setLivePlanes: (v) => { livePlanes = !!v; },
+    triggerZilla: () => { if (zillaT < 0) startZilla(); },
     // the dimmer + the boat
     setRoomLight,
     dimmerHit: dimmerPlate,
