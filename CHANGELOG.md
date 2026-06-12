@@ -4,6 +4,26 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-06-11 — the arena becomes ECHO ARENA
+
+**The full layout, from the real top-down.** The arena is twice the
+size and shaped like the game it loves: a long hall of orange and
+blue zones around MID, goal domes at each end with backboards and
+faint 3-point bubbles, floating island cubes to bank off, mid-wing
+tunnels in the side walls, and beyond each dome — three numbered
+launch tubes feeding back to a team locker room. You pick ORANGE or
+BLUE on the way in, spawn in your locker, and fly the tubes out to
+practice. Ready up at your kiosk and ten seconds later the disc goes
+live at MID. Grab the yellow catapult handles in a tube and PUNCH
+the open space in front of you to launch. Grab a teammate with E and
+pull straight through them — the slingshot. Score from outside the
+bubble and it pays three. Players and disc both fly the same union
+of volumes, so everything banks off everything.
+
+**The blinds work now.** Click them and they gather to the left so
+the city shows clean. Shared, like the curtains — everyone sees them
+move.
+
 ## 2026-06-11 — the room learns some new tricks
 
 **THE CREW learns the real rules.** Grab any wall with E and fling

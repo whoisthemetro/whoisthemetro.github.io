@@ -178,6 +178,7 @@ export class Controls {
   // SHIFT boost burst, B brakes. Walls bounce you like the real thing.
   // are we close enough to any arena surface to grab it?
   nearGrabSurface() {
+    if (this.nearWallFn) return this.nearWallFn(this.pos.x, this.flyY, this.pos.z);
     const a = this.arena;
     if (!a) return false;
     const m = 0.95;     // bounce margin (0.5) + arm's reach
@@ -207,15 +208,43 @@ export class Controls {
           this.anchored = false;
           this.vel.x = lx * 10; this.vel.y = ly * 10; this.vel.z = lz * 10;
           this.onFling?.();
+        } else if (this.ghostHold) {
+          // pull straight through your teammate — the slingshot
+          const gv = this.ghostHold.vel();
+          this.ghostHold = null;
+          this.vel.x = gv.x + lx * 8; this.vel.y = gv.y + ly * 8; this.vel.z = gv.z + lz * 8;
+          this.onFling?.();
         } else if (this.nearGrabSurface()) {
           this.anchored = true;
           this.vel.x = this.vel.y = this.vel.z = 0;
           this.onGrab?.();
+        } else if (this.onGrabGhost) {
+          const gh = this.onGrabGhost();
+          if (gh) {
+            const gp = gh.pos();
+            this.ghostHold = gh;
+            this._holdOff = { x: this.pos.x - gp.x, y: this.flyY - gp.y, z: this.pos.z - gp.z };
+            this.onGrab?.();
+          }
         }
       }
     } else if (!eDown) this._eHeld = false;
 
     if (this.anchored) {                    // latched on: free look, no drift
+      this.thrusting = false;
+      this.camera.position.set(this.pos.x, this.flyY, this.pos.z);
+      this.camera.rotation.order = "YXZ";
+      this.camera.rotation.y = this.yaw;
+      this.camera.rotation.x = this.pitch;
+      return;
+    }
+    if (this.ghostHold) {                   // holding a teammate: ride along
+      const gp = this.ghostHold.pos();
+      this.pos.x = gp.x + this._holdOff.x;
+      this.flyY = gp.y + this._holdOff.y;
+      this.pos.z = gp.z + this._holdOff.z;
+      const gv = this.ghostHold.vel();
+      this.vel.x = gv.x; this.vel.y = gv.y; this.vel.z = gv.z;
       this.thrusting = false;
       this.camera.position.set(this.pos.x, this.flyY, this.pos.z);
       this.camera.rotation.order = "YXZ";
@@ -254,9 +283,14 @@ export class Controls {
     this.pos.x += this.vel.x * dt;
     this.flyY += this.vel.y * dt;
     this.pos.z += this.vel.z * dt;
-    const a = this.arena;
-    if (a) {
-      const m = 0.5, R = 0.72;
+    if (this.clampFn) {
+      // the world knows the real shape out there — hall, domes, tubes,
+      // lockers, islands. it clamps and bounces us in one call.
+      const p = { x: this.pos.x, y: this.flyY, z: this.pos.z };
+      this.clampFn(p, this.vel, 0.55);
+      this.pos.x = p.x; this.flyY = p.y; this.pos.z = p.z;
+    } else if (this.arena) {
+      const a = this.arena, m = 0.5, R = 0.72;
       if (this.pos.x < a.x - a.hx + m) { this.pos.x = a.x - a.hx + m; this.vel.x = Math.abs(this.vel.x) * R; }
       if (this.pos.x > a.x + a.hx - m) { this.pos.x = a.x + a.hx - m; this.vel.x = -Math.abs(this.vel.x) * R; }
       if (this.flyY < a.y - a.hy + m) { this.flyY = a.y - a.hy + m; this.vel.y = Math.abs(this.vel.y) * R; }

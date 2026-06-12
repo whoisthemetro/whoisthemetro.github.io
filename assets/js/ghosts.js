@@ -141,6 +141,7 @@ export class Ghosts {
   tick(dt, t) {
     const k = Math.min(1, dt * 7);   // smoothing
     for (const g of this.byUid.values()) {
+      const px = g.grp.position.x, py = g.grp.position.y, pz = g.grp.position.z;
       g.grp.position.x += (g.target.x - g.grp.position.x) * k;
       g.grp.position.z += (g.target.z - g.grp.position.z) * k;
       g.floatY = (g.floatY ?? 0) + (((g.target.y || 0)) - (g.floatY ?? 0)) * k;
@@ -149,6 +150,14 @@ export class Ghosts {
       g.grp.rotation.y += dy * k;
       // gentle idle bob — they're alive (plus zero-g altitude)
       g.grp.position.y = (g.floatY || 0) + Math.sin(t * 1.8 + g.bobSeed) * 0.025;
+      // velocity estimate, smoothed — teammates slingshot off this
+      if (dt > 0) {
+        const vx = (g.grp.position.x - px) / dt, vy = (g.grp.position.y - py) / dt, vz = (g.grp.position.z - pz) / dt;
+        if (!g.vel) g.vel = { x: 0, y: 0, z: 0 };
+        g.vel.x += (vx - g.vel.x) * 0.3;
+        g.vel.y += (vy - g.vel.y) * 0.3;
+        g.vel.z += (vz - g.vel.z) * 0.3;
+      }
     }
   }
 

@@ -209,7 +209,7 @@ canvas.addEventListener("click", () => {
 function castAt(ndcX, ndcY) {
   raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera);
   // doors are included as blockers so notes can't be pinned onto them
-  const targets = [cat.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.volcaHit, world.bottleHit, world.echoPoster, world.arenaExit, world.discHit, ...world.arcadeHits, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...notesWall.raycastTargets(), ...world.blockers];
+  const targets = [cat.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.volcaHit, world.bottleHit, world.echoPoster, world.discHit, world.blindsHit, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...notesWall.raycastTargets(), ...world.blockers];
   const hits = raycaster.intersectObjects(targets, false);
   return hits[0] || null;
 }
@@ -282,10 +282,22 @@ let lastPetAt = 0;
 controls.onAction((ndcX, ndcY) => {
   if (modalOpen) return;
   const hit = castAt(ndcX, ndcY);
-  // in the arena, a click is a swing — unless it's the disc or the airlock
-  if (inArena && !(hit && (hit.object.userData.disc || hit.object.userData.arenaExit) && hit.distance < 4)) {
-    tryPunch();
-    return;
+  // in the arena, a click is a swing — unless you're on a catapult
+  // handle (then the punch IS the launch) or aiming at something useful
+  if (inArena) {
+    if (controls.anchored && controls._launchDir) {
+      const d = controls._launchDir;
+      controls.anchored = false;
+      controls._launchDir = null;
+      controls.vel.x = d * 19; controls.vel.y = 0; controls.vel.z = 0;
+      boostSound();
+      toast("LAUNCH 🚀");
+      return;
+    }
+    const useful = hit && hit.distance < 4 &&
+      (hit.object.userData.disc || hit.object.userData.arenaExit ||
+       hit.object.userData.kiosk || hit.object.userData.launchHandle);
+    if (!useful) { tryPunch(); return; }
   }
   if (!hit) return;
   if (hit.object.userData.cat && hit.distance < 2.2) {
@@ -330,6 +342,16 @@ controls.onAction((ndcX, ndcY) => {
     }
   } else if (hit.object.userData.dimmer && hit.distance < 2.6) {
     openDimmer();
+  } else if (hit.object.userData.launchHandle && hit.distance < 3) {
+    const h = hit.object.userData.launchHandle;
+    controls.pos.x = h.x; controls.flyY = h.y; controls.pos.z = h.z;
+    controls.vel.x = controls.vel.y = controls.vel.z = 0;
+    controls.anchored = true;
+    controls._launchDir = h.dir;
+    discSound("catch");
+    toast(`tube ${h.tube} — hold tight, PUNCH the open space to launch`);
+  } else if (hit.object.userData.kiosk && hit.distance < 3) {
+    readyUp();
   } else if (hit.object.userData.portal === "boat" && hit.distance < 2.6) {
     // the door isn't the way in anymore — the computer is
     toast("locked. the computer on the desk knows the way to her room.");
@@ -364,6 +386,10 @@ controls.onAction((ndcX, ndcY) => {
     toast(`piano voice: ${PIANO_VOICES[pianoVoice].name}`);
   } else if (hit.object.userData.lava && hit.distance < 2.4) {
     toast(world.toggleLava() ? "the wax wakes up 🌋" : "lava lamp off");
+  } else if (hit.object.userData.blinds && hit.distance < 3.2) {
+    const open = world.toggleBlinds();
+    presence.sendAct({ kind: "blinds", open });
+    toast(open ? "blinds gathered — there's the city" : "blinds drawn across the glass");
   } else if (hit.object.userData.curtain && hit.distance < 3.2) {
     const closed = world.toggleCurtains();
     store.logEvent("curtains");
@@ -412,6 +438,9 @@ setInterval(() => {
   } else if (hit && hit.object.userData.lava && hit.distance < 2.4) {
     aimTip.textContent = `${TAP} — lava lamp`;
     aimTip.classList.add("show");
+  } else if (hit && hit.object.userData.blinds && hit.distance < 3.2) {
+    aimTip.textContent = `${TAP} — blinds`;
+    aimTip.classList.add("show");
   } else if (hit && hit.object.userData.portalArena && hit.distance < 3) {
     aimTip.textContent = "ECHO VR — step through";
     aimTip.classList.add("show");
@@ -420,6 +449,15 @@ setInterval(() => {
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.disc && hit.distance < 3.2) {
     aimTip.textContent = disc.holder === identity.uid ? `${TAP} to THROW` : disc.holder ? "someone has it" : `${TAP} to grab the disc`;
+    aimTip.classList.add("show");
+  } else if (hit && hit.object.userData.kiosk && hit.distance < 3) {
+    aimTip.textContent = `${TAP} — READY UP, start the match`;
+    aimTip.classList.add("show");
+  } else if (hit && hit.object.userData.launchHandle && hit.distance < 3) {
+    aimTip.textContent = `${TAP} — grab the catapult handles`;
+    aimTip.classList.add("show");
+  } else if (inArena && controls.anchored && controls._launchDir) {
+    aimTip.textContent = "PUNCH the open space to LAUNCH";
     aimTip.classList.add("show");
   } else if (inArena && controls.anchored) {
     aimTip.textContent = "E — FLING yourself";
@@ -840,17 +878,39 @@ const disc = {
   lastGoal: 0,
 };
 const arenaScore = { o: 0, b: 0 };
+let myTeam = "o";
+try { myTeam = localStorage.getItem("metro.team") || (Math.random() < 0.5 ? "o" : "b"); } catch (e) {}
 async function tryArena() {
-  // no password anymore — the poster just lets you through
+  // no password — but you do have to pick a locker room
+  modalOpen = true;
+  controls.unlock();
+  show($("#team"));
+}
+$("#team-o").addEventListener("click", () => enterArena("o"));
+$("#team-b").addEventListener("click", () => enterArena("b"));
+$("#team-close").addEventListener("click", () => {
+  hide($("#team"));
+  modalOpen = false;
+  if (entered) safeLock();
+});
+function enterArena(team) {
+  hide($("#team"));
+  modalOpen = false;
+  myTeam = team;
+  try { localStorage.setItem("metro.team", team); } catch (e) {}
   fadeTo(() => {
     inArena = true;
     controls.zerog = true;
     controls.arena = A;
+    controls.clampFn = world.arenaClamp;
+    controls.nearWallFn = world.arenaNearWall;
+    controls.onGrabGhost = grabNearestGhost;
     controls.vel = { x: 0, y: 0, z: 0 };
-    controls.pos.x = world.arenaSpawn.x;
-    controls.pos.z = world.arenaSpawn.z;
-    controls.flyY = world.arenaSpawn.y;
-    controls.yaw = world.arenaSpawn.yaw;
+    const sp = world.arenaSpawnFor(team);
+    controls.pos.x = sp.x;
+    controls.pos.z = sp.z;
+    controls.flyY = sp.y;
+    controls.yaw = sp.yaw;
     controls.pitch = 0;
     setRoomTone(false);
     refreshNoteVisibility();
@@ -858,7 +918,7 @@ async function tryArena() {
     progress.bump("trips");
     voice.setArenaFx(true);    // voices arrive over the arena intercom
     startArenaMusic();
-    toast("THE CREW · WASD thrust · E grab/fling walls · click PUNCH · F shield · SHIFT boost · B brake · 3pts past the far line");
+    toast(`your ${team === "o" ? "ORANGE" : "BLUE"} locker room · fly the tubes to MID · E grab/fling · click PUNCH · F shield · ready up at the kiosk`);
     hide(paused);
     if (entered) safeLock();
   });
@@ -878,6 +938,11 @@ function leaveArena() {
     controls.anchored = false;
     controls.stunT = 0;
     controls.blocking = false;
+    controls.clampFn = null;
+    controls.nearWallFn = null;
+    controls.onGrabGhost = null;
+    controls.ghostHold = null;
+    controls._launchDir = null;
     voice.setArenaFx(false);
     setThruster(false);
     controls.pos.x = world.arcadeReturn.x;
@@ -957,21 +1022,19 @@ function discTick(dt) {
   } else {
     disc.pos.addScaledVector(disc.vel, dt);
     disc.vel.multiplyScalar(Math.pow(0.995, dt * 60));
-    const m2 = 0.35, R = 0.8;
-    if (disc.pos.x < A.x - A.hx + m2) { disc.pos.x = A.x - A.hx + m2; disc.vel.x = Math.abs(disc.vel.x) * R; }
-    if (disc.pos.x > A.x + A.hx - m2) { disc.pos.x = A.x + A.hx - m2; disc.vel.x = -Math.abs(disc.vel.x) * R; }
-    if (disc.pos.y < A.y - A.hy + m2) { disc.pos.y = A.y - A.hy + m2; disc.vel.y = Math.abs(disc.vel.y) * R; }
-    if (disc.pos.y > A.y + A.hy - m2) { disc.pos.y = A.y + A.hy - m2; disc.vel.y = -Math.abs(disc.vel.y) * R; }
-    if (disc.pos.z < A.z - A.hz + m2) { disc.pos.z = A.z - A.hz + m2; disc.vel.z = Math.abs(disc.vel.z) * R; }
-    if (disc.pos.z > A.z + A.hz - m2) { disc.pos.z = A.z + A.hz - m2; disc.vel.z = -Math.abs(disc.vel.z) * R; }
-    // goals: through either glowing ring. distance pays — a throw
-    // released from behind the far three-point line is worth 3, else 2
+    // same union of volumes the players fly — banks off islands too
+    world.arenaClamp(disc.pos, disc.vel, 0.3);
+    // goals: through either ring inside the domes. release point
+    // outside the 3-point bubble pays 3, inside pays 2
     const ringR = Math.hypot(disc.pos.y - A.y, disc.pos.z - A.z);
-    if (Date.now() - disc.lastGoal > 3000 && ringR < 1.55) {
-      const pts = (goalX) =>
-        disc.thrownFrom && Math.abs(disc.thrownFrom[0] - goalX) >= 18 ? 3 : 2;
-      if (disc.pos.x < A.x - A.hx + 0.9) scoreGoal("b", true, pts(A.x - A.hx + 0.4));
-      else if (disc.pos.x > A.x + A.hx - 0.9) scoreGoal("o", true, pts(A.x + A.hx - 0.4));
+    const dlx = disc.pos.x - A.x;
+    if (Date.now() - disc.lastGoal > 3000 && ringR < 1.55 &&
+        Math.abs(Math.abs(dlx) - world.arenaGoalX) < 0.8) {
+      const gx = A.x + Math.sign(dlx) * world.arenaGoalX;
+      const pts = disc.thrownFrom
+        ? (Math.hypot(disc.thrownFrom[0] - gx, disc.thrownFrom[1] - A.y, disc.thrownFrom[2] - A.z) >= world.arenaBubbleR ? 3 : 2)
+        : 2;
+      scoreGoal(dlx < 0 ? "b" : "o", true, pts);
     }
   }
   g.position.copy(disc.pos);
@@ -989,6 +1052,51 @@ function scoreGoal(team, announce, pts = 2) {
   disc.vel.set(0, 0, 0);
   if (announce) presence.sendAct({ kind: "goal", team, pts, o: arenaScore.o, b: arenaScore.b });
 }
+/* ---- the match: ready up at a kiosk, ten seconds, GO ---- */
+const match = { phase: "free", timers: [] };
+function applyMatchStart(at) {
+  if (match.phase === "count") return;
+  match.phase = "count";
+  match.timers.forEach(clearTimeout);
+  match.timers = [];
+  const left = Math.max(400, at - Date.now());
+  toast(`match starting — get in a launch tube (${Math.round(left / 1000)}s)`);
+  for (const c of [3, 2, 1]) {
+    if (left - c * 1000 > 0) match.timers.push(setTimeout(() => { if (inArena) toast(String(c)); }, left - c * 1000));
+  }
+  match.timers.push(setTimeout(() => {
+    match.phase = "live";
+    arenaScore.o = 0; arenaScore.b = 0;
+    world.setArenaScore(0, 0);
+    disc.holder = null;
+    disc.thrownFrom = null;
+    disc.pos.set(A.x, A.y, A.z);
+    disc.vel.set(0, 0, 0);
+    if (inArena) { goalHorn(); toast("GO — disc is live at MID"); }
+  }, left));
+}
+function readyUp() {
+  if (match.phase === "count") return toast("countdown's already running");
+  const at = Date.now() + 10000;
+  presence.sendAct({ kind: "match", at });
+  applyMatchStart(at);
+}
+function grabNearestGhost() {
+  if (!inArena) return null;
+  let best = null, bestD = 2.1;
+  for (const g of ghosts.byUid.values()) {
+    const c = g.grp.position;
+    const d = Math.hypot(c.x - controls.pos.x, c.y + 1.1 - controls.flyY, c.z - controls.pos.z);
+    if (d < bestD) { bestD = d; best = g; }
+  }
+  if (!best) return null;
+  const rec = best;
+  return {
+    pos: () => ({ x: rec.grp.position.x, y: rec.grp.position.y + 1.1, z: rec.grp.position.z }),
+    vel: () => rec.vel || { x: 0, y: 0, z: 0 },
+  };
+}
+
 function grabDisc() {
   disc.holder = identity.uid;
   if (inArena) discSound("catch");
@@ -1271,6 +1379,11 @@ addEventListener("keydown", (e) => {
     if (reader.classList.contains("show")) closeReader();
     if (dmOverlay.classList.contains("show")) closeDM();
     if (pcOverlay.classList.contains("show")) closePC();
+    if ($("#team").classList.contains("show")) {
+      hide($("#team"));
+      modalOpen = false;
+      if (entered) safeLock();
+    }
     if (bottleOverlay.classList.contains("show")) closeBottle();
     if (dimmerUI.classList.contains("show")) closeDimmer();
     // real DOOM owns ESC (its own menu) — only its × button closes it
@@ -1342,6 +1455,9 @@ addEventListener("keydown", (e) => {
     } else if (p.kind === "closet") {
       world.setCloset(p.open);
       toast(p.open ? "someone opened the closet…" : "someone closed the closet");
+    } else if (p.kind === "blinds") {
+      world.setBlinds(p.open);
+      toast(p.open ? "someone gathered the blinds" : "someone drew the blinds");
     } else if (p.kind === "pet") {
       if (!inBoat) cat.remoteHearts();
     } else if (p.kind === "dimmer") {
@@ -1386,6 +1502,8 @@ addEventListener("keydown", (e) => {
         ghosts.flash(p.target, 0xff4040);
         punchSound(true);
       }
+    } else if (p.kind === "match") {
+      applyMatchStart(p.at);
     } else if (p.kind === "deflect") {
       if (p.target === identity.uid && inArena) {
         shieldClang();

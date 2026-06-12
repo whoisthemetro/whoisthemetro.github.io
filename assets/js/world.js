@@ -876,6 +876,21 @@ export function buildWorld() {
   const blinds = add(plane(WIN.w - 0.06, WIN.h - 0.04, blindsMat));
   blinds.position.set(WIN.cx, WIN.cy, ZF + 0.045);
   blinds.castShadow = true;   // the slats stripe the room
+  blinds.userData.blinds = true;
+  // click them and they gather to the left so the city shows clean.
+  // anim 0 = drawn across the glass, 1 = bunched at the edge
+  const blindsState = { open: false, anim: 0 };
+  function toggleBlinds() { blindsState.open = !blindsState.open; return blindsState.open; }
+  function setBlinds(open) { blindsState.open = !!open; }
+  function tickBlinds(dt) {
+    const want = blindsState.open ? 1 : 0;
+    if (Math.abs(blindsState.anim - want) < 0.001) return;
+    blindsState.anim += (want - blindsState.anim) * Math.min(1, dt * 5);
+    const k = 1 - blindsState.anim * 0.9;          // gather to 10% width
+    blinds.scale.x = k;
+    // keep the left edge pinned while the rest folds toward it
+    blinds.position.x = WIN.cx - (WIN.w - 0.06) / 2 + (WIN.w - 0.06) * k / 2;
+  }
 
   const frameMat = lam(0xcfc6b2);
   for (const [fw, fh, fx, fy] of [
@@ -2640,11 +2655,23 @@ export function buildWorld() {
   // stamp the whole boat (meshes AND lights) onto layer 1
   boatGroup.traverse((o) => { o.layers.set(1); });
 
-  /* --- THE CREW: a zero-g Echo-style mini arena, far above everything ---
-     Password-gated behind the Echo poster in the arcade. Neon hangar,
-     angled banking corners, a goal ring at each end, and a glowing disc
-     to pass around. Movement out there is pure momentum. --- */
-  const ARENA = { x: 0, y: 80, z: 0, hx: 17, hy: 7, hz: 9 };
+  /* --- THE CREW: the Echo Arena, far above everything ---
+     Behind the Echo poster in the arcade (or one click in METRO OS).
+     Laid out from the real top-down: a long hall split into orange and
+     blue zones around MID, goal domes with backboards and 3-point
+     bubbles at each end, floating island cubes to bank off, mid-wing
+     tunnels, and beyond each dome a set of numbered launch tubes with
+     yellow catapult handles feeding back to a team locker room with a
+     ready-up kiosk. Movement out there is pure momentum. --- */
+  const ARENA = { x: 0, y: 80, z: 0, hx: 30, hy: 11, hz: 14 };
+  const A = ARENA;
+  const DOME_R = 8;            // the goal domes capping each end
+  const GOAL_X = 34;           // ring planes, inside the domes
+  const BUBBLE_R = 14;         // outside this sphere a goal pays three
+  const TUBE_Z = [-2.8, 0, 2.8];
+  const TUBE_X0 = 36.5, TUBE_X1 = 49;
+  const LOCKER = { cx: 54.5, hx: 5.5, hy: 4.5, hz: 6 };
+
   const panelTex = canvasTex(512, 512, (g) => {
     g.fillStyle = "#3d4658";
     g.fillRect(0, 0, 512, 512);
@@ -2654,7 +2681,6 @@ export function buildWorld() {
       g.beginPath(); g.moveTo(i * 64, 0); g.lineTo(i * 64, 512); g.stroke();
       g.beginPath(); g.moveTo(0, i * 64); g.lineTo(512, i * 64); g.stroke();
     }
-    // hazard chevrons + panel details
     for (let i = 0; i < 10; i++) {
       g.fillStyle = "rgba(90,105,130,0.6)";
       g.fillRect((i * 197) % 448, (i * 131) % 448, 56, 22);
@@ -2664,120 +2690,371 @@ export function buildWorld() {
   const arenaMat = new THREE.MeshStandardMaterial({
     map: panelTex, color: 0xd8dee8, metalness: 0.45, roughness: 0.6, side: THREE.DoubleSide,
   });
+  const bevelMat = new THREE.MeshStandardMaterial({ color: 0x2a3142, metalness: 0.7, roughness: 0.4 });
   const arenaGroup = new THREE.Group();
   scene.add(arenaGroup);
   const addA = (m) => { arenaGroup.add(m); return m; };
-  const A = ARENA;
-  // shell
+
+  /* ---- where you're allowed to fly: a union of simple volumes.
+     boxes and spheres in arena-local coordinates; the clamp walks
+     them all, and the islands inside the hall push you OUT. ---- */
+  const VOLS = [
+    { t: "b", x0: -A.hx, x1: A.hx, y0: -A.hy, y1: A.hy, z0: -A.hz, z1: A.hz },  // main hall
+    { t: "s", cx: -A.hx, r: DOME_R }, { t: "s", cx: A.hx, r: DOME_R },          // goal domes
+    { t: "b", x0: -7, x1: 7, y0: -2.2, y1: 2.2, z0: A.hz, z1: A.hz + 2.6 },     // mid-wing tunnels
+    { t: "b", x0: -7, x1: 7, y0: -2.2, y1: 2.2, z0: -A.hz - 2.6, z1: -A.hz },
+  ];
+  for (const s of [-1, 1]) {
+    for (const tz of TUBE_Z) {
+      VOLS.push({ t: "b", x0: Math.min(s * 36, s * TUBE_X1), x1: Math.max(s * 36, s * TUBE_X1),
+                  y0: -1.0, y1: 1.0, z0: tz - 1.0, z1: tz + 1.0 });
+    }
+    VOLS.push({ t: "b", x0: s * LOCKER.cx - LOCKER.hx, x1: s * LOCKER.cx + LOCKER.hx,
+                y0: -LOCKER.hy, y1: LOCKER.hy, z0: -LOCKER.hz, z1: LOCKER.hz });
+  }
+  // floating islands — the cube clusters from the top-down, mirrored
+  const ISLES = [];
+  for (const s of [-1, 1]) {
+    for (const [ix, iy, iz, h] of [
+      [14, 2.6, -6.5, 1.3], [12.2, 0.6, -8.2, 0.9],
+      [11, -3.2, 7, 1.5], [20, 3.8, 5.5, 1.1], [22, -4.0, -4.5, 1.2],
+    ]) ISLES.push({ x: s * ix, y: iy, z: iz, h });
+  }
+  function volClamp(v, p, r) {
+    if (v.t === "b") {
+      const x = Math.max(v.x0 + r, Math.min(v.x1 - r, p.x));
+      const y = Math.max(v.y0 + r, Math.min(v.y1 - r, p.y));
+      const z = Math.max(v.z0 + r, Math.min(v.z1 - r, p.z));
+      return { x, y, z, in: x === p.x && y === p.y && z === p.z };
+    }
+    const dx = p.x - v.cx, d = Math.hypot(dx, p.y, p.z);
+    const rr = v.r - r;
+    if (d <= rr) return { x: p.x, y: p.y, z: p.z, in: true };
+    const k = rr / (d || 1);
+    return { x: v.cx + dx * k, y: p.y * k, z: p.z * k, in: false };
+  }
+  // keep (pos, vel) inside the union and outside the islands.
+  // pos is absolute world coords, mutated in place. r = body radius.
+  function arenaClamp(pos, vel, r = 0.55) {
+    const p = { x: pos.x - A.x, y: pos.y - A.y, z: pos.z - A.z };
+    let inside = false, best = null, bestD = Infinity;
+    for (const v of VOLS) {
+      const c = volClamp(v, p, r);
+      if (c.in) { inside = true; break; }
+      const d = (c.x - p.x) ** 2 + (c.y - p.y) ** 2 + (c.z - p.z) ** 2;
+      if (d < bestD) { bestD = d; best = c; }
+    }
+    if (!inside && best) {
+      const nx = p.x - best.x, ny = p.y - best.y, nz = p.z - best.z;
+      const ln = Math.hypot(nx, ny, nz) || 1;
+      const ux = nx / ln, uy = ny / ln, uz = nz / ln;
+      const vd = vel.x * ux + vel.y * uy + vel.z * uz;
+      if (vd > 0) { vel.x -= 1.72 * vd * ux; vel.y -= 1.72 * vd * uy; vel.z -= 1.72 * vd * uz; }
+      p.x = best.x; p.y = best.y; p.z = best.z;
+    }
+    for (const o of ISLES) {
+      const ex = o.h + r - Math.abs(p.x - o.x);
+      const ey = o.h + r - Math.abs(p.y - o.y);
+      const ez = o.h + r - Math.abs(p.z - o.z);
+      if (ex > 0 && ey > 0 && ez > 0) {     // inside an island — push out
+        if (ex <= ey && ex <= ez) { p.x += Math.sign(p.x - o.x) * ex; vel.x = Math.sign(p.x - o.x) * Math.abs(vel.x) * 0.72; }
+        else if (ey <= ez)        { p.y += Math.sign(p.y - o.y) * ey; vel.y = Math.sign(p.y - o.y) * Math.abs(vel.y) * 0.72; }
+        else                      { p.z += Math.sign(p.z - o.z) * ez; vel.z = Math.sign(p.z - o.z) * Math.abs(vel.z) * 0.72; }
+      }
+    }
+    pos.x = p.x + A.x; pos.y = p.y + A.y; pos.z = p.z + A.z;
+  }
+  // is there anything within arm's reach to grab? true clearance is
+  // the most breathing room any one volume gives you — less than an
+  // arm away from every boundary means you can hold something
+  function arenaNearWall(x, y, z, reach = 1.1) {
+    const p = { x: x - A.x, y: y - A.y, z: z - A.z };
+    for (const o of ISLES) {
+      if (Math.abs(p.x - o.x) < o.h + reach && Math.abs(p.y - o.y) < o.h + reach && Math.abs(p.z - o.z) < o.h + reach) return true;
+    }
+    let clear = -1;
+    for (const v of VOLS) {
+      let c;
+      if (v.t === "b") {
+        c = Math.min(p.x - v.x0, v.x1 - p.x, p.y - v.y0, v.y1 - p.y, p.z - v.z0, v.z1 - p.z);
+      } else {
+        c = v.r - Math.hypot(p.x - v.cx, p.y, p.z);
+      }
+      if (c > clear) clear = c;
+    }
+    return clear < reach;
+  }
+
+  /* ---- the main hall ---- */
   for (const [w, h, px2, py2, pz2, rx, ry] of [
     [2 * A.hx, 2 * A.hz, A.x, A.y - A.hy, A.z, -Math.PI / 2, 0],   // floor
     [2 * A.hx, 2 * A.hz, A.x, A.y + A.hy, A.z, Math.PI / 2, 0],    // ceiling
     [2 * A.hx, 2 * A.hy, A.x, A.y, A.z - A.hz, 0, 0],
     [2 * A.hx, 2 * A.hy, A.x, A.y, A.z + A.hz, 0, Math.PI],
-    [2 * A.hz, 2 * A.hy, A.x - A.hx, A.y, A.z, 0, Math.PI / 2],
-    [2 * A.hz, 2 * A.hy, A.x + A.hx, A.y, A.z, 0, -Math.PI / 2],
   ]) {
-    const wallA = new THREE.Mesh(new THREE.PlaneGeometry(w, h), arenaMat);
+    const wallA = new THREE.Mesh(new THREE.PlaneGeometry(w, h), arenaMat.clone());
+    wallA.material.map = panelTex.clone();
     wallA.material.map.repeat.set(w / 6, h / 6);
     wallA.position.set(px2, py2, pz2);
     wallA.rotation.x = rx; wallA.rotation.y = ry;
     addA(wallA);
   }
-  // angled banking corners (long bevels along the four x-axis edges)
-  const bevelMat = new THREE.MeshStandardMaterial({ color: 0x2a3142, metalness: 0.7, roughness: 0.4 });
+  // end walls wear a round hole where each goal dome opens
+  const endMat = new THREE.MeshStandardMaterial({ color: 0x39414f, metalness: 0.55, roughness: 0.55, side: THREE.DoubleSide });
+  for (const s of [-1, 1]) {
+    const shp = new THREE.Shape();
+    shp.moveTo(-A.hz, -A.hy); shp.lineTo(A.hz, -A.hy);
+    shp.lineTo(A.hz, A.hy); shp.lineTo(-A.hz, A.hy); shp.closePath();
+    const hole = new THREE.Path();
+    hole.absarc(0, 0, DOME_R, 0, Math.PI * 2, true);
+    shp.holes.push(hole);
+    const wallE = new THREE.Mesh(new THREE.ShapeGeometry(shp, 24), endMat);
+    wallE.rotation.y = s > 0 ? -Math.PI / 2 : Math.PI / 2;
+    wallE.position.set(A.x + s * A.hx, A.y, A.z);
+    addA(wallE);
+    // the dome itself, bulging away from the hall
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(DOME_R, 26, 14), endMat.clone());
+    dome.geometry = new THREE.SphereGeometry(DOME_R, 26, 14, 0, Math.PI);
+    dome.rotation.y = s > 0 ? Math.PI / 2 : -Math.PI / 2;
+    dome.position.set(A.x + s * A.hx, A.y, A.z);
+    addA(dome);
+  }
+  // banking bevels along the four long edges
   for (const [by, bz] of [[A.hy, A.hz], [A.hy, -A.hz], [-A.hy, A.hz], [-A.hy, -A.hz]]) {
-    const bevel = new THREE.Mesh(new THREE.BoxGeometry(2 * A.hx, 2.6, 2.6), bevelMat);
+    const bevel = new THREE.Mesh(new THREE.BoxGeometry(2 * A.hx, 3.4, 3.4), bevelMat);
     bevel.position.set(A.x, A.y + by, A.z + bz);
     bevel.rotation.x = Math.PI / 4;
     addA(bevel);
   }
-  // neon trim along the edges — orange end, blue end, white ribs
+  // neon trim: team colors at each end, white ribs across the ceiling
   const trim = (x1, y1, z1, x2, y2, z2, color) => {
     const len = Math.hypot(x2 - x1, y2 - y1, z2 - z1);
-    const t2 = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, len),
+    const t2 = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, len),
       new THREE.MeshBasicMaterial({ color }));
     t2.position.set((x1 + x2) / 2, (y1 + y2) / 2, (z1 + z2) / 2);
     t2.lookAt(x2, y2, z2);
     addA(t2);
   };
-  for (const sy of [-A.hy + 1.3, A.hy - 1.3]) {
+  for (const sy of [-A.hy + 1.6, A.hy - 1.6]) {
     trim(A.x - A.hx + 0.05, A.y + sy, A.z - A.hz, A.x - A.hx + 0.05, A.y + sy, A.z + A.hz, 0xff7320);
     trim(A.x + A.hx - 0.05, A.y + sy, A.z - A.hz, A.x + A.hx - 0.05, A.y + sy, A.z + A.hz, 0x22a4ff);
   }
-  for (let i = -2; i <= 2; i++) {
-    trim(A.x + i * 6, A.y + A.hy - 0.1, A.z - A.hz, A.x + i * 6, A.y + A.hy - 0.04, A.z + A.hz, 0x8ab8ff);
+  for (let i = -4; i <= 4; i++) {
+    trim(A.x + i * 6.5, A.y + A.hy - 0.1, A.z - A.hz, A.x + i * 6.5, A.y + A.hy - 0.04, A.z + A.hz, 0x8ab8ff);
   }
-  // center ring hologram
-  const centerRing = new THREE.Mesh(new THREE.TorusGeometry(2.4, 0.06, 8, 48),
+  // MID: the striped band where the disc starts
+  for (const [mx, mc] of [[-1.3, 0xe8f0ff], [-0.45, 0x55e0d8], [0.45, 0x55e0d8], [1.3, 0xe8f0ff]]) {
+    for (const [sy, sz, w, h] of [
+      [-A.hy + 0.05, 0, 0.18, 2 * A.hz - 0.4], [A.hy - 0.05, 0, 0.18, 2 * A.hz - 0.4],
+    ]) {
+      const band = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.04, h),
+        new THREE.MeshBasicMaterial({ color: mc, transparent: true, opacity: 0.7 }));
+      band.position.set(A.x + mx, A.y + sy, A.z + sz);
+      addA(band);
+    }
+  }
+  const centerRing = new THREE.Mesh(new THREE.TorusGeometry(2.6, 0.07, 8, 48),
     new THREE.MeshBasicMaterial({ color: 0x9adfff, transparent: true, opacity: 0.6 }));
   centerRing.rotation.y = Math.PI / 2;
   centerRing.position.set(A.x, A.y, A.z);
   addA(centerRing);
-  // goals: glowing rings recessed into each end wall
-  const goalO = new THREE.Mesh(new THREE.TorusGeometry(1.7, 0.16, 10, 40),
-    new THREE.MeshBasicMaterial({ color: 0xff7320 }));
-  goalO.rotation.y = Math.PI / 2;
-  goalO.position.set(A.x - A.hx + 0.4, A.y, A.z);
-  addA(goalO);
-  const goalB = goalO.clone();
-  goalB.material = new THREE.MeshBasicMaterial({ color: 0x22a4ff });
-  goalB.position.x = A.x + A.hx - 0.4;
-  addA(goalB);
-  // three-point lines: shoot at a goal from behind the far line and
-  // it's worth three. each line wears the color of the goal it serves.
-  for (const [gx, col] of [[1, 0x22a4ff], [-1, 0xff7a2a]]) {
-    const lineX = A.x + gx * (A.hx - 0.4) - gx * 18;   // 18 m out from that goal
-    for (const ly of [A.y - A.hy + 0.06, A.y + A.hy - 0.06]) {
-      const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.03, A.hz * 2 - 0.5),
-        new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.55 }));
-      stripe.position.set(lineX, ly, A.z);
-      addA(stripe);
+  // mid-wing tunnels: open troughs in both side walls, ringed in teal
+  for (const s of [-1, 1]) {
+    for (const [w, h, px3, py3, pz3, rx3, ry3] of [
+      [14, 4.4, A.x, A.y, A.z + s * (A.hz + 2.6), 0, s > 0 ? Math.PI : 0],            // back wall
+      [14, 2.6, A.x, A.y + 2.2, A.z + s * (A.hz + 1.3), Math.PI / 2, 0],              // top
+      [14, 2.6, A.x, A.y - 2.2, A.z + s * (A.hz + 1.3), -Math.PI / 2, 0],             // bottom
+    ]) {
+      const t3 = new THREE.Mesh(new THREE.PlaneGeometry(w, h), endMat);
+      t3.position.set(px3, py3, pz3);
+      t3.rotation.x = rx3; t3.rotation.y = ry3;
+      addA(t3);
     }
+    const lip = new THREE.Mesh(new THREE.BoxGeometry(14.2, 0.1, 0.1),
+      new THREE.MeshBasicMaterial({ color: 0x55e0d8 }));
+    lip.position.set(A.x, A.y + 2.25, A.z + s * (A.hz - 0.02)); addA(lip);
+    const lip2 = lip.clone(); lip2.position.y = A.y - 2.25; addA(lip2);
   }
-  for (const [gx, gc] of [[A.x - A.hx + 1.2, 0xff7320], [A.x + A.hx - 1.2, 0x22a4ff]]) {
-    const gl = new THREE.PointLight(gc, 24, 11, 2);
-    gl.position.set(gx, A.y, A.z);
+
+  /* ---- goals: ring, backboard, 3-point bubble (per the POV shot) ---- */
+  const goalLights = [];
+  for (const [s, col] of [[-1, 0xff7320], [1, 0x22a4ff]]) {
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(1.7, 0.16, 10, 40),
+      new THREE.MeshBasicMaterial({ color: col }));
+    ring.rotation.y = Math.PI / 2;
+    ring.position.set(A.x + s * GOAL_X, A.y, A.z);
+    addA(ring);
+    // backboard: dark rounded panel behind the ring, framed in team neon
+    const board = new THREE.Mesh(new THREE.BoxGeometry(0.3, 5, 5), bevelMat);
+    board.position.set(A.x + s * (GOAL_X + 2.2), A.y, A.z);
+    addA(board);
+    for (const [ey, ez, w2, h2] of [[2.45, 0, 0.12, 5.0], [-2.45, 0, 0.12, 5.0], [0, 2.45, 4.9, 0.12], [0, -2.45, 4.9, 0.12]]) {
+      const fr = new THREE.Mesh(new THREE.BoxGeometry(0.34, w2 === 0.12 ? h2 : 0.12, w2 === 0.12 ? 0.12 : w2),
+        new THREE.MeshBasicMaterial({ color: col }));
+      fr.position.set(A.x + s * (GOAL_X + 2.2), A.y + ey, A.z + ez);
+      addA(fr);
+    }
+    // the 3-point bubble, faint and huge
+    const bubble = new THREE.Mesh(new THREE.SphereGeometry(BUBBLE_R, 26, 16),
+      new THREE.MeshBasicMaterial({
+        color: col, transparent: true, opacity: 0.045,
+        blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+      }));
+    bubble.position.set(A.x + s * GOAL_X, A.y, A.z);
+    addA(bubble);
+    const gl = new THREE.PointLight(col, 30, 16, 2);
+    gl.position.set(A.x + s * (GOAL_X - 2), A.y, A.z);
     addA(gl);
+    goalLights.push(gl);
+    // end-zone glow disk on the dome mouth
+    const glowDisk = new THREE.Mesh(new THREE.CircleGeometry(DOME_R - 0.5, 32),
+      new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.12, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+    glowDisk.rotation.y = s < 0 ? Math.PI / 2 : -Math.PI / 2;
+    glowDisk.position.set(A.x + s * (A.hx + 0.3), A.y, A.z);
+    addA(glowDisk);
   }
-  // floating obstacles to bank around
-  for (const [ox, oy, oz, s2] of [[-5, 1.5, 2.5, 1.6], [4, -2, -3, 2.0], [0.5, 2.5, -1, 1.2]]) {
-    const ob = new THREE.Mesh(new THREE.BoxGeometry(s2, s2 * 0.7, s2 * 0.5), bevelMat);
-    ob.position.set(A.x + ox, A.y + oy, A.z + oz);
-    ob.rotation.set(0.4, 0.7, 0.2);
-    addA(ob);
-    const edge = new THREE.Mesh(new THREE.BoxGeometry(s2 + 0.04, 0.05, 0.05),
-      new THREE.MeshBasicMaterial({ color: 0x8ab8ff }));
-    edge.position.copy(ob.position);
-    edge.rotation.copy(ob.rotation);
+
+  /* ---- islands + wall glyphs ---- */
+  for (const o of ISLES) {
+    const cube = new THREE.Mesh(new THREE.BoxGeometry(o.h * 2, o.h * 2, o.h * 2), bevelMat);
+    cube.position.set(A.x + o.x, A.y + o.y, A.z + o.z);
+    addA(cube);
+    const edge = new THREE.Mesh(new THREE.BoxGeometry(o.h * 2 + 0.05, 0.06, 0.06),
+      new THREE.MeshBasicMaterial({ color: o.x < 0 ? 0xff9a50 : 0x6ac4ff }));
+    edge.position.set(A.x + o.x, A.y + o.y + o.h, A.z + o.z);
     addA(edge);
   }
-  // fill light + space dust
-  for (const fx3 of [-11, 0, 11]) {
-    const af = new THREE.PointLight(0xc8d4e8, 110, 38, 2);
-    af.position.set(A.x + fx3, A.y + A.hy - 1.5, A.z);
+  const glyphTex = (col) => canvasTex(256, 256, (g) => {
+    g.clearRect(0, 0, 256, 256);
+    g.strokeStyle = col; g.lineWidth = 7;
+    g.save(); g.translate(128, 128); g.rotate(Math.PI / 4);
+    g.strokeRect(-62, -62, 124, 124);
+    g.strokeRect(-30, -30, 60, 60);
+    g.restore();
+  });
+  for (const [s, col] of [[-1, "#ff9a50"], [1, "#6ac4ff"]]) {
+    const gt = glyphTex(col);
+    for (const [gx2, gy2, gz2] of [[10, 4, A.hz - 0.05], [22, -4, A.hz - 0.05], [10, -4, -A.hz + 0.05], [22, 4, -A.hz + 0.05]]) {
+      const gp = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 3.4),
+        new THREE.MeshBasicMaterial({ map: gt, transparent: true, side: THREE.DoubleSide, depthWrite: false }));
+      gp.position.set(A.x + s * gx2, A.y + gy2, A.z + gz2);
+      gp.rotation.y = gz2 > 0 ? Math.PI : 0;
+      addA(gp);
+    }
+  }
+
+  /* ---- launch tubes + catapult handles ---- */
+  const grabHandles = [];
+  const tubeMat = new THREE.MeshBasicMaterial({ color: 0x2c3550, side: THREE.DoubleSide });
+  for (const s of [-1, 1]) {
+    const teamCol = s < 0 ? 0xff7320 : 0x22a4ff;
+    TUBE_Z.forEach((tz, ti) => {
+      const len = TUBE_X1 - TUBE_X0;
+      const tube = new THREE.Mesh(new THREE.CylinderGeometry(1.25, 1.25, len, 12, 1, true), tubeMat);
+      tube.rotation.z = Math.PI / 2;
+      tube.position.set(A.x + s * (TUBE_X0 + len / 2), A.y, A.z + tz);
+      addA(tube);
+      // glowing mouth membranes at both ends
+      for (const mx of [TUBE_X0, TUBE_X1]) {
+        const mouth = new THREE.Mesh(new THREE.TorusGeometry(1.25, 0.07, 8, 24),
+          new THREE.MeshBasicMaterial({ color: teamCol }));
+        mouth.rotation.y = Math.PI / 2;
+        mouth.position.set(A.x + s * mx, A.y, A.z + tz);
+        addA(mouth);
+      }
+      // the yellow handles, rear third of the tube — grab, then PUNCH to launch
+      const hx2 = s * (TUBE_X1 - 2.5);
+      for (const hz2 of [-0.55, 0.55]) {
+        const handle = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.55, 0.14),
+          new THREE.MeshBasicMaterial({ color: 0xffd23c }));
+        handle.position.set(A.x + hx2, A.y, A.z + tz + hz2);
+        handle.userData.launchHandle = { dir: -s, x: A.x + hx2, y: A.y, z: A.z + tz, tube: ti + 1 };
+        addA(handle);
+        grabHandles.push(handle);
+      }
+    });
+  }
+
+  /* ---- locker rooms: spawn, kiosk, activation pods ---- */
+  const kiosks = [];
+  const arenaExits = [];
+  const lockerSpawns = {};
+  for (const [s, team, col, colHex] of [[-1, "o", 0xff7320, "#ff7320"], [1, "b", 0x22a4ff, "#22a4ff"]]) {
+    const room = new THREE.Mesh(new THREE.BoxGeometry(LOCKER.hx * 2, LOCKER.hy * 2, LOCKER.hz * 2),
+      new THREE.MeshBasicMaterial({ color: 0x222b3c, side: THREE.BackSide }));
+    room.position.set(A.x + s * LOCKER.cx, A.y, A.z);
+    addA(room);
+    // team glow strip around the room
+    for (const gy3 of [-1.8, 1.8]) {
+      const strip = new THREE.Mesh(new THREE.BoxGeometry(LOCKER.hx * 2 - 0.3, 0.08, 0.08),
+        new THREE.MeshBasicMaterial({ color: col }));
+      strip.position.set(A.x + s * LOCKER.cx, A.y + gy3, A.z + LOCKER.hz - 0.1);
+      addA(strip);
+      const strip2 = strip.clone(); strip2.position.z = A.z - LOCKER.hz + 0.1; addA(strip2);
+    }
+    const lamp = new THREE.PointLight(col, 90, 14, 2);
+    lamp.color.lerp(new THREE.Color(0xffffff), 0.45);   // team-tinted, not team-soaked
+    lamp.position.set(A.x + s * LOCKER.cx, A.y + 2.5, A.z);
+    addA(lamp);
+    // activation pods: five lit rings on the rear wall
+    for (let pi = 0; pi < 5; pi++) {
+      const pod = new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.07, 8, 20),
+        new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.7 }));
+      pod.rotation.y = Math.PI / 2;
+      pod.position.set(A.x + s * (LOCKER.cx + LOCKER.hx - 0.15), A.y + 0.6, A.z - 4 + pi * 2);
+      addA(pod);
+    }
+    // the ready-up kiosk
+    const kioskTex = canvasTex(256, 320, (g) => {
+      g.fillStyle = "#0a1018"; g.fillRect(0, 0, 256, 320);
+      g.strokeStyle = colHex; g.lineWidth = 8;
+      g.strokeRect(10, 10, 236, 300);
+      g.font = "900 44px monospace"; g.textAlign = "center";
+      g.fillStyle = colHex;
+      g.fillText("READY", 128, 130);
+      g.fillText("UP", 128, 185);
+      g.font = "16px monospace"; g.fillStyle = "#cfd8e4";
+      g.fillText("tap to start the match", 128, 250);
+    });
+    const kiosk = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 1.9),
+      new THREE.MeshBasicMaterial({ map: kioskTex }));
+    kiosk.position.set(A.x + s * (LOCKER.cx - 1), A.y, A.z + LOCKER.hz - 0.08);
+    kiosk.rotation.y = Math.PI;
+    kiosk.userData.kiosk = team;
+    addA(kiosk);
+    kiosks.push(kiosk);
+    // airlock home, one per locker
+    const lkExit = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 1.9), new THREE.MeshBasicMaterial({
+      map: canvasTex(128, 192, (g) => {
+        g.fillStyle = "#0a1018"; g.fillRect(0, 0, 128, 192);
+        g.strokeStyle = "#54e08a"; g.lineWidth = 6;
+        g.strokeRect(8, 8, 112, 176);
+        g.font = "900 22px monospace"; g.textAlign = "center";
+        g.fillStyle = "#54e08a";
+        g.fillText("AIRLOCK", 64, 90);
+        g.font = "13px monospace";
+        g.fillText("» ARCADE", 64, 116);
+      }),
+    }));
+    lkExit.position.set(A.x + s * (LOCKER.cx - 1), A.y, A.z - LOCKER.hz + 0.08);
+    lkExit.userData.arenaExit = true;
+    addA(lkExit);
+    arenaExits.push(lkExit);
+    lockerSpawns[team] = { x: A.x + s * LOCKER.cx, y: A.y, z: A.z, yaw: s < 0 ? -Math.PI / 2 : Math.PI / 2 };
+  }
+  const arenaSpawnFor = (team) => lockerSpawns[team] || lockerSpawns.o;
+
+  /* ---- light + air ---- */
+  for (const fx3 of [-24, -12, 0, 12, 24]) {
+    const af = new THREE.PointLight(0xc8d4e8, 220, 44, 2);
+    af.position.set(A.x + fx3, A.y + A.hy - 1.8, A.z);
     addA(af);
-    // visible light tube under each fixture
-    const tube = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.1, 0.25),
+    const tube = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.1, 0.28),
       new THREE.MeshBasicMaterial({ color: 0xe8f0ff }));
     tube.position.set(A.x + fx3, A.y + A.hy - 0.4, A.z);
     addA(tube);
   }
-  // team end zones, echo-style: colored wall bands at each end
-  for (const [ex, ec] of [[A.x - A.hx + 3.5, 0xff7320], [A.x + A.hx - 3.5, 0x22a4ff]]) {
-    for (const ez of [-A.hz + 0.08, A.hz - 0.08]) {
-      const band = new THREE.Mesh(new THREE.PlaneGeometry(5.5, 0.5),
-        new THREE.MeshBasicMaterial({ color: ec, transparent: true, opacity: 0.85, side: THREE.DoubleSide }));
-      band.position.set(ex, A.y, ez > 0 ? A.z + A.hz - 0.08 : A.z - A.hz + 0.08);
-      band.rotation.y = ez > 0 ? Math.PI : 0;
-      addA(band);
-    }
-    const glowDisk = new THREE.Mesh(new THREE.CircleGeometry(3.2, 32),
-      new THREE.MeshBasicMaterial({ color: ec, transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending, depthWrite: false }));
-    glowDisk.rotation.y = ex < A.x ? Math.PI / 2 : -Math.PI / 2;
-    glowDisk.position.set(ex < A.x ? A.x - A.hx + 0.5 : A.x + A.hx - 0.5, A.y, A.z);
-    addA(glowDisk);
-  }
-  const ADUST = 240;
+  const ADUST = 700;
   const aDustPos = new Float32Array(ADUST * 3);
   for (let i = 0; i < ADUST; i++) {
     aDustPos[i * 3] = A.x + rand(-A.hx, A.hx);
@@ -2791,7 +3068,7 @@ export function buildWorld() {
     blending: THREE.AdditiveBlending, depthWrite: false,
   })));
 
-  // the scoreboard
+  // scoreboards over MID, one facing each wing
   const aScoreCanvas = document.createElement("canvas");
   aScoreCanvas.width = 512; aScoreCanvas.height = 128;
   const aScoreTex = new THREE.CanvasTexture(aScoreCanvas);
@@ -2811,10 +3088,13 @@ export function buildWorld() {
     aScoreTex.needsUpdate = true;
   }
   setArenaScore(0, 0);
-  const aBoard = new THREE.Mesh(new THREE.PlaneGeometry(5, 1.25),
-    new THREE.MeshBasicMaterial({ map: aScoreTex }));
-  aBoard.position.set(A.x, A.y + A.hy - 1.8, A.z - A.hz + 0.1);
-  addA(aBoard);
+  for (const sz of [-1, 1]) {
+    const aBoard = new THREE.Mesh(new THREE.PlaneGeometry(6, 1.5),
+      new THREE.MeshBasicMaterial({ map: aScoreTex }));
+    aBoard.position.set(A.x, A.y + A.hy - 2.2, A.z + sz * (A.hz - 0.12));
+    aBoard.rotation.y = sz > 0 ? Math.PI : 0;
+    addA(aBoard);
+  }
 
   // THE DISC — glowing, gradient ring, the whole point
   const discGroup = new THREE.Group();
@@ -2833,7 +3113,7 @@ export function buildWorld() {
   discHit.userData.disc = true;
   addA(discHit);
 
-  // exit airlock panel
+  // main-hall airlock too, on the +z wall at mid height
   const exitPanel = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 2.2), new THREE.MeshBasicMaterial({
     map: canvasTex(128, 192, (g) => {
       g.fillStyle = "#0a1018"; g.fillRect(0, 0, 128, 192);
@@ -2846,10 +3126,11 @@ export function buildWorld() {
       g.fillText("» ARCADE", 64, 116);
     }),
   }));
-  exitPanel.position.set(A.x, A.y - 1, A.z + A.hz - 0.06);
+  exitPanel.position.set(A.x + 9.5, A.y - 4, A.z + A.hz - 0.06);
   exitPanel.rotation.y = Math.PI;
   exitPanel.userData.arenaExit = true;
   addA(exitPanel);
+  arenaExits.push(exitPanel);
   arenaGroup.traverse((o) => { o.layers.set(2); });
 
   /* --- dust --- */
@@ -2946,6 +3227,7 @@ export function buildWorld() {
 
     screenGlow.intensity = 2.6 + Math.sin(elapsed * 2.3) * 0.45 + Math.sin(elapsed * 7.1) * 0.25;
     tickLava(elapsed);
+    tickBlinds(dt);
     for (const m of accessorySpin) m.rotation.y = elapsed * 0.6;
 
     if (Math.random() < 0.004) neonLight.intensity = 0.3;
@@ -3102,6 +3384,7 @@ export function buildWorld() {
     setLivePlanes: (v) => { livePlanes = !!v; },
     triggerZilla: () => { if (zillaT < 0) startZilla(); },
     lavaHit: lampGlass, toggleLava,
+    blindsHit: blinds, toggleBlinds, setBlinds,
     addAccessory,
     // how much arcade you should hear from (x, z): 1 inside, a leak
     // through the open closet doorway, near-nothing across the bedroom
@@ -3120,10 +3403,12 @@ export function buildWorld() {
     bottleHit,
     // THE CREW arena
     arenaInfo: ARENA,
-    arenaSpawn: { x: ARENA.x - 11, y: ARENA.y, z: ARENA.z, yaw: -Math.PI / 2 },
+    arenaSpawnFor, arenaClamp, arenaNearWall,
+    grabHandles, kiosks, arenaExits,
+    arenaGoalX: GOAL_X, arenaBubbleR: BUBBLE_R,
     arcadeReturn: { x: -4.6, z: 0.6, yaw: Math.PI },
     discGroup, discHit, setArenaScore,
-    echoPoster, arenaExit: exitPanel,
+    echoPoster,
     updateScores,
     setParallax,
     boatSpawn: { x: BOAT.x, z: BOAT.z + 0.4, yaw: 0 },
