@@ -511,6 +511,80 @@ export function setWater(on) {
   }
 }
 
+/* ---------------- the arcade, as a place you can hear ----------------
+   A bed of cabinet hum plus randomized attract-mode chiptune, behind
+   one gain that main.js drives from the player's position: full inside
+   the arcade, leaking through the closet doorway, gone on the boat. */
+let arcadeZone = null;
+export function setArcadeZone(level) {
+  if (!ctx) return;
+  if (!arcadeZone) {
+    const out = ctx.createGain();
+    out.gain.value = 0;
+    out.connect(master);
+    // cabinet fans + old transformers
+    const fan = ctx.createBufferSource();
+    fan.buffer = noiseBuffer(4);
+    fan.loop = true;
+    const fanLp = ctx.createBiquadFilter();
+    fanLp.type = "lowpass"; fanLp.frequency.value = 260;
+    const fanG = ctx.createGain(); fanG.gain.value = 0.05;
+    fan.connect(fanLp).connect(fanG).connect(out);
+    fan.start();
+    const hum = ctx.createOscillator();
+    hum.type = "sine"; hum.frequency.value = 119;
+    const humG = ctx.createGain(); humG.gain.value = 0.012;
+    hum.connect(humG).connect(out);
+    hum.start();
+    arcadeZone = { out, level: 0 };
+    // attract modes chirping away on their own clocks
+    const PENTA = [330, 392, 440, 523, 587, 659, 784, 880];
+    const burst = () => {
+      const delay = 700 + Math.random() * 2400;
+      setTimeout(burst, delay);
+      if (!arcadeZone || arcadeZone.level < 0.04) return;
+      const t0 = ctx.currentTime + 0.02;
+      const pan = ctx.createStereoPanner();
+      pan.pan.value = Math.random() * 1.4 - 0.7;
+      pan.connect(out);
+      if (Math.random() < 0.14) {           // a coin drops somewhere
+        for (const [f, dt] of [[988, 0], [1319, 0.09]]) {
+          const o = ctx.createOscillator();
+          o.type = "sine"; o.frequency.value = f;
+          const g = ctx.createGain();
+          o.connect(g).connect(pan);
+          g.gain.setValueAtTime(0, t0 + dt);
+          g.gain.linearRampToValueAtTime(0.045, t0 + dt + 0.008);
+          g.gain.exponentialRampToValueAtTime(0.0008, t0 + dt + 0.5);
+          g.gain.linearRampToValueAtTime(0, t0 + dt + 0.55);
+          o.start(t0 + dt); o.stop(t0 + dt + 0.6);
+        }
+        return;
+      }
+      // a snip of attract-mode melody
+      const n = 3 + (Math.random() * 4 | 0);
+      const step = 0.07 + Math.random() * 0.09;
+      const type = Math.random() < 0.5 ? "square" : "triangle";
+      for (let i = 0; i < n; i++) {
+        const o = ctx.createOscillator();
+        o.type = type;
+        o.frequency.value = PENTA[Math.random() * PENTA.length | 0];
+        const g = ctx.createGain();
+        o.connect(g).connect(pan);
+        const t = t0 + i * step;
+        g.gain.setValueAtTime(0, t);
+        g.gain.linearRampToValueAtTime(0.035, t + 0.006);
+        g.gain.exponentialRampToValueAtTime(0.0008, t + step * 0.9);
+        g.gain.linearRampToValueAtTime(0, t + step * 0.95);
+        o.start(t); o.stop(t + step);
+      }
+    };
+    burst();
+  }
+  arcadeZone.level = level;
+  arcadeZone.out.gain.linearRampToValueAtTime(level, ctx.currentTime + 0.35);
+}
+
 // The city outside, heard through the walls: a far-off siren or a
 // car with too much subwoofer rolling past.
 export function citySound(type = "siren") {

@@ -9,7 +9,7 @@ import { NotesWall } from "./notes3d.js";
 import { Ghosts } from "./ghosts.js";
 import { store } from "./store.js";
 import { presence } from "./presence.js";
-import { startAmbience, citySound, pianoNote, audioNow, purr, setRain, setWater, setRoomTone, kettleBoil, setThruster, boostSound, discSound, goalHorn, meow, hiss, careSound, drumHit } from "./ambience.js";
+import { startAmbience, citySound, pianoNote, audioNow, purr, setRain, setWater, setRoomTone, kettleBoil, setThruster, boostSound, discSound, goalHorn, meow, hiss, careSound, drumHit, setArcadeZone } from "./ambience.js";
 import { SONGS, playSong, stopSong, currentSongId } from "./songs.js";
 import { weather } from "./weather.js";
 import { startPlanes } from "./planes.js";
@@ -49,6 +49,12 @@ controls.pos.z = world.spawn.z;
 controls.yaw = world.spawn.yaw;
 
 world.setCityListener((type) => { if (!inBoat && !inArena) citySound(type); });
+
+// the arcade hums and chirps when you're near it — spatial by position
+setInterval(() => {
+  if (!entered) return;
+  setArcadeZone(inBoat || inArena ? 0 : world.arcadeZoneLevel(controls.pos.x, controls.pos.z));
+}, 250);
 
 // piano voice — sticky per visitor, broadcast with each note
 let pianoVoice = 0;

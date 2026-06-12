@@ -3006,6 +3006,15 @@ export function buildWorld() {
     setLivePlanes: (v) => { livePlanes = !!v; },
     triggerZilla: () => { if (zillaT < 0) startZilla(); },
     lavaHit: lampGlass, toggleLava,
+    // how much arcade you should hear from (x, z): 1 inside, a leak
+    // through the open closet doorway, near-nothing across the bedroom
+    arcadeZoneLevel: (x, z) => {
+      if (x < -X - ALCOVE_D && x > AR.x0 && z > AR.z0 && z < AR.z1) return 1;
+      if (x <= -X + 0.12 && x >= -X - ALCOVE_D && Math.abs(z - CZ) < OPEN_W) return 0.72;
+      const leak = closet.open ? 1 : 0.22;   // doors do their job
+      const d = Math.hypot(x + X, z - CZ);
+      return Math.max(0, 0.4 - d * 0.085) * leak;
+    },
     // the dimmer + the boat
     setRoomLight,
     dimmerHit: dimmerPlate,
