@@ -289,7 +289,7 @@ controls.onAction((ndcX, ndcY) => {
       const d = controls._launchDir;
       controls.anchored = false;
       controls._launchDir = null;
-      controls.vel.x = d * 19; controls.vel.y = 0; controls.vel.z = 0;
+      controls.vel.x = d * 12; controls.vel.y = 0; controls.vel.z = 0;
       boostSound();
       toast("LAUNCH 🚀");
       return;
@@ -349,9 +349,9 @@ controls.onAction((ndcX, ndcY) => {
     controls.anchored = true;
     controls._launchDir = h.dir;
     discSound("catch");
-    toast(`tube ${h.tube} — hold tight, PUNCH the open space to launch`);
+    toast(`tube ${h.tube} — hold on. PUNCH now to push off, or wait for GO and ride the current`);
   } else if (hit.object.userData.kiosk && hit.distance < 3) {
-    readyUp();
+    readyUp(hit.object.userData.kiosk);
   } else if (hit.object.userData.portal === "boat" && hit.distance < 2.6) {
     // the door isn't the way in anymore — the computer is
     toast("locked. the computer on the desk knows the way to her room.");
@@ -974,10 +974,12 @@ let lastPunchAt = 0;
 function tryPunch() {
   if (Date.now() - lastPunchAt < 700 || controls.stunT > 0) return true;  // still our click
   lastPunchAt = Date.now();
-  // a lunge with the swing — punching is movement out here
+  // a lunge with the swing — punching is movement out here, and a
+  // real arm push inside a launch tube
   const dir = new THREE.Vector3();
   camera.getWorldDirection(dir);
-  controls.vel.x += dir.x * 1.2; controls.vel.y += dir.y * 1.2; controls.vel.z += dir.z * 1.2;
+  const push = world.inTube(controls.pos.x, controls.flyY, controls.pos.z) ? 5 : 1.2;
+  controls.vel.x += dir.x * push; controls.vel.y += dir.y * push; controls.vel.z += dir.z * push;
   // whoever's in reach and roughly in front of the fist gets it
   let hitUid = null;
   for (const [uid, g] of ghosts.byUid) {
@@ -1052,34 +1054,55 @@ function scoreGoal(team, announce, pts = 2) {
   disc.vel.set(0, 0, 0);
   if (announce) presence.sendAct({ kind: "goal", team, pts, o: arenaScore.o, b: arenaScore.b });
 }
-/* ---- the match: ready up at a kiosk, ten seconds, GO ---- */
-const match = { phase: "free", timers: [] };
+/* ---- the match: BOTH teams ready up, ten seconds, barriers drop ---- */
+const match = { phase: "free", timers: [], ready: { o: 0, b: 0 }, liveAt: 0 };
+function applyReady(team, t) {
+  if (match.phase === "count") return;
+  match.ready[team] = t || Date.now();
+  // alone in here? your word is enough. otherwise it takes both lockers.
+  if (presence.count() <= 1) return applyMatchStart(Date.now() + 10000);
+  if (match.ready.o && match.ready.b) return applyMatchStart(Math.max(match.ready.o, match.ready.b) + 10000);
+  if (inArena) toast(team === "o" ? "ORANGE is ready — waiting on BLUE" : "BLUE is ready — waiting on ORANGE");
+}
 function applyMatchStart(at) {
   if (match.phase === "count") return;
   match.phase = "count";
+  match.ready.o = match.ready.b = 0;
   match.timers.forEach(clearTimeout);
   match.timers = [];
+  world.setTubeBarriers(true);
   const left = Math.max(400, at - Date.now());
-  toast(`match starting — get in a launch tube (${Math.round(left / 1000)}s)`);
+  toast(`both teams ready — grab the handholds behind the launch ring (${Math.round(left / 1000)}s)`);
   for (const c of [3, 2, 1]) {
     if (left - c * 1000 > 0) match.timers.push(setTimeout(() => { if (inArena) toast(String(c)); }, left - c * 1000));
   }
   match.timers.push(setTimeout(() => {
     match.phase = "live";
+    match.liveAt = Date.now();
+    world.setTubeBarriers(false);
     arenaScore.o = 0; arenaScore.b = 0;
     world.setArenaScore(0, 0);
     disc.holder = null;
     disc.thrownFrom = null;
     disc.pos.set(A.x, A.y, A.z);
     disc.vel.set(0, 0, 0);
-    if (inArena) { goalHorn(); toast("GO — disc is live at MID"); }
+    // the catapult takes whoever's holding on — the current does the rest
+    if (inArena && controls.anchored && controls._launchDir) {
+      controls.anchored = false;
+      controls.vel.x = controls._launchDir * 10;
+      controls.vel.y = 0; controls.vel.z = 0;
+      controls._launchDir = null;
+      boostSound();
+    }
+    if (inArena) { goalHorn(); toast("GO — barriers down, ride the current. disc is live at MID"); }
   }, left));
 }
-function readyUp() {
+function readyUp(team) {
   if (match.phase === "count") return toast("countdown's already running");
-  const at = Date.now() + 10000;
-  presence.sendAct({ kind: "match", at });
-  applyMatchStart(at);
+  if (match.ready[team]) return toast(team === "o" ? "ORANGE is already ready" : "BLUE is already ready");
+  const t = Date.now();
+  presence.sendAct({ kind: "ready", team, t });
+  applyReady(team, t);
 }
 function grabNearestGhost() {
   if (!inArena) return null;
@@ -1502,6 +1525,8 @@ addEventListener("keydown", (e) => {
         ghosts.flash(p.target, 0xff4040);
         punchSound(true);
       }
+    } else if (p.kind === "ready") {
+      applyReady(p.team, p.t);
     } else if (p.kind === "match") {
       applyMatchStart(p.at);
     } else if (p.kind === "deflect") {
@@ -1578,6 +1603,19 @@ renderer.setAnimationLoop(() => {
   ghosts.tick(dt, t);
   cat.tick(dt, t, controls.pose());
   discTick(dt);
+  // the tunnel current: for 8 s after GO the tubes carry you at 10 m/s.
+  // it only ever speeds you up — an early push keeps its extra speed,
+  // and the regrab slingshot stays possible. hug the wall and you smear.
+  if (inArena && match.liveAt && Date.now() - match.liveAt < 8000 && !controls.anchored) {
+    const tb = world.inTube(controls.pos.x, controls.flyY, controls.pos.z);
+    if (tb) {
+      if (controls.vel.x * tb.dir < 10) controls.vel.x += (tb.dir * 10 - controls.vel.x) * Math.min(1, dt * 5);
+      if (tb.off > 0.78) {
+        const k = Math.pow(0.18, dt);
+        controls.vel.x *= k; controls.vel.y *= k; controls.vel.z *= k;
+      }
+    }
+  }
   shieldMesh.visible = inArena && !!controls.blocking;
   if (inArena) setThruster(controls.thrusting);
   renderer.render(world.scene, camera);

@@ -2669,8 +2669,9 @@ export function buildWorld() {
   const GOAL_X = 34;           // ring planes, inside the domes
   const BUBBLE_R = 14;         // outside this sphere a goal pays three
   const TUBE_Z = [-2.8, 0, 2.8];
-  const TUBE_X0 = 36.5, TUBE_X1 = 49;
-  const LOCKER = { cx: 54.5, hx: 5.5, hy: 4.5, hz: 6 };
+  const TUBE_Y = -4.2;         // tubes run under the goal, clean sightline
+  const TUBE_X0 = 38.5, TUBE_X1 = 49;
+  const LOCKER = { cx: 54.5, hx: 5.5, hy: 6, hz: 6 };
 
   const panelTex = canvasTex(512, 512, (g) => {
     g.fillStyle = "#3d4658";
@@ -2700,14 +2701,18 @@ export function buildWorld() {
      them all, and the islands inside the hall push you OUT. ---- */
   const VOLS = [
     { t: "b", x0: -A.hx, x1: A.hx, y0: -A.hy, y1: A.hy, z0: -A.hz, z1: A.hz },  // main hall
-    { t: "s", cx: -A.hx, r: DOME_R }, { t: "s", cx: A.hx, r: DOME_R },          // goal domes
-    { t: "b", x0: -7, x1: 7, y0: -2.2, y1: 2.2, z0: A.hz, z1: A.hz + 2.6 },     // mid-wing tunnels
-    { t: "b", x0: -7, x1: 7, y0: -2.2, y1: 2.2, z0: -A.hz - 2.6, z1: -A.hz },
+    // goal pockets: open drums from the end-wall mouth to the back plate.
+    // connected volumes must OVERLAP by more than the body radius, or
+    // the margin math builds an invisible wall at the seam
+    { t: "b", x0: -38.5, x1: -A.hx + 1.5, y0: -5.5, y1: 5.5, z0: -5.5, z1: 5.5 },
+    { t: "b", x0: A.hx - 1.5, x1: 38.5, y0: -5.5, y1: 5.5, z0: -5.5, z1: 5.5 },
+    { t: "b", x0: -7, x1: 7, y0: -2.2, y1: 2.2, z0: A.hz - 1.5, z1: A.hz + 2.6 },   // mid-wing tunnels
+    { t: "b", x0: -7, x1: 7, y0: -2.2, y1: 2.2, z0: -A.hz - 2.6, z1: -A.hz + 1.5 },
   ];
   for (const s of [-1, 1]) {
     for (const tz of TUBE_Z) {
-      VOLS.push({ t: "b", x0: Math.min(s * 36, s * TUBE_X1), x1: Math.max(s * 36, s * TUBE_X1),
-                  y0: -1.0, y1: 1.0, z0: tz - 1.0, z1: tz + 1.0 });
+      VOLS.push({ t: "b", x0: Math.min(s * (TUBE_X0 - 2), s * (TUBE_X1 + 1.5)), x1: Math.max(s * (TUBE_X0 - 2), s * (TUBE_X1 + 1.5)),
+                  y0: TUBE_Y - 1.0, y1: TUBE_Y + 1.0, z0: tz - 1.0, z1: tz + 1.0 });
     }
     VOLS.push({ t: "b", x0: s * LOCKER.cx - LOCKER.hx, x1: s * LOCKER.cx + LOCKER.hx,
                 y0: -LOCKER.hy, y1: LOCKER.hy, z0: -LOCKER.hz, z1: LOCKER.hz });
@@ -2812,12 +2817,24 @@ export function buildWorld() {
     wallE.rotation.y = s > 0 ? -Math.PI / 2 : Math.PI / 2;
     wallE.position.set(A.x + s * A.hx, A.y, A.z);
     addA(wallE);
-    // the dome itself, bulging away from the hall
-    const dome = new THREE.Mesh(new THREE.SphereGeometry(DOME_R, 26, 14), endMat.clone());
-    dome.geometry = new THREE.SphereGeometry(DOME_R, 26, 14, 0, Math.PI);
-    dome.rotation.y = s > 0 ? Math.PI / 2 : -Math.PI / 2;
-    dome.position.set(A.x + s * A.hx, A.y, A.z);
-    addA(dome);
+    // the goal pocket: an open drum from the end-wall mouth back to a
+    // flat plate. the plate wears three real holes where the launch
+    // tubes come through — you can see the hall from your locker.
+    const drum = new THREE.Mesh(new THREE.CylinderGeometry(DOME_R, DOME_R, 8.5, 26, 1, true), endMat);
+    drum.rotation.z = Math.PI / 2;
+    drum.position.set(A.x + s * (A.hx + 4.25), A.y, A.z);
+    addA(drum);
+    const plateShape = new THREE.Shape();
+    plateShape.absarc(0, 0, DOME_R, 0, Math.PI * 2, false);
+    for (const tz of TUBE_Z) {
+      const th = new THREE.Path();
+      th.absarc(tz, TUBE_Y, 1.27, 0, Math.PI * 2, true);
+      plateShape.holes.push(th);
+    }
+    const plate = new THREE.Mesh(new THREE.ShapeGeometry(plateShape, 24), endMat);
+    plate.rotation.y = s > 0 ? -Math.PI / 2 : Math.PI / 2;
+    plate.position.set(A.x + s * 38.5, A.y, A.z);
+    addA(plate);
   }
   // banking bevels along the four long edges
   for (const [by, bz] of [[A.hy, A.hz], [A.hy, -A.hz], [-A.hy, A.hz], [-A.hy, -A.hz]]) {
@@ -2943,8 +2960,13 @@ export function buildWorld() {
     }
   }
 
-  /* ---- launch tubes + catapult handles ---- */
+  /* ---- launch tubes + catapults, under the goals ----
+     grab the yellow handholds behind the launch ring; when the round
+     starts the tunnel current carries you at 10 m/s — push (punch)
+     near the end to stack your own speed on top. drift into the wall
+     and you smear. main.js runs the current; we provide the shapes. ---- */
   const grabHandles = [];
+  const tubeBarriers = [];
   const tubeMat = new THREE.MeshBasicMaterial({ color: 0x2c3550, side: THREE.DoubleSide });
   for (const s of [-1, 1]) {
     const teamCol = s < 0 ? 0xff7320 : 0x22a4ff;
@@ -2952,27 +2974,51 @@ export function buildWorld() {
       const len = TUBE_X1 - TUBE_X0;
       const tube = new THREE.Mesh(new THREE.CylinderGeometry(1.25, 1.25, len, 12, 1, true), tubeMat);
       tube.rotation.z = Math.PI / 2;
-      tube.position.set(A.x + s * (TUBE_X0 + len / 2), A.y, A.z + tz);
+      tube.position.set(A.x + s * (TUBE_X0 + len / 2), A.y + TUBE_Y, A.z + tz);
       addA(tube);
-      // glowing mouth membranes at both ends
       for (const mx of [TUBE_X0, TUBE_X1]) {
         const mouth = new THREE.Mesh(new THREE.TorusGeometry(1.25, 0.07, 8, 24),
           new THREE.MeshBasicMaterial({ color: teamCol }));
         mouth.rotation.y = Math.PI / 2;
-        mouth.position.set(A.x + s * mx, A.y, A.z + tz);
+        mouth.position.set(A.x + s * mx, A.y + TUBE_Y, A.z + tz);
         addA(mouth);
       }
-      // the yellow handles, rear third of the tube — grab, then PUNCH to launch
-      const hx2 = s * (TUBE_X1 - 2.5);
+      // the launch ring — push past this one
+      const lring = new THREE.Mesh(new THREE.TorusGeometry(1.05, 0.06, 8, 24),
+        new THREE.MeshBasicMaterial({ color: 0x55e0d8, transparent: true, opacity: 0.85 }));
+      lring.rotation.y = Math.PI / 2;
+      lring.position.set(A.x + s * (TUBE_X1 - 3.4), A.y + TUBE_Y, A.z + tz);
+      addA(lring);
+      // yellow handholds BEHIND the ring (locker side)
+      const hx2 = s * (TUBE_X1 - 1.8);
       for (const hz2 of [-0.55, 0.55]) {
         const handle = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.55, 0.14),
           new THREE.MeshBasicMaterial({ color: 0xffd23c }));
-        handle.position.set(A.x + hx2, A.y, A.z + tz + hz2);
-        handle.userData.launchHandle = { dir: -s, x: A.x + hx2, y: A.y, z: A.z + tz, tube: ti + 1 };
+        handle.position.set(A.x + hx2, A.y + TUBE_Y, A.z + tz + hz2);
+        handle.userData.launchHandle = { dir: -s, x: A.x + hx2, y: A.y + TUBE_Y, z: A.z + tz, tube: ti + 1 };
         addA(handle);
         grabHandles.push(handle);
       }
+      // the barrier that drops when the round starts
+      const barrier = new THREE.Mesh(new THREE.CircleGeometry(1.22, 20),
+        new THREE.MeshBasicMaterial({ color: teamCol, transparent: true, opacity: 0.3, side: THREE.DoubleSide, depthWrite: false }));
+      barrier.rotation.y = Math.PI / 2;
+      barrier.position.set(A.x + s * (TUBE_X0 + 0.4), A.y + TUBE_Y, A.z + tz);
+      barrier.visible = false;
+      addA(barrier);
+      tubeBarriers.push(barrier);
     });
+  }
+  function setTubeBarriers(on) { for (const b of tubeBarriers) b.visible = !!on; }
+  // which tube (if any) is this point inside? main.js runs the current
+  function inTube(x, y, z) {
+    const lx = x - A.x, ly = y - A.y - TUBE_Y, lz0 = z - A.z;
+    if (Math.abs(lx) < TUBE_X0 - 1 || Math.abs(lx) > TUBE_X1 + 0.5 || Math.abs(ly) > 1.05) return null;
+    for (const tz of TUBE_Z) {
+      const off = Math.hypot(ly, lz0 - tz);
+      if (off < 1.05) return { dir: -Math.sign(lx), off, exitX: A.x - Math.sign(lx) * (TUBE_X0 - 1) };
+    }
+    return null;
   }
 
   /* ---- locker rooms: spawn, kiosk, activation pods ---- */
@@ -2980,10 +3026,34 @@ export function buildWorld() {
   const arenaExits = [];
   const lockerSpawns = {};
   for (const [s, team, col, colHex] of [[-1, "o", 0xff7320, "#ff7320"], [1, "b", 0x22a4ff, "#22a4ff"]]) {
-    const room = new THREE.Mesh(new THREE.BoxGeometry(LOCKER.hx * 2, LOCKER.hy * 2, LOCKER.hz * 2),
-      new THREE.MeshBasicMaterial({ color: 0x222b3c, side: THREE.BackSide }));
-    room.position.set(A.x + s * LOCKER.cx, A.y, A.z);
-    addA(room);
+    const lkMat = new THREE.MeshBasicMaterial({ color: 0x222b3c, side: THREE.DoubleSide });
+    for (const [w2, h2, px4, py4, pz4, rx4, ry4] of [
+      [LOCKER.hx * 2, LOCKER.hz * 2, A.x + s * LOCKER.cx, A.y - LOCKER.hy, A.z, -Math.PI / 2, 0],
+      [LOCKER.hx * 2, LOCKER.hz * 2, A.x + s * LOCKER.cx, A.y + LOCKER.hy, A.z, Math.PI / 2, 0],
+      [LOCKER.hx * 2, LOCKER.hy * 2, A.x + s * LOCKER.cx, A.y, A.z - LOCKER.hz, 0, 0],
+      [LOCKER.hx * 2, LOCKER.hy * 2, A.x + s * LOCKER.cx, A.y, A.z + LOCKER.hz, 0, Math.PI],
+      [LOCKER.hz * 2, LOCKER.hy * 2, A.x + s * (LOCKER.cx + LOCKER.hx), A.y, A.z, 0, s > 0 ? -Math.PI / 2 : Math.PI / 2],
+    ]) {
+      const lw = new THREE.Mesh(new THREE.PlaneGeometry(w2, h2), lkMat);
+      lw.position.set(px4, py4, pz4);
+      lw.rotation.x = rx4; lw.rotation.y = ry4;
+      addA(lw);
+    }
+    // tube-side wall: three round holes — look straight down the
+    // tunnels, through the goal pocket, into the hall
+    const lkShape = new THREE.Shape();
+    lkShape.moveTo(-LOCKER.hz, -LOCKER.hy); lkShape.lineTo(LOCKER.hz, -LOCKER.hy);
+    lkShape.lineTo(LOCKER.hz, LOCKER.hy); lkShape.lineTo(-LOCKER.hz, LOCKER.hy);
+    lkShape.closePath();
+    for (const tz of TUBE_Z) {
+      const lh = new THREE.Path();
+      lh.absarc(tz, TUBE_Y, 1.27, 0, Math.PI * 2, true);
+      lkShape.holes.push(lh);
+    }
+    const lkWall = new THREE.Mesh(new THREE.ShapeGeometry(lkShape, 24), lkMat);
+    lkWall.rotation.y = s > 0 ? Math.PI / 2 : -Math.PI / 2;
+    lkWall.position.set(A.x + s * (LOCKER.cx - LOCKER.hx), A.y, A.z);
+    addA(lkWall);
     // team glow strip around the room
     for (const gy3 of [-1.8, 1.8]) {
       const strip = new THREE.Mesh(new THREE.BoxGeometry(LOCKER.hx * 2 - 0.3, 0.08, 0.08),
@@ -3406,6 +3476,7 @@ export function buildWorld() {
     arenaSpawnFor, arenaClamp, arenaNearWall,
     grabHandles, kiosks, arenaExits,
     arenaGoalX: GOAL_X, arenaBubbleR: BUBBLE_R,
+    setTubeBarriers, inTube,
     arcadeReturn: { x: -4.6, z: 0.6, yaw: Math.PI },
     discGroup, discHit, setArenaScore,
     echoPoster,
