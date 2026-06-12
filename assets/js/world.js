@@ -539,6 +539,72 @@ function drawZilla(g, z, night) {
   g.restore();
 }
 
+// the bat itself: ears, scalloped wings, drawn at (x, y) scaled by s.
+// flap > 0 folds the wings into a downbeat for the gliding one
+function drawBatShape(g, x, y, s, flap = 0) {
+  const w = 1 - 0.25 * Math.max(0, flap);
+  g.save();
+  g.translate(x, y);
+  g.scale(s, s);
+  g.beginPath();
+  g.moveTo(-20 * w, -2 - 4 * flap);
+  g.quadraticCurveTo(-13, -7, -5, -6);
+  g.lineTo(-3.6, -10);
+  g.lineTo(-1.8, -6.4);
+  g.lineTo(1.8, -6.4);
+  g.lineTo(3.6, -10);
+  g.lineTo(5, -6);
+  g.quadraticCurveTo(13, -7, 20 * w, -2 - 4 * flap);
+  g.quadraticCurveTo(13 * w, 3 - 2 * flap, 9 * w, 1);
+  g.quadraticCurveTo(6, 6, 3, 3);
+  g.quadraticCurveTo(1.4, 7, 0, 7);
+  g.quadraticCurveTo(-1.4, 7, -3, 3);
+  g.quadraticCurveTo(-6, 6, -9 * w, 1);
+  g.quadraticCurveTo(-13 * w, 3 - 2 * flap, -20 * w, -2 - 4 * flap);
+  g.closePath();
+  g.fill();
+  g.restore();
+}
+
+// the bat signal: a beam off the US Bank roof paints the logo on the
+// clouds for a while — and near the end, something small actually
+// glides off the tower and disappears over the basin. night only;
+// whoever downtown is calling, it's not our problem either.
+function drawBatSignal(g, b, night) {
+  if (!night) return;
+  const t = b.t;
+  const TOP = { x: LA.usbank.x + LA.usbank.w / 2, y: 280 - LA.usbank.h - 12 };
+  const SPOT = { x: 236, y: 64 };
+  const on = t < 1.4 ? t / 1.4 : t > 17 ? Math.max(0, 1 - (t - 17) / 1.5) : 1;
+  if (on > 0.01) {
+    const flick = 0.92 + 0.08 * Math.sin(t * 23);
+    const grad = g.createLinearGradient(TOP.x, TOP.y, SPOT.x, SPOT.y);
+    grad.addColorStop(0, `rgba(255,244,200,${0.30 * on * flick})`);
+    grad.addColorStop(1, `rgba(255,244,200,${0.10 * on})`);
+    g.fillStyle = grad;
+    g.beginPath();
+    g.moveTo(TOP.x - 3, TOP.y);
+    g.lineTo(SPOT.x - 30, SPOT.y + 9);
+    g.lineTo(SPOT.x + 30, SPOT.y - 9);
+    g.lineTo(TOP.x + 3, TOP.y);
+    g.closePath(); g.fill();
+    const halo = g.createRadialGradient(SPOT.x, SPOT.y, 4, SPOT.x, SPOT.y, 44);
+    halo.addColorStop(0, `rgba(255,248,214,${0.5 * on * flick})`);
+    halo.addColorStop(1, "rgba(255,248,214,0)");
+    g.fillStyle = halo;
+    g.beginPath(); g.ellipse(SPOT.x, SPOT.y, 46, 27, -0.16, 0, 7); g.fill();
+    g.fillStyle = `rgba(8,10,16,${0.85 * on})`;
+    drawBatShape(g, SPOT.x, SPOT.y, 1.5);
+  }
+  if (t > 13.5 && t < 19.5) {
+    const k = (t - 13.5) / 6;
+    const bx = TOP.x - k * 330;
+    const by = TOP.y - 26 - Math.sin(k * Math.PI) * 46 + Math.sin(t * 9) * 2.5;
+    g.fillStyle = "rgba(10,12,18,0.92)";
+    drawBatShape(g, bx, by, 0.45, Math.sin(t * 9));
+  }
+}
+
 // where the jet sits on the sky canvas at progress t (0..1).
 // dir +1 = arrival sinking west toward LAX (left → right),
 // dir -1 = departure climbing out east (right → left)
@@ -737,6 +803,8 @@ function makeSky() {
         }
       }
     }
+
+    if (fx.bat) drawBatSignal(g, fx.bat, night);
 
     const sp = place(sun.azimuth, sun.altitude);
     if (sp && sunAlt > -1) {
@@ -1119,6 +1187,7 @@ export function buildWorld() {
   let planeDir = 1;          // +1 arrival (left → right), -1 departure
   let planeShot = null;      // {x, y, age} once someone takes the shot
   let zilla = null;          // walk state while the kaiju is out there
+  let bat = null;            // {t} while the signal burns over downtown
 
   const planeFx = () =>
     plane01 == null ? null : { t: plane01, dir: planeDir, shot: planeShot };
@@ -1126,7 +1195,7 @@ export function buildWorld() {
   function redrawSky(beaconOn) {
     if (!skyCache) return;
     sky.draw(skyCache.sun, skyCache.moon, skyCache.fraction, wx,
-      { beacon: beaconOn, plane: planeFx(), zilla });
+      { beacon: beaconOn, plane: planeFx(), zilla, bat });
   }
 
   function updateSky() {
@@ -1135,7 +1204,7 @@ export function buildWorld() {
     const moon = getMoonPosition(now, LAT, LNG);
     const { fraction } = getMoonIllumination(now);
     skyCache = { sun, moon, fraction };
-    sky.draw(sun, moon, fraction, wx, { beacon: true, plane: planeFx(), zilla });
+    sky.draw(sun, moon, fraction, wx, { beacon: true, plane: planeFx(), zilla, bat });
 
     // aim the beam from where the body actually hangs over LA.
     // The window faces due south; in room coordinates that makes
@@ -3508,6 +3577,9 @@ export function buildWorld() {
   let zillaT = -1, nextZillaAt = 480 + rand(0, 900), zillaStep = 0, zillaRoared = false;
   const ZWALK = 14, ZPAUSE = 9;   // seconds: walk in, stop and breathe, walk out
   const startZilla = () => { zillaT = 0; zillaStep = 0; zillaRoared = false; };
+  // the signal: rarer still, and only when LA is properly dark
+  let batT = -1, nextBatAt = 600 + rand(0, 1200);
+  const BAT_DUR = 20;
 
   function tick(dt, ppos) {
     elapsed += dt;
@@ -3575,7 +3647,21 @@ export function buildWorld() {
       if (nextZillaAt <= 0) { nextZillaAt = 480 + rand(0, 900); startZilla(); }
     }
 
-    if (elapsed - skyDrawAt > (planeT >= 0 || zillaT >= 0 ? 0.12 : 0.55)) {
+    // the bat signal — downtown's call for help, not ours to answer
+    if (batT >= 0) {
+      batT += dt;
+      if (batT > BAT_DUR) { batT = -1; bat = null; }
+      else bat = { t: batT };
+    } else {
+      nextBatAt -= dt;
+      if (nextBatAt <= 0) {
+        nextBatAt = 600 + rand(0, 1200);
+        // only fire once the sun is well down; otherwise wait for a darker hour
+        if ((skyCache?.sun.altitude ?? 0) < -0.14) batT = 0;
+      }
+    }
+
+    if (elapsed - skyDrawAt > (planeT >= 0 || zillaT >= 0 || batT >= 0 ? 0.12 : 0.55)) {
       skyDrawAt = elapsed;
       redrawSky(Math.floor(elapsed * 1.2) % 2 === 0);
     }
@@ -3765,6 +3851,7 @@ export function buildWorld() {
       return true;
     },
     triggerZilla: () => { if (zillaT < 0) startZilla(); },
+    triggerBat: () => { if (batT < 0) batT = 0; },
     lavaHit: lampGlass, toggleLava,
     blindsHit: blinds, toggleBlinds, setBlinds,
     edrumHits, pressEdrum, guitarHits, strumTele,
