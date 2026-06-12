@@ -514,6 +514,60 @@ export function setWater(on) {
   }
 }
 
+/* ---------------- arena combat: swings, clangs, stuns ---------------- */
+export function punchSound(hit = false) {
+  if (!ctx) return;
+  const t = ctx.currentTime + 0.005;
+  const src = ctx.createBufferSource();
+  src.buffer = noiseBuffer(0.3);
+  const f = ctx.createBiquadFilter();
+  f.type = hit ? "bandpass" : "highpass";
+  f.frequency.value = hit ? 700 : 1800;
+  if (hit) f.Q.value = 1.2;
+  const g = ctx.createGain();
+  src.connect(f).connect(g).connect(master);
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(hit ? 0.12 : 0.05, t + 0.008);
+  g.gain.exponentialRampToValueAtTime(0.0008, t + (hit ? 0.16 : 0.1));
+  g.gain.linearRampToValueAtTime(0, t + (hit ? 0.2 : 0.13));
+  src.start(t); src.stop(t + 0.25);
+}
+
+export function shieldClang() {
+  if (!ctx) return;
+  const t = ctx.currentTime + 0.005;
+  for (const [f0, amt] of [[1244, 0.07], [1865, 0.045], [2710, 0.03]]) {
+    const o = ctx.createOscillator();
+    o.type = "sine";
+    o.frequency.value = f0;
+    const g = ctx.createGain();
+    o.connect(g).connect(master);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(amt, t + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0008, t + 0.55);
+    g.gain.linearRampToValueAtTime(0, t + 0.6);
+    o.start(t); o.stop(t + 0.65);
+  }
+}
+
+export function stunBuzz() {
+  if (!ctx) return;
+  const t = ctx.currentTime + 0.005;
+  const o = ctx.createOscillator();
+  o.type = "square";
+  o.frequency.setValueAtTime(220, t);
+  o.frequency.exponentialRampToValueAtTime(55, t + 0.55);
+  const lp = ctx.createBiquadFilter();
+  lp.type = "lowpass"; lp.frequency.value = 900;
+  const g = ctx.createGain();
+  o.connect(lp).connect(g).connect(master);
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(0.06, t + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.0008, t + 0.6);
+  g.gain.linearRampToValueAtTime(0, t + 0.65);
+  o.start(t); o.stop(t + 0.7);
+}
+
 /* ---------------- the arcade, as a place you can hear ----------------
    A bed of cabinet hum plus randomized attract-mode chiptune, behind
    one gain that main.js drives from the player's position: full inside

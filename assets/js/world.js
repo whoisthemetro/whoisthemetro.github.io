@@ -2723,6 +2723,17 @@ export function buildWorld() {
   goalB.material = new THREE.MeshBasicMaterial({ color: 0x22a4ff });
   goalB.position.x = A.x + A.hx - 0.4;
   addA(goalB);
+  // three-point lines: shoot at a goal from behind the far line and
+  // it's worth three. each line wears the color of the goal it serves.
+  for (const [gx, col] of [[1, 0x22a4ff], [-1, 0xff7a2a]]) {
+    const lineX = A.x + gx * (A.hx - 0.4) - gx * 18;   // 18 m out from that goal
+    for (const ly of [A.y - A.hy + 0.06, A.y + A.hy - 0.06]) {
+      const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.03, A.hz * 2 - 0.5),
+        new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.55 }));
+      stripe.position.set(lineX, ly, A.z);
+      addA(stripe);
+    }
+  }
   for (const [gx, gc] of [[A.x - A.hx + 1.2, 0xff7320], [A.x + A.hx - 1.2, 0x22a4ff]]) {
     const gl = new THREE.PointLight(gc, 24, 11, 2);
     gl.position.set(gx, A.y, A.z);

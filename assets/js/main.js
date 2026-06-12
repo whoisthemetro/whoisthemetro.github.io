@@ -9,7 +9,7 @@ import { NotesWall } from "./notes3d.js";
 import { Ghosts } from "./ghosts.js";
 import { store } from "./store.js";
 import { presence } from "./presence.js";
-import { startAmbience, citySound, pianoNote, audioNow, purr, setRain, setWater, setRoomTone, kettleBoil, setThruster, boostSound, discSound, goalHorn, meow, hiss, careSound, drumHit, setArcadeZone } from "./ambience.js";
+import { startAmbience, citySound, pianoNote, audioNow, purr, setRain, setWater, setRoomTone, kettleBoil, setThruster, boostSound, discSound, goalHorn, meow, hiss, careSound, drumHit, setArcadeZone, punchSound, shieldClang, stunBuzz } from "./ambience.js";
 import { SONGS, playSong, stopSong, currentSongId } from "./songs.js";
 import { progress } from "./progress.js";
 import { voice } from "./voice.js";
@@ -282,6 +282,11 @@ let lastPetAt = 0;
 controls.onAction((ndcX, ndcY) => {
   if (modalOpen) return;
   const hit = castAt(ndcX, ndcY);
+  // in the arena, a click is a swing — unless it's the disc or the airlock
+  if (inArena && !(hit && (hit.object.userData.disc || hit.object.userData.arenaExit) && hit.distance < 4)) {
+    tryPunch();
+    return;
+  }
   if (!hit) return;
   if (hit.object.userData.cat && hit.distance < 2.2) {
     if (Date.now() - lastPetAt < 1200) return;
@@ -415,6 +420,12 @@ setInterval(() => {
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.disc && hit.distance < 3.2) {
     aimTip.textContent = disc.holder === identity.uid ? `${TAP} to THROW` : disc.holder ? "someone has it" : `${TAP} to grab the disc`;
+    aimTip.classList.add("show");
+  } else if (inArena && controls.anchored) {
+    aimTip.textContent = "E — FLING yourself";
+    aimTip.classList.add("show");
+  } else if (inArena && controls.nearGrabSurface()) {
+    aimTip.textContent = "E — grab the wall";
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.kettle && hit.distance < 1.9) {
     aimTip.textContent = `${TAP} to put the kettle on`;
@@ -847,7 +858,7 @@ async function tryArena() {
     progress.bump("trips");
     voice.setArenaFx(true);    // voices arrive over the arena intercom
     startArenaMusic();
-    toast("welcome to THE CREW · WASD thrust · SPACE/CTRL up/down · SHIFT boost · B brake");
+    toast("THE CREW · WASD thrust · E grab/fling walls · click PUNCH · F shield · SHIFT boost · B brake · 3pts past the far line");
     hide(paused);
     if (entered) safeLock();
   });
@@ -864,6 +875,9 @@ function leaveArena() {
   fadeTo(() => {
     inArena = false;
     controls.zerog = false;
+    controls.anchored = false;
+    controls.stunT = 0;
+    controls.blocking = false;
     voice.setArenaFx(false);
     setThruster(false);
     controls.pos.x = world.arcadeReturn.x;
@@ -875,6 +889,57 @@ function leaveArena() {
   });
 }
 controls.onBoost = () => { if (inArena) boostSound(); };
+controls.onGrab = () => { if (inArena) discSound("catch"); };
+controls.onFling = () => { if (inArena) punchSound(false); };
+
+/* ---------------- arena combat: punch, block, stun ---------------- */
+// the shield — a faint hex of light in front of your face while F is held
+world.scene.add(camera);
+const shieldMesh = new THREE.Mesh(
+  new THREE.CircleGeometry(0.34, 6),
+  new THREE.MeshBasicMaterial({
+    color: 0x66e0ff, transparent: true, opacity: 0.22,
+    blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+  }));
+shieldMesh.position.set(0, -0.04, -0.6);
+shieldMesh.visible = false;
+camera.add(shieldMesh);
+
+let lastPunchAt = 0;
+function tryPunch() {
+  if (Date.now() - lastPunchAt < 700 || controls.stunT > 0) return true;  // still our click
+  lastPunchAt = Date.now();
+  // a lunge with the swing — punching is movement out here
+  const dir = new THREE.Vector3();
+  camera.getWorldDirection(dir);
+  controls.vel.x += dir.x * 1.2; controls.vel.y += dir.y * 1.2; controls.vel.z += dir.z * 1.2;
+  // whoever's in reach and roughly in front of the fist gets it
+  let hitUid = null;
+  for (const [uid, g] of ghosts.byUid) {
+    const c = g.grp.position;
+    const to = new THREE.Vector3(c.x - camera.position.x, c.y + 1.1 - camera.position.y, c.z - camera.position.z);
+    const d = to.length();
+    if (d < 1.8 && to.normalize().dot(dir) > 0.72) { hitUid = uid; break; }
+  }
+  punchSound(!!hitUid);
+  if (hitUid) presence.sendAct({ kind: "punch", target: hitUid, from: identity.uid });
+  return true;
+}
+function getStunned() {
+  controls.stunT = 2.5;
+  controls.anchored = false;
+  stunBuzz();
+  gotScratched();                              // the flash + shake earn their keep
+  toast("⚡ stunned — your thrusters are rebooting");
+  if (disc.holder === identity.uid) {          // the disc tumbles loose
+    disc.holder = null;
+    disc.pos.copy(camera.position);
+    disc.pos.y -= 0.4;
+    disc.vel.set(controls.vel.x * 0.5 + (Math.random() - 0.5), controls.vel.y * 0.5 - 0.5, controls.vel.z * 0.5 + (Math.random() - 0.5));
+    disc.thrownFrom = null;
+    presence.sendAct({ kind: "disc", sub: "throw", p: [disc.pos.x, disc.pos.y, disc.pos.z], v: [disc.vel.x, disc.vel.y, disc.vel.z] });
+  }
+}
 
 function discTick(dt) {
   const g = world.discGroup;
@@ -899,26 +964,30 @@ function discTick(dt) {
     if (disc.pos.y > A.y + A.hy - m2) { disc.pos.y = A.y + A.hy - m2; disc.vel.y = -Math.abs(disc.vel.y) * R; }
     if (disc.pos.z < A.z - A.hz + m2) { disc.pos.z = A.z - A.hz + m2; disc.vel.z = Math.abs(disc.vel.z) * R; }
     if (disc.pos.z > A.z + A.hz - m2) { disc.pos.z = A.z + A.hz - m2; disc.vel.z = -Math.abs(disc.vel.z) * R; }
-    // goals: through either glowing ring
+    // goals: through either glowing ring. distance pays — a throw
+    // released from behind the far three-point line is worth 3, else 2
     const ringR = Math.hypot(disc.pos.y - A.y, disc.pos.z - A.z);
     if (Date.now() - disc.lastGoal > 3000 && ringR < 1.55) {
-      if (disc.pos.x < A.x - A.hx + 0.9) scoreGoal("b", true);
-      else if (disc.pos.x > A.x + A.hx - 0.9) scoreGoal("o", true);
+      const pts = (goalX) =>
+        disc.thrownFrom && Math.abs(disc.thrownFrom[0] - goalX) >= 18 ? 3 : 2;
+      if (disc.pos.x < A.x - A.hx + 0.9) scoreGoal("b", true, pts(A.x - A.hx + 0.4));
+      else if (disc.pos.x > A.x + A.hx - 0.9) scoreGoal("o", true, pts(A.x + A.hx - 0.4));
     }
   }
   g.position.copy(disc.pos);
   g.rotation.y += dt * 4;
   world.discHit.position.copy(disc.pos);
 }
-function scoreGoal(team, announce) {
+function scoreGoal(team, announce, pts = 2) {
   disc.lastGoal = Date.now();
-  arenaScore[team]++;
+  arenaScore[team] += pts;
   world.setArenaScore(arenaScore.o, arenaScore.b);
-  if (inArena) goalHorn();
+  if (inArena) { goalHorn(); toast(pts === 3 ? "💥 THREE from downtown" : "GOAL — 2 points"); }
   disc.holder = null;
+  disc.thrownFrom = null;
   disc.pos.set(A.x, A.y, A.z);
   disc.vel.set(0, 0, 0);
-  if (announce) presence.sendAct({ kind: "goal", team, o: arenaScore.o, b: arenaScore.b });
+  if (announce) presence.sendAct({ kind: "goal", team, pts, o: arenaScore.o, b: arenaScore.b });
 }
 function grabDisc() {
   disc.holder = identity.uid;
@@ -932,11 +1001,13 @@ function throwDisc() {
   disc.pos.copy(camera.position).addScaledVector(dir, 1.3);
   disc.vel.copy(dir).multiplyScalar(13)
     .add(new THREE.Vector3(controls.vel.x, controls.vel.y, controls.vel.z));
+  disc.thrownFrom = [disc.pos.x, disc.pos.y, disc.pos.z];   // the release point decides the points
   if (inArena) discSound("throw");
   presence.sendAct({
     kind: "disc", sub: "throw",
     p: [disc.pos.x, disc.pos.y, disc.pos.z],
     v: [disc.vel.x, disc.vel.y, disc.vel.z],
+    t: disc.thrownFrom,
   });
 }
 
@@ -1283,6 +1354,7 @@ addEventListener("keydown", (e) => {
         disc.holder = null;
         disc.pos.set(p.p[0], p.p[1], p.p[2]);
         disc.vel.set(p.v[0], p.v[1], p.v[2]);
+        disc.thrownFrom = p.t || null;
         if (inArena) discSound("throw");
       }
     } else if (p.kind === "goal") {
@@ -1290,13 +1362,38 @@ addEventListener("keydown", (e) => {
       arenaScore.o = p.o; arenaScore.b = p.b;
       world.setArenaScore(p.o, p.b);
       disc.holder = null;
+      disc.thrownFrom = null;
       disc.pos.set(A.x, A.y, A.z);
       disc.vel.set(0, 0, 0);
-      if (inArena) goalHorn();
+      if (inArena) { goalHorn(); toast(p.pts === 3 ? "💥 THREE from downtown" : "GOAL — 2 points"); }
     } else if (p.kind === "volca") {
       if (!inBoat) return;       // and the boat's sampler stays on the boat
       drumHit(p.pad);
       world.pressVolcaPad(p.pad);
+    } else if (p.kind === "punch") {
+      if (p.target === identity.uid && inArena) {
+        if (controls.blocking) {
+          // shield up: the swing rings off it and the attacker eats the stun
+          shieldClang();
+          ghosts.flash(p.from, 0x66e0ff);
+          presence.sendAct({ kind: "deflect", target: p.from });
+        } else {
+          getStunned();
+          ghosts.flash(p.from, 0xffffff);
+        }
+      } else if (inArena) {
+        // spectator: see the hit land
+        ghosts.flash(p.target, 0xff4040);
+        punchSound(true);
+      }
+    } else if (p.kind === "deflect") {
+      if (p.target === identity.uid && inArena) {
+        shieldClang();
+        getStunned();
+        toast("🛡 deflected — that one bounced back");
+      } else if (inArena) {
+        ghosts.flash(p.target, 0x66e0ff);
+      }
     }
   });
   presence.onChat((p) => pushChat(p.name || "someone", p.color, p.text));
@@ -1363,6 +1460,7 @@ renderer.setAnimationLoop(() => {
   ghosts.tick(dt, t);
   cat.tick(dt, t, controls.pose());
   discTick(dt);
+  shieldMesh.visible = inArena && !!controls.blocking;
   if (inArena) setThruster(controls.thrusting);
   renderer.render(world.scene, camera);
 });

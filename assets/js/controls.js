@@ -176,29 +176,74 @@ export class Controls {
 
   // pure momentum: thrust with WASD (along your gaze), SPACE up, C down,
   // SHIFT boost burst, B brakes. Walls bounce you like the real thing.
+  // are we close enough to any arena surface to grab it?
+  nearGrabSurface() {
+    const a = this.arena;
+    if (!a) return false;
+    const m = 0.95;     // bounce margin (0.5) + arm's reach
+    return this.pos.x < a.x - a.hx + m || this.pos.x > a.x + a.hx - m
+        || this.flyY  < a.y - a.hy + m || this.flyY  > a.y + a.hy - m
+        || this.pos.z < a.z - a.hz + m || this.pos.z > a.z + a.hz - m;
+  }
+
   _updateZeroG(dt) {
-    const fwd = (this.keys.has("KeyW") || this.keys.has("ArrowUp") ? 1 : 0)
-              - (this.keys.has("KeyS") || this.keys.has("ArrowDown") ? 1 : 0);
-    const strafe = (this.keys.has("KeyD") || this.keys.has("ArrowRight") ? 1 : 0)
-                 - (this.keys.has("KeyA") || this.keys.has("ArrowLeft") ? 1 : 0);
-    const up = (this.keys.has("Space") ? 1 : 0)
-             - (this.keys.has("KeyC") || this.keys.has("ControlLeft") || this.keys.has("ControlRight") ? 1 : 0);
+    // a punch to the helmet: inputs die, momentum doesn't
+    this.stunT = Math.max(0, (this.stunT || 0) - dt);
+    const stunned = this.stunT > 0;
+    if (stunned) { this.anchored = false; this.blocking = false; }
+    else this.blocking = this.keys.has("KeyF");
+
     const sy = Math.sin(this.yaw), cy = Math.cos(this.yaw);
     const sp = Math.sin(this.pitch), cp = Math.cos(this.pitch);
-    // gaze-aligned thrust
     const lx = -sy * cp, ly = sp, lz = -cy * cp;
+
+    // grab & fling: E latches onto a nearby surface (velocity dies),
+    // E again throws you off along your gaze — the slingshot
+    const eDown = this.keys.has("KeyE");
+    if (eDown && !this._eHeld) {
+      this._eHeld = true;
+      if (!stunned) {
+        if (this.anchored) {
+          this.anchored = false;
+          this.vel.x = lx * 10; this.vel.y = ly * 10; this.vel.z = lz * 10;
+          this.onFling?.();
+        } else if (this.nearGrabSurface()) {
+          this.anchored = true;
+          this.vel.x = this.vel.y = this.vel.z = 0;
+          this.onGrab?.();
+        }
+      }
+    } else if (!eDown) this._eHeld = false;
+
+    if (this.anchored) {                    // latched on: free look, no drift
+      this.thrusting = false;
+      this.camera.position.set(this.pos.x, this.flyY, this.pos.z);
+      this.camera.rotation.order = "YXZ";
+      this.camera.rotation.y = this.yaw;
+      this.camera.rotation.x = this.pitch;
+      return;
+    }
+
+    const live = stunned ? 0 : 1;
+    const fwd = live * ((this.keys.has("KeyW") || this.keys.has("ArrowUp") ? 1 : 0)
+              - (this.keys.has("KeyS") || this.keys.has("ArrowDown") ? 1 : 0));
+    const strafe = live * ((this.keys.has("KeyD") || this.keys.has("ArrowRight") ? 1 : 0)
+                 - (this.keys.has("KeyA") || this.keys.has("ArrowLeft") ? 1 : 0));
+    const up = live * ((this.keys.has("Space") ? 1 : 0)
+             - (this.keys.has("KeyC") || this.keys.has("ControlLeft") || this.keys.has("ControlRight") ? 1 : 0));
+    const jx = this.joy.x * live, jy = this.joy.y * live;
     const ACC = 7;
-    this.vel.x += (lx * fwd + cy * strafe + this.joy.x * cy - this.joy.y * lx) * ACC * dt;
-    this.vel.y += (ly * fwd + up - this.joy.y * ly) * ACC * dt;
-    this.vel.z += (lz * fwd - sy * strafe + this.joy.x * -sy - this.joy.y * lz) * ACC * dt;
-    this.thrusting = !!(fwd || strafe || up || Math.abs(this.joy.x) > 0.1 || Math.abs(this.joy.y) > 0.1);
+    this.vel.x += (lx * fwd + cy * strafe + jx * cy - jy * lx) * ACC * dt;
+    this.vel.y += (ly * fwd + up - jy * ly) * ACC * dt;
+    this.vel.z += (lz * fwd - sy * strafe + jx * -sy - jy * lz) * ACC * dt;
+    this.thrusting = !!(fwd || strafe || up || Math.abs(jx) > 0.1 || Math.abs(jy) > 0.1);
     this.boostCd = Math.max(0, this.boostCd - dt);
-    if ((this.keys.has("ShiftLeft") || this.keys.has("ShiftRight")) && this.boostCd === 0) {
+    if (!stunned && (this.keys.has("ShiftLeft") || this.keys.has("ShiftRight")) && this.boostCd === 0) {
       this.boostCd = 1.4;
       this.vel.x += lx * 9; this.vel.y += ly * 9; this.vel.z += lz * 9;
       this.onBoost?.();
     }
-    if (this.keys.has("KeyB")) {            // brake
+    if (!stunned && this.keys.has("KeyB")) {   // brake
       const k = Math.pow(0.02, dt);
       this.vel.x *= k; this.vel.y *= k; this.vel.z *= k;
     }

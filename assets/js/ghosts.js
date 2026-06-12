@@ -120,6 +120,24 @@ export class Ghosts {
     if (g) g.target = pose;
   }
 
+  // a quick full-body color pop — punches landing, shields ringing
+  flash(uid, color = 0xff4040) {
+    const g = this.byUid.get(uid);
+    if (!g || g.flashing) return;
+    g.flashing = true;
+    const touched = [];
+    g.grp.traverse((o) => {
+      if (o.isMesh && o.material && o.material.color && !o.isSprite) {
+        touched.push([o.material, o.material.color.getHex()]);
+        o.material.color.setHex(color);
+      }
+    });
+    setTimeout(() => {
+      for (const [mat, hex] of touched) { try { mat.color.setHex(hex); } catch (e) {} }
+      g.flashing = false;
+    }, 260);
+  }
+
   tick(dt, t) {
     const k = Math.min(1, dt * 7);   // smoothing
     for (const g of this.byUid.values()) {
