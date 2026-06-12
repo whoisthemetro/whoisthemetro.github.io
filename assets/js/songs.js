@@ -64,6 +64,29 @@ export const SONGS = [
     ],
   },
   {
+    // the Crawling request — the real one is someone else's composition,
+    // so this is ours in its mood: that half-step itch (E5/F5 is the one
+    // true semitone this keybed owns) over a falling minor progression,
+    // and a high line that pleads a little
+    id: "skincrawler",
+    title: "skincrawler",
+    bpm: 94,
+    beats: 32,
+    notes: [
+      // Am Am F F Dm Dm G G
+      ...osti(0, [12, 9, 10], 1, 0.72), ...osti(1, [12, 9, 10], 1, 0.72),
+      ...osti(2, [12, 10, 7], 1, 0.72), ...osti(3, [12, 10, 7], 1, 0.72),
+      ...osti(4, [13, 10, 8], 1, 0.72), ...osti(5, [13, 10, 8], 1, 0.72),
+      ...osti(6, [13, 11, 8], 1, 0.72), ...osti(7, [13, 11, 8], 1, 0.72),
+      ...bass(0, 5), ...bass(1, 5), ...bass(2, 3), ...bass(3, 3),
+      ...bass(4, 1), ...bass(5, 1), ...bass(6, 4), ...bass(7, 4),
+      // the plea, second half
+      [16, 14, 1.15], [18, 13, 1.0], [19, 14, 1.05], [20, 12, 1.1],
+      [22.5, 11, 1.0], [24, 12, 1.1], [26, 13, 1.0], [27, 14, 1.05],
+      [28, 12, 1.15], [30, 9, 1.0],
+    ],
+  },
+  {
     id: "ghost105",
     title: "ghost of the 105",
     bpm: 100,
