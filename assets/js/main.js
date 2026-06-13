@@ -2209,9 +2209,11 @@ renderer.setAnimationLoop(() => {
   world.setClubEnergy(inClub ? voice.djLevel() : 0);
   world.tick(dt, controls.pos);
   if (carrying) updateCarry();
-  // the carpet grimes with traffic, and the vacuum lifts it — bedroom only
+  // the carpet grimes with traffic, and the vacuum lifts it — bedroom only.
+  // while you're vacuuming you DON'T track your own dirt (otherwise you'd
+  // leave a fresh trail behind you and the job would never finish)
   if (!inBoat && !inArena && !inClub) {
-    world.floorTraffic(controls.pos.x, controls.pos.z, dt, 1);
+    if (!vacuuming) world.floorTraffic(controls.pos.x, controls.pos.z, dt, 1);
     world.floorTraffic(cat.pos.x, cat.pos.z, dt, 0.6);
     if (vacuuming) world.vacuumStep(controls.pos.x, controls.pos.z, controls.yaw);
   } else if (vacuuming) {

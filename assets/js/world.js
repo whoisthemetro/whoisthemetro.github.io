@@ -4006,7 +4006,7 @@ export function buildWorld() {
     const cx = grimePX(x), cy = grimePZ(z);
     if (cx < -12 || cx > GRW + 12 || cy < -12 || cy > GRH + 12) return;
     const r = 9 * mult;
-    const a = Math.min(0.14, dt * 0.26 * mult);   // grimes up noticeably faster
+    const a = Math.min(0.09, dt * 0.15 * mult);   // a middle pace — dirties, not instantly
     const grd = grimeCtx.createRadialGradient(cx, cy, 0, cx, cy, r);
     grd.addColorStop(0, `rgba(24,19,11,${a})`);
     grd.addColorStop(1, "rgba(24,19,11,0)");
@@ -4040,6 +4040,7 @@ export function buildWorld() {
      pause) to stand it back in its corner. --- */
   const VAC_DOCK = { x: 2.16, z: 2.84, ry: -0.5 };
   const vacuum = new THREE.Group();
+  vacuum.rotation.order = "YXZ";          // yaw first, then a clean forward lean
   const vacRed = lam(0xb23a44), vacDark = lam(0x2a2d33), vacSilver = lam(0x9aa0a8);
   const vNozzle = caster(box(0.34, 0.05, 0.17, vacDark)); vNozzle.position.y = 0.03;
   const vBody = caster(box(0.16, 0.27, 0.13, vacRed)); vBody.position.y = 0.21;
@@ -4064,18 +4065,17 @@ export function buildWorld() {
     vacHeld = !!on;
     if (!on) dockVacuum();
   }
-  // every frame while held: stand the nozzle on the floor a bit ahead of
-  // the player, upright and squared to exactly the way they face (so it
-  // turns with you and never reads backwards), and sweep there
+  // every frame while held: the head lands on the floor out ahead, and the
+  // pole leans BACK toward you so the handle sits in your hands — that's
+  // what makes it read as held-and-pushed, not planted facing you. rotates
+  // with your heading. it sweeps the carpet where the head sits.
   function vacuumStep(px, pz, yaw) {
     if (!vacHeld) return;
     const fx = -Math.sin(yaw), fz = -Math.cos(yaw);  // player forward
-    const nx = px + fx * 0.62, nz = pz + fz * 0.62;
+    const nx = px + fx * 0.72, nz = pz + fz * 0.72;   // head out ahead of you
     vacuum.position.set(nx, 0, nz);
-    // upright, its back (canister + handle) turned to you like you're
-    // pushing it — yaw+π so the detail side faces away, never toward you
-    vacuum.rotation.set(0, yaw + Math.PI, 0);
-    cleanFloor(nx, nz, 0.4);
+    vacuum.rotation.set(0.6, yaw, 0);   // YXZ: face your way, then lean back to you
+    cleanFloor(nx, nz, 0.42);
   }
   dockVacuum();
 
