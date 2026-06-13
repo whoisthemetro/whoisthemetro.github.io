@@ -120,16 +120,16 @@ addEventListener("keydown", (e) => {
   if (e.code === "KeyV" && !e.repeat && controls.locked && !modalOpen && entered && !inClub && !voice.isOn()) {
     voice.startTalk(false).then(ok => { if (!ok) toast("the mic said no — check browser permissions"); updateMicUI(); });
   }
+  // press G in the venue to re-skin the loft (backdrop + neon + the soothing
+  // bed). local + instant — resets to the default on reload.
+  if (e.code === "KeyG" && !e.repeat && inClub && entered && !modalOpen) {
+    const name = world.cycleClubTheme();
+    setClubBed(clubBedFor());
+    toast(`theme: ${name}`);
+  }
 });
 addEventListener("keyup", (e) => {
   if (e.code === "KeyV" && voice.mode() === "ptt") { voice.stopTalk(); updateMicUI(); }
-  // admin's quick venue re-skin — cycle the loft theme (backdrop + neon).
-  // local + instant, the way the host sets the vibe before doors open.
-  if (e.code === "KeyG" && !e.repeat && adminMode && inClub && entered && !modalOpen) {
-    const name = world.cycleClubTheme();
-    setClubBed(clubBedFor());            // swap the soothing bed with the look
-    toast(`theme: ${name}`);
-  }
 });
 
 // piano voice — sticky per visitor, broadcast with each note
@@ -660,9 +660,8 @@ setInterval(() => {
       : deckLockedMsg();
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.clubWindow && hit.distance < 12) {
-    aimTip.textContent = canDJ() ? `${TAP} — fireworks over the city`
-      : adminMode ? `press G to change the venue theme (now: ${world.clubThemeName()})`
-      : `the lights of ${world.clubThemeName()}, past the glass`;
+    aimTip.textContent = canDJ() ? `${TAP} — fireworks over the city · G changes the view`
+      : `press G to change the view — now: ${world.clubThemeName()}`;
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.curtain && hit.distance < 3.2) {
     aimTip.textContent = world.curtainsClosed() ? `${TAP} to open the curtains` : `${TAP} to draw the curtains`;

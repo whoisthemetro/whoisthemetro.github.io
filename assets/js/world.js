@@ -4549,9 +4549,9 @@ export function buildWorld() {
      its wrap seam (which sits behind the solid booth wall anyway). an admin
      re-skins the entire venue — backdrop + interior neon — by switching
      themes; it's local + instant, no reload, no db. --- */
-  // the cylinder plunges far below the loft (a high-rise) so the ground is
-  // lost to haze — you never catch a hard bottom edge. top stays ~where it was
-  const BACK_R = 15, BACK_H = 44, BACK_CY = -8;
+  // the cylinder plunges far below the loft (a high-rise) so the ground is lost
+  // to haze AND climbs high above it so the sky never hits a hard black cap.
+  const BACK_R = 15, BACK_H = 52, BACK_CY = -4;
   const PW = 4096, PH = 1536;
   const SKY_Y = 8;                      // altitude the blimp / ufo cruise at
   const toCY = (y) => (BACK_CY + BACK_H / 2 - y) / BACK_H * PH;   // world-y → canvas row
@@ -4787,13 +4787,28 @@ export function buildWorld() {
   const bubbles = new THREE.Points(bubGeo, new THREE.PointsMaterial({ color: 0xcfefff, size: 0.13, map: dotTex, transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false }));
   bubbles.position.set(CLUB.x, 0, CLUB.z); addC(bubbles);
 
+  // ---- interior life: slow motes drifting INSIDE the loft, caught in the neon.
+  // always on, recolored per theme — gives the air in the room some movement. ----
+  const DUST_N = 150;
+  const clubDustPos = new Float32Array(DUST_N * 3);
+  const clubDustVel = new Float32Array(DUST_N);
+  for (let i = 0; i < DUST_N; i++) {
+    clubDustPos[i * 3] = (Math.random() - 0.5) * (CLW - 1);
+    clubDustPos[i * 3 + 1] = 0.3 + Math.random() * 4.9;
+    clubDustPos[i * 3 + 2] = (Math.random() - 0.5) * (CLD - 1) + 0.4;
+    clubDustVel[i] = 0.04 + Math.random() * 0.12;
+  }
+  const clubDustGeo = new THREE.BufferGeometry(); clubDustGeo.setAttribute("position", new THREE.BufferAttribute(clubDustPos, 3));
+  const dustMat = new THREE.PointsMaterial({ color: 0x9fb0ff, size: 0.055, map: dotTex, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false });
+  const dust = new THREE.Points(clubDustGeo, dustMat); dust.position.set(CLUB.x, 0, CLUB.z); addC(dust);
+
   // ---- interior palette (the cove / corners / lip / motes / floor tiles) ----
   const clubPal = { tileHue: 0.42, tileRange: 0.5, tileSat: 0.85 };
   function applyClubPalette(p) {
     p.cove.forEach((c, i) => { if (coveMeshes[i]) coveMeshes[i].material.color.set(c); });
     p.corners.forEach((c, i) => { if (tubeMeshes[i]) tubeMeshes[i].material.color.set(c); });
     deskLip.material.color.set(p.lip);
-    moteMat.color.set(p.mote);
+    moteMat.color.set(p.mote); dustMat.color.set(p.mote);
     clubPal.tileHue = p.tileHue; clubPal.tileRange = p.tileRange; clubPal.tileSat = p.tileSat;
   }
 
@@ -4814,7 +4829,7 @@ export function buildWorld() {
   };
 
   const paintCyber = (g) => {
-    skyGrad(g, [[0, "#0a0822"], [0.12, "#160c2e"], [0.22, "#2a1342"], [0.34, "#180e26"], [1, "#070512"]]);
+    skyGrad(g, [[0, "#2a1c50"], [0.1, "#241548"], [0.2, "#2c1648"], [0.34, "#190f2a"], [1, "#070512"]]);
     // a hazy magenta moon high over the skyline
     g.fillStyle = "rgba(255,180,220,0.8)"; g.beginPath(); g.arc(2950, toCY(11), 72, 0, 7); g.fill();
     g.fillStyle = "rgba(255,120,200,0.10)"; g.beginPath(); g.arc(2950, toCY(11), 150, 0, 7); g.fill();
@@ -4848,7 +4863,7 @@ export function buildWorld() {
   };
 
   const paintAquarium = (g) => {
-    skyGrad(g, [[0, "#0a5e74"], [0.18, "#046b6b"], [0.4, "#035158"], [1, "#021c26"]]);
+    skyGrad(g, [[0, "#1497ab"], [0.16, "#0a7188"], [0.4, "#045158"], [1, "#021c26"]]);
     // god-rays slanting down from the surface
     g.save(); g.globalAlpha = 0.06; g.fillStyle = "#aef6ff";
     for (let i = 0; i < 22; i++) { const rx = i / 22 * PW; g.beginPath(); g.moveTo(rx, 0); g.lineTo(rx + 110, 0); g.lineTo(rx + 420, PH); g.lineTo(rx + 300, PH); g.closePath(); g.fill(); }
@@ -4870,7 +4885,7 @@ export function buildWorld() {
   };
 
   const paintSpace = (g) => {
-    skyGrad(g, [[0, "#03040e"], [0.5, "#05061a"], [1, "#070314"]]);
+    skyGrad(g, [[0, "#0c0a2c"], [0.4, "#070620"], [0.7, "#05061a"], [1, "#070314"]]);
     for (let i = 0; i < 1800; i++) { g.fillStyle = `rgba(255,255,255,${(0.3 + Math.random() * 0.7).toFixed(2)})`; const s = Math.random() < 0.1 ? 2 : 1; g.fillRect(Math.random() * PW, Math.random() * PH, s, s); }
     const neb = ["#5b2a86", "#1f6f8b", "#86276a", "#2a4a86"];
     g.save(); g.globalAlpha = 0.12;
@@ -4888,11 +4903,11 @@ export function buildWorld() {
   };
 
   const CLUB_THEMES = [
-    { name: "Bangkok-Bali 2077", paint: paintCyber, rain: true, blimp: true, flyer: false, traffic: true, jungle: true, storm: true, fish: false,
+    { name: "Bangkok-Bali 2077", paint: paintCyber, sky: 0x2a1c50, rain: true, blimp: true, flyer: false, traffic: true, jungle: true, storm: true, fish: false,
       palette: { cove: [0xff3fae, 0x39ff9d, 0x3fd2ff, 0xff3fae], corners: [0x39ff9d, 0xff3fae, 0x3fd2ff, 0xb15bff], lip: 0xff3fae, mote: 0x7dffc0, tileHue: 0.42, tileRange: 0.5, tileSat: 0.85 } },
-    { name: "Deep Aquarium", paint: paintAquarium, rain: false, blimp: false, flyer: false, traffic: false, jungle: false, storm: false, fish: true,
+    { name: "Deep Aquarium", paint: paintAquarium, sky: 0x1497ab, rain: false, blimp: false, flyer: false, traffic: false, jungle: false, storm: false, fish: true,
       palette: { cove: [0x06d6a0, 0x4cc9f0, 0x4cc9f0, 0x06d6a0], corners: [0x4cc9f0, 0x06d6a0, 0x4cc9f0, 0x118ab2], lip: 0x4cc9f0, mote: 0xaef6ff, tileHue: 0.5, tileRange: 0.18, tileSat: 0.7 } },
-    { name: "Deep Space", paint: paintSpace, rain: false, blimp: false, flyer: true, traffic: false, jungle: false, storm: false, fish: false,
+    { name: "Deep Space", paint: paintSpace, sky: 0x0c0a2c, rain: false, blimp: false, flyer: true, traffic: false, jungle: false, storm: false, fish: false,
       palette: { cove: [0x8a5cff, 0x3fd2ff, 0x8a5cff, 0xff5fae], corners: [0x3fd2ff, 0x8a5cff, 0xff5fae, 0x3fd2ff], lip: 0x8a5cff, mote: 0xffffff, tileHue: 0.72, tileRange: 0.28, tileSat: 0.7 } },
   ];
   let themeIx = 0;
@@ -4901,6 +4916,7 @@ export function buildWorld() {
     const t = CLUB_THEMES[themeIx];
     t.paint(panoCanvas.getContext("2d"));
     panoTex.needsUpdate = true;
+    capMat.color.set(t.sky);             // the cap matches the sky so the zenith blends
     applyClubPalette(t.palette);
     clubRain.visible = !!t.rain; blimp.visible = !!t.blimp;
     trafficGroup.visible = !!t.traffic; jungleGroup.visible = !!t.jungle;
@@ -4915,6 +4931,15 @@ export function buildWorld() {
   function tickBackdrop(dt) {
     motes.rotation.y += dt * 0.015;
     motes.position.y = BACK_CY + Math.sin(elapsed * 0.18) * 0.4;
+    // interior dust drifts slowly up and sways, then recycles at the floor
+    const dp2 = dust.geometry.attributes.position;
+    for (let i = 0; i < DUST_N; i++) {
+      let y = dp2.getY(i) + clubDustVel[i] * dt;
+      if (y > 5.2) y = 0.3;
+      dp2.setY(i, y);
+      dp2.setX(i, dp2.getX(i) + Math.sin(elapsed * 0.4 + i) * 0.0012);
+    }
+    dp2.needsUpdate = true;
     if (clubRain.visible) clubRainTex.offset.y = (clubRainTex.offset.y + dt * 1.4) % 1;   // streaks fall DOWN
     // TRON storm: random strikes that stutter electric-blue, then fade
     if (stormGroup.visible) {
