@@ -9,7 +9,7 @@ import { NotesWall } from "./notes3d.js";
 import { Ghosts } from "./ghosts.js";
 import { store } from "./store.js";
 import { presence } from "./presence.js";
-import { startAmbience, citySound, pianoNote, semitoneToKey, audioNow, purr, setRain, setWater, setRoomTone, setClubTone, setClubBed, kettleBoil, setThruster, boostSound, discSound, goalHorn, meow, hiss, careSound, drumHit, setArcadeZone, punchSound, shieldClang, stunBuzz, edrumHit, guitarPluck, guitarNote, shotSound, smokeSound } from "./ambience.js";
+import { startAmbience, citySound, pianoNote, semitoneToKey, audioNow, purr, setRain, setWater, setRoomTone, setClubTone, setClubBed, kettleBoil, setThruster, boostSound, discSound, goalHorn, meow, hiss, careSound, drumHit, setArcadeZone, punchSound, shieldClang, stunBuzz, edrumHit, guitarPluck, guitarNote, shotSound, smokeSound, setFx, setDelayTempo } from "./ambience.js";
 import { SONGS, playSong, stopSong, currentSongId } from "./songs.js";
 import { progress } from "./progress.js";
 import { voice } from "./voice.js";
@@ -121,11 +121,22 @@ addEventListener("keydown", (e) => {
     voice.startTalk(false).then(ok => { if (!ok) toast("the mic said no — check browser permissions"); updateMicUI(); });
   }
   // press G in the venue to re-skin the loft (backdrop + neon + the soothing
-  // bed). local + instant — resets to the default on reload.
+  // bed). local + instant — resets to the default on reload. a dj broadcasts
+  // the look so the whole room follows.
   if (e.code === "KeyG" && !e.repeat && inClub && entered && !modalOpen) {
     const name = world.cycleClubTheme();
     setClubBed(clubBedFor());
     toast(`theme: ${name}`);
+    if (canDJ()) presence.sendAct({ kind: "theme", ix: world.clubThemeIndex() });
+  }
+  // dj FX panel: F = fog cannon, X = fireworks — broadcast so the room shares it
+  if (e.code === "KeyF" && !e.repeat && !modalOpen && canFX()) {
+    const seed = (Math.random() * 1e6) | 0;
+    world.clubFog(seed); presence.sendAct({ kind: "fog", seed }); toast("🌫 fog");
+  }
+  if (e.code === "KeyX" && !e.repeat && !modalOpen && canFX()) {
+    const seed = (Math.random() * 1e6) | 0;
+    world.clubFireworks(seed); presence.sendAct({ kind: "fireworks", seed }); toast("🎆 fireworks");
   }
 });
 addEventListener("keyup", (e) => {
@@ -135,6 +146,14 @@ addEventListener("keyup", (e) => {
 // piano voice — sticky per visitor, broadcast with each note
 let pianoVoice = 0;
 try { pianoVoice = (parseInt(localStorage.getItem("metro.voice") || "0", 10) || 0) % PIANO_VOICES.length; } catch (e) {}
+
+// the stompboxes — each on/off is client-side + sticky (everyone runs their own
+// pedalboard, like the mixer to come). default on. labels for the toast/aim-tip.
+const FX_LABEL = { "kb-chorus": "chorus", "kb-delay": "delay", "kb-reverb": "reverb", "gtr-od": "overdrive", "gtr-delay": "guitar delay", "gtr-reverb": "guitar reverb" };
+const fxOn = {};
+for (const id of world.stompIds) { try { fxOn[id] = localStorage.getItem("metro.fx." + id) !== "0"; } catch (e) { fxOn[id] = true; } }
+// push every pedal's state into the audio graph + LEDs (call once audio is up)
+function applyFxStates() { for (const id of world.stompIds) { setFx(id, fxOn[id]); world.setStompLED(id, fxOn[id]); } }
 
 // the cat — its key-walking plays the same piano visitors can play.
 // All bedroom sounds are gated: aboard THE DESI you hear only the sea.
@@ -238,6 +257,7 @@ function enterRoom() {
   presence.updateMeta({ name });          // others see your tag the moment you walk in
   entered = true;
   startAmbience();
+  applyFxStates();                        // restore each stompbox's saved on/off into the new graph
   hide(intro);
   hud.classList.add("show");
   safeLock();
@@ -259,7 +279,7 @@ canvas.addEventListener("click", () => {
 function castAt(ndcX, ndcY) {
   raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera);
   // doors are included as blockers so notes can't be pinned onto them
-  const targets = [cat.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, world.echoPoster, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...notesWall.raycastTargets(), ...world.blockers];
+  const targets = [cat.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, world.echoPoster, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...notesWall.raycastTargets(), ...world.blockers];
   const hits = raycaster.intersectObjects(targets, false);
   return hits[0] || null;
 }
@@ -520,6 +540,14 @@ controls.onAction((ndcX, ndcY) => {
     try { localStorage.setItem("metro.voice", String(pianoVoice)); } catch (e) {}
     // just switch the voice — no preview note (clicking the body shouldn't play)
     toast(`piano voice: ${PIANO_VOICES[pianoVoice].name}`);
+  } else if (hit.object.userData.stomp && hit.distance < 2.8) {
+    // click a pedal to toggle its effect — bypassed pedals dim their LED
+    const id = hit.object.userData.stomp;
+    fxOn[id] = !fxOn[id];
+    try { localStorage.setItem("metro.fx." + id, fxOn[id] ? "1" : "0"); } catch (e) {}
+    setFx(id, fxOn[id]);
+    world.setStompLED(id, fxOn[id]);
+    toast(`${FX_LABEL[id] || "pedal"} ${fxOn[id] ? "on" : "off"}`);
   } else if (hit.object.userData.lava && hit.distance < 2.4) {
     toast(world.toggleLava() ? "the wax wakes up 🌋" : "lava lamp off");
   } else if (hit.object.userData.blinds && hit.distance < 3.2) {
@@ -592,6 +620,10 @@ setInterval(() => {
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.pianoVoice && hit.distance < 2.4) {
     aimTip.textContent = `${TAP} to change the piano sound (${PIANO_VOICES[pianoVoice].name})`;
+    aimTip.classList.add("show");
+  } else if (hit && hit.object.userData.stomp && hit.distance < 2.8) {
+    const id = hit.object.userData.stomp;
+    aimTip.textContent = `${TAP} to ${fxOn[id] ? "bypass" : "switch on"} the ${FX_LABEL[id] || "pedal"}`;
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.dimmer && hit.distance < 2.6) {
     aimTip.textContent = `${TAP} — light dimmer`;
@@ -1148,6 +1180,13 @@ function clubBedFor() {
   const n = world.clubThemeName();
   return n === "Deep Aquarium" ? "water" : n === "Deep Space" ? "space" : "rain";
 }
+// who gets the live FX (fog / fireworks): the host, or whoever holds the booth
+function canFX() { return inClub && entered && (adminMode || canDJ()); }
+// the dj-only FX legend — only shown to those who can fire the FX
+function updateFxPanel() {
+  const el = $("#fx-panel");
+  if (el) el.classList.toggle("show", canFX());
+}
 function deckLockedMsg() {
   if (!djState || !djState.on) return "the decks are locked — nothing's booked tonight";
   if (djState.act) return `tonight's set belongs to ${djState.act.name || "the booked dj"}`;
@@ -1177,6 +1216,7 @@ function onDJChanged() {
     wasGranted = g;
   }
   if ($("#booth").classList.contains("show")) renderBooth();
+  updateFxPanel();
 }
 
 /* ---- host panel: power the decks, hand them to someone present ---- */
@@ -1808,8 +1848,11 @@ function toggleSong(id) {
       else if (track === "drum") world.pressEdrum(value);
       else world.strumTele();
     }, delay),
-    ended: refreshSongUI,
+    ended: () => { setDelayTempo(null); refreshSongUI(); },   // delay pedals back to free-play time
   });
+  // the delay pedals lock to this song's tempo (keys eighth, guitar dotted-eighth)
+  const song = SONGS.find(x => x.id === id);
+  if (song) setDelayTempo(song.bpm);
   store.logEvent("piano");
   refreshSongUI();
 }
@@ -2064,6 +2107,11 @@ addEventListener("keydown", (e) => {
     } else if (p.kind === "fireworks") {
       // the dj painted the sky — everyone in the venue sees the same show
       if (inClub) world.clubFireworks(p.seed);
+    } else if (p.kind === "fog") {
+      if (inClub) world.clubFog(p.seed);
+    } else if (p.kind === "theme") {
+      // the dj set the look — the whole room follows
+      if (inClub) { world.setClubTheme(p.ix); setClubBed(clubBedFor()); }
     }
   });
   presence.onChat((p) => pushChat(p.name || "someone", p.color, p.text));
@@ -2104,7 +2152,7 @@ addEventListener("keydown", (e) => {
   store.getDJ().then(dj => { djState = dj; wasGranted = djGrantedToMe(); }).catch(() => {});
   store.onDJ(dj => { djState = dj; onDJChanged(); });
   // keep the booth's headcount plate honest while anyone's in the club
-  setInterval(() => { if (entered && inClub) world.setBoothHeadcount(clubHeadcount()); }, 1500);
+  setInterval(() => { if (entered && inClub) world.setBoothHeadcount(clubHeadcount()); updateFxPanel(); }, 1500);
 
   store.logEvent("visit");
 

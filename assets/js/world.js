@@ -1600,6 +1600,21 @@ export function buildWorld() {
      the tele. every guitarist's signal chain ends up here, so the tele's
      cable should too — a tilted board with three stompboxes and a coiled
      patch. (the FX are real now — see ambience.buildGuitarFx.) --- */
+  // every stompbox (guitar + keyboard pedals) registers here so a click can
+  // toggle its effect on/off and dim or light its LED — wired up in main.js.
+  const stompHits = [];
+  const stompLEDs = {};
+  const registerStomp = (enc, sw, led, ledCol, id) => {
+    enc.userData.stomp = id; sw.userData.stomp = id;
+    stompHits.push(enc, sw);
+    const lit = new THREE.Color(ledCol);
+    stompLEDs[id] = { led, on: lit, off: lit.clone().multiplyScalar(0.1) };   // a dim ember when bypassed
+  };
+  function setStompLED(id, on) {
+    const s = stompLEDs[id]; if (!s) return;
+    s.led.material.color.copy(on ? s.on : s.off);
+  }
+
   const pedalboard = new THREE.Group();
   // slanted board, back edge lifted so the switches face you
   const pbPlate = box(0.5, 0.018, 0.2, lam(0x18191d));
@@ -1612,8 +1627,9 @@ export function buildWorld() {
     ft.position.set(fx, 0.015, 0.085);
     pedalboard.add(ft);
   }
-  // a stompbox: enclosure, footswitch, two knobs, status LED. mounted on the tilt.
-  function stompbox(px, bodyCol, ledCol) {
+  // a stompbox: enclosure, footswitch, two knobs, status LED. mounted on the
+  // tilt. pass an `id` and it becomes click-to-toggle (registerStomp).
+  function stompbox(px, bodyCol, ledCol, id) {
     const pg = new THREE.Group();
     const enc = box(0.105, 0.055, 0.125, lam(bodyCol));
     enc.position.y = 0.0275;
@@ -1636,10 +1652,11 @@ export function buildWorld() {
     pg.position.set(px, 0.064, -0.012);
     pg.rotation.x = -0.26;                 // sit flush on the tilted board
     pedalboard.add(pg);
+    if (id) registerStomp(enc, sw, led, ledCol, id);
   }
-  stompbox(-0.15, 0x8a3b1e, 0xff7a3c);     // overdrive — burnt orange, amber eye
-  stompbox(0, 0x1f7a6e, 0x46f0d6);         // delay — teal, green eye
-  stompbox(0.15, 0x35307a, 0x8a7bff);      // reverb — indigo, violet eye
+  stompbox(-0.15, 0x8a3b1e, 0xff7a3c, "gtr-od");      // overdrive — burnt orange, amber eye
+  stompbox(0, 0x1f7a6e, 0x46f0d6, "gtr-delay");       // delay — teal, green eye
+  stompbox(0.15, 0x35307a, 0x8a7bff, "gtr-reverb");   // reverb — indigo, violet eye
   // the patch cable snaking back toward the guitar's jack
   const patch = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.42, 6), lam(0x0c0d0f));
   patch.position.set(0.25, 0.05, -0.06);
@@ -2253,7 +2270,8 @@ export function buildWorld() {
   /* --- keyboard floor pedals --- */
   // three stompboxes on the floor where you'd stand to play: chorus · delay ·
   // reverb. the physical twin of the keybed's FX bus — every piano note runs
-  // through all three at 25% wet (see ambience.pianoNote / buildKeyboardFx).
+  // through all three at 50% wet (see ambience.pianoNote / buildKeyboardFx).
+  // each is click-to-toggle on/off (registerStomp, shared with the guitar).
   const kbPedals = new THREE.Group();
   const kbPlate = box(0.42, 0.018, 0.2, lam(0x18191d));
   kbPlate.position.set(0, 0.055, 0);
@@ -2265,7 +2283,7 @@ export function buildWorld() {
     kbPedals.add(ft);
   }
   // a stompbox: enclosure, footswitch, two knobs, status LED — sits on the tilt
-  function kbStomp(px, bodyCol, ledCol) {
+  function kbStomp(px, bodyCol, ledCol, id) {
     const pg = new THREE.Group();
     const enc = box(0.1, 0.05, 0.12, lam(bodyCol));
     enc.position.y = 0.025;
@@ -2286,10 +2304,11 @@ export function buildWorld() {
     pg.position.set(px, 0.063, -0.01);
     pg.rotation.x = -0.24;
     kbPedals.add(pg);
+    if (id) registerStomp(enc, sw, led, ledCol, id);
   }
-  kbStomp(-0.13, 0x6a2f7a, 0xd66bff);    // chorus — purple, magenta eye
-  kbStomp(0,     0x1f5a7a, 0x4fbfe6);    // delay  — blue, cyan eye
-  kbStomp(0.13,  0x2f6a3a, 0x6bff8a);    // reverb — green, lime eye
+  kbStomp(-0.13, 0x6a2f7a, 0xd66bff, "kb-chorus");   // chorus — purple, magenta eye
+  kbStomp(0,     0x1f5a7a, 0x4fbfe6, "kb-delay");    // delay  — blue, cyan eye
+  kbStomp(0.13,  0x2f6a3a, 0x6bff8a, "kb-reverb");   // reverb — green, lime eye
   kbPedals.position.set(0.2, 0, ZF + 1.0);   // tucked further under the desk
   kbPedals.rotation.y = -0.08;
   add(kbPedals);
@@ -4802,6 +4821,56 @@ export function buildWorld() {
   const dustMat = new THREE.PointsMaterial({ color: 0x9fb0ff, size: 0.055, map: dotTex, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false });
   const dust = new THREE.Points(clubDustGeo, dustMat); dust.position.set(CLUB.x, 0, CLUB.z); addC(dust);
 
+  // ---- the FOG MACHINE: a soft persistent haze low on the floor + jets that
+  // blow fog DOWN from the ceiling on a dj's cue. additive puffs tinted to the
+  // active theme so the fog glows with the neon. ----
+  const puffTex = canvasTex(128, 128, (g) => {
+    const grd = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+    grd.addColorStop(0, "rgba(255,255,255,0.5)"); grd.addColorStop(0.45, "rgba(255,255,255,0.16)");
+    grd.addColorStop(1, "rgba(255,255,255,0)"); g.fillStyle = grd; g.fillRect(0, 0, 128, 128);
+  });
+  const fogColor = new THREE.Color(0xbfc8ff), WHITE = new THREE.Color(0xffffff);
+  const fogGroup = new THREE.Group(); fogGroup.position.set(CLUB.x, 0, CLUB.z); addC(fogGroup);
+  const hazePuffs = [];
+  for (let i = 0; i < 6; i++) {
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: puffTex, color: 0xbfc8ff, transparent: true, opacity: 0.13, blending: THREE.AdditiveBlending, depthWrite: false }));
+    const sc = 4 + Math.random() * 2.5; sp.scale.set(sc, sc * 0.55, 1);
+    sp.position.set((Math.random() - 0.5) * (CLW - 2), 0.4 + Math.random() * 0.5, (Math.random() - 0.5) * (CLD - 2) + 0.4);
+    fogGroup.add(sp); hazePuffs.push({ sp, ph: Math.random() * 7 });
+  }
+  // fog cannons hang from the ceiling at these x positions; a burst pours a
+  // dense column of overlapping puffs down from each.
+  const fogJets = [-3.4, -1.1, 1.1, 3.4];
+  const FOG_N = 48, fogPuffs = [];
+  for (let i = 0; i < FOG_N; i++) {
+    // NORMAL blend (not additive): the burst VEILS the room like real fog
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: puffTex, color: 0xc8d0e8, transparent: true, opacity: 0, depthWrite: false }));
+    sp.visible = false; fogGroup.add(sp); fogPuffs.push({ sp, life: 0, vy: 0, grow: 0 });
+  }
+  function clubFog(seed) {
+    seed = (seed | 0) || 1; let placed = 0; const batch = 18 + (seed % 8);
+    for (const p of fogPuffs) {
+      if (p.life > 0) continue;
+      const jet = fogJets[placed % fogJets.length];
+      p.life = 1; p.vy = -(0.28 + Math.random() * 0.4); p.grow = 1.4 + Math.random() * 1.6;
+      const sc = 1.3 + Math.random() * 1.3; p.sp.scale.set(sc, sc, 1);
+      p.sp.position.set(jet + (Math.random() - 0.5) * 1.4, CLH - 0.25 - Math.random() * 0.6, (Math.random() - 0.5) * (CLD - 2) + 0.4);
+      p.sp.material.color.copy(fogColor); p.sp.material.opacity = 0; p.sp.visible = true;
+      if (++placed >= batch) break;
+    }
+  }
+  function tickFog(dt) {
+    for (const h of hazePuffs) { h.sp.position.x += Math.sin(elapsed * 0.2 + h.ph) * 0.002; h.sp.material.color.lerp(fogColor, 0.02); }
+    for (const p of fogPuffs) {
+      if (p.life <= 0) continue;
+      p.life -= dt * 0.16;                         // lingers a few seconds
+      if (p.life <= 0) { p.sp.visible = false; continue; }
+      p.sp.position.y += p.vy * dt;
+      const s = p.sp.scale.x + p.grow * dt; p.sp.scale.set(s, s, 1);
+      p.sp.material.opacity = 0.32 * Math.sin((1 - p.life) * Math.PI);   // veils, then thins out
+    }
+  }
+
   // ---- interior palette (the cove / corners / lip / motes / floor tiles) ----
   const clubPal = { tileHue: 0.42, tileRange: 0.5, tileSat: 0.85 };
   function applyClubPalette(p) {
@@ -4809,6 +4878,7 @@ export function buildWorld() {
     p.corners.forEach((c, i) => { if (tubeMeshes[i]) tubeMeshes[i].material.color.set(c); });
     deskLip.material.color.set(p.lip);
     moteMat.color.set(p.mote); dustMat.color.set(p.mote);
+    fogColor.set(p.mote).lerp(WHITE, 0.55);   // a whitened tint reads as haze, not a glowing blob
     clubPal.tileHue = p.tileHue; clubPal.tileRange = p.tileRange; clubPal.tileSat = p.tileSat;
   }
 
@@ -5107,6 +5177,7 @@ export function buildWorld() {
     if (onAirLive) onAirLight.intensity = 3.4 + Math.sin(elapsed * 2.2) * 0.8 + e * 2.2;
     tickFireworks(dt);
     tickBackdrop(dt);
+    tickFog(dt);
   }
 
   // where feet may go: bedroom + closet passage + arcade room
@@ -5172,6 +5243,7 @@ export function buildWorld() {
     curtainsClosed: () => curtains.closed,
     pianoMesh: midiKeybed, pressPianoKey,
     pianoVoiceMesh: midiBody,
+    stompHits, setStompLED, stompIds: Object.keys(stompLEDs),
     closetHits: [leftLeaf, rightLeaf], toggleCloset, setCloset,
     closetOpen: () => closet.open,
     arcadeHits,
@@ -5248,8 +5320,9 @@ export function buildWorld() {
     clubSpawn: { x: CLUB.x + 2.6, z: CLUB.z + 3.6, yaw: 0.35 },
     clubExitHit: clubDoor,
     deckHits, setOnAir, setBoothHeadcount, setClubEnergy,
-    clubWindowHit: glassClick, clubFireworks,
+    clubWindowHit: glassClick, clubFireworks, clubFog,
     cycleClubTheme, clubThemeName,
+    setClubTheme: (ix) => applyClubTheme(ix), clubThemeIndex: () => themeIx,
     inClub: (x) => x < -30,
     dmTargets: [monScreen, monBezel, mac],
     // where the cat likes to be
