@@ -9,7 +9,7 @@ import { NotesWall } from "./notes3d.js";
 import { Ghosts } from "./ghosts.js";
 import { store } from "./store.js";
 import { presence } from "./presence.js";
-import { startAmbience, citySound, pianoNote, semitoneToKey, audioNow, purr, setRain, setWater, setRoomTone, setClubTone, kettleBoil, setThruster, boostSound, discSound, goalHorn, meow, hiss, careSound, drumHit, setArcadeZone, punchSound, shieldClang, stunBuzz, edrumHit, guitarPluck, shotSound, smokeSound } from "./ambience.js";
+import { startAmbience, citySound, pianoNote, semitoneToKey, audioNow, purr, setRain, setWater, setRoomTone, setClubTone, kettleBoil, setThruster, boostSound, discSound, goalHorn, meow, hiss, careSound, drumHit, setArcadeZone, punchSound, shieldClang, stunBuzz, edrumHit, guitarPluck, guitarNote, shotSound, smokeSound } from "./ambience.js";
 import { SONGS, playSong, stopSong, currentSongId } from "./songs.js";
 import { progress } from "./progress.js";
 import { voice } from "./voice.js";
@@ -1781,13 +1781,26 @@ function refreshSongUI() {
 }
 function toggleSong(id) {
   if (currentSongId() === id) { stopSong(); return; }   // stop calls ended → UI refresh
+  // the song keeps rolling while you're in another room — you just don't
+  // hear the bedroom instruments from there
+  const here = () => !inBoat && !inArena && !inClub;
   playSong(id, {
     now: audioNow,
-    // the song keeps rolling while you're in another room — you just
-    // don't hear the bedroom piano from there
-    // songs are chromatic — key is a raw semitone, not a white-key index
-    note: (key, vel, when) => { if (!inBoat && !inArena && !inClub) pianoNote(key, pianoVoice, vel * MUSIC_VEL, when, true); },
-    visual: (key, delay) => setTimeout(() => { if (!inBoat && !inArena && !inClub) world.pressPianoKey(semitoneToKey(key)); }, delay),
+    // each track to its own instrument — piano is chromatic (raw semitone,
+    // not a white-key index), guitar plays the song's real pitches, drums
+    // hit the e-kit pads. all sit under MUSIC_VEL so it stays a backing track.
+    play: (track, value, vel, when) => {
+      if (!here()) return;
+      if (track === "piano") pianoNote(value, pianoVoice, vel * MUSIC_VEL, when, true);
+      else if (track === "guitar") guitarNote(value, vel * MUSIC_VEL, when);
+      else edrumHit(value, when, vel * MUSIC_VEL);
+    },
+    press: (track, value, delay) => setTimeout(() => {
+      if (!here()) return;
+      if (track === "piano") world.pressPianoKey(semitoneToKey(value));
+      else if (track === "drum") world.pressEdrum(value);
+      else world.strumTele();
+    }, delay),
     ended: refreshSongUI,
   });
   store.logEvent("piano");

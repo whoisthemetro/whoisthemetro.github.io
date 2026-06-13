@@ -569,9 +569,13 @@ export function setWater(on) {
 }
 
 /* ---------------- the e-kit ---------------- */
-export function edrumHit(pad = 0) {
+// pad 0 kick · 1 snare · 2 closed hat · 3 tom hi · 4 tom lo · 5 crash.
+// `when` schedules against the audio clock (songs); `vel` scales the hit
+// so a self-playing groove can sit under the piano instead of slapping.
+export function edrumHit(pad = 0, when = null, vel = 1) {
   if (!ctx) return;
-  const t = ctx.currentTime + 0.005;
+  const t = Math.max(ctx.currentTime + 0.005, when || 0);
+  const A = Math.max(0.05, vel);
   const thump = (f0, f1, dur, peak) => {
     const o = ctx.createOscillator();
     o.type = "sine";
@@ -631,22 +635,22 @@ export function edrumHit(pad = 0) {
     g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
     g.gain.linearRampToValueAtTime(0, t + dur + 0.04);
   };
-  if (pad === 0) { thump(150, 40, 0.32, 0.34); click(2400, 0.10); }    // kick
-  else if (pad === 1) { thump(215, 150, 0.13, 0.16); hiss(1900, 0.18, 0.2, "bandpass"); hiss(6000, 0.12, 0.05); click(3600, 0.07); }  // snare (+ a little air on top)
-  else if (pad === 2) { metal(0.06, 0.05, 8200); hiss(9000, 0.05, 0.06); click(9000, 0.04); }  // closed hat — crisp + ringing
-  else if (pad === 3) { thump(185, 115, 0.26, 0.24); click(2800, 0.06); }  // tom hi
-  else if (pad === 4) { thump(145, 85, 0.32, 0.24); click(2400, 0.06); }   // tom lo
-  else { metal(1.1, 0.055, 5200); hiss(8500, 0.85, 0.10); hiss(4800, 0.5, 0.06); click(6500, 0.05); }  // crash — bright shimmer + splash
+  if (pad === 0) { thump(150, 40, 0.32, 0.34 * A); click(2400, 0.10 * A); }    // kick
+  else if (pad === 1) { thump(215, 150, 0.13, 0.16 * A); hiss(1900, 0.18, 0.2 * A, "bandpass"); hiss(6000, 0.12, 0.05 * A); click(3600, 0.07 * A); }  // snare (+ a little air on top)
+  else if (pad === 2) { metal(0.06, 0.05 * A, 8200); hiss(9000, 0.05, 0.06 * A); click(9000, 0.04 * A); }  // closed hat — crisp + ringing
+  else if (pad === 3) { thump(185, 115, 0.26, 0.24 * A); click(2800, 0.06 * A); }  // tom hi
+  else if (pad === 4) { thump(145, 85, 0.32, 0.24 * A); click(2400, 0.06 * A); }   // tom lo
+  else { metal(1.1, 0.055 * A, 5200); hiss(8500, 0.85, 0.10 * A); hiss(4800, 0.5, 0.06 * A); click(6500, 0.05 * A); }  // crash — bright shimmer + splash
 }
 
 /* ---------------- the telecaster: karplus-strong plucks ---------------- */
 // A minor pentatonic, low A up two octaves — pick a fret, get a note
 const PENTA_AM = [110, 130.81, 146.83, 164.81, 196, 220, 261.63, 293.66, 329.63, 392, 440];
-export function guitarPluck(n = 0) {
+// the string itself: pluck a frequency at audio time `when`, peak `peak`.
+function pluckString(f, when = null, peak = 0.17) {
   if (!ctx) return;
-  const f = PENTA_AM[Math.max(0, Math.min(PENTA_AM.length - 1, n | 0))];
   const sr = ctx.sampleRate;
-  const N = Math.round(sr / f);
+  const N = Math.max(2, Math.round(sr / f));
   const dur = 1.7;
   const buf = ctx.createBuffer(1, Math.ceil(sr * dur), sr);
   const d = buf.getChannelData(0);
@@ -665,9 +669,18 @@ export function guitarPluck(n = 0) {
   const lp = ctx.createBiquadFilter();
   lp.type = "lowpass"; lp.frequency.value = 4400;
   const g = ctx.createGain();
-  g.gain.value = 0.17;
+  g.gain.value = Math.max(0.01, peak);
   src.connect(lp).connect(g).connect(master);
-  src.start(ctx.currentTime + 0.005);
+  src.start(Math.max(ctx.currentTime + 0.005, when || 0));
+}
+// live play: a fret on the A-minor-pentatonic neck
+export function guitarPluck(n = 0, when = null) {
+  pluckString(PENTA_AM[Math.max(0, Math.min(PENTA_AM.length - 1, n | 0))], when);
+}
+// song play: a chromatic note, `semi` semitones from C4 (negative = lower),
+// so the guitar can track a song's real key instead of the pentatonic frets.
+export function guitarNote(semi = 0, vel = 1, when = null) {
+  pluckString(261.63 * Math.pow(2, semi / 12), when, 0.17 * Math.max(0.05, vel));
 }
 
 /* ---------------- arena combat: swings, clangs, stuns ---------------- */
