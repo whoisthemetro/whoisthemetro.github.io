@@ -4006,7 +4006,7 @@ export function buildWorld() {
     const cx = grimePX(x), cy = grimePZ(z);
     if (cx < -12 || cx > GRW + 12 || cy < -12 || cy > GRH + 12) return;
     const r = 9 * mult;
-    const a = Math.min(0.05, dt * 0.07 * mult);
+    const a = Math.min(0.14, dt * 0.26 * mult);   // grimes up noticeably faster
     const grd = grimeCtx.createRadialGradient(cx, cy, 0, cx, cy, r);
     grd.addColorStop(0, `rgba(24,19,11,${a})`);
     grd.addColorStop(1, "rgba(24,19,11,0)");
@@ -4072,7 +4072,9 @@ export function buildWorld() {
     const fx = -Math.sin(yaw), fz = -Math.cos(yaw);  // player forward
     const nx = px + fx * 0.62, nz = pz + fz * 0.62;
     vacuum.position.set(nx, 0, nz);
-    vacuum.rotation.set(0, yaw, 0);   // same heading as the player, handle toward you
+    // upright, its back (canister + handle) turned to you like you're
+    // pushing it — yaw+π so the detail side faces away, never toward you
+    vacuum.rotation.set(0, yaw + Math.PI, 0);
     cleanFloor(nx, nz, 0.4);
   }
   dockVacuum();
