@@ -101,8 +101,17 @@ async function add(note, imageBlob) {
       if (upErr) throw upErr;
       image_path = name;
     }
-    const { data, error } = await sb.from("notes")
+    let { data, error } = await sb.from("notes")
       .insert({ ...note, image_path }).select().single();
+    // graceful fallback: if the live DB hasn't run the `uid` migration in
+    // site.sql yet, the insert errors on the unknown column and nobody can
+    // post. drop uid and retry so the wall still takes notes — they just
+    // won't be movable (uid stays null) until the migration lands.
+    if (error && /\buid\b/i.test(error.message || "") && note.uid != null) {
+      const { uid, ...rest } = note;
+      ({ data, error } = await sb.from("notes")
+        .insert({ ...rest, image_path }).select().single());
+    }
     if (error) throw error;
     return data;
   }
