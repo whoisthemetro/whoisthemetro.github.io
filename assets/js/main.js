@@ -54,12 +54,12 @@ controls.pos.x = world.spawn.x;
 controls.pos.z = world.spawn.z;
 controls.yaw = world.spawn.yaw;
 
-world.setCityListener((type) => { if (!inBoat && !inArena) citySound(type); });
+world.setCityListener((type) => { if (!inBoat && !inArena && !inClub) citySound(type); });
 
 // the arcade hums and chirps when you're near it — spatial by position
 setInterval(() => {
   if (!entered) return;
-  setArcadeZone(inBoat || inArena ? 0 : world.arcadeZoneLevel(controls.pos.x, controls.pos.z));
+  setArcadeZone(inBoat || inArena || inClub ? 0 : world.arcadeZoneLevel(controls.pos.x, controls.pos.z));
 }, 250);
 
 /* ---------------- voice: hold to talk, tap to leave it open ---------------- */
@@ -111,7 +111,7 @@ try { pianoVoice = (parseInt(localStorage.getItem("metro.voice") || "0", 10) || 
 
 // the cat — its key-walking plays the same piano visitors can play.
 // All bedroom sounds are gated: aboard THE DESI you hear only the sea.
-const bedroomSound = (fn) => (...a) => { if (!inBoat && !inArena) fn(...a); };
+const bedroomSound = (fn) => (...a) => { if (!inBoat && !inArena && !inClub) fn(...a); };
 const cat = new Cat(world.scene, world.catSpots, {
   plink: bedroomSound((i) => { pianoNote(i % 15, pianoVoice); world.pressPianoKey(i % 15); }),
   purr: bedroomSound(purr),
@@ -213,7 +213,7 @@ canvas.addEventListener("click", () => {
 function castAt(ndcX, ndcY) {
   raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera);
   // doors are included as blockers so notes can't be pinned onto them
-  const targets = [cat.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.volcaHit, world.bottleHit, world.echoPoster, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...notesWall.raycastTargets(), ...world.blockers];
+  const targets = [cat.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.clubExitHit, ...world.deckHits, world.volcaHit, world.bottleHit, world.echoPoster, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...notesWall.raycastTargets(), ...world.blockers];
   const hits = raycaster.intersectObjects(targets, false);
   return hits[0] || null;
 }
@@ -369,6 +369,10 @@ controls.onAction((ndcX, ndcY) => {
     presence.sendAct({ kind: "guitar", n });
   } else if (hit.object.userData.boatExit && hit.distance < 2.6) {
     leaveBoat();
+  } else if (hit.object.userData.clubExit && hit.distance < 2.6) {
+    leaveClub();
+  } else if (hit.object.userData.decks && hit.distance < 2.6) {
+    toast("the decks are locked — nothing's booked tonight");
   } else if (hit.object.userData.portalArena && hit.distance < 3) {
     tryArena();
   } else if (hit.object.userData.arenaExit && hit.distance < 4) {
@@ -413,7 +417,7 @@ controls.onAction((ndcX, ndcY) => {
     if (shot) {
       shotSound();
       if (shot === "hit") {
-        setTimeout(() => { if (!inBoat && !inArena) citySound("boom"); }, 300);
+        setTimeout(() => { if (!inBoat && !inArena && !inClub) citySound("boom"); }, 300);
         toast("🛩️💥 got it. somewhere over Inglewood, a pilot is very confused");
         presence.sendAct({ kind: "planeshot" });
       }
@@ -518,6 +522,12 @@ setInterval(() => {
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.boatExit && hit.distance < 2.6) {
     aimTip.textContent = `${TAP} to go back to the room`;
+    aimTip.classList.add("show");
+  } else if (hit && hit.object.userData.clubExit && hit.distance < 2.6) {
+    aimTip.textContent = `${TAP} — out into the night, back home`;
+    aimTip.classList.add("show");
+  } else if (hit && hit.object.userData.decks && hit.distance < 2.6) {
+    aimTip.textContent = "CDJs — locked until an event";
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.curtain && hit.distance < 3.2) {
     aimTip.textContent = world.curtainsClosed() ? `${TAP} to open the curtains` : `${TAP} to draw the curtains`;
@@ -891,7 +901,7 @@ async function tryBoat() {
 function refreshNoteVisibility() {
   for (const mesh of world.noteGroup.children) {
     const onBoat = String(mesh.userData.note?.wall || "").startsWith("boat");
-    mesh.visible = inArena ? false : inBoat ? onBoat : !onBoat;
+    mesh.visible = inArena || inClub ? false : inBoat ? onBoat : !onBoat;
   }
 }
 
@@ -902,6 +912,46 @@ function leaveBoat() {
     controls.pos.z = world.bathroomSpawn.z;
     controls.yaw = world.bathroomSpawn.yaw;
     setWater(false);                     // the sea stays on the boat, fully
+    setRoomTone(true);
+    refreshNoteVisibility();
+  });
+}
+
+/* ---------------- THE VENUE: the dj bar, name pending ---------------- */
+// dev placeholder ("soundcheck") — swap for the real hash before the event
+const CLUB_PASS_HASH = "7aaaa3946f3f4de633bda31fc85970434577eb3b0d4540b00879727861012586";
+let inClub = false;
+async function tryClub() {
+  modalOpen = true;                      // keep the pause screen away
+  const pass = prompt("an unmarked door. bass through the brick. password:");
+  if (!pass) { modalOpen = false; if (entered) safeLock(); return; }
+  if (await sha256(pass.trim().toLowerCase()) !== CLUB_PASS_HASH) {
+    modalOpen = false;
+    if (entered) safeLock();
+    return toast("the bouncer shakes his head.");
+  }
+  fadeTo(() => {
+    inClub = true;
+    controls.pos.x = world.clubSpawn.x;
+    controls.pos.z = world.clubSpawn.z;
+    controls.yaw = world.clubSpawn.yaw;
+    setRoomTone(false);                  // the bedroom stays behind, fully
+    store.logEvent("boat");              // counts as a portal trip
+    progress.bump("trips");
+    refreshNoteVisibility();
+    toast("you're in 🪩 — the decks are dark until showtime");
+    modalOpen = false;
+    hide(paused);
+    if (entered) safeLock();
+  });
+}
+function leaveClub() {
+  fadeTo(() => {
+    inClub = false;
+    // the walk home ends at your own front door
+    controls.pos.x = world.spawn.x;
+    controls.pos.z = world.spawn.z;
+    controls.yaw = world.spawn.yaw;
     setRoomTone(true);
     refreshNoteVisibility();
   });
@@ -1367,8 +1417,8 @@ function toggleSong(id) {
     now: audioNow,
     // the song keeps rolling while you're in another room — you just
     // don't hear the bedroom piano from there
-    note: (key, vel, when) => { if (!inBoat && !inArena) pianoNote(key, pianoVoice, vel * MUSIC_VEL, when); },
-    visual: (key, delay) => setTimeout(() => { if (!inBoat && !inArena) world.pressPianoKey(key); }, delay),
+    note: (key, vel, when) => { if (!inBoat && !inArena && !inClub) pianoNote(key, pianoVoice, vel * MUSIC_VEL, when); },
+    visual: (key, delay) => setTimeout(() => { if (!inBoat && !inArena && !inClub) world.pressPianoKey(key); }, delay),
     ended: refreshSongUI,
   });
   store.logEvent("piano");
@@ -1400,6 +1450,7 @@ function closePC() {
 }
 $("#pc-close").addEventListener("click", closePC);
 $("#pc-desi").addEventListener("click", () => { hide(pcOverlay); tryBoat(); });
+$("#pc-club").addEventListener("click", () => { hide(pcOverlay); tryClub(); });
 $("#pc-echo").addEventListener("click", () => { hide(pcOverlay); modalOpen = false; tryArena(); });
 $("#pc-dm").addEventListener("click", () => { hide(pcOverlay); openDM(); });
 $("#pc-inbox").addEventListener("click", () => { hide(pcOverlay); openDM(); });
@@ -1576,20 +1627,20 @@ addEventListener("keydown", (e) => {
     } else if (p.kind === "smoke") {
       // a remote puff: the corner bubbles and smokes, but only the
       // one who pulled gets the soft ten seconds
-      if (!inBoat && !inArena) {
+      if (!inBoat && !inArena && !inClub) {
         world.puffSmoke(p.what);
         smokeSound(p.what);
       }
     } else if (p.kind === "planeshot") {
       // someone else took the shot — if our jet is still up, down it
-      if (world.downPlane() && !inBoat && !inArena) {
+      if (world.downPlane() && !inBoat && !inArena && !inClub) {
         citySound("boom");
         toast("someone shot the plane out of the sky 🛩️💥");
       }
     } else if (p.kind === "edrum") {
-      if (!inBoat && !inArena) { edrumHit(p.pad); world.pressEdrum(p.pad); }
+      if (!inBoat && !inArena && !inClub) { edrumHit(p.pad); world.pressEdrum(p.pad); }
     } else if (p.kind === "guitar") {
-      if (!inBoat && !inArena) { guitarPluck(p.n); world.strumTele(); }
+      if (!inBoat && !inArena && !inClub) { guitarPluck(p.n); world.strumTele(); }
     } else if (p.kind === "ready") {
       applyReady(p.team, p.t);
     } else if (p.kind === "match") {
@@ -1622,7 +1673,7 @@ addEventListener("keydown", (e) => {
   // each one gets a flight strip: who it is, what it is, where it's going
   startPlanes((info) => {
     world.triggerPlane(info && info.dir);
-    if (info && !inBoat && !inArena) showFlightStrip(info);
+    if (info && !inBoat && !inArena && !inClub) showFlightStrip(info);
   }, (isLive) => world.setLivePlanes(isLive));
 
   // the lights come back exactly as the room left them
