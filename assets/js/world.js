@@ -1895,8 +1895,8 @@ export function buildWorld() {
     }
   }
 
-  // "METRO'S ARCADE" — neon on the arcade's back wall, and a small
-  // sign over the closet in the bedroom
+  // "METRO'S ARCADE" — neon on the arcade's back wall (the bedroom
+  // never advertises it; you find the closet, you find the room)
   const arcSignTex = canvasTex(512, 96, (g) => {
     g.fillStyle = "rgba(0,0,0,0)"; g.clearRect(0, 0, 512, 96);
     g.font = "500 52px 'Six Caps', sans-serif";
@@ -1915,12 +1915,6 @@ export function buildWorld() {
   arcSign.rotation.y = Math.PI / 2;
   arcSign.position.set(AR.x0 + 0.02, 2.25, (AR.z0 + AR.z1) / 2);
   add(arcSign);
-  const arcSign2 = new THREE.Mesh(new THREE.PlaneGeometry(0.95, 0.18), new THREE.MeshBasicMaterial({
-    map: arcSignTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
-  }));
-  arcSign2.rotation.y = Math.PI / 2;
-  arcSign2.position.set(-X + 0.04, 2.32, CZ);
-  add(arcSign2);
 
   // the Echo VR poster — step through, no password anymore
   const posterTex = new THREE.TextureLoader().load("assets/img/echo.jpg");
@@ -4357,6 +4351,81 @@ export function buildWorld() {
   clubWash.position.set(CLUB.x, 2.9, CLUB.z + 0.6);
   addC(clubWash);
 
+  /* --- V3 glow-up: the edges read as black, so we trim them in light.
+     nothing below is a LIGHT (every lamp in this room throws short, by
+     design, so it can't reach the bedroom) — it's all self-lit emissive
+     geometry and additive washes. MeshBasic skips the toon swap and emits
+     zero photons into the scene, so it pops on the dark walls and can't
+     bleed a thing toward the next room. --- */
+  const HALFW = CLW / 2, HALFD = CLD / 2;
+  const coveXW = CLUB.x - HALFW + 0.06, coveXE = CLUB.x + HALFW - 0.06;
+  const coveZN = CLUB.z - HALFD + 0.06, coveZS = CLUB.z + HALFD - 0.06;
+
+  // a cove band of light just under the ceiling, all the way around —
+  // the single biggest fix for "the top corners go to black"
+  const coveY = CLH - 0.16;
+  const mkBand = (w, d, col, x, z) => {
+    const b = addC(box(w, 0.05, d, new THREE.MeshBasicMaterial({ color: col })));
+    b.position.set(x, coveY, z);
+  };
+  mkBand(CLW - 0.1, 0.04, 0xff3fae, CLUB.x, coveZN);   // booth wall (north)
+  mkBand(CLW - 0.1, 0.04, 0x8a5cff, CLUB.x, coveZS);   // door wall (south)
+  mkBand(0.04, CLD - 0.1, 0x3fd2ff, coveXW, CLUB.z);   // west
+  mkBand(0.04, CLD - 0.1, 0xff7ad9, coveXE, CLUB.z);   // east
+
+  // vertical neon in each corner — outlines the box and kills the dark seams
+  const cornerCols = [0xff3fae, 0x3fd2ff, 0xffe24a, 0x8a5cff];
+  [[coveXW, coveZN], [coveXE, coveZN], [coveXW, coveZS], [coveXE, coveZS]]
+    .forEach(([cx, cz], i) => {
+      const tube = addC(new THREE.Mesh(
+        new THREE.CylinderGeometry(0.035, 0.035, CLH - 0.42, 10),
+        new THREE.MeshBasicMaterial({ color: cornerCols[i] })));
+      tube.position.set(cx, (CLH - 0.42) / 2 + 0.1, cz);
+    });
+
+  // additive washes spilling down the side walls — fakes a gradient the
+  // flat walls don't have. color→black + additive = pure glow, no toon.
+  const washTex = (top) => canvasTex(8, 128, (g) => {
+    const grd = g.createLinearGradient(0, 0, 0, 128);
+    grd.addColorStop(0, top); grd.addColorStop(1, "#000000");
+    g.fillStyle = grd; g.fillRect(0, 0, 8, 128);
+  });
+  const mkWash = (top, ry, x) => {
+    const m = addC(new THREE.Mesh(
+      new THREE.PlaneGeometry(CLD - 0.4, 2.3),
+      new THREE.MeshBasicMaterial({
+        map: washTex(top), transparent: true, blending: THREE.AdditiveBlending,
+        depthWrite: false, side: THREE.DoubleSide })));
+    m.rotation.y = ry; m.position.set(x, CLH - 1.15, CLUB.z);
+  };
+  mkWash("#6a2f9a", Math.PI / 2, coveXW);    // west: violet spill
+  mkWash("#1d4f82", -Math.PI / 2, coveXE);   // east: cyan spill
+
+  // two gig posters on the open west wall — self-lit so they read in the
+  // dark, ≥3 cm proud (and prouder than the wash) so nothing z-fights
+  const clubPosterTex = (a, b, line1, line2) => canvasTex(256, 352, (g) => {
+    const grd = g.createLinearGradient(0, 0, 256, 352);
+    grd.addColorStop(0, a); grd.addColorStop(1, b);
+    g.fillStyle = grd; g.fillRect(0, 0, 256, 352);
+    g.strokeStyle = "rgba(255,255,255,0.85)"; g.lineWidth = 4;
+    g.strokeRect(10, 10, 236, 332);
+    g.fillStyle = "#0c0a12";
+    g.beginPath(); g.arc(128, 150, 70, 0, Math.PI * 2); g.fill();
+    g.fillStyle = "#fff"; g.textAlign = "center";
+    g.font = "600 46px 'Six Caps', sans-serif";
+    g.fillText(line1, 128, 250);
+    g.font = "600 30px 'Six Caps', sans-serif";
+    g.fillText(line2, 128, 300);
+  });
+  [["#ff3fae", "#3a1148", "LATE SET", "NO LAST CALL"],
+   ["#3fd2ff", "#0e2a44", "AFTER DARK", "RESIDENTS ONLY"]]
+    .forEach(([a, b, l1, l2], i) => {
+      const p = addC(new THREE.Mesh(new THREE.PlaneGeometry(1.0, 1.38),
+        new THREE.MeshBasicMaterial({ map: clubPosterTex(a, b, l1, l2) })));
+      p.rotation.y = Math.PI / 2;
+      p.position.set(CLUB.x - HALFW + 0.12, 1.45, CLUB.z + (i === 0 ? -1.7 : 1.7));
+    });
+
   // a VU strip across the coffin front — green→red segments the crowd reads
   // when a set is live. emissive (skips the toon swap), so it stays bright.
   const vuSegs = [];
@@ -4409,11 +4478,14 @@ export function buildWorld() {
     { x0: AR.x0 + 1.15, x1: AR.x1 - 0.15, z0: AR.z0 + 0.45, z1: AR.z1 - 0.45 },
     // the boat room exists far away; you can only get there by knowing
     { x0: BOAT.x - 1.75, x1: BOAT.x + 1.75, z0: BOAT.z - 1.15, z1: BOAT.z + 1.15 },
-    // the club: the open floor, the strip behind the dj coffin, and
-    // the gap between the desk and the speaker that joins them
+    // the club: the open floor, a full-width strip behind the dj coffin,
+    // and a gap on BOTH sides of the booth that reaches it — so a dj (or
+    // a curious guest) can round the decks from either hand, not just one.
+    // the desk edges sit at CLUB.x ± 1.4; the side gaps stop right at them.
     { x0: CLUB.x - 5.45, x1: CLUB.x + 4.3, z0: CLUB.z - 2.8, z1: CLUB.z + 4.1 },
-    { x0: CLUB.x - 1.6, x1: CLUB.x + 2.1, z0: CLUB.z - 4.2, z1: CLUB.z - 3.5 },
-    { x0: CLUB.x + 1.45, x1: CLUB.x + 2.0, z0: CLUB.z - 3.6, z1: CLUB.z - 2.5 },
+    { x0: CLUB.x - 2.05, x1: CLUB.x + 2.05, z0: CLUB.z - 4.2, z1: CLUB.z - 3.5 },
+    { x0: CLUB.x + 1.4, x1: CLUB.x + 2.05, z0: CLUB.z - 3.6, z1: CLUB.z - 2.5 },
+    { x0: CLUB.x - 2.05, x1: CLUB.x - 1.4, z0: CLUB.z - 3.6, z1: CLUB.z - 2.5 },
   ];
   const isWalkable = (x, z) => WALK_RECTS.some(r => x >= r.x0 && x <= r.x1 && z >= r.z0 && z <= r.z1);
 
