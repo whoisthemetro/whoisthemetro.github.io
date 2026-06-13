@@ -3897,6 +3897,7 @@ export function buildWorld() {
     tickTele(dt);
     tickChair(dt, ppos);
     tickPuffs(dt, ppos);
+    tickClub(dt);
 
     if (elapsed - dawAt > 0.09) { dawAt = elapsed; daw.draw(); }
     if (elapsed - meterAt > 0.15) { meterAt = elapsed; meterScr.draw(); }
@@ -4073,6 +4074,271 @@ export function buildWorld() {
     }
   }
 
+
+  /* --- THE CLUB: the dj bar, far past everything ---
+     (working name THE VENUE — the real name and the password land
+     closer to the event.) windowless on purpose: a dark box where
+     everything that matters glows on its own. every point light in
+     here throws shorter than the void to the next room. --- */
+  const CLUB = { x: -40, z: 0 };
+  const CLW = 12, CLD = 9, CLH = 3.4;
+  const clubGroup = new THREE.Group();
+  scene.add(clubGroup);
+  const addC = (m) => { clubGroup.add(m); return m; };
+
+  // shell — dark concrete floor, darker everything else
+  const clubFloorTex = canvasTex(256, 256, (g) => {
+    g.fillStyle = "#17151c"; g.fillRect(0, 0, 256, 256);
+    for (let i = 0; i < 900; i++) {
+      g.fillStyle = `rgba(255,255,255,${(Math.random() * 0.05).toFixed(3)})`;
+      g.fillRect(Math.random() * 256, Math.random() * 256, 1.5, 1.5);
+    }
+  });
+  const clubWallMat = new THREE.MeshLambertMaterial({ color: 0x1a1722, side: THREE.DoubleSide });
+  const clubFloor = addC(new THREE.Mesh(new THREE.PlaneGeometry(CLW, CLD),
+    new THREE.MeshLambertMaterial({ map: clubFloorTex })));
+  clubFloor.rotation.x = -Math.PI / 2;
+  clubFloor.position.set(CLUB.x, 0.001, CLUB.z);
+  const clubCeil = addC(new THREE.Mesh(new THREE.PlaneGeometry(CLW, CLD),
+    new THREE.MeshLambertMaterial({ color: 0x0d0b12, side: THREE.DoubleSide })));
+  clubCeil.rotation.x = Math.PI / 2;
+  clubCeil.position.set(CLUB.x, CLH, CLUB.z);
+  for (const [w, ry, px, pz] of [
+    [CLW, 0, CLUB.x, CLUB.z - CLD / 2],            // booth wall
+    [CLW, Math.PI, CLUB.x, CLUB.z + CLD / 2],      // door wall
+    [CLD, Math.PI / 2, CLUB.x - CLW / 2, CLUB.z],
+    [CLD, -Math.PI / 2, CLUB.x + CLW / 2, CLUB.z],
+  ]) {
+    const wall = addC(new THREE.Mesh(new THREE.PlaneGeometry(w, CLH), clubWallMat));
+    wall.rotation.y = ry;
+    wall.position.set(px, CLH / 2, pz);
+  }
+
+  // the dance floor: a 6x4 grid of lit tiles running a slow idle
+  // cycle until a dj gives them a reason to move
+  const clubTiles = [];
+  const TILE = 0.85, TGX = 6, TGZ = 4;
+  for (let i = 0; i < TGX; i++) {
+    for (let j = 0; j < TGZ; j++) {
+      const t = addC(new THREE.Mesh(
+        new THREE.BoxGeometry(TILE - 0.07, 0.02, TILE - 0.07),
+        new THREE.MeshBasicMaterial({ color: 0x221a33 })));
+      t.position.set(
+        CLUB.x + (i - (TGX - 1) / 2) * TILE,
+        0.012,
+        CLUB.z + 0.4 + (j - (TGZ - 1) / 2) * TILE);
+      clubTiles.push(t);
+    }
+  }
+
+  // the booth: floor-level so a dj can actually stand behind it.
+  // desk front to the floor like a real club coffin.
+  const BOOTHZ = CLUB.z - CLD / 2;                 // north wall
+  const deskTop = addC(box(2.8, 0.05, 0.6, lam(0x14121a)));
+  deskTop.position.set(CLUB.x, 0.95, BOOTHZ + 1.25);
+  const deskFront = addC(box(2.8, 0.95, 0.05, lam(0x191622)));
+  deskFront.position.set(CLUB.x, 0.475, BOOTHZ + 1.575);
+  for (const px of [-1.4, 1.4]) {
+    const side = addC(box(0.05, 0.95, 0.6, lam(0x191622)));
+    side.position.set(CLUB.x + px, 0.475, BOOTHZ + 1.25);
+  }
+  // a thin lit lip across the coffin front
+  const deskLip = addC(box(2.8, 0.025, 0.02, new THREE.MeshBasicMaterial({ color: 0x8a5cff })));
+  deskLip.position.set(CLUB.x, 0.96, BOOTHZ + 1.59);
+
+  // two players and a mixer — the reason the room exists
+  const deckY = 0.975;
+  const deckHits = [];
+  for (const dx of [-0.62, 0.62]) {
+    const body = addC(box(0.36, 0.045, 0.40, lam(0x262230)));
+    body.position.set(CLUB.x + dx, deckY + 0.022, BOOTHZ + 1.25);
+    body.userData.decks = true;
+    deckHits.push(body);
+    const jog = addC(new THREE.Mesh(new THREE.CylinderGeometry(0.105, 0.105, 0.02, 22), lam(0x322d3e)));
+    jog.position.set(CLUB.x + dx, deckY + 0.055, BOOTHZ + 1.29);
+    jog.userData.decks = true;
+    deckHits.push(jog);
+    const scr = addC(new THREE.Mesh(new THREE.PlaneGeometry(0.20, 0.075),
+      new THREE.MeshBasicMaterial({ color: 0x153340 })));
+    scr.rotation.y = Math.PI;
+    scr.rotation.x = 0.5;
+    scr.position.set(CLUB.x + dx, deckY + 0.095, BOOTHZ + 1.08);
+  }
+  const clubMixer = addC(box(0.26, 0.05, 0.38, lam(0x1d1a26)));
+  clubMixer.position.set(CLUB.x, deckY + 0.025, BOOTHZ + 1.25);
+  clubMixer.userData.decks = true;
+  deckHits.push(clubMixer);
+  for (let k = -1; k <= 1; k++) {
+    const fad = addC(box(0.015, 0.012, 0.05, new THREE.MeshBasicMaterial({ color: 0xd8d4e6 })));
+    fad.position.set(CLUB.x + k * 0.055, deckY + 0.056, BOOTHZ + 1.38);
+  }
+
+  // ON AIR — dark until category C gives it a reason
+  const onAirCanvas = document.createElement("canvas");
+  onAirCanvas.width = 256; onAirCanvas.height = 96;
+  const onAirTex = new THREE.CanvasTexture(onAirCanvas);
+  onAirTex.colorSpace = THREE.SRGBColorSpace;
+  function drawOnAir(live) {
+    const g = onAirCanvas.getContext("2d");
+    g.fillStyle = "#0b0a10"; g.fillRect(0, 0, 256, 96);
+    g.strokeStyle = live ? "#ff4455" : "#552e36";
+    g.lineWidth = 5; g.strokeRect(6, 6, 244, 84);
+    g.font = "500 52px 'Six Caps', sans-serif"; g.textAlign = "center"; g.textBaseline = "middle";
+    g.fillStyle = live ? "#ff5566" : "#5a3038";
+    g.letterSpacing = "8px";
+    g.fillText("ON AIR", 128, 52);
+    onAirTex.needsUpdate = true;
+  }
+  drawOnAir(false);
+  const onAirSign = addC(new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.34),
+    new THREE.MeshBasicMaterial({ map: onAirTex })));
+  onAirSign.position.set(CLUB.x, 2.45, BOOTHZ + 0.04);
+  let onAirLive = false;
+  const onAirLight = new THREE.PointLight(0xff3344, 0, 3.5, 2);
+  onAirLight.position.set(CLUB.x, 2.3, BOOTHZ + 0.7);
+  addC(onAirLight);
+  const boothLamp = new THREE.PointLight(0xbfb8ff, 7, 3.6, 2);
+  boothLamp.position.set(CLUB.x, 2.0, BOOTHZ + 0.9);
+  addC(boothLamp);
+  function setOnAir(on) {
+    onAirLive = !!on;
+    drawOnAir(onAirLive);
+    onAirLight.intensity = onAirLive ? 4 : 0;
+  }
+
+  // speaker stacks flanking the booth, toed in a touch
+  for (const sx of [-1, 1]) {
+    const stack = new THREE.Group();
+    const lo = box(0.62, 0.78, 0.55, lam(0x1f1b28));
+    lo.position.y = 0.39;
+    const hi = box(0.55, 0.5, 0.48, lam(0x252031));
+    hi.position.y = 1.03;
+    stack.add(lo, hi);
+    for (const [r, y, z] of [[0.20, 0.39, 0.282], [0.14, 1.0, 0.246], [0.05, 1.2, 0.246]]) {
+      const cone = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 0.45, 0.05, 18), lam(0x07060a));
+      cone.rotation.x = Math.PI / 2;
+      cone.position.set(0, y, z);
+      stack.add(cone);
+    }
+    stack.position.set(CLUB.x + sx * 2.6, 0, BOOTHZ + 0.65);
+    stack.rotation.y = -sx * 0.25;
+    addC(stack);
+  }
+
+  // the bar along the east wall — somewhere to lean when your song
+  // isn't on. bottles against the wall, warm strips so they glow.
+  const BARX = CLUB.x + CLW / 2 - 0.85;
+  const barBase = addC(box(0.55, 1.0, 3.6, lam(0x241d2c)));
+  barBase.position.set(BARX, 0.5, CLUB.z + 0.4);
+  const barTop = addC(box(0.72, 0.05, 3.8, lam(0x0f0d14)));
+  barTop.position.set(BARX, 1.03, CLUB.z + 0.4);
+  for (const sz of [-0.9, 0.1, 1.1]) {
+    const seat = addC(new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.05, 14), lam(0x3a2430)));
+    seat.position.set(BARX - 0.62, 0.62, CLUB.z + 0.4 + sz);
+    const pole = addC(new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.6, 8), lam(0x4a4550)));
+    pole.position.set(BARX - 0.62, 0.31, CLUB.z + 0.4 + sz);
+    const foot = addC(new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.02, 12), lam(0x4a4550)));
+    foot.position.set(BARX - 0.62, 0.012, CLUB.z + 0.4 + sz);
+  }
+  const bottleCols = [0x4a7a5a, 0x7a4a5a, 0x4a5a7a, 0xa8853c, 0x5a7a4a, 0x7a5a4a, 0x4a6a7a, 0x8a4a6a];
+  let clubBi = 0;
+  for (const sy of [1.45, 1.85]) {
+    const shelf = addC(box(0.22, 0.03, 3.4, lam(0x191522)));
+    shelf.position.set(CLUB.x + CLW / 2 - 0.13, sy, CLUB.z + 0.4);
+    for (let k = 0; k < 7; k++) {
+      const col = bottleCols[clubBi++ % bottleCols.length];
+      const hgt = 0.20 + (clubBi % 3) * 0.03;
+      const b = addC(new THREE.Mesh(new THREE.CylinderGeometry(0.030, 0.034, hgt, 8),
+        new THREE.MeshLambertMaterial({ color: col, transparent: true, opacity: 0.78 })));
+      b.position.set(CLUB.x + CLW / 2 - 0.13, sy + 0.015 + hgt / 2, CLUB.z - 1.0 + k * 0.47);
+    }
+    const strip = addC(box(0.04, 0.02, 3.4, new THREE.MeshBasicMaterial({ color: 0xffc88a })));
+    strip.position.set(CLUB.x + CLW / 2 - 0.1, sy - 0.05, CLUB.z + 0.4);
+  }
+  const barLight = new THREE.PointLight(0xffb070, 11, 5.5, 2);
+  barLight.position.set(BARX - 0.7, 1.6, CLUB.z + 0.4);
+  addC(barLight);
+
+  // the mirror ball — non-indexed sphere so the facets survive the
+  // toon swap (flatShading wouldn't)
+  const ballRod = addC(new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.35, 6), lam(0x222228)));
+  ballRod.position.set(CLUB.x, CLH - 0.18, CLUB.z + 0.4);
+  const ballGeo = new THREE.SphereGeometry(0.32, 12, 9).toNonIndexed();
+  ballGeo.computeVertexNormals();
+  const discoBall = addC(new THREE.Mesh(ballGeo, lam(0x70768a)));
+  discoBall.position.set(CLUB.x, CLH - 0.67, CLUB.z + 0.4);
+  // two colored lights orbiting the ball — the room's whole mood
+  const swirl = new THREE.Group();
+  swirl.position.set(CLUB.x, CLH - 0.67, CLUB.z + 0.4);
+  const swirlA = new THREE.PointLight(0xff3fae, 48, 9, 2);
+  swirlA.position.set(1.7, -0.95, 0);
+  const swirlB = new THREE.PointLight(0x3fd2ff, 48, 9, 2);
+  swirlB.position.set(-1.7, -0.95, 0);
+  swirl.add(swirlA, swirlB);
+  addC(swirl);
+
+  // light rig over the floor: a truss and four par cans
+  const truss = addC(box(5.4, 0.07, 0.07, lam(0x2a2733)));
+  truss.position.set(CLUB.x, CLH - 0.32, CLUB.z + 0.4);
+  [0xff3fae, 0x3fd2ff, 0xffe24a, 0x8a5cff].forEach((c, i) => {
+    const can = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.095, 0.16, 10), lam(0x1d1a26));
+    can.position.set(CLUB.x - 2.0 + i * 1.33, CLH - 0.45, CLUB.z + 0.4);
+    can.rotation.x = 0.35 * (i % 2 ? 1 : -1);
+    const face = new THREE.Mesh(new THREE.CircleGeometry(0.075, 10), new THREE.MeshBasicMaterial({ color: c }));
+    face.rotation.x = Math.PI / 2;
+    face.position.y = -0.085;
+    can.add(face);
+    addC(can);
+  });
+
+  // the name over the door — placeholder until the room earns its own
+  const clubSign = addC(new THREE.Mesh(new THREE.PlaneGeometry(2.0, 0.5), new THREE.MeshBasicMaterial({
+    map: canvasTex(512, 128, (g) => {
+      g.fillStyle = "#0b0a10"; g.fillRect(0, 0, 512, 128);
+      g.font = "500 86px 'Six Caps', sans-serif"; g.textAlign = "center"; g.textBaseline = "middle";
+      g.shadowColor = "#ff3fae"; g.shadowBlur = 26;
+      g.fillStyle = "#ffd2ec"; g.letterSpacing = "14px";
+      g.fillText("THE VENUE", 256, 70);
+    }),
+    transparent: true,
+  })));
+  clubSign.rotation.y = Math.PI;
+  clubSign.position.set(CLUB.x, 2.55, CLUB.z + CLD / 2 - 0.05);
+
+  // the way home
+  const clubDoor = addC(box(0.78, 1.85, 0.05, lam(0x241f2e)));
+  clubDoor.rotation.y = Math.PI;
+  clubDoor.position.set(CLUB.x + 3.4, 0.93, CLUB.z + CLD / 2 - 0.04);
+  clubDoor.userData.clubExit = true;
+  const clubExitSign = addC(new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.16), new THREE.MeshBasicMaterial({
+    map: canvasTex(256, 80, (g) => {
+      g.fillStyle = "#06140a"; g.fillRect(0, 0, 256, 80);
+      g.font = "700 44px sans-serif"; g.textAlign = "center"; g.textBaseline = "middle";
+      g.fillStyle = "#7dffa0";
+      g.fillText("EXIT", 128, 44);
+    }),
+  })));
+  clubExitSign.rotation.y = Math.PI;
+  clubExitSign.position.set(CLUB.x + 3.4, 2.05, CLUB.z + CLD / 2 - 0.05);
+  const clubExitLamp = new THREE.PointLight(0x88ff9a, 1.6, 2.5, 2);
+  clubExitLamp.position.set(CLUB.x + 3.4, 2.1, CLUB.z + CLD / 2 - 0.3);
+  addC(clubExitLamp);
+
+  const clubWash = new THREE.PointLight(0x7a6aa8, 9, 12, 2);
+  clubWash.position.set(CLUB.x, 2.9, CLUB.z + 0.6);
+  addC(clubWash);
+
+  function tickClub(dt) {
+    discoBall.rotation.y = elapsed * 0.5;
+    swirl.rotation.y = elapsed * 0.9;
+    swirl.rotation.z = Math.sin(elapsed * 0.31) * 0.35;
+    clubTiles.forEach((t, i) => {
+      const hue = (elapsed * 0.03 + (i % TGZ) * 0.06 + Math.floor(i / TGZ) * 0.04) % 1;
+      t.material.color.setHSL(hue, 0.65, 0.13 + 0.05 * Math.sin(elapsed * 1.7 + i));
+    });
+    if (onAirLive) onAirLight.intensity = 3.4 + Math.sin(elapsed * 2.2) * 0.8;
+  }
+
   // where feet may go: bedroom + closet passage + arcade room
   // (cabinet walls get ~1.1 m clearance so you can stand at any machine)
   const WALK_RECTS = [
@@ -4083,6 +4349,11 @@ export function buildWorld() {
     { x0: AR.x0 + 1.15, x1: AR.x1 - 0.15, z0: AR.z0 + 0.45, z1: AR.z1 - 0.45 },
     // the boat room exists far away; you can only get there by knowing
     { x0: BOAT.x - 1.75, x1: BOAT.x + 1.75, z0: BOAT.z - 1.15, z1: BOAT.z + 1.15 },
+    // the club: the open floor, the strip behind the dj coffin, and
+    // the gap between the desk and the speaker that joins them
+    { x0: CLUB.x - 5.45, x1: CLUB.x + 4.3, z0: CLUB.z - 2.8, z1: CLUB.z + 4.1 },
+    { x0: CLUB.x - 1.6, x1: CLUB.x + 2.1, z0: CLUB.z - 4.2, z1: CLUB.z - 3.5 },
+    { x0: CLUB.x + 1.45, x1: CLUB.x + 2.0, z0: CLUB.z - 3.6, z1: CLUB.z - 2.5 },
   ];
   const isWalkable = (x, z) => WALK_RECTS.some(r => x >= r.x0 && x <= r.x1 && z >= r.z0 && z <= r.z1);
 
@@ -4199,6 +4470,12 @@ export function buildWorld() {
     boatSpawn: { x: BOAT.x, z: BOAT.z + 0.4, yaw: 0 },
     bathroomSpawn: { x: -1.85, z: -2.1, yaw: -Math.PI / 2 },
     inBoat: (x) => x > 30,
+    // THE CLUB (the dj bar — name pending)
+    clubInfo: CLUB,
+    clubSpawn: { x: CLUB.x + 2.6, z: CLUB.z + 3.6, yaw: 0.35 },
+    clubExitHit: clubDoor,
+    deckHits, setOnAir,
+    inClub: (x) => x < -30,
     dmTargets: [monScreen, monBezel, mac],
     // where the cat likes to be
     catSpots: {
