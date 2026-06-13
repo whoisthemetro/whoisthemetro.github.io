@@ -8,6 +8,8 @@
 let ctx = null;
 let master = null;
 let pianoBus = null;   // the keyboard's pedal chain feeds in here (chorus→delay→reverb)
+let guitarBus = null;  // the guitar's pedal chain (overdrive→delay→reverb)
+let drumBus = null;    // the e-kit's level handle (so a mixer can ride it)
 
 function noiseBuffer(seconds = 2) {
   const len = ctx.sampleRate * seconds;
@@ -35,24 +37,33 @@ function impulseBuffer(dur = 2.2, decay = 2.6) {
   return buf;
 }
 
+// one wet/dry stage: (1-wet) of the dry src + wet of wetOut, summed into a
+// fresh gain. connect src→wetIn yourself (the caller wires the effect input)
+// before calling. default 50% — every pedal here is half-wet.
+function fxWetDry(src, wetIn, wetOut, wet = 0.5) {
+  const sum = ctx.createGain();
+  const dry = ctx.createGain(); dry.gain.value = 1 - wet;
+  const wg = ctx.createGain();  wg.gain.value = wet;
+  src.connect(dry).connect(sum);
+  src.connect(wetIn);
+  wetOut.connect(wg).connect(sum);
+  return sum;
+}
+
+// a soft-clip transfer curve for the overdrive waveshaper — bigger k = hairier
+function driveCurve(k = 10) {
+  const n = 1024, c = new Float32Array(n);
+  for (let i = 0; i < n; i++) { const x = (i / (n - 1)) * 2 - 1; c[i] = (1 + k) * x / (1 + k * Math.abs(x)); }
+  return c;
+}
+
 // The keyboard's floor pedals, in WebAudio: every piano note runs chorus →
-// delay → reverb before the master bus, each mixed 25% wet. Always on — the
-// three stompboxes on the floor by the desk (world.js) are the physical twin.
+// delay → reverb before the master bus, each mixed 50% wet. The keys get a
+// level bump here too (pianoBus gain) so they sit up over the room. Always on
+// — the three stompboxes on the floor by the desk (world.js) are the twin.
 function buildKeyboardFx() {
   pianoBus = ctx.createGain();
-
-  // split `src` into (1-wet) dry + wet*(wetOut), summed into a fresh gain.
-  // connect src→wetIn yourself before calling so the wet node is fed.
-  const wetDry = (src, wetIn, wetOut, wet = 0.25) => {
-    const sum = ctx.createGain();
-    const dry = ctx.createGain(); dry.gain.value = 1 - wet;
-    const wg = ctx.createGain();  wg.gain.value = wet;
-    src.connect(dry).connect(sum);
-    src.connect(wetIn);
-    wetOut.connect(wg).connect(sum);
-    return sum;
-  };
-
+  pianoBus.gain.value = 1.3;            // the keys, turned up a notch
   let node = pianoBus;
 
   // chorus: a short LFO-swept delay beating against the dry signal
@@ -65,7 +76,7 @@ function buildKeyboardFx() {
   lfoG.gain.value = 0.004;              // ±4 ms sweep
   lfo.connect(lfoG).connect(chD.delayTime);
   lfo.start();
-  node = wetDry(node, chD, chD);
+  node = fxWetDry(node, chD, chD);
 
   // delay: a ~quarter-note slap with feedback, repeats darkening as they fade
   const dl = ctx.createDelay();
@@ -76,12 +87,49 @@ function buildKeyboardFx() {
   fbLp.type = "lowpass";
   fbLp.frequency.value = 2600;
   dl.connect(fbLp).connect(fb).connect(dl);   // feedback loop
-  node = wetDry(node, dl, dl);
+  node = fxWetDry(node, dl, dl);
 
   // reverb: the generated impulse through a convolver
   const rev = ctx.createConvolver();
   rev.buffer = impulseBuffer();
-  node = wetDry(node, rev, rev);
+  node = fxWetDry(node, rev, rev);
+
+  node.connect(master);
+}
+
+// The guitar's floor pedals: overdrive → delay → reverb, each 50% wet. The
+// overdrive is a soft-clip waveshaper driven hard then leveled back, so the
+// clean string keeps half its voice; delay + reverb match the keys'. Every
+// pluck — live frets and the songs' guitar track — runs this on the way to
+// master. The stompboxes in front of the tele (world.js) are the twin.
+function buildGuitarFx() {
+  guitarBus = ctx.createGain();
+  let node = guitarBus;
+
+  // overdrive: push the quiet string hard into the clipper, shape, level back
+  const odIn = ctx.createGain(); odIn.gain.value = 6;
+  const shaper = ctx.createWaveShaper();
+  shaper.curve = driveCurve(11); shaper.oversample = "2x";
+  const odTone = ctx.createBiquadFilter();
+  odTone.type = "lowpass"; odTone.frequency.value = 3200;
+  const odLvl = ctx.createGain(); odLvl.gain.value = 0.5;
+  odIn.connect(shaper).connect(odTone).connect(odLvl);
+  node = fxWetDry(node, odIn, odLvl);
+
+  // delay: a touch longer + more feedback than the keys'
+  const dl = ctx.createDelay();
+  dl.delayTime.value = 0.38;
+  const fb = ctx.createGain();
+  fb.gain.value = 0.36;
+  const fbLp = ctx.createBiquadFilter();
+  fbLp.type = "lowpass"; fbLp.frequency.value = 2400;
+  dl.connect(fbLp).connect(fb).connect(dl);
+  node = fxWetDry(node, dl, dl);
+
+  // reverb
+  const rev = ctx.createConvolver();
+  rev.buffer = impulseBuffer();
+  node = fxWetDry(node, rev, rev);
 
   node.connect(master);
 }
@@ -128,8 +176,13 @@ export function startAmbience() {
   hum.start();
   roomToneGains = [g, humG];
 
-  // the keyboard's pedal chain — built once, every piano note feeds it
+  // the instrument chains — built once. keys + guitar each get their pedals;
+  // the drums get a level bus so the kit (and a future mixer) can ride it.
   buildKeyboardFx();
+  buildGuitarFx();
+  drumBus = ctx.createGain();
+  drumBus.gain.value = 1.3;             // the e-kit, turned up a notch
+  drumBus.connect(master);
 }
 
 // The bedroom's hum and rumble — silenced while you're aboard the boat.
@@ -669,13 +722,14 @@ export function edrumHit(pad = 0, when = null, vel = 1) {
   if (!ctx) return;
   const t = Math.max(ctx.currentTime + 0.005, when || 0);
   const A = Math.max(0.05, vel);
+  const out = drumBus || master;       // the kit's level bus (turned up + mixer-ready)
   const thump = (f0, f1, dur, peak) => {
     const o = ctx.createOscillator();
     o.type = "sine";
     o.frequency.setValueAtTime(f0, t);
     o.frequency.exponentialRampToValueAtTime(f1, t + dur * 0.8);
     const g = ctx.createGain();
-    o.connect(g).connect(master);
+    o.connect(g).connect(out);
     g.gain.setValueAtTime(0, t);
     g.gain.linearRampToValueAtTime(peak, t + 0.006);
     g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
@@ -688,7 +742,7 @@ export function edrumHit(pad = 0, when = null, vel = 1) {
     const f = ctx.createBiquadFilter();
     f.type = type; f.frequency.value = hp;
     const g = ctx.createGain();
-    src.connect(f).connect(g).connect(master);
+    src.connect(f).connect(g).connect(out);
     g.gain.setValueAtTime(0, t);
     g.gain.linearRampToValueAtTime(peak, t + 0.005);
     g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
@@ -702,7 +756,7 @@ export function edrumHit(pad = 0, when = null, vel = 1) {
     const bp = ctx.createBiquadFilter();
     bp.type = "bandpass"; bp.frequency.value = f; bp.Q.value = 1.4;
     const g = ctx.createGain();
-    src.connect(bp).connect(g).connect(master);
+    src.connect(bp).connect(g).connect(out);
     g.gain.setValueAtTime(0, t);
     g.gain.linearRampToValueAtTime(peak, t + 0.003);
     g.gain.exponentialRampToValueAtTime(0.0008, t + 0.03);
@@ -717,7 +771,7 @@ export function edrumHit(pad = 0, when = null, vel = 1) {
     const f = ctx.createBiquadFilter();
     f.type = "highpass"; f.frequency.value = hp; f.Q.value = 0.4;
     const g = ctx.createGain();
-    mix.connect(f).connect(g).connect(master);
+    mix.connect(f).connect(g).connect(out);
     for (const fr of [523, 681, 837, 1047, 1392, 1875]) {  // inharmonic ratios
       const o = ctx.createOscillator();
       o.type = "square"; o.frequency.value = fr;
@@ -730,10 +784,10 @@ export function edrumHit(pad = 0, when = null, vel = 1) {
   };
   if (pad === 0) { thump(150, 40, 0.32, 0.34 * A); click(2400, 0.10 * A); }    // kick
   else if (pad === 1) { thump(215, 150, 0.13, 0.16 * A); hiss(1900, 0.18, 0.2 * A, "bandpass"); hiss(6000, 0.12, 0.05 * A); click(3600, 0.07 * A); }  // snare (+ a little air on top)
-  else if (pad === 2) { metal(0.06, 0.05 * A, 8200); hiss(9000, 0.05, 0.06 * A); click(9000, 0.04 * A); }  // closed hat — crisp + ringing
+  else if (pad === 2) { metal(0.06, 0.09 * A, 8200); hiss(9000, 0.05, 0.1 * A); click(9000, 0.06 * A); }  // closed hat — crisp + ringing, pushed up (was buried)
   else if (pad === 3) { thump(185, 115, 0.26, 0.24 * A); click(2800, 0.06 * A); }  // tom hi
   else if (pad === 4) { thump(145, 85, 0.32, 0.24 * A); click(2400, 0.06 * A); }   // tom lo
-  else { metal(1.1, 0.055 * A, 5200); hiss(8500, 0.85, 0.10 * A); hiss(4800, 0.5, 0.06 * A); click(6500, 0.05 * A); }  // crash — bright shimmer + splash
+  else { metal(1.1, 0.08 * A, 5200); hiss(8500, 0.85, 0.13 * A); hiss(4800, 0.5, 0.08 * A); click(6500, 0.05 * A); }  // crash — bright shimmer + splash, pushed up
 }
 
 /* ---------------- the telecaster: karplus-strong plucks ---------------- */
@@ -763,7 +817,8 @@ function pluckString(f, when = null, peak = 0.17) {
   lp.type = "lowpass"; lp.frequency.value = 4400;
   const g = ctx.createGain();
   g.gain.value = Math.max(0.01, peak);
-  src.connect(lp).connect(g).connect(master);
+  // the string runs the tele's pedalboard (overdrive→delay→reverb) to master
+  src.connect(lp).connect(g).connect(guitarBus || master);
   src.start(Math.max(ctx.currentTime + 0.005, when || 0));
 }
 // live play: a fret on the A-minor-pentatonic neck

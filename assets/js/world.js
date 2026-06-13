@@ -1596,17 +1596,18 @@ export function buildWorld() {
     tele.rotation.z = Math.sin(teleWiggle * 22) * 0.02 * teleWiggle;
   }
 
-  /* --- the pedalboard: delay + reverb on the floor in front of the tele.
-     every guitarist's signal chain ends up here, so the tele's cable
-     should too — a tilted board with two stompboxes and a coiled patch. --- */
+  /* --- the pedalboard: overdrive + delay + reverb on the floor in front of
+     the tele. every guitarist's signal chain ends up here, so the tele's
+     cable should too — a tilted board with three stompboxes and a coiled
+     patch. (the FX are real now — see ambience.buildGuitarFx.) --- */
   const pedalboard = new THREE.Group();
   // slanted board, back edge lifted so the switches face you
-  const pbPlate = box(0.34, 0.018, 0.2, lam(0x18191d));
+  const pbPlate = box(0.5, 0.018, 0.2, lam(0x18191d));
   pbPlate.position.set(0, 0.055, 0);
   pbPlate.rotation.x = -0.26;              // tilt up toward the player
   pedalboard.add(pbPlate);
   // little rubber feet at the front so the board doesn't float
-  for (const fx of [-0.13, 0.13]) {
+  for (const fx of [-0.2, 0.2]) {
     const ft = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.03, 8), lam(0x0d0e10));
     ft.position.set(fx, 0.015, 0.085);
     pedalboard.add(ft);
@@ -1636,11 +1637,12 @@ export function buildWorld() {
     pg.rotation.x = -0.26;                 // sit flush on the tilted board
     pedalboard.add(pg);
   }
-  stompbox(-0.075, 0x1f7a6e, 0x46f0d6);    // delay — teal, green eye
-  stompbox(0.075, 0x35307a, 0x8a7bff);     // reverb — indigo, violet eye
+  stompbox(-0.15, 0x8a3b1e, 0xff7a3c);     // overdrive — burnt orange, amber eye
+  stompbox(0, 0x1f7a6e, 0x46f0d6);         // delay — teal, green eye
+  stompbox(0.15, 0x35307a, 0x8a7bff);      // reverb — indigo, violet eye
   // the patch cable snaking back toward the guitar's jack
   const patch = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.42, 6), lam(0x0c0d0f));
-  patch.position.set(0.16, 0.05, -0.06);
+  patch.position.set(0.25, 0.05, -0.06);
   patch.rotation.set(0.5, 0.0, -0.7);
   pedalboard.add(patch);
   // tucked on the floor just in front of the tele, squared to its stand
@@ -2288,7 +2290,7 @@ export function buildWorld() {
   kbStomp(-0.13, 0x6a2f7a, 0xd66bff);    // chorus — purple, magenta eye
   kbStomp(0,     0x1f5a7a, 0x4fbfe6);    // delay  — blue, cyan eye
   kbStomp(0.13,  0x2f6a3a, 0x6bff8a);    // reverb — green, lime eye
-  kbPedals.position.set(0.2, 0, ZF + 1.18);
+  kbPedals.position.set(0.2, 0, ZF + 1.0);   // tucked further under the desk
   kbPedals.rotation.y = -0.08;
   add(kbPedals);
 
