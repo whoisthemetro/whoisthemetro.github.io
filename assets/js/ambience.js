@@ -595,12 +595,31 @@ export function edrumHit(pad = 0) {
     g.gain.linearRampToValueAtTime(0, t + 0.04);
     src.start(t); src.stop(t + 0.06);
   };
+  // metallic shimmer: a stack of inharmonic squares behind a highpass. the
+  // fundamentals all sit below the cutoff, so only their ringing high harmonics
+  // pass — that's what makes a cymbal SING instead of just hiss "pshhh".
+  const metal = (dur, peak, hp) => {
+    const mix = ctx.createGain(); mix.gain.value = 0.16;
+    const f = ctx.createBiquadFilter();
+    f.type = "highpass"; f.frequency.value = hp; f.Q.value = 0.4;
+    const g = ctx.createGain();
+    mix.connect(f).connect(g).connect(master);
+    for (const fr of [523, 681, 837, 1047, 1392, 1875]) {  // inharmonic ratios
+      const o = ctx.createOscillator();
+      o.type = "square"; o.frequency.value = fr;
+      o.connect(mix); o.start(t); o.stop(t + dur + 0.06);
+    }
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(peak, t + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
+    g.gain.linearRampToValueAtTime(0, t + dur + 0.04);
+  };
   if (pad === 0) { thump(150, 40, 0.32, 0.34); click(2400, 0.10); }    // kick
-  else if (pad === 1) { thump(215, 150, 0.13, 0.16); hiss(1800, 0.18, 0.2, "bandpass"); click(3600, 0.07); }  // snare
-  else if (pad === 2) { hiss(7200, 0.055, 0.11); click(9000, 0.04); }  // closed hat
+  else if (pad === 1) { thump(215, 150, 0.13, 0.16); hiss(1900, 0.18, 0.2, "bandpass"); hiss(6000, 0.12, 0.05); click(3600, 0.07); }  // snare (+ a little air on top)
+  else if (pad === 2) { metal(0.06, 0.05, 8200); hiss(9000, 0.05, 0.06); click(9000, 0.04); }  // closed hat — crisp + ringing
   else if (pad === 3) { thump(185, 115, 0.26, 0.24); click(2800, 0.06); }  // tom hi
   else if (pad === 4) { thump(145, 85, 0.32, 0.24); click(2400, 0.06); }   // tom lo
-  else { hiss(4200, 0.9, 0.13); click(6500, 0.05); }                   // crash
+  else { metal(1.1, 0.055, 5200); hiss(8500, 0.85, 0.10); hiss(4800, 0.5, 0.06); click(6500, 0.05); }  // crash — bright shimmer + splash
 }
 
 /* ---------------- the telecaster: karplus-strong plucks ---------------- */
