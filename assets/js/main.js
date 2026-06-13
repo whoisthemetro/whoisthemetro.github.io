@@ -516,7 +516,7 @@ controls.onAction((ndcX, ndcY) => {
   } else if (hit.object.userData.pianoVoice && hit.distance < 2.4) {
     pianoVoice = (pianoVoice + 1) % PIANO_VOICES.length;
     try { localStorage.setItem("metro.voice", String(pianoVoice)); } catch (e) {}
-    pianoNote(7, pianoVoice);
+    // just switch the voice — no preview note (clicking the body shouldn't play)
     toast(`piano voice: ${PIANO_VOICES[pianoVoice].name}`);
   } else if (hit.object.userData.lava && hit.distance < 2.4) {
     toast(world.toggleLava() ? "the wax wakes up 🌋" : "lava lamp off");
