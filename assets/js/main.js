@@ -771,6 +771,15 @@ $("#post-btn").addEventListener("click", async () => {
     base.text = $("#link-title").value.trim().slice(0, 80) || null;
   }
 
+  // resolve a spot BEFORE we touch the db. otherwise a packed wall still
+  // inserts the row (firing the discord webhook) and only then fails to place
+  // it — leaving an invisible orphan note and a "packed" toast at the same
+  // time. check first; if there's truly no room, bail without writing anything.
+  if (!notesWall.canPlace(base.wall, kind, base.x, base.y)) {
+    closeComposer();
+    return toast("that wall's packed — find some bare wall");
+  }
+
   const btn = $("#post-btn");
   btn.disabled = true;
   try {
@@ -779,7 +788,8 @@ $("#post-btn").addEventListener("click", async () => {
     refreshNoteVisibility();
     store.logEvent(saved.kind);
     lastPostAt = Date.now();
-    // notes never overlap: a full wall has nowhere to put it
+    // we pre-checked, but a realtime post from someone else could have taken
+    // the last patch during the await — skip cleanly if so (rare).
     if (!placed) {
       closeComposer();
       return toast("that wall's packed — find some bare wall");

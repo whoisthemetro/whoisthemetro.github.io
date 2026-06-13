@@ -12,7 +12,7 @@
 import * as THREE from "three";
 import { PAPERS, hostOf } from "./util.js";
 
-const NOTE_W = 0.38, PHOTO_W = 0.46, LINK_W = 0.44;
+const NOTE_W = 0.30, PHOTO_W = 0.38, LINK_W = 0.36;
 
 // footprint on the wall per kind, in meters [w, h]
 const KIND_SIZE = {
@@ -21,6 +21,10 @@ const KIND_SIZE = {
   link: [LINK_W, LINK_W * (132 / 256)],
 };
 const PAD = 0.03;   // breathing room between notes
+// usable vertical strip as a fraction of wall height — notes live between
+// these. wider band + smaller notes = the wall holds a lot more before it's
+// genuinely "packed" (it used to cap at the middle 13%–78% of the wall).
+const BAND_LO = 0.08, BAND_HI = 0.86;
 
 function roundRect(g, x, y, w, h, r) {
   g.beginPath();
@@ -167,7 +171,7 @@ export class NotesWall {
       taken.some(o => Math.abs(cu - o.cu) < hu + o.hu && Math.abs(cv - o.cv) < hv + o.hv)
       || voids.some(r => cu + hu > r.u0 && cu - hu < r.u1 && cv + hv > r.v0 && cv - hv < r.v1);
     const clampU = (cu) => Math.min(wall.w * 0.96 - hu, Math.max(wall.w * 0.04 + hu, cu));
-    const clampV = (cv) => Math.min(wall.h * 0.78 - hv, Math.max(wall.h * 0.13 + hv, cv));
+    const clampV = (cv) => Math.min(wall.h * BAND_HI - hv, Math.max(wall.h * BAND_LO + hv, cv));
 
     let cu = clampU(note.x * wall.w);
     let cv = clampV(note.y * wall.h);
@@ -188,7 +192,7 @@ export class NotesWall {
     // take the free one nearest home. clamping bends the spiral along the
     // edges, so on a crowded wall it can miss pockets that really exist.
     const cells = [];
-    for (let tv = wall.h * 0.13 + hv; tv <= wall.h * 0.78 - hv; tv += 0.05)
+    for (let tv = wall.h * BAND_LO + hv; tv <= wall.h * BAND_HI - hv; tv += 0.05)
       for (let tu = wall.w * 0.04 + hu; tu <= wall.w * 0.96 - hu; tu += 0.05)
         cells.push([tu, tv]);
     cells.sort((p, q) =>
@@ -320,6 +324,16 @@ export class NotesWall {
       && !voids.some(r => cu + hu > r.u0 && cu - hu < r.u1 && cv + hv > r.v0 && cv - hv < r.v1);
   }
 
+  // would a fresh post of this kind find a home on the wall right now?
+  // read-only (doesn't claim the patch) — used to check BEFORE hitting the db
+  // so a genuinely packed wall never fires the post webhook or leaves an
+  // orphan row nobody can see.
+  canPlace(wallId, kind, x, y) {
+    const wall = this.walls.find(w => w.id === wallId);
+    if (!wall) return false;
+    return this._resolveSpot(wall, { kind, x, y }) != null;
+  }
+
   // set the note down at place: re-resolve a free patch (spiral, like a fresh
   // post), settle the mesh, restore solid rendering. returns the FINAL place
   // (normalized to the resolved spot, so reloads land it exactly here) or null
@@ -392,7 +406,7 @@ export class NotesWall {
     let u = rel.dot(wall.uDir) / wall.w;
     let v = rel.dot(wall.vDir) / wall.h;
     u = Math.min(0.96, Math.max(0.04, u));
-    v = Math.min(0.76, Math.max(0.14, v));   // keep within arm's reach, below the neon
+    v = Math.min(BAND_HI - 0.02, Math.max(BAND_LO + 0.02, v));   // seed inside the usable band (spiral pulls it legal anyway)
     return { wall: wall.id, x: u, y: v, rot: (Math.random() - 0.5) * 0.16 };
   }
 }
