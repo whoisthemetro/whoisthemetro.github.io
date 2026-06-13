@@ -9,7 +9,7 @@ import { NotesWall } from "./notes3d.js";
 import { Ghosts } from "./ghosts.js";
 import { store } from "./store.js";
 import { presence } from "./presence.js";
-import { startAmbience, citySound, pianoNote, semitoneToKey, audioNow, purr, setRain, setWater, setRoomTone, setClubTone, kettleBoil, setThruster, boostSound, discSound, goalHorn, meow, hiss, careSound, drumHit, setArcadeZone, punchSound, shieldClang, stunBuzz, edrumHit, guitarPluck, guitarNote, shotSound, smokeSound } from "./ambience.js";
+import { startAmbience, citySound, pianoNote, semitoneToKey, audioNow, purr, setRain, setWater, setRoomTone, setClubTone, setClubBed, kettleBoil, setThruster, boostSound, discSound, goalHorn, meow, hiss, careSound, drumHit, setArcadeZone, punchSound, shieldClang, stunBuzz, edrumHit, guitarPluck, guitarNote, shotSound, smokeSound } from "./ambience.js";
 import { SONGS, playSong, stopSong, currentSongId } from "./songs.js";
 import { progress } from "./progress.js";
 import { voice } from "./voice.js";
@@ -126,7 +126,9 @@ addEventListener("keyup", (e) => {
   // admin's quick venue re-skin — cycle the loft theme (backdrop + neon).
   // local + instant, the way the host sets the vibe before doors open.
   if (e.code === "KeyG" && !e.repeat && adminMode && inClub && entered && !modalOpen) {
-    toast(`theme: ${world.cycleClubTheme()}`);
+    const name = world.cycleClubTheme();
+    setClubBed(clubBedFor());            // swap the soothing bed with the look
+    toast(`theme: ${name}`);
   }
 });
 
@@ -1090,7 +1092,8 @@ async function tryClub() {
     controls.pos.z = world.clubSpawn.z;
     controls.yaw = world.clubSpawn.yaw;
     setRoomTone(false);                  // the bedroom stays behind, fully
-    setClubTone(true);                   // the empty-room sub, until a set starts
+    setClubBed(clubBedFor());            // soothing bed matched to the theme
+    setClubTone(true);                   // the idle bed, until a set starts
     voice.setInClub(true);               // now the set can reach your ears
     // the venue is sealed: the mic goes quiet (chat only), the cat HUD and any
     // flight strip that crept up at home are gone — only the set + chat get in
@@ -1141,6 +1144,11 @@ function clubHeadcount() {
 function djGrantedToMe() { return !!(djState && djState.on && djState.act && djState.act.uid === identity.uid); }
 // a granted peer (or the host) may spin, but only at a powered booth
 function canDJ() { return inClub && !!(djState && djState.on) && (adminMode || djGrantedToMe()); }
+// the soothing idle bed that fits the current venue theme
+function clubBedFor() {
+  const n = world.clubThemeName();
+  return n === "Deep Aquarium" ? "water" : n === "Deep Space" ? "space" : "rain";
+}
 function deckLockedMsg() {
   if (!djState || !djState.on) return "the decks are locked — nothing's booked tonight";
   if (djState.act) return `tonight's set belongs to ${djState.act.name || "the booked dj"}`;

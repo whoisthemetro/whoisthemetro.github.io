@@ -141,41 +141,65 @@ export function setRoomTone(on) {
   roomToneGains[1].gain.linearRampToValueAtTime(on ? 0.006 : 0.0001, t + 1.2);
 }
 
-// the club's empty-room sub: a deep filtered rumble + a low sine throb that
-// holds the space when the decks are dark. ducks away the moment a set
-// starts — the music is supposed to own the room, not fight a drone.
-let clubToneGains = null;
-function ensureClubTone() {
-  if (clubToneGains || !ctx) return;
-  const src = ctx.createBufferSource();
-  src.buffer = noiseBuffer();
-  src.loop = true;
-  const lp = ctx.createBiquadFilter();
-  lp.type = "lowpass";
-  lp.frequency.value = 78;
-  const g = ctx.createGain();
-  g.gain.value = 0.0001;
-  src.connect(lp).connect(g).connect(master);
-  src.start();
-  const sub = ctx.createOscillator();
-  sub.type = "sine";
-  sub.frequency.value = 46;
-  const subG = ctx.createGain();
-  subG.gain.value = 0.0001;
-  sub.connect(subG).connect(master);
-  sub.start();
-  clubToneGains = [g, subG];
+// the club's idle ambience — a soft, soothing bed under the empty room that
+// ducks the moment a set starts. theme-aware: gentle RAIN for the city,
+// muffled WATER for the aquarium, an airy PAD for deep space. all kept quiet
+// and relaxing — no drone fighting the room. each bed has an inner swell gain
+// (LFO-modulated) so it breathes, and an outer select gain for the crossfade
+// (so a silenced bed can't leak through its LFO).
+let clubBeds = null, clubBedName = "rain", clubToneOn = false;
+function ensureClubBeds() {
+  if (clubBeds || !ctx) return;
+  const bedMaster = ctx.createGain(); bedMaster.gain.value = 0.0001; bedMaster.connect(master);
+  const sel = () => { const g = ctx.createGain(); g.gain.value = 0.0001; g.connect(bedMaster); return g; };
+
+  // RAIN — two layers of filtered noise (patter + body), a slow breathing swell
+  const rainSel = sel();
+  const rainSwell = ctx.createGain(); rainSwell.gain.value = 0.85; rainSwell.connect(rainSel);
+  const rn = ctx.createBufferSource(); rn.buffer = noiseBuffer(5); rn.loop = true;
+  const rbp = ctx.createBiquadFilter(); rbp.type = "bandpass"; rbp.frequency.value = 1600; rbp.Q.value = 0.5;
+  rn.connect(rbp).connect(rainSwell); rn.start();
+  const rn2 = ctx.createBufferSource(); rn2.buffer = noiseBuffer(5); rn2.loop = true;
+  const rlp = ctx.createBiquadFilter(); rlp.type = "lowpass"; rlp.frequency.value = 720;
+  const rlpG = ctx.createGain(); rlpG.gain.value = 0.55; rn2.connect(rlp).connect(rlpG).connect(rainSwell); rn2.start();
+  const rlfo = ctx.createOscillator(); rlfo.frequency.value = 0.08;
+  const rlfoG = ctx.createGain(); rlfoG.gain.value = 0.2; rlfo.connect(rlfoG).connect(rainSwell.gain); rlfo.start();
+
+  // WATER — muffled low noise with a slow gurgle on the filter cutoff
+  const waterSel = sel();
+  const wn = ctx.createBufferSource(); wn.buffer = noiseBuffer(5); wn.loop = true;
+  const wlp = ctx.createBiquadFilter(); wlp.type = "lowpass"; wlp.frequency.value = 360; wlp.Q.value = 0.4;
+  wn.connect(wlp).connect(waterSel); wn.start();
+  const wlfo = ctx.createOscillator(); wlfo.frequency.value = 0.12;
+  const wlfoG = ctx.createGain(); wlfoG.gain.value = 150; wlfo.connect(wlfoG).connect(wlp.frequency); wlfo.start();
+
+  // PAD — a soft airy low chord with a slow tremolo (soothing, not a rumble)
+  const padSel = sel();
+  const padSwell = ctx.createGain(); padSwell.gain.value = 0.7; padSwell.connect(padSel);
+  const plp = ctx.createBiquadFilter(); plp.type = "lowpass"; plp.frequency.value = 620; plp.connect(padSwell);
+  [110, 164.81, 220.5].forEach((f) => { const o = ctx.createOscillator(); o.type = "triangle"; o.frequency.value = f; const og = ctx.createGain(); og.gain.value = 0.3; o.connect(og).connect(plp); o.start(); });
+  const ptr = ctx.createOscillator(); ptr.frequency.value = 0.09;
+  const ptrG = ctx.createGain(); ptrG.gain.value = 0.22; ptr.connect(ptrG).connect(padSwell.gain); ptr.start();
+
+  clubBeds = { bedMaster, rain: rainSel, water: waterSel, space: padSel };
 }
-let clubToneOn = false;
+// pick which soothing bed plays (by venue theme)
+export function setClubBed(name) {
+  ensureClubBeds();
+  if (!ctx || !clubBeds) return;
+  clubBedName = clubBeds[name] ? name : "rain";
+  const t = ctx.currentTime;
+  for (const k of ["rain", "water", "space"])
+    clubBeds[k].gain.linearRampToValueAtTime(k === clubBedName ? 0.85 : 0.0001, t + 1.4);
+}
+// idle bed audible (empty room) or ducked away (a set is live / you left)
 export function setClubTone(on) {
   on = !!on;
-  ensureClubTone();
-  if (!ctx || !clubToneGains) return;
+  ensureClubBeds();
+  if (!ctx || !clubBeds) return;
   if (on === clubToneOn) return;      // called on an interval — don't restart the ramp every tick
   clubToneOn = on;
-  const t = ctx.currentTime;
-  clubToneGains[0].gain.linearRampToValueAtTime(on ? 0.06 : 0.0001, t + 1.0);
-  clubToneGains[1].gain.linearRampToValueAtTime(on ? 0.018 : 0.0001, t + 1.0);
+  clubBeds.bedMaster.gain.linearRampToValueAtTime(on ? 0.05 : 0.0001, ctx.currentTime + 1.2);
 }
 
 // The MIDI keys under the desk — two C major octaves, low to high.

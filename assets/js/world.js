@@ -4697,7 +4697,93 @@ export function buildWorld() {
   };
   [[-5.0, 3.4, 1.25], [5.0, 3.3, 1.15], [-5.1, -1.0, 1.3], [4.6, -3.4, 1.0], [-2.4, 3.9, 0.95], [2.0, -3.9, 0.9]]
     .forEach(([x, z, s]) => jungleGroup.add(mkTree(x, z, s)));
+  // string lights swagged overhead between the trees
+  const lanternCols = [0xffc24a, 0xff5fae, 0x7dffae, 0x4cc9f0];
+  const swag = (ax, az, bx, bz, y, sag) => {
+    for (let i = 0; i <= 9; i++) {
+      const t = i / 9;
+      const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 5),
+        new THREE.MeshBasicMaterial({ color: lanternCols[i % lanternCols.length] }));
+      bulb.position.set(ax + (bx - ax) * t, y - Math.sin(t * Math.PI) * sag, az + (bz - az) * t);
+      jungleGroup.add(bulb);
+    }
+  };
+  swag(-5.0, 3.4, 2.0, -3.9, 4.2, 0.7);
+  swag(5.0, 3.3, -5.1, -1.0, 4.4, 0.8);
+  // a couple of neon signs hung in the foliage
+  const jungleSignTex = (a, b, glyph) => canvasTex(128, 256, (g) => {
+    g.fillStyle = "#0a0610"; g.fillRect(0, 0, 128, 256);
+    g.strokeStyle = a; g.lineWidth = 6; g.strokeRect(9, 9, 110, 238);
+    g.fillStyle = b; g.font = "700 84px sans-serif"; g.textAlign = "center"; g.textBaseline = "middle";
+    g.shadowColor = b; g.shadowBlur = 22; g.fillText(glyph, 64, 84); g.fillText("夜", 64, 176);
+  });
+  [["#ff3fae", "#ffd2ec", "電", -4.7, 2.6, 1.9, Math.PI / 2], ["#3fd2ff", "#d2f4ff", "森", 4.7, -2.9, 1.8, -Math.PI / 2]]
+    .forEach(([a, b, gl, x, z, y, ry]) => {
+      const s = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 1.0), new THREE.MeshBasicMaterial({ map: jungleSignTex(a, b, gl), transparent: true }));
+      s.position.set(x, y, z); s.rotation.y = ry; jungleGroup.add(s);
+    });
+  // ground ferns clustered at the tree bases
+  [[-5.0, 3.4], [5.0, 3.3], [-5.1, -1.0], [4.6, -3.4], [-2.4, 3.9], [2.0, -3.9]].forEach(([bx, bz]) => {
+    for (let f = 0; f < 7; f++) {
+      const blade = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.4 + Math.random() * 0.3, 4),
+        new THREE.MeshBasicMaterial({ color: 0x1d5a2e }));
+      const a = Math.random() * 7, r = 0.2 + Math.random() * 0.5;
+      blade.position.set(bx + Math.cos(a) * r, 0.2, bz + Math.sin(a) * r);
+      blade.rotation.z = (Math.random() - 0.5) * 0.6; jungleGroup.add(blade);
+    }
+  });
+  // a wet sheen on the floor — the jungle drips, the neon reflects
+  const wetFloor = new THREE.Mesh(new THREE.PlaneGeometry(CLW - 1, CLD - 1),
+    new THREE.MeshBasicMaterial({ color: 0x1a2c46, transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending, depthWrite: false }));
+  wetFloor.rotation.x = -Math.PI / 2; wetFloor.position.set(0, 0.02, 0.4); jungleGroup.add(wetFloor);
   addC(jungleGroup);
+
+  // ---- TRON storm (cyber): the sky stutters with electric-blue lightning ----
+  const stormGroup = new THREE.Group(); stormGroup.position.set(CLUB.x, BACK_CY, CLUB.z);
+  const stormFlash = new THREE.Mesh(new THREE.CylinderGeometry(BACK_R - 0.4, BACK_R - 0.4, BACK_H, 32, 1, true),
+    new THREE.MeshBasicMaterial({ color: 0x9fe8ff, side: THREE.BackSide, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+  stormGroup.add(stormFlash);
+  const boltTex = canvasTex(128, 512, (g) => {
+    g.clearRect(0, 0, 128, 512);
+    g.strokeStyle = "#dff4ff"; g.lineWidth = 5; g.shadowColor = "#5cc8ff"; g.shadowBlur = 18;
+    g.beginPath(); let bx = 64; g.moveTo(bx, 0);
+    for (let y = 0; y <= 512; y += 30) { bx = 64 + (Math.random() - 0.5) * 80; g.lineTo(bx, y); }
+    g.stroke();
+    g.lineWidth = 3; g.beginPath(); g.moveTo(64, 200); g.lineTo(110, 250); g.lineTo(96, 300); g.stroke();
+  });
+  const stormBolt = new THREE.Mesh(new THREE.PlaneGeometry(3.2, BACK_H * 0.7),
+    new THREE.MeshBasicMaterial({ map: boltTex, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+  stormGroup.add(stormBolt);
+  addC(stormGroup);
+  let stormT = 0, stormNext = 4;
+
+  // ---- aquarium: a school of fish actually SWIMMING + bubbles rising ----
+  const fishTex = (col) => canvasTex(64, 32, (g) => {
+    g.clearRect(0, 0, 64, 32);
+    g.fillStyle = col; g.beginPath(); g.ellipse(36, 16, 20, 11, 0, 0, 7); g.fill();
+    g.beginPath(); g.moveTo(16, 16); g.lineTo(2, 5); g.lineTo(2, 27); g.closePath(); g.fill();
+    g.fillStyle = "rgba(0,0,0,0.55)"; g.beginPath(); g.arc(48, 13, 2.4, 0, 7); g.fill();
+  });
+  const fishCols = ["#ffd166", "#ef476f", "#06d6a0", "#ff9e6d", "#b5f5ff", "#f7c948"];
+  const fishGroup = new THREE.Group(); fishGroup.position.set(CLUB.x, 0, CLUB.z);
+  const fishes = [];
+  for (let i = 0; i < 16; i++) {
+    const mat = new THREE.MeshBasicMaterial({ map: fishTex(fishCols[i % fishCols.length]), transparent: true, side: THREE.DoubleSide, depthWrite: false });
+    const sc = 0.7 + Math.random() * 0.9;
+    const fish = new THREE.Mesh(new THREE.PlaneGeometry(0.9 * sc, 0.45 * sc), mat);
+    fishGroup.add(fish);
+    fishes.push({ mesh: fish, r: 8.5 + Math.random() * 4.5, y: -2 + Math.random() * 9, sp: (0.1 + Math.random() * 0.16) * (Math.random() < 0.5 ? 1 : -1), ph: Math.random() * 7, bob: Math.random() * 7 });
+  }
+  addC(fishGroup);
+  const BUB_N = 90;
+  const bubPos = new Float32Array(BUB_N * 3);
+  for (let i = 0; i < BUB_N; i++) {
+    const a = Math.random() * 7, r = 8 + Math.random() * 5;
+    bubPos[i * 3] = Math.cos(a) * r; bubPos[i * 3 + 1] = Math.random() * 14 - 4; bubPos[i * 3 + 2] = Math.sin(a) * r;
+  }
+  const bubGeo = new THREE.BufferGeometry(); bubGeo.setAttribute("position", new THREE.BufferAttribute(bubPos, 3));
+  const bubbles = new THREE.Points(bubGeo, new THREE.PointsMaterial({ color: 0xcfefff, size: 0.13, map: dotTex, transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false }));
+  bubbles.position.set(CLUB.x, 0, CLUB.z); addC(bubbles);
 
   // ---- interior palette (the cove / corners / lip / motes / floor tiles) ----
   const clubPal = { tileHue: 0.42, tileRange: 0.5, tileSat: 0.85 };
@@ -4800,11 +4886,11 @@ export function buildWorld() {
   };
 
   const CLUB_THEMES = [
-    { name: "Bangkok-Bali 2077", paint: paintCyber, rain: true, blimp: true, flyer: false, traffic: true, jungle: true,
+    { name: "Bangkok-Bali 2077", paint: paintCyber, rain: true, blimp: true, flyer: false, traffic: true, jungle: true, storm: true, fish: false,
       palette: { cove: [0xff3fae, 0x39ff9d, 0x3fd2ff, 0xff3fae], corners: [0x39ff9d, 0xff3fae, 0x3fd2ff, 0xb15bff], lip: 0xff3fae, mote: 0x7dffc0, tileHue: 0.42, tileRange: 0.5, tileSat: 0.85 } },
-    { name: "Deep Aquarium", paint: paintAquarium, rain: false, blimp: false, flyer: false, traffic: false, jungle: false,
+    { name: "Deep Aquarium", paint: paintAquarium, rain: false, blimp: false, flyer: false, traffic: false, jungle: false, storm: false, fish: true,
       palette: { cove: [0x06d6a0, 0x4cc9f0, 0x4cc9f0, 0x06d6a0], corners: [0x4cc9f0, 0x06d6a0, 0x4cc9f0, 0x118ab2], lip: 0x4cc9f0, mote: 0xaef6ff, tileHue: 0.5, tileRange: 0.18, tileSat: 0.7 } },
-    { name: "Deep Space", paint: paintSpace, rain: false, blimp: false, flyer: true, traffic: false, jungle: false,
+    { name: "Deep Space", paint: paintSpace, rain: false, blimp: false, flyer: true, traffic: false, jungle: false, storm: false, fish: false,
       palette: { cove: [0x8a5cff, 0x3fd2ff, 0x8a5cff, 0xff5fae], corners: [0x3fd2ff, 0x8a5cff, 0xff5fae, 0x3fd2ff], lip: 0x8a5cff, mote: 0xffffff, tileHue: 0.72, tileRange: 0.28, tileSat: 0.7 } },
   ];
   let themeIx = 0;
@@ -4816,6 +4902,9 @@ export function buildWorld() {
     applyClubPalette(t.palette);
     clubRain.visible = !!t.rain; blimp.visible = !!t.blimp;
     trafficGroup.visible = !!t.traffic; jungleGroup.visible = !!t.jungle;
+    fishGroup.visible = !!t.fish; bubbles.visible = !!t.fish;
+    stormGroup.visible = !!t.storm;
+    if (!t.storm) { stormFlash.material.opacity = 0; stormBolt.material.opacity = 0; stormT = 0; }
     return t.name;
   }
   function cycleClubTheme() { return applyClubTheme(themeIx + 1); }
@@ -4824,7 +4913,42 @@ export function buildWorld() {
   function tickBackdrop(dt) {
     motes.rotation.y += dt * 0.015;
     motes.position.y = BACK_CY + Math.sin(elapsed * 0.18) * 0.4;
-    if (clubRain.visible) clubRainTex.offset.y = (clubRainTex.offset.y - dt * 1.4) % 1;
+    if (clubRain.visible) clubRainTex.offset.y = (clubRainTex.offset.y + dt * 1.4) % 1;   // streaks fall DOWN
+    // TRON storm: random strikes that stutter electric-blue, then fade
+    if (stormGroup.visible) {
+      if (stormT <= 0) {
+        stormNext -= dt;
+        if (stormNext <= 0) {
+          stormT = 0.5 + Math.random() * 0.35; stormNext = 5 + Math.random() * 9;
+          const a = Math.random() * 7;
+          stormBolt.position.set(Math.sin(a) * (BACK_R - 1), 5, Math.cos(a) * (BACK_R - 1));
+          stormBolt.rotation.y = -a;
+        }
+      } else {
+        stormT -= dt;
+        const fade = Math.min(1, stormT * 4);
+        const flick = (Math.sin(elapsed * 55) > -0.2 ? 1 : 0.25) * (0.5 + 0.5 * Math.random());
+        stormFlash.material.opacity = 0.45 * fade * flick;
+        stormBolt.material.opacity = fade * flick;
+        if (stormT <= 0) { stormFlash.material.opacity = 0; stormBolt.material.opacity = 0; }
+      }
+    }
+    // aquarium: the school swims gentle loops, bubbles drift up
+    if (fishGroup.visible) {
+      for (const f of fishes) {
+        const ang = f.ph + elapsed * f.sp;
+        const x = Math.cos(ang) * f.r, z = Math.sin(ang) * f.r;
+        f.mesh.position.set(x, f.y + Math.sin(elapsed * 0.6 + f.bob) * 0.4, z);
+        f.mesh.rotation.y = -ang + (f.sp > 0 ? Math.PI : 0);
+      }
+      const bp = bubbles.geometry.attributes.position;
+      for (let i = 0; i < BUB_N; i++) {
+        let y = bp.getY(i) + dt * 0.6;
+        if (y > 11) y = -4;
+        bp.setY(i, y);
+      }
+      bp.needsUpdate = true;
+    }
     if (trafficGroup.visible)
       trafficRings.forEach(r => { r.userData.tex.offset.x = (r.userData.tex.offset.x + dt * 0.06 * r.userData.dir) % 1; });
     if (blimp.visible) {
