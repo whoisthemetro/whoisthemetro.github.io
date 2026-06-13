@@ -1887,9 +1887,11 @@ $("#dm-close").addEventListener("click", closeDM);
 
 /* ---------------- the computer: rooms · messages · music ---------------- */
 const pcOverlay = $("#pc");
-// "turn the music to 4%" — song notes peak around 4% full scale,
-// background piano, not a concert
-const MUSIC_VEL = 0.57;
+// how hard the self-playing songs hit, relative to your own manual play
+// (a manual key/pad is velocity 1.0). kept just shy of parity so live
+// playing still sits a touch on top — but close, so a song reads as the
+// instrument actually being played, not a distant backing loop.
+const MUSIC_VEL = 0.9;
 function refreshSongUI() {
   const playing = currentSongId();
   for (const b of $("#pc-songs").children) {
