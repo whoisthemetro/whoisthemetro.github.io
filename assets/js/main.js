@@ -536,8 +536,10 @@ setInterval(() => {
     aimTip.textContent = `${TAP} — out into the night, back home`;
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.decks && hit.distance < 2.6) {
-    aimTip.textContent = !canDJ() ? "CDJs — locked until an event"
-      : voice.djLive() ? `${TAP} — end the set` : `${TAP} — pick a source, go live`;
+    aimTip.textContent = adminMode ? `${TAP} — booth controls`
+      : voice.djLive() ? `${TAP} — end the set`
+      : canDJ() ? `${TAP} — pick a source, go live`
+      : deckLockedMsg();
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.curtain && hit.distance < 3.2) {
     aimTip.textContent = world.curtainsClosed() ? `${TAP} to open the curtains` : `${TAP} to draw the curtains`;
@@ -948,6 +950,7 @@ async function tryClub() {
     setRoomTone(false);                  // the bedroom stays behind, fully
     voice.setInClub(true);               // now the set can reach your ears
     djHeardAt = 0;
+    wasGranted = djGrantedToMe();         // so a later grant toasts, but a standing one doesn't
     world.setOnAir(false);               // dark until a chunk says otherwise
     store.logEvent("boat");              // counts as a portal trip
     progress.bump("trips");
@@ -973,18 +976,131 @@ function leaveClub() {
   });
 }
 
-/* ---------------- the booth: pick a source, go live ---------------- */
-// category C gate is admin mode (/#admin) — category D grants a present user instead
-function canDJ() { return adminMode && inClub; }
-function toggleDeck() {
-  if (!canDJ()) return toast("the decks are locked — nothing's booked tonight");
-  if (voice.djLive()) {
-    voice.stopDJ();
-    world.setOnAir(false);
-    return toast("set over — the decks go dark");
-  }
-  openDJPicker();
+/* ---------------- the booth: power, grant, go live ---------------- */
+// djState = { on, act:{uid,name}|null } — the host powers the decks and hands
+// them to one present user. it lives in room_state so it survives reload.
+let djState = null;
+let wasGranted = false;
+let lastPeers = new Map();                 // uid -> {name,color,...}, cached for the booth list
+const peerX = new Map();                   // uid -> last x, for a room-scoped headcount
+function clubHeadcount() {
+  let n = inClub ? 1 : 0;
+  for (const x of peerX.values()) if (x < -30) n++;   // club lives past x = -30
+  return n;
 }
+function djGrantedToMe() { return !!(djState && djState.on && djState.act && djState.act.uid === identity.uid); }
+// a granted peer (or the host) may spin, but only at a powered booth
+function canDJ() { return inClub && !!(djState && djState.on) && (adminMode || djGrantedToMe()); }
+function deckLockedMsg() {
+  if (!djState || !djState.on) return "the decks are locked — nothing's booked tonight";
+  if (djState.act) return `tonight's set belongs to ${djState.act.name || "the booked dj"}`;
+  return "the booth's powered, but no one's been handed the decks yet";
+}
+
+function toggleDeck() {
+  if (!inClub) return;
+  if (adminMode) return openBooth();             // the host always gets the controls
+  if (voice.djLive()) return endSet();
+  if (canDJ()) return openDJPicker();
+  toast(deckLockedMsg());
+}
+function endSet() {
+  voice.stopDJ();
+  world.setOnAir(false);
+  toast("set over — the decks go dark");
+  if ($("#booth").classList.contains("show")) renderBooth();
+}
+
+// the grant changed under us (someone got the booth, power was cut, etc.)
+function onDJChanged() {
+  if (voice.djLive() && !canDJ()) endSet();      // revoked / powered off mid-set → kicked
+  if (inClub) {
+    const g = djGrantedToMe();
+    if (g && !wasGranted && !adminMode) toast("the booth is yours — click the decks to go live 🎧");
+    wasGranted = g;
+  }
+  if ($("#booth").classList.contains("show")) renderBooth();
+}
+
+/* ---- host panel: power the decks, hand them to someone present ---- */
+function adminPass() {
+  let p = sessionStorage.getItem("metro.adminpass");
+  if (!p) { p = prompt("admin passphrase:"); if (p) sessionStorage.setItem("metro.adminpass", p); }
+  return p;
+}
+async function writeDJ(dj) {
+  const needPass = store.mode === "supabase";
+  const pass = needPass ? adminPass() : "local";
+  if (needPass && !pass) return;
+  try {
+    await store.saveDJ(dj, pass);
+    djState = dj;                                 // optimistic; realtime confirms
+    onDJChanged();
+    renderBooth();
+  } catch (e) {
+    if (String(e.message).includes("passphrase")) sessionStorage.removeItem("metro.adminpass");
+    toast(String(e.message).includes("passphrase") ? "wrong passphrase" : "couldn't reach the booth");
+  }
+}
+function powerToggle() {
+  const on = !(djState && djState.on);
+  writeDJ({ on, act: on ? (djState?.act || null) : null });   // cutting power clears the act
+}
+function grantBooth(uid, name) { writeDJ({ on: true, act: { uid, name: name || "" } }); }
+function revokeBooth() { writeDJ({ on: true, act: null }); }
+
+function openBooth() {
+  modalOpen = true;
+  controls.unlock();
+  renderBooth();
+  show($("#booth"));
+}
+function renderBooth() {
+  const on = !!(djState && djState.on);
+  const act = djState && djState.act;
+  $("#booth-power").textContent = on ? "◉ decks powered — tap to cut the power" : "○ decks dark — tap to power up";
+  const self = $("#booth-self");
+  self.classList.toggle("hidden", !on);
+  self.textContent = voice.djLive() ? "■ end your set" : "🎧 spin it yourself";
+  $("#booth-now").textContent = act ? (act.name || "dj") : on ? "open — no one yet" : "powered down";
+  const wrap = $("#booth-peers");
+  wrap.innerHTML = "";
+  if (!on) {
+    wrap.innerHTML = "<p class='fine-print'>power the decks to hand them out</p>";
+  } else {
+    if (act) {
+      const r = document.createElement("button");
+      r.className = "pc-item";
+      r.textContent = `↩ take the booth back from ${act.name || "them"}`;
+      r.addEventListener("click", revokeBooth);
+      wrap.appendChild(r);
+    }
+    const others = [...lastPeers.entries()].filter(([uid]) => !act || act.uid !== uid);
+    if (!others.length && !act) {
+      wrap.innerHTML += "<p class='fine-print'>no one else is here to hand it to</p>";
+    }
+    for (const [uid, p] of others) {
+      const b = document.createElement("button");
+      b.className = "pc-item";
+      b.textContent = `🎚️ hand the booth to ${p.name || "someone"}`;
+      b.addEventListener("click", () => grantBooth(uid, p.name));
+      wrap.appendChild(b);
+    }
+  }
+  $("#booth-count").textContent = `${clubHeadcount()} in the room`;
+}
+$("#booth-power").addEventListener("click", powerToggle);
+$("#booth-self").addEventListener("click", () => {
+  if (voice.djLive()) { endSet(); return; }
+  hide($("#booth"));
+  openDJPicker();
+});
+$("#booth-close").addEventListener("click", () => {
+  hide($("#booth"));
+  modalOpen = false;
+  if (entered) safeLock();
+});
+
 async function openDJPicker() {
   modalOpen = true;
   controls.unlock();
@@ -1571,6 +1687,11 @@ addEventListener("keydown", (e) => {
       modalOpen = false;
       if (entered) safeLock();
     }
+    if ($("#booth").classList.contains("show")) {
+      hide($("#booth"));
+      modalOpen = false;
+      if (entered) safeLock();
+    }
     if (bottleOverlay.classList.contains("show")) closeBottle();
     if (dimmerUI.classList.contains("show")) closeDimmer();
     // real DOOM owns ESC (its own menu) — only its × button closes it
@@ -1626,8 +1747,11 @@ addEventListener("keydown", (e) => {
   presence.onPeers((peers) => {
     ghosts.syncPeers(peers);
     $("#online-count").textContent = String(peers.size + 1);
+    lastPeers = peers;
+    for (const uid of [...peerX.keys()]) if (!peers.has(uid)) peerX.delete(uid);
+    if ($("#booth").classList.contains("show")) renderBooth();
   });
-  presence.onPose((uid, pose) => ghosts.setPose(uid, pose));
+  presence.onPose((uid, pose) => { ghosts.setPose(uid, pose); peerX.set(uid, pose.x); });
   presence.onNote((uid, i, v) => {
     if (inBoat || inArena) return;   // the bedroom piano stays in the bedroom
     pianoNote(i, v ?? 0);
@@ -1754,6 +1878,12 @@ addEventListener("keydown", (e) => {
     $("#dim-level").value = Math.round(dimLevel * 100);
   });
 
+  // the booth remembers who it was handed to
+  store.getDJ().then(dj => { djState = dj; wasGranted = djGrantedToMe(); }).catch(() => {});
+  store.onDJ(dj => { djState = dj; onDJChanged(); });
+  // keep the booth's headcount plate honest while anyone's in the club
+  setInterval(() => { if (entered && inClub) world.setBoothHeadcount(clubHeadcount()); }, 1500);
+
   store.logEvent("visit");
 
   // cat needs: load shared state, stay subscribed to everyone's care
@@ -1763,7 +1893,9 @@ addEventListener("keydown", (e) => {
 })();
 
 /* ---------------- frame loop ---------------- */
-window.METRO_DEBUG = { renderer, camera, world, controls, THREE, cat, notesWall };
+window.METRO_DEBUG = { renderer, camera, world, controls, THREE, cat, notesWall,
+  uid: identity.uid,
+  booth: { dj: () => djState, canDJ: () => canDJ(), headcount: () => clubHeadcount(), live: () => voice.djLive() } };
 
 const clock = new THREE.Clock();
 let t = 0;

@@ -4207,6 +4207,32 @@ export function buildWorld() {
     onAirLight.intensity = onAirLive ? 4 : 0;
   }
 
+  // a little headcount plate beside ON AIR — how many ears are in the room
+  const headCanvas = document.createElement("canvas");
+  headCanvas.width = 200; headCanvas.height = 80;
+  const headTex = new THREE.CanvasTexture(headCanvas);
+  headTex.colorSpace = THREE.SRGBColorSpace;
+  let headShown = -1;
+  function drawHead(n) {
+    const g = headCanvas.getContext("2d");
+    g.clearRect(0, 0, 200, 80);
+    g.fillStyle = "#0b0a10"; g.fillRect(0, 0, 200, 80);
+    g.font = "600 44px 'Six Caps', sans-serif"; g.textAlign = "center"; g.textBaseline = "middle";
+    g.fillStyle = "#8a5cff";
+    g.fillText(`♪ ${n}`, 100, 42);
+    headTex.needsUpdate = true;
+  }
+  drawHead(0);
+  const headSign = addC(new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.17),
+    new THREE.MeshBasicMaterial({ map: headTex, transparent: true })));
+  headSign.position.set(CLUB.x + 0.78, 2.45, BOOTHZ + 0.04);
+  function setBoothHeadcount(n) {
+    n = Math.max(0, n | 0);
+    if (n === headShown) return;
+    headShown = n;
+    drawHead(n);
+  }
+
   // speaker stacks flanking the booth, toed in a touch
   for (const sx of [-1, 1]) {
     const stack = new THREE.Group();
@@ -4475,7 +4501,7 @@ export function buildWorld() {
     clubInfo: CLUB,
     clubSpawn: { x: CLUB.x + 2.6, z: CLUB.z + 3.6, yaw: 0.35 },
     clubExitHit: clubDoor,
-    deckHits, setOnAir,
+    deckHits, setOnAir, setBoothHeadcount,
     inClub: (x) => x < -30,
     dmTargets: [monScreen, monBezel, mac],
     // where the cat likes to be

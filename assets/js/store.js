@@ -54,6 +54,9 @@ async function init() {
       if (m.type === "cat" && mode === "local") {
         catListeners.forEach(fn => { try { fn(m.state); } catch (e) {} });
       }
+      if (m.type === "dj" && mode === "local") {
+        djListeners.forEach(fn => { try { fn(m.dj || null); } catch (e) {} });
+      }
     };
   }
   subscribeCat();
@@ -293,6 +296,7 @@ async function readInbox(pass) {
 
 /* ---- the room light: persists for everyone, survives refresh ---- */
 const roomLightListeners = new Set();
+const djListeners = new Set();          // who's on the decks (rides room_state)
 async function getRoomLight() {
   if (mode === "supabase") {
     const { data, error } = await sb.from("room_state").select("*").eq("id", 1).single();
@@ -313,9 +317,33 @@ function subscribeRoomLight() {
   if (mode === "supabase" && sb) {
     sb.channel("room-state")
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "room_state" },
-        payload => { if (payload.new) roomLightListeners.forEach(fn => { try { fn(payload.new); } catch (e) {} }); })
+        payload => {
+          if (!payload.new) return;
+          roomLightListeners.forEach(fn => { try { fn(payload.new); } catch (e) {} });
+          djListeners.forEach(fn => { try { fn(payload.new.dj || null); } catch (e) {} });
+        })
       .subscribe();
   }
+}
+
+/* ---- the booth: who's been handed the decks (admin-gated, persists) ---- */
+async function getDJ() {
+  if (mode === "supabase") {
+    const { data, error } = await sb.from("room_state").select("dj").eq("id", 1).single();
+    if (error) return null;
+    return data?.dj || null;
+  }
+  try { return JSON.parse(localStorage.getItem("metro.dj") || "null"); } catch (e) { return null; }
+}
+async function saveDJ(dj, pass) {
+  if (mode === "supabase") {
+    const { data, error } = await sb.rpc("set_dj", { p_dj: dj, pass });
+    if (error) throw error;
+    if (!data) throw new Error("wrong passphrase");
+    return;
+  }
+  try { localStorage.setItem("metro.dj", JSON.stringify(dj)); } catch (e) {}
+  bc?.postMessage({ type: "dj", dj });
 }
 
 /* ---- lightweight metrics: what the room gets up to ---- */
@@ -394,6 +422,8 @@ export const store = {
   getRoomLight, saveRoomLight, logEvent,
   castBottle, readBottle,
   onRoomLight: fn => { roomLightListeners.add(fn); return () => roomLightListeners.delete(fn); },
+  getDJ, saveDJ,
+  onDJ: fn => { djListeners.add(fn); return () => djListeners.delete(fn); },
   submitScore, listScores,
   onNewScore: fn => { scoreListeners.add(fn); return () => scoreListeners.delete(fn); },
   _subscribeScores: subscribeScores,

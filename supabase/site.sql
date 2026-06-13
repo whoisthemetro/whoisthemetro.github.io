@@ -54,6 +54,32 @@ exception when duplicate_object then null;
 end;
 $$;
 
+-- ---------- the booth: who's on the decks tonight ----------
+-- dj holds { on: bool, act: { uid, name } | null }. the host (admin) powers
+-- the decks and hands them to ONE present user; null act = powered but
+-- unassigned. it rides room_state so it persists and broadcasts for free.
+alter table public.room_state add column if not exists dj jsonb;
+
+-- only the host may touch it — same passphrase as the kill switch.
+create or replace function public.set_dj(p_dj jsonb, pass text)
+returns boolean
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_ok boolean;
+begin
+  select (pass_hash = extensions.crypt(pass, pass_hash)) into v_ok
+    from private.admin where id = 1;
+  if not coalesce(v_ok, false) then
+    return false;
+  end if;
+  update public.room_state set dj = p_dj, updated_at = now() where id = 1;
+  return true;
+end;
+$$;
+
 -- ---------- metrics: what people do in the room ----------
 -- (anonymous: just an event type and a timestamp, nothing else)
 create table if not exists public.events (
