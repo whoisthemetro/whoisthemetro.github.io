@@ -196,13 +196,22 @@ export class NotesWall {
     for (const [tu, tv] of cells)
       if (!collides(tu, tv)) return { cu: tu, cv: tv, hu, hv };
 
-    return { cu, cv, hu, hv };   // wall truly full — overlap beats losing the note
+    // the sweep above checked every legal patch — if nothing's free, the wall
+    // is genuinely full. notes never overlap, so we'd rather skip this one than
+    // stack it on someone else's. (deterministic: every visitor resolves the
+    // same oldest-first order, so they all skip the very same note.)
+    return null;
   }
 
   add(note) {
     if (this.byId.has(note.id)) return;
     const wall = this.walls.find(w => w.id === note.wall);
     if (!wall) return;
+
+    // claim a free patch first — a full wall returns null and we skip the note
+    // rather than build a mesh nobody can place without overlapping.
+    const spot = this._resolveSpot(wall, note);
+    if (!spot) return null;
 
     let canvas, w, h;
     if (note.kind === "photo") {
@@ -231,7 +240,6 @@ export class NotesWall {
 
     // world position from (wall, u, v), de-overlapped so every note owns
     // its own patch of wall, with a tiny stagger against z-fighting
-    const spot = this._resolveSpot(wall, note);
     if (!this.occupied.has(wall.id)) this.occupied.set(wall.id, []);
     this.occupied.get(wall.id).push({ id: note.id, ...spot });
 

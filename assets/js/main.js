@@ -687,10 +687,15 @@ $("#post-btn").addEventListener("click", async () => {
   btn.disabled = true;
   try {
     const saved = await store.add(base, blob);
-    notesWall.add(saved);
+    const placed = notesWall.add(saved);
     refreshNoteVisibility();
     store.logEvent(saved.kind);
     lastPostAt = Date.now();
+    // notes never overlap: a full wall has nowhere to put it
+    if (!placed) {
+      closeComposer();
+      return toast("that wall's packed — find some bare wall");
+    }
     // reset for next time
     noteText.value = ""; charCount.textContent = "0";
     $("#photo-caption").value = ""; $("#link-url").value = ""; $("#link-title").value = "";
