@@ -229,8 +229,12 @@ export function setRoomTone(on) {
 let vacNodes = null;
 function buildVacuum() {
   if (vacNodes || !ctx) return;
+  // out is the pure on/off envelope — nothing else touches it, so it can
+  // actually reach silence. the tremolo rides an inner `motor` gain instead.
   const out = ctx.createGain(); out.gain.value = 0.0001;   // silent until on
   out.connect(master);
+  const motor = ctx.createGain(); motor.gain.value = 0.5;  // level + tremolo here
+  motor.connect(out);
   // air rush
   const src = ctx.createBufferSource();
   src.buffer = noiseBuffer();
@@ -238,24 +242,24 @@ function buildVacuum() {
   const lp = ctx.createBiquadFilter();
   lp.type = "lowpass"; lp.frequency.value = 720; lp.Q.value = 0.6;
   const rush = ctx.createGain(); rush.gain.value = 0.5;
-  src.connect(lp).connect(rush).connect(out);
+  src.connect(lp).connect(rush).connect(motor);
   // motor whine — the same noise pushed through a tight bandpass
   const bp = ctx.createBiquadFilter();
   bp.type = "bandpass"; bp.frequency.value = 240; bp.Q.value = 7;
   const whine = ctx.createGain(); whine.gain.value = 0.6;
-  src.connect(bp).connect(whine).connect(out);
+  src.connect(bp).connect(whine).connect(motor);
   // a low motor body
   const osc = ctx.createOscillator();
   osc.type = "sawtooth"; osc.frequency.value = 116;
   const oscLp = ctx.createBiquadFilter();
   oscLp.type = "lowpass"; oscLp.frequency.value = 200;
   const oscG = ctx.createGain(); oscG.gain.value = 0.05;
-  osc.connect(oscLp).connect(oscG).connect(out);
-  // slow tremolo on the whole thing
+  osc.connect(oscLp).connect(oscG).connect(motor);
+  // slow tremolo — rides the inner motor gain, NOT the envelope
   const trem = ctx.createOscillator();
   trem.type = "sine"; trem.frequency.value = 7.5;
   const tremG = ctx.createGain(); tremG.gain.value = 0.12;
-  trem.connect(tremG).connect(out.gain);
+  trem.connect(tremG).connect(motor.gain);
   src.start(); osc.start(); trem.start();
   vacNodes = { out };
 }
@@ -265,7 +269,7 @@ export function startVacuum() {
   const t = ctx.currentTime;
   vacNodes.out.gain.cancelScheduledValues(t);
   vacNodes.out.gain.setValueAtTime(Math.max(0.0001, vacNodes.out.gain.value), t);
-  vacNodes.out.gain.linearRampToValueAtTime(0.5, t + 0.18);   // spin-up
+  vacNodes.out.gain.linearRampToValueAtTime(1, t + 0.18);   // spin-up
 }
 export function stopVacuum() {
   if (!ctx || !vacNodes) return;

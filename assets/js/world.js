@@ -45,14 +45,11 @@ function canvasTex(w, h, draw) {
   return t;
 }
 
-// One non-repeating carpet for the whole floor, so stains and the worn
-// walk path land in real places instead of tiling.
+// One non-repeating carpet for the whole floor. It starts CLEAN — no
+// baked-in stains or worn path anymore; the dirt is the live grime layer
+// in buildWorld (traffic + cat), and the vacuum lifts it back out.
 function floorTexture() {
   return canvasTex(800, 1024, (g, w, h) => {
-    // (canvas x → room x, canvas y → room z, top = front wall)
-    const px = (rx) => ((rx + 2.6) / 5.2) * w;
-    const pz = (rz) => ((rz + 3.3) / 6.6) * h;
-
     g.fillStyle = "#6e6557";
     g.fillRect(0, 0, w, h);
     // carpet pile: layered speckle, two scales
@@ -66,34 +63,11 @@ function floorTexture() {
       g.fillStyle = `rgba(${v},${v - 6},${v - 14},0.35)`;
       g.fillRect(Math.random() * w, Math.random() * h, 2.6, 1.2);
     }
-    // vacuum tracks
+    // a fresh-vacuumed sheen — faint light/dark grooming stripes, no grime
     for (let i = 0; i < 6; i++) {
       g.fillStyle = i % 2 ? "rgba(255,250,240,0.025)" : "rgba(0,0,0,0.03)";
       g.fillRect((i * 140 + 30) % w, 0, 60, h);
     }
-
-    const blotch = (cx, cy, r, color, alpha, n = 7) => {
-      for (let i = 0; i < n; i++) {
-        g.fillStyle = `rgba(${color},${alpha * (0.5 + Math.random() * 0.5)})`;
-        g.beginPath();
-        g.ellipse(cx + (Math.random() - 0.5) * r, cy + (Math.random() - 0.5) * r,
-          r * (0.4 + Math.random() * 0.5), r * (0.3 + Math.random() * 0.45),
-          Math.random() * 3, 0, 7);
-        g.fill();
-      }
-    };
-    // worn traffic path: entry door → middle of the room → desk
-    for (let t = 0; t <= 1; t += 0.04) {
-      const x = px(1.9 - t * 1.6);
-      const y = pz(2.2 - t * 4.2);
-      blotch(x, y, 36, "40,34,26", 0.04, 3);
-    }
-    // coffee by the chair, something spilled near the rack, an old big one
-    blotch(px(0.95), pz(-1.9), 22, "62,42,22", 0.16);
-    blotch(px(1.05), pz(-1.75), 9, "52,32,16", 0.22, 4);
-    blotch(px(1.7), pz(-2.3), 26, "48,40,30", 0.12);
-    blotch(px(-0.9), pz(0.6), 55, "55,48,38", 0.07);
-    blotch(px(-1.9), pz(-1.5), 18, "60,50,34", 0.1);   // by the closet
   });
 }
 
@@ -4091,13 +4065,14 @@ export function buildWorld() {
     if (!on) dockVacuum();
   }
   // every frame while held: stand the nozzle on the floor a bit ahead of
-  // the player, handle tipped back toward their hands, and sweep there
+  // the player, upright and squared to exactly the way they face (so it
+  // turns with you and never reads backwards), and sweep there
   function vacuumStep(px, pz, yaw) {
     if (!vacHeld) return;
     const fx = -Math.sin(yaw), fz = -Math.cos(yaw);  // player forward
     const nx = px + fx * 0.62, nz = pz + fz * 0.62;
     vacuum.position.set(nx, 0, nz);
-    vacuum.rotation.set(0.42, Math.atan2(fx, fz), 0);  // handle leans back to you
+    vacuum.rotation.set(0, yaw, 0);   // same heading as the player, handle toward you
     cleanFloor(nx, nz, 0.4);
   }
   dockVacuum();
