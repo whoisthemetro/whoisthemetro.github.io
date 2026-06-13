@@ -36,6 +36,7 @@ let onDJEnded = null;       // fires if a shared tab/screen is stopped from the 
 let inClubFlag = false;     // set by main.js — dj audio is club-only
 let djBus = null;           // one shared gain → master (cat. E taps it for reactive light)
 const djHeads = new Map();  // uid -> playhead time, per broadcaster
+const djSources = new Map(); // uid -> [BufferSource,...] still queued, so a resync can kill the backlog
 // one analyser watches whatever music reaches the club — the listener's
 // djBus, or the broadcaster's own stream — so the lights can dance to it
 let djAna = null, djAnaSrc = null, djAnaBuf = null;
@@ -188,7 +189,16 @@ export const voice = {
   mode: () => mode,
   isOn: () => mode !== "off",
   setArenaFx(on) { arenaFx = !!on; },
-  setInClub(on) { inClubFlag = !!on; },
+  setInClub(on) {
+    inClubFlag = !!on;
+    if (!inClubFlag) {
+      // left the club — stop any queued music and forget every playhead, so a
+      // re-entry rejoins at the live edge instead of resuming a stale backlog
+      for (const arr of djSources.values()) for (const s of arr) { try { s.stop(); } catch (e) {} }
+      djSources.clear();
+      djHeads.clear();
+    }
+  },
   djLive: () => djLive,
   // main.js wants to know if a shared tab/screen was killed from the browser bar
   setOnDJEnded(fn) { onDJEnded = fn; },
@@ -300,15 +310,35 @@ export const voice = {
       audio = await ctx.decodeAudioData(buf);
     } catch (e) { return; }
     if (p.dj) {
-      // music: full-range bus, a touch more prebuffer so it never underruns
+      // music: full-range bus. keep the listener pinned to the live edge.
+      // the old code only ever pushed the playhead forward — if the broadcaster
+      // ran a hair fast or a chunk hiccupped, the head outran currentTime and a
+      // backlog snowballed (minutes-late audio, song changes landing way late).
+      // so: if the head has drifted past now+MAX_LAG, or fallen behind now,
+      // dump whatever's still queued for this dj and jump back to live.
       const bus = ensureDJBus(ctx, master);
+      const now = ctx.currentTime;
+      const PRE = 0.12, MAX_LAG = 0.6;
+      let head = djHeads.get(p.uid) || 0;
+      if (head < now || head > now + MAX_LAG) {
+        const stale = djSources.get(p.uid);
+        if (stale) for (const s of stale) { try { s.stop(); } catch (e) {} }
+        djSources.set(p.uid, []);
+        head = now + PRE;
+      }
       const src = ctx.createBufferSource();
       src.buffer = audio;
       src.connect(bus);
-      const head = djHeads.get(p.uid) || 0;
-      const t = Math.max(ctx.currentTime + 0.12, head);
-      src.start(t);
-      djHeads.set(p.uid, t + audio.duration - 0.015);
+      src.start(head);
+      const list = djSources.get(p.uid) || [];
+      list.push(src);
+      djSources.set(p.uid, list);
+      // forget a source once it finishes so the list can't grow without bound
+      src.onended = () => {
+        const arr = djSources.get(p.uid);
+        if (arr) { const i = arr.indexOf(src); if (i >= 0) arr.splice(i, 1); }
+      };
+      djHeads.set(p.uid, head + audio.duration - 0.015);
       return;
     }
     let pl = players.get(p.uid);
