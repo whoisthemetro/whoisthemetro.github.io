@@ -22,7 +22,7 @@
    ============================================================ */
 
 import * as THREE from "three";
-import { rand } from "./util.js";
+import { rand, IS_TOUCH } from "./util.js";
 import { getSunPosition, getMoonPosition, getMoonIllumination, getStarPosition, getPlanetPositions, STARS } from "./astro.js";
 import { makeAttractScreen } from "./arcade.js";
 
@@ -4299,9 +4299,11 @@ export function buildWorld() {
   swirl.position.set(CLUB.x, CLH - 0.67, CLUB.z + 0.4);
   const swirlA = new THREE.PointLight(0xff3fae, 48, 9, 2);
   swirlA.position.set(1.7, -0.95, 0);
-  const swirlB = new THREE.PointLight(0x3fd2ff, 48, 9, 2);
-  swirlB.position.set(-1.7, -0.95, 0);
-  swirl.add(swirlA, swirlB);
+  swirl.add(swirlA);
+  // phones get one mover, not two — the room runs 20+ point lights and the
+  // toon shader loops every one per fragment, so this is the cheap cut
+  const swirlB = IS_TOUCH ? null : new THREE.PointLight(0x3fd2ff, 48, 9, 2);
+  if (swirlB) { swirlB.position.set(-1.7, -0.95, 0); swirl.add(swirlB); }
   addC(swirl);
 
   // light rig over the floor: a truss and four par cans
@@ -4355,15 +4357,46 @@ export function buildWorld() {
   clubWash.position.set(CLUB.x, 2.9, CLUB.z + 0.6);
   addC(clubWash);
 
+  // a VU strip across the coffin front — green→red segments the crowd reads
+  // when a set is live. emissive (skips the toon swap), so it stays bright.
+  const vuSegs = [];
+  const VN = 9;
+  for (let i = 0; i < VN; i++) {
+    const seg = addC(box(0.24, 0.04, 0.02, new THREE.MeshBasicMaterial({ color: 0x16131e })));
+    seg.position.set(CLUB.x + (i - (VN - 1) / 2) * 0.29, 0.58, BOOTHZ + 1.605);
+    vuSegs.push(seg);
+  }
+  const vuOff = new THREE.Color(0x16131e);
+  const vuOn = new THREE.Color();
+
+  // music energy (0..1), fed from the dj analyser in main.js and lerped here
+  // so the room breathes with the beat instead of snapping. zero = idle.
+  let clubEnergy = 0, clubEnergyTarget = 0;
+  function setClubEnergy(v) { clubEnergyTarget = Math.max(0, Math.min(1, v || 0)); }
+
   function tickClub(dt) {
-    discoBall.rotation.y = elapsed * 0.5;
-    swirl.rotation.y = elapsed * 0.9;
+    clubEnergy += (clubEnergyTarget - clubEnergy) * Math.min(1, dt * 9);
+    const e = clubEnergy;
+    discoBall.rotation.y = elapsed * (0.5 + e * 1.2);
+    swirl.rotation.y = elapsed * (0.9 + e * 0.9);
     swirl.rotation.z = Math.sin(elapsed * 0.31) * 0.35;
+    // the movers pump with the music — modest so the walls stay readable
+    const pump = 48 * (1 + e * 0.55);
+    swirlA.intensity = pump;
+    if (swirlB) swirlB.intensity = pump;
     clubTiles.forEach((t, i) => {
-      const hue = (elapsed * 0.03 + (i % TGZ) * 0.06 + Math.floor(i / TGZ) * 0.04) % 1;
-      t.material.color.setHSL(hue, 0.65, 0.13 + 0.05 * Math.sin(elapsed * 1.7 + i));
+      const hue = (elapsed * (0.03 + e * 0.1) + (i % TGZ) * 0.06 + Math.floor(i / TGZ) * 0.04) % 1;
+      const beat = 0.13 + 0.05 * Math.sin(elapsed * 1.7 + i)
+        + e * 0.4 * (0.6 + 0.4 * Math.sin(elapsed * 6.5 + i));
+      t.material.color.setHSL(hue, 0.65, beat);
     });
-    if (onAirLive) onAirLight.intensity = 3.4 + Math.sin(elapsed * 2.2) * 0.8;
+    // the VU: how many segments lit tracks energy, color ramps to red
+    const lit = Math.round(e * VN);
+    vuSegs.forEach((s, i) => {
+      if (i < lit) { vuOn.setHSL(0.34 - (i / VN) * 0.34, 0.85, 0.5); s.material.color.copy(vuOn); }
+      else s.material.color.copy(vuOff);
+    });
+    if (onAirLive) onAirLight.intensity = 3.4 + Math.sin(elapsed * 2.2) * 0.8 + e * 2.2;
   }
 
   // where feet may go: bedroom + closet passage + arcade room
@@ -4501,7 +4534,7 @@ export function buildWorld() {
     clubInfo: CLUB,
     clubSpawn: { x: CLUB.x + 2.6, z: CLUB.z + 3.6, yaw: 0.35 },
     clubExitHit: clubDoor,
-    deckHits, setOnAir, setBoothHeadcount,
+    deckHits, setOnAir, setBoothHeadcount, setClubEnergy,
     inClub: (x) => x < -30,
     dmTargets: [monScreen, monBezel, mac],
     // where the cat likes to be

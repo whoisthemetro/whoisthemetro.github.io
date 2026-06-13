@@ -34,6 +34,9 @@ let djLive = false;
 let inClubFlag = false;     // set by main.js — dj audio is club-only
 let djBus = null;           // one shared gain → master (cat. E taps it for reactive light)
 const djHeads = new Map();  // uid -> playhead time, per broadcaster
+// one analyser watches whatever music reaches the club — the listener's
+// djBus, or the broadcaster's own stream — so the lights can dance to it
+let djAna = null, djAnaSrc = null, djAnaBuf = null;
 
 function pickMime() {
   if (!window.MediaRecorder) return null;
@@ -118,7 +121,19 @@ function ensureDJBus(ctx, master) {
   djBus = ctx.createGain();
   djBus.gain.value = 0.95;               // full and loud — it's the set, not a voice
   djBus.connect(master);
+  djBus.connect(ensureAnalyser(ctx));    // a silent tap for the reactive lights
   return djBus;
+}
+
+// a terminal analyser (output unconnected) so reading it never colors the
+// sound. fed by the dj bus (listener) or the loopback stream (broadcaster).
+function ensureAnalyser(ctx) {
+  if (djAna) return djAna;
+  djAna = ctx.createAnalyser();
+  djAna.fftSize = 256;
+  djAna.smoothingTimeConstant = 0.55;    // smooth enough to breathe, not strobe
+  djAnaBuf = new Uint8Array(djAna.frequencyBinCount);
+  return djAna;
 }
 
 function gritCurve() {
@@ -195,6 +210,12 @@ export const voice = {
       });
     } catch (e) { return false; }
     djLive = true;
+    // tap our own source so the room reacts to the set we're playing, even
+    // though we never receive our own chunks back over the wire
+    try {
+      const { ctx } = audioGraph();
+      if (ctx) { djAnaSrc = ctx.createMediaStreamSource(djStream); djAnaSrc.connect(ensureAnalyser(ctx)); }
+    } catch (e) {}
     djRecordLoop();
     return true;
   },
@@ -202,7 +223,19 @@ export const voice = {
     djLive = false;
     try { if (djRec && djRec.state !== "inactive") djRec.stop(); } catch (e) {}
     djRec = null;
+    try { if (djAnaSrc) djAnaSrc.disconnect(); } catch (e) {}
+    djAnaSrc = null;
     if (djStream) { djStream.getTracks().forEach(t => t.stop()); djStream = null; }
+  },
+
+  // 0..1 energy from the bass/low-mids of whatever's on the decks. lifted,
+  // because recorded music sits low in the byte spectrum.
+  djLevel() {
+    if (!djAna) return 0;
+    djAna.getByteFrequencyData(djAnaBuf);
+    let sum = 0; const n = Math.min(djAnaBuf.length, 40);
+    for (let i = 0; i < n; i++) sum += djAnaBuf[i];
+    return Math.min(1, (sum / n / 255) * 1.8);
   },
 
   async startTalk(open = false) {

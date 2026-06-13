@@ -9,7 +9,7 @@ import { NotesWall } from "./notes3d.js";
 import { Ghosts } from "./ghosts.js";
 import { store } from "./store.js";
 import { presence } from "./presence.js";
-import { startAmbience, citySound, pianoNote, audioNow, purr, setRain, setWater, setRoomTone, kettleBoil, setThruster, boostSound, discSound, goalHorn, meow, hiss, careSound, drumHit, setArcadeZone, punchSound, shieldClang, stunBuzz, edrumHit, guitarPluck, shotSound, smokeSound } from "./ambience.js";
+import { startAmbience, citySound, pianoNote, audioNow, purr, setRain, setWater, setRoomTone, setClubTone, kettleBoil, setThruster, boostSound, discSound, goalHorn, meow, hiss, careSound, drumHit, setArcadeZone, punchSound, shieldClang, stunBuzz, edrumHit, guitarPluck, shotSound, smokeSound } from "./ambience.js";
 import { SONGS, playSong, stopSong, currentSongId } from "./songs.js";
 import { progress } from "./progress.js";
 import { voice } from "./voice.js";
@@ -69,10 +69,18 @@ presence.onVoice((p) => {
   voice.handleChunk(p);
   if (p.dj && inClub) djHeardAt = Date.now();
 });
-// listeners run the booth light off the chunk stream; the dj runs their own (below)
+// is a set reaching the room right now? the broadcaster knows from djLive
+// (they never hear their own chunks); listeners know from the chunk clock.
+function djAudioPresent() {
+  return voice.djLive() || (!!djHeardAt && Date.now() - djHeardAt < 1600);
+}
+// the ON AIR sign and the idle sub both follow it: music on → sign lit, the
+// empty-room drone ducks away; music off → sign dark, the drone holds the room
 setInterval(() => {
-  if (!entered || voice.djLive()) return;
-  if (inClub) world.setOnAir(!!djHeardAt && Date.now() - djHeardAt < 1600);
+  if (!entered || !inClub) return;
+  const live = djAudioPresent();
+  world.setOnAir(live);
+  setClubTone(!live);
 }, 400);
 const micBtn = $("#mic-btn");
 function updateMicUI() {
@@ -948,6 +956,7 @@ async function tryClub() {
     controls.pos.z = world.clubSpawn.z;
     controls.yaw = world.clubSpawn.yaw;
     setRoomTone(false);                  // the bedroom stays behind, fully
+    setClubTone(true);                   // the empty-room sub, until a set starts
     voice.setInClub(true);               // now the set can reach your ears
     djHeardAt = 0;
     wasGranted = djGrantedToMe();         // so a later grant toasts, but a standing one doesn't
@@ -965,6 +974,7 @@ function leaveClub() {
   if (voice.djLive()) voice.stopDJ();    // you can't broadcast from the street
   voice.setInClub(false);
   world.setOnAir(false);
+  setClubTone(false);                    // the street is quiet
   fadeTo(() => {
     inClub = false;
     // the walk home ends at your own front door
@@ -1912,6 +1922,8 @@ renderer.setAnimationLoop(() => {
   } else {
     camera.rotation.z = 0;
   }
+  // the club lights dance to the set; everywhere else energy stays at zero
+  world.setClubEnergy(inClub ? voice.djLevel() : 0);
   world.tick(dt, controls.pos);
   ghosts.tick(dt, t);
   cat.tick(dt, t, controls.pose());

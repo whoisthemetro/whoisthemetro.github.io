@@ -74,6 +74,43 @@ export function setRoomTone(on) {
   roomToneGains[1].gain.linearRampToValueAtTime(on ? 0.006 : 0.0001, t + 1.2);
 }
 
+// the club's empty-room sub: a deep filtered rumble + a low sine throb that
+// holds the space when the decks are dark. ducks away the moment a set
+// starts — the music is supposed to own the room, not fight a drone.
+let clubToneGains = null;
+function ensureClubTone() {
+  if (clubToneGains || !ctx) return;
+  const src = ctx.createBufferSource();
+  src.buffer = noiseBuffer();
+  src.loop = true;
+  const lp = ctx.createBiquadFilter();
+  lp.type = "lowpass";
+  lp.frequency.value = 78;
+  const g = ctx.createGain();
+  g.gain.value = 0.0001;
+  src.connect(lp).connect(g).connect(master);
+  src.start();
+  const sub = ctx.createOscillator();
+  sub.type = "sine";
+  sub.frequency.value = 46;
+  const subG = ctx.createGain();
+  subG.gain.value = 0.0001;
+  sub.connect(subG).connect(master);
+  sub.start();
+  clubToneGains = [g, subG];
+}
+let clubToneOn = false;
+export function setClubTone(on) {
+  on = !!on;
+  ensureClubTone();
+  if (!ctx || !clubToneGains) return;
+  if (on === clubToneOn) return;      // called on an interval — don't restart the ramp every tick
+  clubToneOn = on;
+  const t = ctx.currentTime;
+  clubToneGains[0].gain.linearRampToValueAtTime(on ? 0.06 : 0.0001, t + 1.0);
+  clubToneGains[1].gain.linearRampToValueAtTime(on ? 0.018 : 0.0001, t + 1.0);
+}
+
 // The MIDI keys under the desk — two C major octaves, low to high.
 // Played by visitors (and walked on by the cat). Several voices;
 // click the controller body to cycle them.
