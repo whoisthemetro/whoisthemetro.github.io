@@ -2,9 +2,11 @@
    THE METRO — songs for the self-playing piano
 
    Original pieces in the mood of the early-2000s rock-piano
-   ballads Metro grew up on — composed for this room, not copied
-   from anyone's sheet music. The MIDI keybed is 15 keys of
-   C major (C4..C6), so everything here lives in A minor.
+   ballads Metro grew up on — titled after the Linkin Park songs
+   they evoke (In the End, The Messenger, Crawling, Breaking the
+   Habit) but composed for this room, not copied from anyone's
+   sheet music. The MIDI keybed is 15 keys of C major (C4..C6),
+   so everything here lives in A minor.
 
    key map: 0 C4 · 1 D4 · 2 E4 · 3 F4 · 4 G4 · 5 A4 · 6 B4
             7 C5 · 8 D5 · 9 E5 · 10 F5 · 11 G5 · 12 A5 · 13 B5 · 14 C6
@@ -29,7 +31,7 @@ function bass(bar, root, vel = 0.9) {
 export const SONGS = [
   {
     id: "wires",
-    title: "in the wires",
+    title: "In the End",
     bpm: 86,
     beats: 32,
     notes: [
@@ -47,7 +49,7 @@ export const SONGS = [
   },
   {
     id: "lasttrain",
-    title: "last train home",
+    title: "The Messenger",
     bpm: 72,
     beats: 32,
     notes: [
@@ -69,7 +71,7 @@ export const SONGS = [
     // true semitone this keybed owns) over a falling minor progression,
     // and a high line that pleads a little
     id: "skincrawler",
-    title: "skincrawler",
+    title: "Crawling",
     bpm: 94,
     beats: 32,
     notes: [
@@ -88,7 +90,7 @@ export const SONGS = [
   },
   {
     id: "ghost105",
-    title: "ghost of the 105",
+    title: "Breaking the Habit",
     bpm: 100,
     beats: 32,
     notes: [
