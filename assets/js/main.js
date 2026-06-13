@@ -123,6 +123,11 @@ addEventListener("keydown", (e) => {
 });
 addEventListener("keyup", (e) => {
   if (e.code === "KeyV" && voice.mode() === "ptt") { voice.stopTalk(); updateMicUI(); }
+  // admin's quick venue re-skin — cycle the loft theme (backdrop + neon).
+  // local + instant, the way the host sets the vibe before doors open.
+  if (e.code === "KeyG" && !e.repeat && adminMode && inClub && entered && !modalOpen) {
+    toast(`theme: ${world.cycleClubTheme()}`);
+  }
 });
 
 // piano voice — sticky per visitor, broadcast with each note
@@ -482,7 +487,7 @@ controls.onAction((ndcX, ndcY) => {
       const seed = (Math.random() * 1e6) | 0;
       world.clubFireworks(seed);
       presence.sendAct({ kind: "fireworks", seed });
-      toast("🎆 fireworks over Tokyo");
+      toast("🎆 fireworks over the skyline");
     } else {
       toast("the city glitters — only the booth can light the sky");
     }
@@ -653,7 +658,9 @@ setInterval(() => {
       : deckLockedMsg();
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.clubWindow && hit.distance < 12) {
-    aimTip.textContent = canDJ() ? `${TAP} — fireworks over Tokyo` : "Tokyo, somewhere past the glass";
+    aimTip.textContent = canDJ() ? `${TAP} — fireworks over the city`
+      : adminMode ? `press G to change the venue theme (now: ${world.clubThemeName()})`
+      : `the lights of ${world.clubThemeName()}, past the glass`;
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.curtain && hit.distance < 3.2) {
     aimTip.textContent = world.curtainsClosed() ? `${TAP} to open the curtains` : `${TAP} to draw the curtains`;
@@ -2100,7 +2107,6 @@ renderer.setAnimationLoop(() => {
   t += dt;
   controls.update(dt);
   world.setParallax(camera.position.x);
-  if (inClub) world.setClubParallax(camera.position.x);
   // aboard THE DESI the whole world rolls a little — set absolutely
   // (never accumulate), so pausing/ESC can't drift you up or down
   if (inBoat) {

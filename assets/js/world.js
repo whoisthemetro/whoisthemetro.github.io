@@ -4075,7 +4075,10 @@ export function buildWorld() {
      everything that matters glows on its own. every point light in
      here throws shorter than the void to the next room. --- */
   const CLUB = { x: -40, z: 0 };
-  const CLW = 12, CLD = 9, CLH = 3.4;
+  const CLW = 12, CLD = 9, CLH = 5.6;   // a loft: soaring ceiling, glass all around
+  const RIGY = 3.25;                     // the light rig + disco hang here, well below the roof
+  const SILL = 0.55;                     // knee-wall height under the glass
+  const SOLIDH = 2.4;                    // solid backing behind the booth + bar; glass clerestory above
   const clubGroup = new THREE.Group();
   scene.add(clubGroup);
   const addC = (m) => { clubGroup.add(m); return m; };
@@ -4097,15 +4100,57 @@ export function buildWorld() {
     new THREE.MeshLambertMaterial({ color: 0x0d0b12, side: THREE.DoubleSide })));
   clubCeil.rotation.x = Math.PI / 2;
   clubCeil.position.set(CLUB.x, CLH, CLUB.z);
-  for (const [w, ry, px, pz] of [
-    [CLW, 0, CLUB.x, CLUB.z - CLD / 2],            // booth wall
-    [CLW, Math.PI, CLUB.x, CLUB.z + CLD / 2],      // door wall
-    [CLD, Math.PI / 2, CLUB.x - CLW / 2, CLUB.z],
-    [CLD, -Math.PI / 2, CLUB.x + CLW / 2, CLUB.z],
+  /* --- the loft shell: a knee-wall ring under the glass, solid backing only
+     behind the booth (north) and the bar (east), and everything above open to
+     the city outside. corner columns + mullions read the openings as giant
+     industrial windows; the wraparound backdrop (built lower down) fills them. --- */
+  const wallSpec = [
+    { len: CLW, ry: 0,            px: CLUB.x,            pz: CLUB.z - CLD / 2, solid: true,  ax: "x" },  // north: booth
+    { len: CLW, ry: Math.PI,      px: CLUB.x,            pz: CLUB.z + CLD / 2, solid: false, ax: "x" },  // south: door
+    { len: CLD, ry: Math.PI / 2,  px: CLUB.x - CLW / 2,  pz: CLUB.z,           solid: false, ax: "z" },  // west
+    { len: CLD, ry: -Math.PI / 2, px: CLUB.x + CLW / 2,  pz: CLUB.z,           solid: true,  ax: "z" },  // east: bar
+  ];
+  for (const s of wallSpec) {
+    // a knee-wall under every window hides the city's ground seam
+    const knee = addC(new THREE.Mesh(new THREE.PlaneGeometry(s.len, SILL), clubWallMat));
+    knee.rotation.y = s.ry; knee.position.set(s.px, SILL / 2, s.pz);
+    // solid backing behind the booth + bar so the gear isn't floating in the city
+    if (s.solid) {
+      const back = addC(new THREE.Mesh(new THREE.PlaneGeometry(s.len, SOLIDH - SILL), clubWallMat));
+      back.rotation.y = s.ry; back.position.set(s.px, (SOLIDH + SILL) / 2, s.pz);
+    }
+  }
+
+  // corner columns — the loft's dark steel; the V3 neon tubes light their edges
+  const colMat = lam(0x0a0910);
+  for (const [cx, cz] of [
+    [CLUB.x - CLW / 2, CLUB.z - CLD / 2], [CLUB.x + CLW / 2, CLUB.z - CLD / 2],
+    [CLUB.x - CLW / 2, CLUB.z + CLD / 2], [CLUB.x + CLW / 2, CLUB.z + CLD / 2],
   ]) {
-    const wall = addC(new THREE.Mesh(new THREE.PlaneGeometry(w, CLH), clubWallMat));
-    wall.rotation.y = ry;
-    wall.position.set(px, CLH / 2, pz);
+    const col = addC(box(0.22, CLH, 0.22, colMat));
+    col.position.set(cx, CLH / 2, cz);
+  }
+
+  // mullions: a grid of dark bars across each opening so the glass reads as
+  // big windows. thin boxes sitting on the wall line.
+  const mulMat = lam(0x07060c);
+  for (const s of wallSpec) {
+    const y0 = s.solid ? SOLIDH : SILL, gh = CLH - y0;
+    const ty = y0 + gh * 0.55;                 // a transom across the glass
+    const n = Math.max(2, Math.round(s.len / 2.0));
+    if (s.ax === "x") {
+      addC(box(s.len, 0.06, 0.05, mulMat)).position.set(s.px, ty, s.pz);
+      for (let i = 1; i < n; i++) {
+        const x = s.px - s.len / 2 + (s.len * i / n);
+        addC(box(0.06, gh, 0.05, mulMat)).position.set(x, y0 + gh / 2, s.pz);
+      }
+    } else {
+      addC(box(0.05, 0.06, s.len, mulMat)).position.set(s.px, ty, s.pz);
+      for (let i = 1; i < n; i++) {
+        const z = s.pz - s.len / 2 + (s.len * i / n);
+        addC(box(0.05, gh, 0.06, mulMat)).position.set(s.px, y0 + gh / 2, z);
+      }
+    }
   }
 
   // the dance floor: a 6x4 grid of lit tiles running a slow idle
@@ -4282,15 +4327,16 @@ export function buildWorld() {
 
   // the mirror ball — non-indexed sphere so the facets survive the
   // toon swap (flatShading wouldn't)
-  const ballRod = addC(new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.35, 6), lam(0x222228)));
-  ballRod.position.set(CLUB.x, CLH - 0.18, CLUB.z + 0.4);
+  // the rig hangs at RIGY, low over the floor — a long drop-rod up to the roof
+  const ballRod = addC(new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, CLH - RIGY, 6), lam(0x222228)));
+  ballRod.position.set(CLUB.x, (CLH + RIGY) / 2, CLUB.z + 0.4);
   const ballGeo = new THREE.SphereGeometry(0.32, 12, 9).toNonIndexed();
   ballGeo.computeVertexNormals();
   const discoBall = addC(new THREE.Mesh(ballGeo, lam(0x70768a)));
-  discoBall.position.set(CLUB.x, CLH - 0.67, CLUB.z + 0.4);
+  discoBall.position.set(CLUB.x, RIGY - 0.49, CLUB.z + 0.4);
   // two colored lights orbiting the ball — the room's whole mood
   const swirl = new THREE.Group();
-  swirl.position.set(CLUB.x, CLH - 0.67, CLUB.z + 0.4);
+  swirl.position.set(CLUB.x, RIGY - 0.49, CLUB.z + 0.4);
   const swirlA = new THREE.PointLight(0xff3fae, 48, 9, 2);
   swirlA.position.set(1.7, -0.95, 0);
   swirl.add(swirlA);
@@ -4300,12 +4346,12 @@ export function buildWorld() {
   if (swirlB) { swirlB.position.set(-1.7, -0.95, 0); swirl.add(swirlB); }
   addC(swirl);
 
-  // light rig over the floor: a truss and four par cans
+  // light rig over the floor: a truss and four par cans, hung at rig height
   const truss = addC(box(5.4, 0.07, 0.07, lam(0x2a2733)));
-  truss.position.set(CLUB.x, CLH - 0.32, CLUB.z + 0.4);
+  truss.position.set(CLUB.x, RIGY, CLUB.z + 0.4);
   [0xff3fae, 0x3fd2ff, 0xffe24a, 0x8a5cff].forEach((c, i) => {
     const can = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.095, 0.16, 10), lam(0x1d1a26));
-    can.position.set(CLUB.x - 2.0 + i * 1.33, CLH - 0.45, CLUB.z + 0.4);
+    can.position.set(CLUB.x - 2.0 + i * 1.33, RIGY - 0.13, CLUB.z + 0.4);
     can.rotation.x = 0.35 * (i % 2 ? 1 : -1);
     const face = new THREE.Mesh(new THREE.CircleGeometry(0.075, 10), new THREE.MeshBasicMaterial({ color: c }));
     face.rotation.x = Math.PI / 2;
@@ -4361,69 +4407,28 @@ export function buildWorld() {
   const coveXW = CLUB.x - HALFW + 0.06, coveXE = CLUB.x + HALFW - 0.06;
   const coveZN = CLUB.z - HALFD + 0.06, coveZS = CLUB.z + HALFD - 0.06;
 
-  // a cove band of light just under the ceiling, all the way around —
-  // the single biggest fix for "the top corners go to black"
+  // a cove band of light just under the ceiling, all the way around — these
+  // recolor with the active theme (white default; applyClubPalette tints them)
   const coveY = CLH - 0.16;
-  const mkBand = (w, d, col, x, z) => {
-    const b = addC(box(w, 0.05, d, new THREE.MeshBasicMaterial({ color: col })));
-    b.position.set(x, coveY, z);
+  const coveMeshes = [];
+  const mkBand = (w, d, x, z) => {
+    const b = addC(box(w, 0.05, d, new THREE.MeshBasicMaterial({ color: 0xffffff })));
+    b.position.set(x, coveY, z); coveMeshes.push(b);
   };
-  mkBand(CLW - 0.1, 0.04, 0xff3fae, CLUB.x, coveZN);   // booth wall (north)
-  mkBand(CLW - 0.1, 0.04, 0x8a5cff, CLUB.x, coveZS);   // door wall (south)
-  mkBand(0.04, CLD - 0.1, 0x3fd2ff, coveXW, CLUB.z);   // west
-  mkBand(0.04, CLD - 0.1, 0xff7ad9, coveXE, CLUB.z);   // east
+  mkBand(CLW - 0.1, 0.04, CLUB.x, coveZN);   // booth wall (north)
+  mkBand(CLW - 0.1, 0.04, CLUB.x, coveZS);   // door wall (south)
+  mkBand(0.04, CLD - 0.1, coveXW, CLUB.z);   // west
+  mkBand(0.04, CLD - 0.1, coveXE, CLUB.z);   // east
 
-  // vertical neon in each corner — outlines the box and kills the dark seams
-  const cornerCols = [0xff3fae, 0x3fd2ff, 0xffe24a, 0x8a5cff];
+  // vertical neon up each corner column — full loft height, theme-tinted
+  const tubeMeshes = [];
+  const tubeH = CLH - 0.3;
   [[coveXW, coveZN], [coveXE, coveZN], [coveXW, coveZS], [coveXE, coveZS]]
-    .forEach(([cx, cz], i) => {
+    .forEach(([cx, cz]) => {
       const tube = addC(new THREE.Mesh(
-        new THREE.CylinderGeometry(0.035, 0.035, CLH - 0.42, 10),
-        new THREE.MeshBasicMaterial({ color: cornerCols[i] })));
-      tube.position.set(cx, (CLH - 0.42) / 2 + 0.1, cz);
-    });
-
-  // additive washes spilling down the side walls — fakes a gradient the
-  // flat walls don't have. color→black + additive = pure glow, no toon.
-  const washTex = (top) => canvasTex(8, 128, (g) => {
-    const grd = g.createLinearGradient(0, 0, 0, 128);
-    grd.addColorStop(0, top); grd.addColorStop(1, "#000000");
-    g.fillStyle = grd; g.fillRect(0, 0, 8, 128);
-  });
-  const mkWash = (top, ry, x) => {
-    const m = addC(new THREE.Mesh(
-      new THREE.PlaneGeometry(CLD - 0.4, 2.3),
-      new THREE.MeshBasicMaterial({
-        map: washTex(top), transparent: true, blending: THREE.AdditiveBlending,
-        depthWrite: false, side: THREE.DoubleSide })));
-    m.rotation.y = ry; m.position.set(x, CLH - 1.15, CLUB.z);
-  };
-  mkWash("#6a2f9a", Math.PI / 2, coveXW);    // west: violet spill
-  mkWash("#1d4f82", -Math.PI / 2, coveXE);   // east: cyan spill
-
-  // two gig posters on the open west wall — self-lit so they read in the
-  // dark, ≥3 cm proud (and prouder than the wash) so nothing z-fights
-  const clubPosterTex = (a, b, line1, line2) => canvasTex(256, 352, (g) => {
-    const grd = g.createLinearGradient(0, 0, 256, 352);
-    grd.addColorStop(0, a); grd.addColorStop(1, b);
-    g.fillStyle = grd; g.fillRect(0, 0, 256, 352);
-    g.strokeStyle = "rgba(255,255,255,0.85)"; g.lineWidth = 4;
-    g.strokeRect(10, 10, 236, 332);
-    g.fillStyle = "#0c0a12";
-    g.beginPath(); g.arc(128, 150, 70, 0, Math.PI * 2); g.fill();
-    g.fillStyle = "#fff"; g.textAlign = "center";
-    g.font = "600 46px 'Six Caps', sans-serif";
-    g.fillText(line1, 128, 250);
-    g.font = "600 30px 'Six Caps', sans-serif";
-    g.fillText(line2, 128, 300);
-  });
-  [["#ff3fae", "#3a1148", "LATE SET", "NO LAST CALL"],
-   ["#3fd2ff", "#0e2a44", "AFTER DARK", "RESIDENTS ONLY"]]
-    .forEach(([a, b, l1, l2], i) => {
-      const p = addC(new THREE.Mesh(new THREE.PlaneGeometry(1.0, 1.38),
-        new THREE.MeshBasicMaterial({ map: clubPosterTex(a, b, l1, l2) })));
-      p.rotation.y = Math.PI / 2;
-      p.position.set(CLUB.x - HALFW + 0.12, 1.45, CLUB.z + (i === 0 ? -1.7 : 1.7));
+        new THREE.CylinderGeometry(0.04, 0.04, tubeH, 10),
+        new THREE.MeshBasicMaterial({ color: 0xffffff })));
+      tube.position.set(cx, tubeH / 2 + 0.1, cz); tubeMeshes.push(tube);
     });
 
   // a VU strip across the coffin front — green→red segments the crowd reads
@@ -4438,119 +4443,278 @@ export function buildWorld() {
   const vuOff = new THREE.Color(0x16131e);
   const vuOn = new THREE.Color();
 
-  /* --- V4: a window onto Tokyo at night, low on the door wall to the left
-     of the exit — the wall a dj behind the decks looks straight at. it's a
-     self-lit canvas (MeshBasic skips the toon swap AND emits zero scene
-     light, so it can't bleed a photon toward the bedroom). a flat skyline,
-     not a boxed exterior, so the seabox ≥56m rule doesn't apply — we just
-     lean on parallax. a dj can paint the sky: click the glass → fireworks
-     for the whole room. --- */
-  const TWIN = { cx: CLUB.x - 3, cy: 1.4, w: 3.6, h: 1.7 };
-  const TZ = CLUB.z + CLD / 2;          // door-wall inner face
+  /* ============================================================
+     THE LOFT'S VIEW — a wraparound backdrop + a swappable theme.
+     a tall cylinder of self-lit canvas surrounds the whole club (the boat-
+     seabox trick): MeshBasic so it emits no scene light and can't bleed a
+     photon toward the bedroom, far enough out that no window angle catches
+     its wrap seam (which sits behind the solid booth wall anyway). an admin
+     re-skins the entire venue — backdrop + interior neon — by switching
+     themes; it's local + instant, no reload, no db. --- */
+  const BACK_R = 15, BACK_H = 20, BACK_CY = 6;
+  const PW = 4096, PH = 1024;
+  const dotTex = canvasTex(64, 64, (g) => {
+    const grd = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    grd.addColorStop(0, "rgba(255,255,255,1)");
+    grd.addColorStop(0.4, "rgba(255,255,255,0.5)");
+    grd.addColorStop(1, "rgba(255,255,255,0)");
+    g.fillStyle = grd; g.fillRect(0, 0, 64, 64);
+  });
 
-  // the skyline: a night-gradient sky packed with lit windows, a couple of
-  // beaconed towers and a Skytree-ish spike on the horizon
-  const tokyoCanvas = document.createElement("canvas");
-  tokyoCanvas.width = 1024; tokyoCanvas.height = 512;
-  const tokyoTex = new THREE.CanvasTexture(tokyoCanvas);
-  tokyoTex.colorSpace = THREE.SRGBColorSpace;
-  tokyoTex.wrapS = THREE.RepeatWrapping;
-  (function drawTokyo() {
-    const g = tokyoCanvas.getContext("2d");
-    // sky: deep indigo up top warming to a smoggy city glow at the rooftops
-    const sky = g.createLinearGradient(0, 0, 0, 512);
-    sky.addColorStop(0, "#05060f");
-    sky.addColorStop(0.55, "#0b0c1c");
-    sky.addColorStop(0.82, "#2a1834");
-    sky.addColorStop(1, "#5a2f3e");
-    g.fillStyle = sky; g.fillRect(0, 0, 1024, 512);
-    // a low moon with a soft halo
-    g.fillStyle = "rgba(240,238,255,0.92)";
-    g.beginPath(); g.arc(820, 120, 26, 0, Math.PI * 2); g.fill();
-    g.fillStyle = "rgba(240,238,255,0.10)";
-    g.beginPath(); g.arc(820, 120, 46, 0, Math.PI * 2); g.fill();
-    // a faint haze band along the rooftops
-    g.fillStyle = "rgba(255,140,90,0.10)"; g.fillRect(0, 360, 1024, 90);
-    // a band of buildings: dark blocks studded with a grid of lit windows
-    const band = (baseY, hMin, hMax, wMin, wMax, dim, winA) => {
-      let x = -20;
-      while (x < 1044) {
-        const w = wMin + Math.random() * (wMax - wMin);
-        const h = hMin + Math.random() * (hMax - hMin);
-        const y = baseY - h;
-        g.fillStyle = dim; g.fillRect(x, y, w, h);
-        for (let wy = y + 6; wy < baseY - 4; wy += 9) {
-          for (let wx = x + 4; wx < x + w - 4; wx += 8) {
-            if (Math.random() < winA) {
-              g.fillStyle = Math.random() < 0.78
-                ? `rgba(255,${180 + (Math.random() * 50 | 0)},${120 + (Math.random() * 60 | 0)},${(0.5 + Math.random() * 0.45).toFixed(2)})`
-                : `rgba(${150 + (Math.random() * 80 | 0)},${200 + (Math.random() * 55 | 0)},255,${(0.5 + Math.random() * 0.4).toFixed(2)})`;
-              g.fillRect(wx, wy, 3, 4);
-            }
-          }
-        }
-        x += w + 2 + Math.random() * 6;
-      }
-    };
-    band(440, 70, 150, 34, 70, "#0d0e1c", 0.16);     // far ridge
-    band(460, 120, 240, 44, 96, "#121324", 0.22);    // near towers
-    // a few standout towers wearing red aircraft beacons
-    [[180, 250], [470, 300], [690, 210]].forEach(([bx, bh]) => {
-      g.fillStyle = "#15131f"; g.fillRect(bx, 460 - bh, 30, bh);
-      g.fillStyle = "rgba(255,70,70,0.95)";
-      g.beginPath(); g.arc(bx + 15, 460 - bh + 5, 3.2, 0, Math.PI * 2); g.fill();
-      g.fillStyle = "rgba(255,70,70,0.20)";
-      g.beginPath(); g.arc(bx + 15, 460 - bh + 5, 7, 0, Math.PI * 2); g.fill();
-    });
-    // the Skytree-ish landmark: a tall lattice spike lit lavender
-    g.strokeStyle = "rgba(150,120,210,0.55)"; g.lineWidth = 6;
-    g.beginPath(); g.moveTo(366, 460); g.lineTo(372, 150); g.stroke();
-    g.strokeStyle = "rgba(120,90,190,0.40)"; g.lineWidth = 14;
-    g.beginPath(); g.moveTo(366, 460); g.lineTo(369, 300); g.stroke();
-    tokyoTex.needsUpdate = true;
-  })();
-  tokyoTex.repeat.x = 0.82;             // leave headroom for parallax to slide
-  tokyoTex.offset.x = 0.09;
+  const panoCanvas = document.createElement("canvas");
+  panoCanvas.width = PW; panoCanvas.height = PH;
+  const panoTex = new THREE.CanvasTexture(panoCanvas);
+  panoTex.colorSpace = THREE.SRGBColorSpace;
+  panoTex.wrapS = THREE.RepeatWrapping;
+  const backdrop = addC(new THREE.Mesh(
+    new THREE.CylinderGeometry(BACK_R, BACK_R, BACK_H, 96, 1, true),
+    new THREE.MeshBasicMaterial({ map: panoTex, side: THREE.BackSide, fog: false })));
+  backdrop.position.set(CLUB.x, BACK_CY, CLUB.z);
+  // caps so the steepest up/down angle never catches the void past the cylinder
+  const capMat = new THREE.MeshBasicMaterial({ color: 0x04050c, side: THREE.DoubleSide });
+  const capTop = addC(new THREE.Mesh(new THREE.CircleGeometry(BACK_R, 48), capMat));
+  capTop.rotation.x = Math.PI / 2; capTop.position.set(CLUB.x, BACK_CY + BACK_H / 2, CLUB.z);
+  const capBot = addC(new THREE.Mesh(new THREE.CircleGeometry(BACK_R, 48), capMat));
+  capBot.rotation.x = -Math.PI / 2; capBot.position.set(CLUB.x, BACK_CY - BACK_H / 2, CLUB.z);
 
-  const tokyoGlass = addC(new THREE.Mesh(new THREE.PlaneGeometry(TWIN.w, TWIN.h),
-    new THREE.MeshBasicMaterial({ map: tokyoTex })));
-  tokyoGlass.rotation.y = Math.PI;
-  tokyoGlass.position.set(TWIN.cx, TWIN.cy, TZ - 0.05);
-  tokyoGlass.userData.clubWindow = true;
+  // drifting motes OUTSIDE the glass (fireflies / plankton / stars) — recolored
+  // per theme; cheap life across the whole surround
+  const MOTE_N = 240;
+  const motePos = new Float32Array(MOTE_N * 3);
+  for (let i = 0; i < MOTE_N; i++) {
+    const a = Math.random() * Math.PI * 2, r = 8.5 + Math.random() * (BACK_R - 10);
+    motePos[i * 3] = Math.cos(a) * r;
+    motePos[i * 3 + 1] = Math.random() * BACK_H - BACK_H / 2;
+    motePos[i * 3 + 2] = Math.sin(a) * r;
+  }
+  const moteGeo = new THREE.BufferGeometry();
+  moteGeo.setAttribute("position", new THREE.BufferAttribute(motePos, 3));
+  const moteMat = new THREE.PointsMaterial({ color: 0x7dffc0, size: 0.22, map: dotTex,
+    transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false });
+  const motes = new THREE.Points(moteGeo, moteMat);
+  motes.position.set(CLUB.x, BACK_CY, CLUB.z); addC(motes);
 
-  // a dark frame + mullions, proud of the glass so nothing z-fights
-  const winFrameMat = lam(0x0c0b12);
-  const mkBar = (w, h, x, y) => {
-    const b = addC(box(w, h, 0.04, winFrameMat));
-    b.position.set(x, y, TZ - 0.085);
+  // rain (cyberpunk only): a faint inner cylinder of streaks, scrolled downward
+  const clubRainTex = canvasTex(128, 256, (g) => {
+    g.clearRect(0, 0, 128, 256);
+    g.strokeStyle = "rgba(180,220,255,0.55)"; g.lineWidth = 1;
+    for (let i = 0; i < 44; i++) {
+      const x = Math.random() * 128, y = Math.random() * 256, l = 14 + Math.random() * 22;
+      g.beginPath(); g.moveTo(x, y); g.lineTo(x - 2, y + l); g.stroke();
+    }
+  });
+  clubRainTex.wrapS = clubRainTex.wrapT = THREE.RepeatWrapping;
+  clubRainTex.repeat.set(26, 3);
+  const clubRain = addC(new THREE.Mesh(
+    new THREE.CylinderGeometry(BACK_R - 2, BACK_R - 2, BACK_H, 48, 1, true),
+    new THREE.MeshBasicMaterial({ map: clubRainTex, side: THREE.BackSide, transparent: true,
+      opacity: 0.18, blending: THREE.AdditiveBlending, depthWrite: false, fog: false })));
+  clubRain.position.set(CLUB.x, BACK_CY, CLUB.z);
+
+  // a blimp (cyberpunk): drifts the skyline with a glowing flank
+  const blimp = new THREE.Group();
+  const blimpBody = new THREE.Mesh(new THREE.SphereGeometry(1, 18, 10),
+    new THREE.MeshBasicMaterial({ color: 0x140e22 }));
+  blimpBody.scale.set(2.8, 1, 1);
+  const blimpSign = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 0.9),
+    new THREE.MeshBasicMaterial({ color: 0xff3fae, transparent: true, opacity: 0.85,
+      blending: THREE.AdditiveBlending, depthWrite: false }));
+  blimpSign.position.set(0, -0.05, 1.02);
+  blimp.add(blimpBody, blimpSign);
+  blimp.position.set(CLUB.x + 9, BACK_CY + 4.5, CLUB.z);
+  addC(blimp);
+
+  // a feature flyer (space UFO): a disc that crosses now and then
+  const flyer = new THREE.Group();
+  const flyerBody = new THREE.Mesh(new THREE.SphereGeometry(0.6, 16, 10),
+    new THREE.MeshBasicMaterial({ color: 0x202a3a }));
+  flyerBody.scale.set(1, 0.32, 1);
+  const flyerGlow = new THREE.Mesh(new THREE.CircleGeometry(0.5, 18),
+    new THREE.MeshBasicMaterial({ color: 0x9dff6a, transparent: true, opacity: 0.85,
+      blending: THREE.AdditiveBlending, depthWrite: false }));
+  flyerGlow.rotation.x = -Math.PI / 2; flyerGlow.position.y = -0.16;
+  flyer.add(flyerBody, flyerGlow);
+  flyer.position.set(CLUB.x, BACK_CY + 6, CLUB.z - 12);
+  flyer.visible = false;
+  addC(flyer);
+  let flyerT = -1, flyerFrom = 1, flyerNext = 8;
+
+  // ---- interior palette (the cove / corners / lip / motes / floor tiles) ----
+  const clubPal = { tileHue: 0.42, tileRange: 0.5, tileSat: 0.85 };
+  function applyClubPalette(p) {
+    p.cove.forEach((c, i) => { if (coveMeshes[i]) coveMeshes[i].material.color.set(c); });
+    p.corners.forEach((c, i) => { if (tubeMeshes[i]) tubeMeshes[i].material.color.set(c); });
+    deskLip.material.color.set(p.lip);
+    moteMat.color.set(p.mote);
+    clubPal.tileHue = p.tileHue; clubPal.tileRange = p.tileRange; clubPal.tileSat = p.tileSat;
+  }
+
+  // ---- backdrop painters: each fills the wide panorama strip ----
+  const skyGrad = (g, stops) => {
+    const grd = g.createLinearGradient(0, 0, 0, PH);
+    stops.forEach(([o, c]) => grd.addColorStop(o, c));
+    g.fillStyle = grd; g.fillRect(0, 0, PW, PH);
   };
-  mkBar(TWIN.w + 0.16, 0.09, TWIN.cx, TWIN.cy + TWIN.h / 2 + 0.02);  // head
-  mkBar(TWIN.w + 0.16, 0.09, TWIN.cx, TWIN.cy - TWIN.h / 2 - 0.02);  // sill
-  mkBar(0.09, TWIN.h + 0.16, TWIN.cx - TWIN.w / 2 - 0.02, TWIN.cy);  // left jamb
-  mkBar(0.09, TWIN.h + 0.16, TWIN.cx + TWIN.w / 2 + 0.02, TWIN.cy);  // right jamb
-  mkBar(0.05, TWIN.h, TWIN.cx, TWIN.cy);                              // center mullion
-  mkBar(TWIN.w, 0.05, TWIN.cx, TWIN.cy + 0.1);                        // a transom
 
-  // a faint sill glow so the window reads as a soft light source in the room
-  const sillGlow = addC(new THREE.Mesh(new THREE.PlaneGeometry(TWIN.w, 0.5),
-    new THREE.MeshBasicMaterial({ color: 0x3a2a5a, transparent: true,
-      opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false })));
-  sillGlow.rotation.y = Math.PI;
-  sillGlow.position.set(TWIN.cx, TWIN.cy - TWIN.h / 2 + 0.05, TZ - 0.075);
+  const paintCyberJungle = (g) => {
+    skyGrad(g, [[0, "#070512"], [0.45, "#0a1430"], [0.7, "#241047"], [0.86, "#5a1a4e"], [1, "#7a2238"]]);
+    // a hazy magenta moon
+    g.fillStyle = "rgba(255,180,220,0.85)"; g.beginPath(); g.arc(2950, 240, 90, 0, 7); g.fill();
+    g.fillStyle = "rgba(255,120,200,0.12)"; g.beginPath(); g.arc(2950, 240, 180, 0, 7); g.fill();
+    // distant jungle mountains
+    g.fillStyle = "#08130f"; g.beginPath(); g.moveTo(0, 720);
+    for (let x = 0; x <= PW; x += 140) g.lineTo(x, 650 + Math.sin(x * 0.004) * 70 + Math.sin(x * 0.013) * 26);
+    g.lineTo(PW, PH); g.lineTo(0, PH); g.fill();
+    // neon city — towers with sign strips, window grids, rooftop billboards
+    const neon = ["#ff3fae", "#3fd2ff", "#9dff5a", "#ffd23f", "#b15bff"];
+    let x = -40;
+    while (x < PW + 40) {
+      const w = 60 + Math.random() * 120, h = 180 + Math.random() * 460, base = 800, y = base - h;
+      g.fillStyle = "#0c0a16"; g.fillRect(x, y, w, h);
+      for (let wy = y + 10; wy < base - 6; wy += 14)
+        for (let wx = x + 6; wx < x + w - 6; wx += 12)
+          if (Math.random() < 0.4) {
+            g.fillStyle = neon[Math.random() * neon.length | 0];
+            g.globalAlpha = 0.4 + Math.random() * 0.5; g.fillRect(wx, wy, 4, 6); g.globalAlpha = 1;
+          }
+      if (Math.random() < 0.6) { g.fillStyle = neon[Math.random() * neon.length | 0]; g.fillRect(x + (Math.random() < 0.5 ? 4 : w - 8), y + 20, 4, h - 40); }
+      if (Math.random() < 0.5) {
+        const bw = w * 0.8, bh = 60 + Math.random() * 80, c = neon[Math.random() * neon.length | 0];
+        g.fillStyle = c; g.globalAlpha = 0.22; g.fillRect(x + w * 0.1, y - bh - 6, bw, bh); g.globalAlpha = 1;
+        g.fillStyle = c; g.fillRect(x + w * 0.1, y - bh - 6, bw, 3);
+      }
+      x += w + 6 + Math.random() * 16;
+    }
+    // a glowing temple/wat tier silhouette
+    const tx = 1500; g.fillStyle = "#1a1206";
+    for (let i = 0; i < 4; i++) { const tw = 260 - i * 55; g.fillRect(tx - tw / 2, 800 - i * 64 - 70, tw, 70); }
+    g.fillStyle = "rgba(255,200,90,0.5)"; g.fillRect(tx - 6, 470, 12, 330);
+    // GIANT jungle trees in the foreground — oversized glowing canopies + trunks
+    const jade = ["#39ff9d", "#7dffc0", "#39d6ff", "#b6ff5a"];
+    [[400, 1], [1150, 1.3], [2200, 1.1], [2700, 0.9], [3500, 1.25], [3950, 1]].forEach(([bx, sc]) => {
+      const trunkH = 360 * sc, trunkW = 26 * sc;
+      g.fillStyle = "#0a1410"; g.fillRect(bx - trunkW / 2, 800 - trunkH, trunkW, trunkH);
+      for (let k = 0; k < 5; k++) {
+        const cx = bx + (Math.random() - 0.5) * 180 * sc, cy = 800 - trunkH - Math.random() * 120 * sc, r = (60 + Math.random() * 70) * sc;
+        g.fillStyle = "#0c1f15"; g.beginPath(); g.arc(cx, cy, r, 0, 7); g.fill();
+        for (let m = 0; m < 40; m++) {
+          g.fillStyle = jade[Math.random() * jade.length | 0]; g.globalAlpha = 0.5 + Math.random() * 0.5;
+          const aa = Math.random() * 7, rr = Math.random() * r;
+          g.fillRect(cx + Math.cos(aa) * rr, cy + Math.sin(aa) * rr, 3, 3);
+        }
+        g.globalAlpha = 1;
+      }
+      g.strokeStyle = "rgba(60,200,120,0.35)"; g.lineWidth = 2;
+      for (let v = 0; v < 4; v++) { const vx = bx + (Math.random() - 0.5) * 150 * sc; g.beginPath(); g.moveTo(vx, 800 - trunkH + 40); g.lineTo(vx + (Math.random() - 0.5) * 30, 800 - Math.random() * 80); g.stroke(); }
+    });
+  };
 
-  /* fireworks over Tokyo: an additive canvas hung just proud of the glass,
-     invisible when idle. a dj clicks the window to set one off; it broadcasts
-     so the whole room sees the same sky. drawn in 2-D so the bursts stay
-     pinned to the window with no 3-D clipping and no light bleed. */
+  const paintAquarium = (g) => {
+    skyGrad(g, [[0, "#021f33"], [0.4, "#024a5e"], [0.75, "#036b6b"], [1, "#02343f"]]);
+    g.save(); g.globalAlpha = 0.06; g.fillStyle = "#aef6ff";
+    for (let i = 0; i < 18; i++) { const rx = i / 18 * PW; g.beginPath(); g.moveTo(rx, 0); g.lineTo(rx + 120, 0); g.lineTo(rx + 360, PH); g.lineTo(rx + 260, PH); g.closePath(); g.fill(); }
+    g.restore();
+    g.fillStyle = "#0a2a2e"; g.fillRect(0, 840, PW, PH - 840);
+    const coral = ["#ff7eb6", "#ffd166", "#9b5de5", "#ff9e6d", "#4cc9f0"];
+    for (let i = 0; i < 60; i++) { const cx = Math.random() * PW, ch = 40 + Math.random() * 120; g.strokeStyle = coral[Math.random() * coral.length | 0]; g.globalAlpha = 0.5; g.lineWidth = 4 + Math.random() * 4; g.beginPath(); g.moveTo(cx, 860); g.lineTo(cx + (Math.random() - 0.5) * 40, 860 - ch); g.stroke(); }
+    g.globalAlpha = 1;
+    g.strokeStyle = "rgba(40,160,90,0.5)"; g.lineWidth = 8;
+    for (let i = 0; i < 24; i++) { const kx = Math.random() * PW; g.beginPath(); g.moveTo(kx, 880); for (let y = 880; y > 300; y -= 40) g.lineTo(kx + Math.sin(y * 0.03 + kx) * 20, y); g.stroke(); }
+    const fishCol = ["#ffd166", "#ef476f", "#06d6a0", "#118ab2", "#ff9e6d", "#f7f7ff"];
+    for (let i = 0; i < 80; i++) {
+      const fx = Math.random() * PW, fy = 120 + Math.random() * 640, s = 9 + Math.random() * 16, c = fishCol[Math.random() * fishCol.length | 0];
+      g.fillStyle = c; g.globalAlpha = 0.85;
+      g.beginPath(); g.ellipse(fx, fy, s, s * 0.55, 0, 0, 7); g.fill();
+      g.beginPath(); g.moveTo(fx - s, fy); g.lineTo(fx - s - s * 0.7, fy - s * 0.5); g.lineTo(fx - s - s * 0.7, fy + s * 0.5); g.fill();
+    }
+    g.globalAlpha = 1;
+    g.fillStyle = "rgba(10,40,55,0.8)"; g.beginPath(); g.ellipse(2600, 360, 260, 80, 0.1, 0, 7); g.fill();
+  };
+
+  const paintSpace = (g) => {
+    skyGrad(g, [[0, "#02030a"], [0.5, "#05061a"], [1, "#0a0420"]]);
+    for (let i = 0; i < 1400; i++) { g.fillStyle = `rgba(255,255,255,${(0.3 + Math.random() * 0.7).toFixed(2)})`; const s = Math.random() < 0.1 ? 2 : 1; g.fillRect(Math.random() * PW, Math.random() * PH, s, s); }
+    const neb = ["#5b2a86", "#1f6f8b", "#86276a", "#2a4a86"];
+    g.save(); g.globalAlpha = 0.12;
+    for (let i = 0; i < 22; i++) { const c = neb[Math.random() * neb.length | 0], cx = Math.random() * PW, cy = Math.random() * PH, r = 120 + Math.random() * 260; const grd = g.createRadialGradient(cx, cy, 0, cx, cy, r); grd.addColorStop(0, c); grd.addColorStop(1, "rgba(0,0,0,0)"); g.fillStyle = grd; g.beginPath(); g.arc(cx, cy, r, 0, 7); g.fill(); }
+    g.restore();
+    const planet = (px, py, r, c1, c2, ring) => {
+      const grd = g.createRadialGradient(px - r * 0.3, py - r * 0.3, r * 0.1, px, py, r);
+      grd.addColorStop(0, c1); grd.addColorStop(1, c2); g.fillStyle = grd; g.beginPath(); g.arc(px, py, r, 0, 7); g.fill();
+      if (ring) { g.strokeStyle = "rgba(255,220,180,0.5)"; g.lineWidth = 8; g.save(); g.translate(px, py); g.scale(1, 0.32); g.beginPath(); g.arc(0, 0, r * 1.6, 0, 7); g.stroke(); g.restore(); }
+    };
+    planet(900, 360, 150, "#e8a06a", "#7a3b1e", true);
+    planet(3100, 480, 220, "#6ad1e8", "#1a3a6a", false);
+    planet(2100, 200, 70, "#c0c8d8", "#4a4f60", false);
+  };
+
+  const CLUB_THEMES = [
+    { name: "Bangkok-Bali 2077", paint: paintCyberJungle, rain: true, blimp: true, flyer: false,
+      palette: { cove: [0xff3fae, 0x39ff9d, 0x3fd2ff, 0xff3fae], corners: [0x39ff9d, 0xff3fae, 0x3fd2ff, 0xb15bff], lip: 0xff3fae, mote: 0x7dffc0, tileHue: 0.42, tileRange: 0.5, tileSat: 0.85 } },
+    { name: "Deep Aquarium", paint: paintAquarium, rain: false, blimp: false, flyer: false,
+      palette: { cove: [0x06d6a0, 0x4cc9f0, 0x4cc9f0, 0x06d6a0], corners: [0x4cc9f0, 0x06d6a0, 0x4cc9f0, 0x118ab2], lip: 0x4cc9f0, mote: 0xaef6ff, tileHue: 0.5, tileRange: 0.18, tileSat: 0.7 } },
+    { name: "Deep Space", paint: paintSpace, rain: false, blimp: false, flyer: true,
+      palette: { cove: [0x8a5cff, 0x3fd2ff, 0x8a5cff, 0xff5fae], corners: [0x3fd2ff, 0x8a5cff, 0xff5fae, 0x3fd2ff], lip: 0x8a5cff, mote: 0xffffff, tileHue: 0.72, tileRange: 0.28, tileSat: 0.7 } },
+  ];
+  let themeIx = 0;
+  function applyClubTheme(ix) {
+    themeIx = ((ix % CLUB_THEMES.length) + CLUB_THEMES.length) % CLUB_THEMES.length;
+    const t = CLUB_THEMES[themeIx];
+    t.paint(panoCanvas.getContext("2d"));
+    panoTex.needsUpdate = true;
+    applyClubPalette(t.palette);
+    clubRain.visible = !!t.rain; blimp.visible = !!t.blimp;
+    return t.name;
+  }
+  function cycleClubTheme() { return applyClubTheme(themeIx + 1); }
+  function clubThemeName() { return CLUB_THEMES[themeIx].name; }
+
+  function tickBackdrop(dt) {
+    motes.rotation.y += dt * 0.015;
+    motes.position.y = BACK_CY + Math.sin(elapsed * 0.18) * 0.4;
+    if (clubRain.visible) clubRainTex.offset.y = (clubRainTex.offset.y - dt * 1.4) % 1;
+    if (blimp.visible) {
+      const a = elapsed * 0.035;
+      blimp.position.set(CLUB.x + Math.cos(a) * 11, BACK_CY + 4.5 + Math.sin(a * 0.7) * 0.8, CLUB.z + Math.sin(a) * 11);
+      blimp.rotation.y = -a + Math.PI / 2;
+    }
+    if (CLUB_THEMES[themeIx].flyer) {
+      if (flyerT < 0) {
+        flyerNext -= dt;
+        if (flyerNext <= 0) { flyerT = 0; flyerFrom = Math.random() < 0.5 ? 1 : -1; flyerNext = 14 + Math.random() * 12; }
+      } else {
+        flyerT += dt * 0.1;
+        if (flyerT >= 1) { flyerT = -1; flyer.visible = false; }
+        else { flyer.visible = true; const fx = flyerFrom * (1 - flyerT * 2) * 12; flyer.position.set(CLUB.x + fx, BACK_CY + 6 + Math.sin(flyerT * Math.PI) * 1.2, CLUB.z - 12); }
+      }
+    } else if (flyer.visible) flyer.visible = false;
+  }
+
+  applyClubTheme(0);   // open on Bangkok-Bali 2077
+
+  /* DJ fireworks over the city — an additive canvas just inside the south
+     (door-wall) glass, invisible until a dj sets one off; it broadcasts so the
+     whole room sees the same sky. drawn in 2-D so the bursts pin to the glass
+     with no 3-D clipping and no light bleed. */
+  const FWZ = CLUB.z + CLD / 2 - 0.12;
   const fwCanvas = document.createElement("canvas");
   fwCanvas.width = 512; fwCanvas.height = 256;
   const fwTex = new THREE.CanvasTexture(fwCanvas);
-  const fwPane = addC(new THREE.Mesh(new THREE.PlaneGeometry(TWIN.w, TWIN.h),
+  const fwPane = addC(new THREE.Mesh(new THREE.PlaneGeometry(CLW - 0.5, 4.4),
     new THREE.MeshBasicMaterial({ map: fwTex, transparent: true,
       blending: THREE.AdditiveBlending, depthWrite: false })));
   fwPane.rotation.y = Math.PI;
-  fwPane.position.set(TWIN.cx, TWIN.cy, TZ - 0.07);
+  fwPane.position.set(CLUB.x, 2.7, FWZ);
   fwPane.visible = false;
+
+  // a faint glass sheen on the door-wall opening — doubles as the dj's
+  // click target to launch fireworks over the city
+  const glassClick = addC(new THREE.Mesh(new THREE.PlaneGeometry(CLW - 0.5, CLH - SILL),
+    new THREE.MeshBasicMaterial({ color: 0x8fd9ff, transparent: true, opacity: 0.04,
+      blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide })));
+  glassClick.rotation.y = Math.PI;
+  glassClick.position.set(CLUB.x, SILL + (CLH - SILL) / 2, CLUB.z + CLD / 2 - 0.06);
+  glassClick.userData.clubWindow = true;
   const fwShells = [], fwSparks = [];
   const FW_COL = [[255,90,140],[120,200,255],[255,220,90],[170,120,255],[120,255,170],[255,150,80]];
   function clubFireworks(seed) {
@@ -4606,12 +4770,6 @@ export function buildWorld() {
     }
   }
 
-  // slide the skyline a touch as you cross the room — cheap parallax depth
-  function setClubParallax(camX) {
-    const f = Math.max(-1, Math.min(1, (camX - CLUB.x) / (CLW / 2)));
-    tokyoTex.offset.x = 0.09 - f * 0.05;
-  }
-
   // music energy (0..1), fed from the dj analyser in main.js and lerped here
   // so the room breathes with the beat instead of snapping. zero = idle.
   let clubEnergy = 0, clubEnergyTarget = 0;
@@ -4628,10 +4786,12 @@ export function buildWorld() {
     swirlA.intensity = pump;
     if (swirlB) swirlB.intensity = pump;
     clubTiles.forEach((t, i) => {
-      const hue = (elapsed * (0.03 + e * 0.1) + (i % TGZ) * 0.06 + Math.floor(i / TGZ) * 0.04) % 1;
+      // the floor hue sweeps within the active theme's palette band
+      const sweep = (elapsed * (0.03 + e * 0.1) + (i % TGZ) * 0.06 + Math.floor(i / TGZ) * 0.04);
+      const hue = (clubPal.tileHue + (sweep % 1) * clubPal.tileRange) % 1;
       const beat = 0.13 + 0.05 * Math.sin(elapsed * 1.7 + i)
         + e * 0.4 * (0.6 + 0.4 * Math.sin(elapsed * 6.5 + i));
-      t.material.color.setHSL(hue, 0.65, beat);
+      t.material.color.setHSL(hue, clubPal.tileSat, beat);
     });
     // the VU: how many segments lit tracks energy, color ramps to red
     const lit = Math.round(e * VN);
@@ -4641,6 +4801,7 @@ export function buildWorld() {
     });
     if (onAirLive) onAirLight.intensity = 3.4 + Math.sin(elapsed * 2.2) * 0.8 + e * 2.2;
     tickFireworks(dt);
+    tickBackdrop(dt);
   }
 
   // where feet may go: bedroom + closet passage + arcade room
@@ -4782,7 +4943,8 @@ export function buildWorld() {
     clubSpawn: { x: CLUB.x + 2.6, z: CLUB.z + 3.6, yaw: 0.35 },
     clubExitHit: clubDoor,
     deckHits, setOnAir, setBoothHeadcount, setClubEnergy,
-    clubWindowHit: tokyoGlass, clubFireworks, setClubParallax,
+    clubWindowHit: glassClick, clubFireworks,
+    cycleClubTheme, clubThemeName,
     inClub: (x) => x < -30,
     dmTargets: [monScreen, monBezel, mac],
     // where the cat likes to be
