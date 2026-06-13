@@ -252,7 +252,7 @@ canvas.addEventListener("click", () => {
 function castAt(ndcX, ndcY) {
   raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera);
   // doors are included as blockers so notes can't be pinned onto them
-  const targets = [cat.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.clubExitHit, ...world.deckHits, world.volcaHit, world.bottleHit, world.echoPoster, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...notesWall.raycastTargets(), ...world.blockers];
+  const targets = [cat.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, world.echoPoster, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...notesWall.raycastTargets(), ...world.blockers];
   const hits = raycaster.intersectObjects(targets, false);
   return hits[0] || null;
 }
@@ -477,6 +477,15 @@ controls.onAction((ndcX, ndcY) => {
     leaveClub();
   } else if (hit.object.userData.decks && hit.distance < 2.6) {
     toggleDeck();
+  } else if (hit.object.userData.clubWindow && hit.distance < 12) {
+    if (canDJ()) {
+      const seed = (Math.random() * 1e6) | 0;
+      world.clubFireworks(seed);
+      presence.sendAct({ kind: "fireworks", seed });
+      toast("🎆 fireworks over Tokyo");
+    } else {
+      toast("the city glitters — only the booth can light the sky");
+    }
   } else if (hit.object.userData.portalArena && hit.distance < 3) {
     tryArena();
   } else if (hit.object.userData.arenaExit && hit.distance < 4) {
@@ -642,6 +651,9 @@ setInterval(() => {
       : voice.djLive() ? `${TAP} — end the set`
       : canDJ() ? `${TAP} — pick a source, go live`
       : deckLockedMsg();
+    aimTip.classList.add("show");
+  } else if (hit && hit.object.userData.clubWindow && hit.distance < 12) {
+    aimTip.textContent = canDJ() ? `${TAP} — fireworks over Tokyo` : "Tokyo, somewhere past the glass";
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.curtain && hit.distance < 3.2) {
     aimTip.textContent = world.curtainsClosed() ? `${TAP} to open the curtains` : `${TAP} to draw the curtains`;
@@ -2011,6 +2023,9 @@ addEventListener("keydown", (e) => {
       // someone re-hung their note — slide it to its new home for us too
       notesWall.moveTo(p.id, { wall: p.wall, x: p.x, y: p.y, rot: p.rot });
       refreshNoteVisibility();
+    } else if (p.kind === "fireworks") {
+      // the dj painted the sky — everyone in the venue sees the same show
+      if (inClub) world.clubFireworks(p.seed);
     }
   });
   presence.onChat((p) => pushChat(p.name || "someone", p.color, p.text));
@@ -2074,6 +2089,7 @@ renderer.setAnimationLoop(() => {
   t += dt;
   controls.update(dt);
   world.setParallax(camera.position.x);
+  if (inClub) world.setClubParallax(camera.position.x);
   // aboard THE DESI the whole world rolls a little — set absolutely
   // (never accumulate), so pausing/ESC can't drift you up or down
   if (inBoat) {
