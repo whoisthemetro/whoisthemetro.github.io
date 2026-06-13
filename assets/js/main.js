@@ -92,6 +92,7 @@ function updateMicUI() {
 let micDownAt = 0;
 micBtn.addEventListener("pointerdown", async (e) => {
   e.preventDefault();
+  if (inClub) return toast("the venue is chat-only — press T or 💬 to talk");
   micDownAt = Date.now();
   if (!voice.isOn()) {
     if (!(await voice.startTalk(false))) toast("the mic said no — check browser permissions");
@@ -116,7 +117,7 @@ micBtn.addEventListener("pointercancel", () => {
 });
 // desktop bonus: hold V to talk
 addEventListener("keydown", (e) => {
-  if (e.code === "KeyV" && !e.repeat && controls.locked && !modalOpen && entered && !voice.isOn()) {
+  if (e.code === "KeyV" && !e.repeat && controls.locked && !modalOpen && entered && !inClub && !voice.isOn()) {
     voice.startTalk(false).then(ok => { if (!ok) toast("the mic said no — check browser permissions"); updateMicUI(); });
   }
 });
@@ -1062,6 +1063,11 @@ async function tryClub() {
     setRoomTone(false);                  // the bedroom stays behind, fully
     setClubTone(true);                   // the empty-room sub, until a set starts
     voice.setInClub(true);               // now the set can reach your ears
+    // the venue is sealed: the mic goes quiet (chat only), the cat HUD and any
+    // flight strip that crept up at home are gone — only the set + chat get in
+    voice.stopTalk(); updateMicUI();
+    hideFlightStrip();
+    document.body.classList.add("in-club");
     djHeardAt = 0;
     wasGranted = djGrantedToMe();         // so a later grant toasts, but a standing one doesn't
     world.setOnAir(false);               // dark until a chunk says otherwise
@@ -1079,6 +1085,7 @@ function leaveClub() {
   voice.setInClub(false);
   world.setOnAir(false);
   setClubTone(false);                    // the street is quiet
+  document.body.classList.remove("in-club");   // the mic + cat HUD come back home
   fadeTo(() => {
     inClub = false;
     // the walk home ends at your own front door
@@ -1646,6 +1653,11 @@ function showFlightStrip(info) {
   el.classList.add("show");
   clearTimeout(stripTimer);
   stripTimer = setTimeout(() => el.classList.remove("show"), 15000);
+}
+// pull any strip off the screen at once — the venue has no window on LAX
+function hideFlightStrip() {
+  clearTimeout(stripTimer);
+  $("#flight-strip").classList.remove("show");
 }
 
 /* ---------------- private notes to Metro ---------------- */

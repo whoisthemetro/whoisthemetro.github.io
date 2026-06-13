@@ -476,6 +476,20 @@ textarea:focus, input:focus { border-color: var(--amber); }
   50% { box-shadow: 0 0 0 9px rgba(255,80,80,0); }
 }
 
+/* the bottom-right comms cluster reads as one unit: matched circles, a soft
+   blur behind the glass, a gentle lift on hover/press */
+#chat-btn, #mic-btn {
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  transition: transform .12s ease, border-color .12s ease, background .12s ease;
+}
+#chat-btn:hover, #mic-btn:hover { border-color: var(--amber); transform: translateY(-2px); }
+#chat-btn:active, #mic-btn:active { transform: translateY(0) scale(0.94); }
+
+/* ---------- the venue is sealed: chat only, no cat HUD, no LAX ---------- */
+body.in-club #cat-pill { display: none; }
+body.in-club #mic-btn { display: none; }     /* beats the coarse-pointer rule (id + class + element) */
+body.in-club #flight-strip { display: none; }
+
 /* ====== echo arena team chooser ====== */
 .team-row { display: flex; gap: 12px; margin: 10px 0 14px; }
 .team-btn {

@@ -302,6 +302,7 @@ export const voice = {
   async handleChunk(p) {
     if (!p || !p.data || p.uid === myUid) return;
     if (p.dj && !inClubFlag) return;       // the set only plays inside the club
+    if (!p.dj && inClubFlag) return;       // and the venue is sealed: no walkie-talkie crosses the door, only the set + chat
     const { ctx, master } = audioGraph();
     if (!ctx) return;
     let audio;
