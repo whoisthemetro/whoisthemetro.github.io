@@ -4503,8 +4503,12 @@ export function buildWorld() {
      its wrap seam (which sits behind the solid booth wall anyway). an admin
      re-skins the entire venue — backdrop + interior neon — by switching
      themes; it's local + instant, no reload, no db. --- */
-  const BACK_R = 15, BACK_H = 20, BACK_CY = 6;
-  const PW = 4096, PH = 1024;
+  // the cylinder plunges far below the loft (a high-rise) so the ground is
+  // lost to haze — you never catch a hard bottom edge. top stays ~where it was
+  const BACK_R = 15, BACK_H = 44, BACK_CY = -8;
+  const PW = 4096, PH = 1536;
+  const SKY_Y = 8;                      // altitude the blimp / ufo cruise at
+  const toCY = (y) => (BACK_CY + BACK_H / 2 - y) / BACK_H * PH;   // world-y → canvas row
   const dotTex = canvasTex(64, 64, (g) => {
     const grd = g.createRadialGradient(32, 32, 0, 32, 32, 32);
     grd.addColorStop(0, "rgba(255,255,255,1)");
@@ -4573,7 +4577,7 @@ export function buildWorld() {
       blending: THREE.AdditiveBlending, depthWrite: false }));
   blimpSign.position.set(0, -0.05, 1.02);
   blimp.add(blimpBody, blimpSign);
-  blimp.position.set(CLUB.x + 9, BACK_CY + 4.5, CLUB.z);
+  blimp.position.set(CLUB.x + 9, SKY_Y, CLUB.z);
   addC(blimp);
 
   // a feature flyer (space UFO): a disc that crosses now and then
@@ -4586,10 +4590,70 @@ export function buildWorld() {
       blending: THREE.AdditiveBlending, depthWrite: false }));
   flyerGlow.rotation.x = -Math.PI / 2; flyerGlow.position.y = -0.16;
   flyer.add(flyerBody, flyerGlow);
-  flyer.position.set(CLUB.x, BACK_CY + 6, CLUB.z - 12);
+  flyer.position.set(CLUB.x, SKY_Y, CLUB.z - 12);
   flyer.visible = false;
   addC(flyer);
   let flyerT = -1, flyerFrom = 1, flyerNext = 8;
+
+  // ---- traffic: rivers of car-light far below, veiled by haze. two additive
+  // rings of dashes scrolling opposite ways so the street looks alive without
+  // ever showing a clean ground. toggled per theme. ----
+  const trafficGroup = new THREE.Group(); trafficGroup.position.set(CLUB.x, 0, CLUB.z);
+  const trafficTex = (warm) => canvasTex(512, 32, (g) => {
+    g.clearRect(0, 0, 512, 32);
+    for (let i = 0; i < 150; i++) {
+      const x = Math.random() * 512, y = 2 + Math.random() * 28, len = 8 + Math.random() * 22;
+      g.fillStyle = warm
+        ? `rgba(255,${160 + (Math.random() * 80 | 0)},${90 + (Math.random() * 60 | 0)},${(0.65 + Math.random() * 0.35).toFixed(2)})`
+        : `rgba(255,${60 + (Math.random() * 60 | 0)},${55 + (Math.random() * 45 | 0)},${(0.65 + Math.random() * 0.35).toFixed(2)})`;
+      g.fillRect(x, y, len, 2.5);
+    }
+  });
+  const trafficRings = [];
+  [[-6.5, 12.5, true, 1], [-9, 11, false, -1]].forEach(([y, r, warm, dir]) => {
+    const tex = trafficTex(warm); tex.wrapS = THREE.RepeatWrapping; tex.repeat.set(10, 1);
+    const ring = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 3.2, 48, 1, true),
+      new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide, transparent: true,
+        opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+    ring.position.y = y; ring.userData.dir = dir; ring.userData.tex = tex;
+    trafficGroup.add(ring); trafficRings.push(ring);
+  });
+  addC(trafficGroup);
+
+  // ---- the jungle GROWS INSIDE the loft (theme = jungle): trunks from the
+  // floor, canopies up in the volume, hanging vines + glowing fruit. perimeter
+  // only, so the booth + dance floor stay clear. toggled per theme. ----
+  const jungleGroup = new THREE.Group(); jungleGroup.position.set(CLUB.x, 0, CLUB.z);
+  const mkTree = (x, z, s) => {
+    const tr = new THREE.Group();
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.1 * s, 0.17 * s, 2.7 * s, 7), lam(0x241a12));
+    trunk.position.y = 1.35 * s; tr.add(trunk);
+    const leafPos = [];
+    for (let k = 0; k < 5; k++) {
+      const cr = (0.55 + Math.random() * 0.45) * s;
+      const cx = (Math.random() - 0.5) * 1.0 * s, cy = (2.5 + Math.random() * 1.6) * s, cz = (Math.random() - 0.5) * 1.0 * s;
+      const blob = new THREE.Mesh(new THREE.IcosahedronGeometry(cr, 0), new THREE.MeshBasicMaterial({ color: 0x10331c }));
+      blob.position.set(cx, cy, cz); blob.scale.y = 0.78; tr.add(blob);
+      for (let m = 0; m < 8; m++) { const a = Math.random() * 7, rr = Math.random() * cr; leafPos.push(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr * 0.8, cz + Math.sin(a) * rr); }
+    }
+    const lg = new THREE.BufferGeometry(); lg.setAttribute("position", new THREE.BufferAttribute(new Float32Array(leafPos), 3));
+    tr.add(new THREE.Points(lg, new THREE.PointsMaterial({ color: 0x7dffae, size: 0.12 * s, map: dotTex, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false })));
+    for (let v = 0; v < 4; v++) {
+      const vh = (0.8 + Math.random() * 1.1) * s;
+      const vine = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, vh, 4), new THREE.MeshBasicMaterial({ color: 0x2f7a45 }));
+      vine.position.set((Math.random() - 0.5) * 1.4 * s, (2.4 * s) - vh / 2, (Math.random() - 0.5) * 1.4 * s); tr.add(vine);
+    }
+    // a couple of glowing fruit/lanterns
+    for (let f = 0; f < 2; f++) {
+      const fruit = new THREE.Mesh(new THREE.SphereGeometry(0.07 * s, 8, 6),
+        new THREE.MeshBasicMaterial({ color: f ? 0xff5fae : 0xffc24a }));
+      fruit.position.set((Math.random() - 0.5) * 1.3 * s, (1.8 + Math.random() * 0.9) * s, (Math.random() - 0.5) * 1.3 * s); tr.add(fruit);
+    }
+    tr.position.set(x, 0, z); tr.rotation.y = Math.random() * 7; return tr;
+  };
+  [[-5.0, 3.4, 1.25], [5.0, 3.3, 1.15], [-5.1, -1.0, 1.3], [4.6, -3.4, 1.0], [-2.4, 3.9, 0.95], [2.0, -3.9, 0.9]]
+    .forEach(([x, z, s]) => jungleGroup.add(mkTree(x, z, s)));
+  addC(jungleGroup);
 
   // ---- interior palette (the cove / corners / lip / motes / floor tiles) ----
   const clubPal = { tileHue: 0.42, tileRange: 0.5, tileSat: 0.85 };
@@ -4601,111 +4665,102 @@ export function buildWorld() {
     clubPal.tileHue = p.tileHue; clubPal.tileRange = p.tileRange; clubPal.tileSat = p.tileSat;
   }
 
-  // ---- backdrop painters: each fills the wide panorama strip ----
+  // ---- backdrop painters: each fills the wide panorama strip. they share a
+  // high-rise layout — content rises above and PLUNGES below the loft, then a
+  // haze gradient swallows the bottom so there's never a hard ground edge. ----
   const skyGrad = (g, stops) => {
     const grd = g.createLinearGradient(0, 0, 0, PH);
     stops.forEach(([o, c]) => grd.addColorStop(o, c));
     g.fillStyle = grd; g.fillRect(0, 0, PW, PH);
   };
+  // veil the bottom: from clear at world-y `yTop` to opaque smog by the floor
+  const hazeFloor = (g, yTop, smog) => {
+    const t = toCY(yTop), hz = g.createLinearGradient(0, t, 0, PH);
+    hz.addColorStop(0, smog + "00"); hz.addColorStop(0.5, smog + "99");
+    hz.addColorStop(0.82, smog + "f2"); hz.addColorStop(1, "#02030699");
+    g.fillStyle = hz; g.fillRect(0, t, PW, PH - t);
+  };
 
-  const paintCyberJungle = (g) => {
-    skyGrad(g, [[0, "#070512"], [0.45, "#0a1430"], [0.7, "#241047"], [0.86, "#5a1a4e"], [1, "#7a2238"]]);
-    // a hazy magenta moon
-    g.fillStyle = "rgba(255,180,220,0.85)"; g.beginPath(); g.arc(2950, 240, 90, 0, 7); g.fill();
-    g.fillStyle = "rgba(255,120,200,0.12)"; g.beginPath(); g.arc(2950, 240, 180, 0, 7); g.fill();
-    // distant jungle mountains
-    g.fillStyle = "#08130f"; g.beginPath(); g.moveTo(0, 720);
-    for (let x = 0; x <= PW; x += 140) g.lineTo(x, 650 + Math.sin(x * 0.004) * 70 + Math.sin(x * 0.013) * 26);
-    g.lineTo(PW, PH); g.lineTo(0, PH); g.fill();
-    // neon city — towers with sign strips, window grids, rooftop billboards
-    const neon = ["#ff3fae", "#3fd2ff", "#9dff5a", "#ffd23f", "#b15bff"];
-    let x = -40;
-    while (x < PW + 40) {
-      const w = 60 + Math.random() * 120, h = 180 + Math.random() * 460, base = 800, y = base - h;
-      g.fillStyle = "#0c0a16"; g.fillRect(x, y, w, h);
-      for (let wy = y + 10; wy < base - 6; wy += 14)
-        for (let wx = x + 6; wx < x + w - 6; wx += 12)
-          if (Math.random() < 0.4) {
-            g.fillStyle = neon[Math.random() * neon.length | 0];
-            g.globalAlpha = 0.4 + Math.random() * 0.5; g.fillRect(wx, wy, 4, 6); g.globalAlpha = 1;
+  const paintCyber = (g) => {
+    skyGrad(g, [[0, "#0a0822"], [0.12, "#160c2e"], [0.22, "#2a1342"], [0.34, "#180e26"], [1, "#070512"]]);
+    // a hazy magenta moon high over the skyline
+    g.fillStyle = "rgba(255,180,220,0.8)"; g.beginPath(); g.arc(2950, toCY(11), 72, 0, 7); g.fill();
+    g.fillStyle = "rgba(255,120,200,0.10)"; g.beginPath(); g.arc(2950, toCY(11), 150, 0, 7); g.fill();
+    const neon = ["#ff3fae", "#3fd2ff", "#9dff5a", "#ffd23f", "#b15bff", "#ff8a3f"];
+    const tower = (x, w, topY, near) => {
+      const topCY = toCY(topY), botCY = toCY(-20);
+      g.fillStyle = near ? "#0b0913" : "#19233f"; g.globalAlpha = near ? 1 : 0.55;
+      g.fillRect(x, topCY, w, botCY - topCY); g.globalAlpha = 1;
+      const col = neon[Math.random() * neon.length | 0];
+      for (let wy = topCY + 14; wy < botCY - 8; wy += 17) {
+        const mood = Math.random();                 // each floor has its own life
+        for (let wx = x + 8; wx < x + w - 8; wx += 14)
+          if (Math.random() < 0.18 + mood * 0.6) {
+            g.fillStyle = Math.random() < 0.82 ? col : neon[Math.random() * neon.length | 0];
+            g.globalAlpha = (near ? 0.5 : 0.28) + Math.random() * 0.45;
+            g.fillRect(wx, wy, near ? 5 : 3, near ? 8 : 4);
           }
-      if (Math.random() < 0.6) { g.fillStyle = neon[Math.random() * neon.length | 0]; g.fillRect(x + (Math.random() < 0.5 ? 4 : w - 8), y + 20, 4, h - 40); }
-      if (Math.random() < 0.5) {
-        const bw = w * 0.8, bh = 60 + Math.random() * 80, c = neon[Math.random() * neon.length | 0];
-        g.fillStyle = c; g.globalAlpha = 0.22; g.fillRect(x + w * 0.1, y - bh - 6, bw, bh); g.globalAlpha = 1;
-        g.fillStyle = c; g.fillRect(x + w * 0.1, y - bh - 6, bw, 3);
       }
-      x += w + 6 + Math.random() * 16;
-    }
-    // a glowing temple/wat tier silhouette
-    const tx = 1500; g.fillStyle = "#1a1206";
-    for (let i = 0; i < 4; i++) { const tw = 260 - i * 55; g.fillRect(tx - tw / 2, 800 - i * 64 - 70, tw, 70); }
-    g.fillStyle = "rgba(255,200,90,0.5)"; g.fillRect(tx - 6, 470, 12, 330);
-    // GIANT jungle trees in the foreground — oversized glowing canopies + trunks
-    const jade = ["#39ff9d", "#7dffc0", "#39d6ff", "#b6ff5a"];
-    [[400, 1], [1150, 1.3], [2200, 1.1], [2700, 0.9], [3500, 1.25], [3950, 1]].forEach(([bx, sc]) => {
-      const trunkH = 360 * sc, trunkW = 26 * sc;
-      g.fillStyle = "#0a1410"; g.fillRect(bx - trunkW / 2, 800 - trunkH, trunkW, trunkH);
-      for (let k = 0; k < 5; k++) {
-        const cx = bx + (Math.random() - 0.5) * 180 * sc, cy = 800 - trunkH - Math.random() * 120 * sc, r = (60 + Math.random() * 70) * sc;
-        g.fillStyle = "#0c1f15"; g.beginPath(); g.arc(cx, cy, r, 0, 7); g.fill();
-        for (let m = 0; m < 40; m++) {
-          g.fillStyle = jade[Math.random() * jade.length | 0]; g.globalAlpha = 0.5 + Math.random() * 0.5;
-          const aa = Math.random() * 7, rr = Math.random() * r;
-          g.fillRect(cx + Math.cos(aa) * rr, cy + Math.sin(aa) * rr, 3, 3);
-        }
-        g.globalAlpha = 1;
+      g.globalAlpha = 1;
+      if (near && Math.random() < 0.7) { g.fillStyle = neon[Math.random() * neon.length | 0]; g.fillRect(x + (Math.random() < 0.5 ? 6 : w - 10), topCY + 24, 5, (botCY - topCY) * 0.4); }
+      if (near && Math.random() < 0.5) {
+        const bh = 80 + Math.random() * 100, c = neon[Math.random() * neon.length | 0];
+        g.fillStyle = c; g.globalAlpha = 0.22; g.fillRect(x + w * 0.12, topCY - bh, w * 0.76, bh); g.globalAlpha = 1;
+        g.fillStyle = c; g.fillRect(x + w * 0.12, topCY - bh, w * 0.76, 3); g.fillRect(x + w * 0.12, topCY - 3, w * 0.76, 3);
       }
-      g.strokeStyle = "rgba(60,200,120,0.35)"; g.lineWidth = 2;
-      for (let v = 0; v < 4; v++) { const vx = bx + (Math.random() - 0.5) * 150 * sc; g.beginPath(); g.moveTo(vx, 800 - trunkH + 40); g.lineTo(vx + (Math.random() - 0.5) * 30, 800 - Math.random() * 80); g.stroke(); }
-    });
+    };
+    // far skyline (hazy, behind), then the near towers that frame the street
+    let x = -30; while (x < PW + 30) { const w = 90 + Math.random() * 150; tower(x, w, 6 + Math.random() * 3, false); x += w + 8 + Math.random() * 30; }
+    x = -40; while (x < PW + 40) { const w = 80 + Math.random() * 160; tower(x, w, 6.5 + Math.random() * 6.5, true); x += w + 30 + Math.random() * 90; }
+    hazeFloor(g, 1.5, "#3a1840");        // magenta smog swallows the deep street
   };
 
   const paintAquarium = (g) => {
-    skyGrad(g, [[0, "#021f33"], [0.4, "#024a5e"], [0.75, "#036b6b"], [1, "#02343f"]]);
+    skyGrad(g, [[0, "#0a5e74"], [0.18, "#046b6b"], [0.4, "#035158"], [1, "#021c26"]]);
+    // god-rays slanting down from the surface
     g.save(); g.globalAlpha = 0.06; g.fillStyle = "#aef6ff";
-    for (let i = 0; i < 18; i++) { const rx = i / 18 * PW; g.beginPath(); g.moveTo(rx, 0); g.lineTo(rx + 120, 0); g.lineTo(rx + 360, PH); g.lineTo(rx + 260, PH); g.closePath(); g.fill(); }
+    for (let i = 0; i < 22; i++) { const rx = i / 22 * PW; g.beginPath(); g.moveTo(rx, 0); g.lineTo(rx + 110, 0); g.lineTo(rx + 420, PH); g.lineTo(rx + 300, PH); g.closePath(); g.fill(); }
     g.restore();
-    g.fillStyle = "#0a2a2e"; g.fillRect(0, 840, PW, PH - 840);
-    const coral = ["#ff7eb6", "#ffd166", "#9b5de5", "#ff9e6d", "#4cc9f0"];
-    for (let i = 0; i < 60; i++) { const cx = Math.random() * PW, ch = 40 + Math.random() * 120; g.strokeStyle = coral[Math.random() * coral.length | 0]; g.globalAlpha = 0.5; g.lineWidth = 4 + Math.random() * 4; g.beginPath(); g.moveTo(cx, 860); g.lineTo(cx + (Math.random() - 0.5) * 40, 860 - ch); g.stroke(); }
-    g.globalAlpha = 1;
-    g.strokeStyle = "rgba(40,160,90,0.5)"; g.lineWidth = 8;
-    for (let i = 0; i < 24; i++) { const kx = Math.random() * PW; g.beginPath(); g.moveTo(kx, 880); for (let y = 880; y > 300; y -= 40) g.lineTo(kx + Math.sin(y * 0.03 + kx) * 20, y); g.stroke(); }
-    const fishCol = ["#ffd166", "#ef476f", "#06d6a0", "#118ab2", "#ff9e6d", "#f7f7ff"];
-    for (let i = 0; i < 80; i++) {
-      const fx = Math.random() * PW, fy = 120 + Math.random() * 640, s = 9 + Math.random() * 16, c = fishCol[Math.random() * fishCol.length | 0];
+    // kelp rising from the deep, fading down
+    g.strokeStyle = "rgba(40,170,100,0.5)"; g.lineWidth = 9;
+    for (let i = 0; i < 30; i++) { const kx = Math.random() * PW, top = toCY(-2 - Math.random() * 6); g.beginPath(); g.moveTo(kx, PH); for (let y = PH; y > top; y -= 44) g.lineTo(kx + Math.sin(y * 0.03 + kx) * 26, y); g.stroke(); }
+    const fishCol = ["#ffd166", "#ef476f", "#06d6a0", "#118ab2", "#ff9e6d", "#f7f7ff", "#b5f5ff"];
+    for (let i = 0; i < 110; i++) {
+      const fx = Math.random() * PW, fy = toCY(9) + Math.random() * (toCY(-8) - toCY(9)), s = 9 + Math.random() * 18, c = fishCol[Math.random() * fishCol.length | 0];
       g.fillStyle = c; g.globalAlpha = 0.85;
       g.beginPath(); g.ellipse(fx, fy, s, s * 0.55, 0, 0, 7); g.fill();
       g.beginPath(); g.moveTo(fx - s, fy); g.lineTo(fx - s - s * 0.7, fy - s * 0.5); g.lineTo(fx - s - s * 0.7, fy + s * 0.5); g.fill();
     }
     g.globalAlpha = 1;
-    g.fillStyle = "rgba(10,40,55,0.8)"; g.beginPath(); g.ellipse(2600, 360, 260, 80, 0.1, 0, 7); g.fill();
+    // a whale-shark silhouette cruising the mid-water
+    g.fillStyle = "rgba(8,42,58,0.85)"; g.beginPath(); g.ellipse(2600, toCY(7), 300, 90, 0.08, 0, 7); g.fill();
+    hazeFloor(g, -1, "#022026");          // the seabed is lost in murk
   };
 
   const paintSpace = (g) => {
-    skyGrad(g, [[0, "#02030a"], [0.5, "#05061a"], [1, "#0a0420"]]);
-    for (let i = 0; i < 1400; i++) { g.fillStyle = `rgba(255,255,255,${(0.3 + Math.random() * 0.7).toFixed(2)})`; const s = Math.random() < 0.1 ? 2 : 1; g.fillRect(Math.random() * PW, Math.random() * PH, s, s); }
+    skyGrad(g, [[0, "#03040e"], [0.5, "#05061a"], [1, "#070314"]]);
+    for (let i = 0; i < 1800; i++) { g.fillStyle = `rgba(255,255,255,${(0.3 + Math.random() * 0.7).toFixed(2)})`; const s = Math.random() < 0.1 ? 2 : 1; g.fillRect(Math.random() * PW, Math.random() * PH, s, s); }
     const neb = ["#5b2a86", "#1f6f8b", "#86276a", "#2a4a86"];
     g.save(); g.globalAlpha = 0.12;
-    for (let i = 0; i < 22; i++) { const c = neb[Math.random() * neb.length | 0], cx = Math.random() * PW, cy = Math.random() * PH, r = 120 + Math.random() * 260; const grd = g.createRadialGradient(cx, cy, 0, cx, cy, r); grd.addColorStop(0, c); grd.addColorStop(1, "rgba(0,0,0,0)"); g.fillStyle = grd; g.beginPath(); g.arc(cx, cy, r, 0, 7); g.fill(); }
+    for (let i = 0; i < 26; i++) { const c = neb[Math.random() * neb.length | 0], cx = Math.random() * PW, cy = Math.random() * PH, r = 140 + Math.random() * 300; const grd = g.createRadialGradient(cx, cy, 0, cx, cy, r); grd.addColorStop(0, c); grd.addColorStop(1, "rgba(0,0,0,0)"); g.fillStyle = grd; g.beginPath(); g.arc(cx, cy, r, 0, 7); g.fill(); }
     g.restore();
     const planet = (px, py, r, c1, c2, ring) => {
       const grd = g.createRadialGradient(px - r * 0.3, py - r * 0.3, r * 0.1, px, py, r);
       grd.addColorStop(0, c1); grd.addColorStop(1, c2); g.fillStyle = grd; g.beginPath(); g.arc(px, py, r, 0, 7); g.fill();
-      if (ring) { g.strokeStyle = "rgba(255,220,180,0.5)"; g.lineWidth = 8; g.save(); g.translate(px, py); g.scale(1, 0.32); g.beginPath(); g.arc(0, 0, r * 1.6, 0, 7); g.stroke(); g.restore(); }
+      if (ring) { g.strokeStyle = "rgba(255,220,180,0.5)"; g.lineWidth = 9; g.save(); g.translate(px, py); g.scale(1, 0.32); g.beginPath(); g.arc(0, 0, r * 1.6, 0, 7); g.stroke(); g.restore(); }
     };
-    planet(900, 360, 150, "#e8a06a", "#7a3b1e", true);
-    planet(3100, 480, 220, "#6ad1e8", "#1a3a6a", false);
-    planet(2100, 200, 70, "#c0c8d8", "#4a4f60", false);
+    planet(900, toCY(8), 150, "#e8a06a", "#7a3b1e", true);
+    planet(3100, toCY(5), 240, "#6ad1e8", "#1a3a6a", false);
+    planet(2100, toCY(11), 70, "#c0c8d8", "#4a4f60", false);
+    hazeFloor(g, -6, "#06031a");           // deep space fades to black below
   };
 
   const CLUB_THEMES = [
-    { name: "Bangkok-Bali 2077", paint: paintCyberJungle, rain: true, blimp: true, flyer: false,
+    { name: "Bangkok-Bali 2077", paint: paintCyber, rain: true, blimp: true, flyer: false, traffic: true, jungle: true,
       palette: { cove: [0xff3fae, 0x39ff9d, 0x3fd2ff, 0xff3fae], corners: [0x39ff9d, 0xff3fae, 0x3fd2ff, 0xb15bff], lip: 0xff3fae, mote: 0x7dffc0, tileHue: 0.42, tileRange: 0.5, tileSat: 0.85 } },
-    { name: "Deep Aquarium", paint: paintAquarium, rain: false, blimp: false, flyer: false,
+    { name: "Deep Aquarium", paint: paintAquarium, rain: false, blimp: false, flyer: false, traffic: false, jungle: false,
       palette: { cove: [0x06d6a0, 0x4cc9f0, 0x4cc9f0, 0x06d6a0], corners: [0x4cc9f0, 0x06d6a0, 0x4cc9f0, 0x118ab2], lip: 0x4cc9f0, mote: 0xaef6ff, tileHue: 0.5, tileRange: 0.18, tileSat: 0.7 } },
-    { name: "Deep Space", paint: paintSpace, rain: false, blimp: false, flyer: true,
+    { name: "Deep Space", paint: paintSpace, rain: false, blimp: false, flyer: true, traffic: false, jungle: false,
       palette: { cove: [0x8a5cff, 0x3fd2ff, 0x8a5cff, 0xff5fae], corners: [0x3fd2ff, 0x8a5cff, 0xff5fae, 0x3fd2ff], lip: 0x8a5cff, mote: 0xffffff, tileHue: 0.72, tileRange: 0.28, tileSat: 0.7 } },
   ];
   let themeIx = 0;
@@ -4716,6 +4771,7 @@ export function buildWorld() {
     panoTex.needsUpdate = true;
     applyClubPalette(t.palette);
     clubRain.visible = !!t.rain; blimp.visible = !!t.blimp;
+    trafficGroup.visible = !!t.traffic; jungleGroup.visible = !!t.jungle;
     return t.name;
   }
   function cycleClubTheme() { return applyClubTheme(themeIx + 1); }
@@ -4725,9 +4781,11 @@ export function buildWorld() {
     motes.rotation.y += dt * 0.015;
     motes.position.y = BACK_CY + Math.sin(elapsed * 0.18) * 0.4;
     if (clubRain.visible) clubRainTex.offset.y = (clubRainTex.offset.y - dt * 1.4) % 1;
+    if (trafficGroup.visible)
+      trafficRings.forEach(r => { r.userData.tex.offset.x = (r.userData.tex.offset.x + dt * 0.06 * r.userData.dir) % 1; });
     if (blimp.visible) {
       const a = elapsed * 0.035;
-      blimp.position.set(CLUB.x + Math.cos(a) * 11, BACK_CY + 4.5 + Math.sin(a * 0.7) * 0.8, CLUB.z + Math.sin(a) * 11);
+      blimp.position.set(CLUB.x + Math.cos(a) * 11, SKY_Y + Math.sin(a * 0.7) * 0.8, CLUB.z + Math.sin(a) * 11);
       blimp.rotation.y = -a + Math.PI / 2;
     }
     if (CLUB_THEMES[themeIx].flyer) {
@@ -4737,7 +4795,7 @@ export function buildWorld() {
       } else {
         flyerT += dt * 0.1;
         if (flyerT >= 1) { flyerT = -1; flyer.visible = false; }
-        else { flyer.visible = true; const fx = flyerFrom * (1 - flyerT * 2) * 12; flyer.position.set(CLUB.x + fx, BACK_CY + 6 + Math.sin(flyerT * Math.PI) * 1.2, CLUB.z - 12); }
+        else { flyer.visible = true; const fx = flyerFrom * (1 - flyerT * 2) * 12; flyer.position.set(CLUB.x + fx, SKY_Y + Math.sin(flyerT * Math.PI) * 1.2, CLUB.z - 12); }
       }
     } else if (flyer.visible) flyer.visible = false;
   }
