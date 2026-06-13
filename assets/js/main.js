@@ -64,7 +64,16 @@ setInterval(() => {
 
 /* ---------------- voice: hold to talk, tap to leave it open ---------------- */
 voice.init(identity.uid, (p) => presence.sendVoice(p));
-presence.onVoice((p) => voice.handleChunk(p));
+let djHeardAt = 0;            // last dj chunk we received — lights the ON AIR sign for listeners
+presence.onVoice((p) => {
+  voice.handleChunk(p);
+  if (p.dj && inClub) djHeardAt = Date.now();
+});
+// listeners run the booth light off the chunk stream; the dj runs their own (below)
+setInterval(() => {
+  if (!entered || voice.djLive()) return;
+  if (inClub) world.setOnAir(!!djHeardAt && Date.now() - djHeardAt < 1600);
+}, 400);
 const micBtn = $("#mic-btn");
 function updateMicUI() {
   micBtn.classList.toggle("live", voice.mode() === "open");
@@ -372,7 +381,7 @@ controls.onAction((ndcX, ndcY) => {
   } else if (hit.object.userData.clubExit && hit.distance < 2.6) {
     leaveClub();
   } else if (hit.object.userData.decks && hit.distance < 2.6) {
-    toast("the decks are locked — nothing's booked tonight");
+    toggleDeck();
   } else if (hit.object.userData.portalArena && hit.distance < 3) {
     tryArena();
   } else if (hit.object.userData.arenaExit && hit.distance < 4) {
@@ -527,7 +536,8 @@ setInterval(() => {
     aimTip.textContent = `${TAP} — out into the night, back home`;
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.decks && hit.distance < 2.6) {
-    aimTip.textContent = "CDJs — locked until an event";
+    aimTip.textContent = !canDJ() ? "CDJs — locked until an event"
+      : voice.djLive() ? `${TAP} — end the set` : `${TAP} — pick a source, go live`;
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.curtain && hit.distance < 3.2) {
     aimTip.textContent = world.curtainsClosed() ? `${TAP} to open the curtains` : `${TAP} to draw the curtains`;
@@ -936,6 +946,9 @@ async function tryClub() {
     controls.pos.z = world.clubSpawn.z;
     controls.yaw = world.clubSpawn.yaw;
     setRoomTone(false);                  // the bedroom stays behind, fully
+    voice.setInClub(true);               // now the set can reach your ears
+    djHeardAt = 0;
+    world.setOnAir(false);               // dark until a chunk says otherwise
     store.logEvent("boat");              // counts as a portal trip
     progress.bump("trips");
     refreshNoteVisibility();
@@ -946,6 +959,9 @@ async function tryClub() {
   });
 }
 function leaveClub() {
+  if (voice.djLive()) voice.stopDJ();    // you can't broadcast from the street
+  voice.setInClub(false);
+  world.setOnAir(false);
   fadeTo(() => {
     inClub = false;
     // the walk home ends at your own front door
@@ -956,6 +972,50 @@ function leaveClub() {
     refreshNoteVisibility();
   });
 }
+
+/* ---------------- the booth: pick a source, go live ---------------- */
+// category C gate is admin mode (/#admin) — category D grants a present user instead
+function canDJ() { return adminMode && inClub; }
+function toggleDeck() {
+  if (!canDJ()) return toast("the decks are locked — nothing's booked tonight");
+  if (voice.djLive()) {
+    voice.stopDJ();
+    world.setOnAir(false);
+    return toast("set over — the decks go dark");
+  }
+  openDJPicker();
+}
+async function openDJPicker() {
+  modalOpen = true;
+  controls.unlock();
+  const list = $("#dj-list");
+  list.innerHTML = "<p class='fine-print'>finding inputs…</p>";
+  show($("#dj"));
+  const inputs = await voice.listInputs();
+  list.innerHTML = "";
+  if (!inputs.length) { list.innerHTML = "<p class='fine-print'>no audio inputs found — grant mic access?</p>"; return; }
+  for (const d of inputs) {
+    const b = document.createElement("button");
+    b.className = "pc-item";
+    b.textContent = `🎛️ ${d.label}`;
+    b.addEventListener("click", () => goLive(d.deviceId));
+    list.appendChild(b);
+  }
+}
+async function goLive(deviceId) {
+  const ok = await voice.startDJ(deviceId);
+  hide($("#dj"));
+  modalOpen = false;
+  if (!ok) { if (entered) safeLock(); return toast("that input said no — try another"); }
+  world.setOnAir(true);
+  toast("you're on — THE VENUE is live 🔴");
+  if (entered) safeLock();
+}
+$("#dj-close").addEventListener("click", () => {
+  hide($("#dj"));
+  modalOpen = false;
+  if (entered) safeLock();
+});
 
 /* ---------------- THE CREW: the zero-g arena ---------------- */
 let inArena = false;
@@ -1503,6 +1563,11 @@ addEventListener("keydown", (e) => {
     if (pcOverlay.classList.contains("show")) closePC();
     if ($("#team").classList.contains("show")) {
       hide($("#team"));
+      modalOpen = false;
+      if (entered) safeLock();
+    }
+    if ($("#dj").classList.contains("show")) {
+      hide($("#dj"));
       modalOpen = false;
       if (entered) safeLock();
     }

@@ -25,6 +25,16 @@ let mode = "off";           // off | ptt | open
 let arenaFx = false;
 const players = new Map();  // uid -> output chain + playhead
 
+// the DJ broadcast runs on the same chunk pipeline, but its own stream:
+// a loopback input (system audio) recorded full-range and loud, tagged
+// dj:true so the far side skips the squawk box and plays it as music.
+let djStream = null;
+let djRec = null;
+let djLive = false;
+let inClubFlag = false;     // set by main.js — dj audio is club-only
+let djBus = null;           // one shared gain → master (cat. E taps it for reactive light)
+const djHeads = new Map();  // uid -> playhead time, per broadcaster
+
 function pickMime() {
   if (!window.MediaRecorder) return null;
   for (const m of ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"]) {
@@ -77,6 +87,40 @@ function recordLoop() {
   setTimeout(() => { try { if (rec.state !== "inactive") rec.stop(); } catch (e) {} }, 600);
 }
 
+// the DJ chunk loop: same self-contained-blob trick, but full bitrate so
+// the music survives the round trip. bigger size cap to match.
+function djRecordLoop() {
+  if (!djLive || !djStream) return;
+  const mime = pickMime();
+  let rec;
+  try {
+    rec = new MediaRecorder(djStream, mime ? { mimeType: mime, audioBitsPerSecond: 128000 } : undefined);
+  } catch (e) { djLive = false; return; }
+  djRec = rec;
+  const parts = [];
+  rec.ondataavailable = (e) => { if (e.data && e.data.size) parts.push(e.data); };
+  rec.onstop = async () => {
+    if (parts.length && djLive) {
+      const blob = new Blob(parts, { type: rec.mimeType });
+      if (blob.size > 200 && blob.size < 200000 && sendFn) {
+        const data = await blobToB64(blob);
+        try { sendFn({ uid: myUid, mime: rec.mimeType, data, dj: true }); } catch (e) {}
+      }
+    }
+    djRecordLoop();          // straight into the next chunk
+  };
+  rec.start();
+  setTimeout(() => { try { if (rec.state !== "inactive") rec.stop(); } catch (e) {} }, 600);
+}
+
+function ensureDJBus(ctx, master) {
+  if (djBus) return djBus;
+  djBus = ctx.createGain();
+  djBus.gain.value = 0.95;               // full and loud — it's the set, not a voice
+  djBus.connect(master);
+  return djBus;
+}
+
 function gritCurve() {
   const c = new Float32Array(256);
   for (let i = 0; i < 256; i++) {
@@ -118,6 +162,48 @@ export const voice = {
   mode: () => mode,
   isOn: () => mode !== "off",
   setArenaFx(on) { arenaFx = !!on; },
+  setInClub(on) { inClubFlag = !!on; },
+  djLive: () => djLive,
+
+  // the audio inputs a dj can pick from — labels only show once we hold a
+  // grant, so take a throwaway one first if they're hidden, then release it.
+  async listInputs() {
+    if (!navigator.mediaDevices?.enumerateDevices) return [];
+    let devs = await navigator.mediaDevices.enumerateDevices().catch(() => []);
+    let ins = devs.filter(d => d.kind === "audioinput");
+    if (ins.some(d => !d.label)) {
+      try {
+        const s = await navigator.mediaDevices.getUserMedia({ audio: true });
+        s.getTracks().forEach(t => t.stop());
+        devs = await navigator.mediaDevices.enumerateDevices();
+        ins = devs.filter(d => d.kind === "audioinput");
+      } catch (e) {}
+    }
+    return ins.map(d => ({ deviceId: d.deviceId, label: d.label || "audio input" }));
+  },
+
+  // go live off a chosen input — every processor OFF so the music is clean
+  async startDJ(deviceId) {
+    if (!this.supported()) return false;
+    try {
+      djStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          deviceId: deviceId ? { exact: deviceId } : undefined,
+          echoCancellation: false, noiseSuppression: false, autoGainControl: false,
+          channelCount: 2,
+        },
+      });
+    } catch (e) { return false; }
+    djLive = true;
+    djRecordLoop();
+    return true;
+  },
+  stopDJ() {
+    djLive = false;
+    try { if (djRec && djRec.state !== "inactive") djRec.stop(); } catch (e) {}
+    djRec = null;
+    if (djStream) { djStream.getTracks().forEach(t => t.stop()); djStream = null; }
+  },
 
   async startTalk(open = false) {
     if (!this.supported()) return false;
@@ -137,6 +223,7 @@ export const voice = {
   // an incoming chunk from someone else, chained onto their playhead
   async handleChunk(p) {
     if (!p || !p.data || p.uid === myUid) return;
+    if (p.dj && !inClubFlag) return;       // the set only plays inside the club
     const { ctx, master } = audioGraph();
     if (!ctx) return;
     let audio;
@@ -144,6 +231,18 @@ export const voice = {
       const buf = await fetch(`data:${p.mime || "audio/webm"};base64,${p.data}`).then(r => r.arrayBuffer());
       audio = await ctx.decodeAudioData(buf);
     } catch (e) { return; }
+    if (p.dj) {
+      // music: full-range bus, a touch more prebuffer so it never underruns
+      const bus = ensureDJBus(ctx, master);
+      const src = ctx.createBufferSource();
+      src.buffer = audio;
+      src.connect(bus);
+      const head = djHeads.get(p.uid) || 0;
+      const t = Math.max(ctx.currentTime + 0.12, head);
+      src.start(t);
+      djHeads.set(p.uid, t + audio.duration - 0.015);
+      return;
+    }
     let pl = players.get(p.uid);
     if (!pl) { pl = makePlayer(ctx, master); players.set(p.uid, pl); }
     const src = ctx.createBufferSource();

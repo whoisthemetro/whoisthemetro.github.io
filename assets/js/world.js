@@ -4201,6 +4201,7 @@ export function buildWorld() {
   boothLamp.position.set(CLUB.x, 2.0, BOOTHZ + 0.9);
   addC(boothLamp);
   function setOnAir(on) {
+    if (onAirLive === !!on) return;      // called on an interval — skip redundant redraws
     onAirLive = !!on;
     drawOnAir(onAirLive);
     onAirLight.intensity = onAirLive ? 4 : 0;
