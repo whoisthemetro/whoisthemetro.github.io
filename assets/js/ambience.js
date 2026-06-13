@@ -10,6 +10,7 @@ let master = null;
 let pianoBus = null;   // the keyboard's pedal chain feeds in here (chorus→delay→reverb)
 let guitarBus = null;  // the guitar's pedal chain (overdrive→delay→reverb)
 let drumBus = null;    // the e-kit's level handle (so a mixer can ride it)
+const busBase = {};    // id → the gain each bus was built at (100% on the mixer)
 const fxStages = {};        // id → {dry, wet, wet0} — a stompbox toggles these to bypass
 const fxDelays = {};        // id → DelayNode, for tempo-syncing the delay pedals to a song
 const fxDelayDefault = {};  // id → its free-play delayTime (reverted to when no song plays)
@@ -69,6 +70,7 @@ function driveCurve(k = 10) {
 function buildKeyboardFx() {
   pianoBus = ctx.createGain();
   pianoBus.gain.value = 1.3;            // the keys, turned up a notch
+  busBase.piano = 1.3;
   let node = pianoBus;
 
   // chorus: a short LFO-swept delay beating against the dry signal
@@ -110,6 +112,7 @@ function buildKeyboardFx() {
 // master. The stompboxes in front of the tele (world.js) are the twin.
 function buildGuitarFx() {
   guitarBus = ctx.createGain();
+  busBase.guitar = guitarBus.gain.value;   // unity — the string already has its level
   let node = guitarBus;
 
   // overdrive: push the quiet string hard into the clipper, shape, level back
@@ -211,7 +214,18 @@ export function startAmbience() {
   buildGuitarFx();
   drumBus = ctx.createGain();
   drumBus.gain.value = 1.3;             // the e-kit, turned up a notch
+  busBase.drum = 1.3;
   drumBus.connect(master);
+}
+
+// the desk mixer rides the three instrument buses. pct is 0..150 — a percentage
+// of each bus's natural built level (100 = unchanged), ramped so it never pops.
+export function setBusLevel(id, pct) {
+  if (!ctx) return;
+  const bus = { piano: pianoBus, guitar: guitarBus, drum: drumBus }[id];
+  if (!bus) return;
+  const base = busBase[id] ?? 1;
+  bus.gain.setTargetAtTime(base * Math.max(0, pct) / 100, ctx.currentTime, 0.03);
 }
 
 // The bedroom's hum and rumble — silenced while you're aboard the boat.

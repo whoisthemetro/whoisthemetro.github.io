@@ -143,6 +143,31 @@
   </div>
 </div>
 
+<!-- ====== channel mixer (keys · guitar · drums) ====== -->
+<div id="mixer-ui" class="overlay">
+  <div class="panel dim-panel">
+    <div class="panel-head">
+      <span class="tab active">channel mixer</span>
+      <button class="x" id="mixer-close">×</button>
+    </div>
+    <div class="dim-row">
+      <span class="dim-label">keys</span>
+      <input type="range" id="mix-piano" class="mix-fader" min="0" max="150" value="100">
+      <span class="mix-val" id="mix-val-piano">100%</span>
+    </div>
+    <div class="dim-row">
+      <span class="dim-label">guitar</span>
+      <input type="range" id="mix-guitar" class="mix-fader" min="0" max="150" value="100">
+      <span class="mix-val" id="mix-val-guitar">100%</span>
+    </div>
+    <div class="dim-row">
+      <span class="dim-label">drums</span>
+      <input type="range" id="mix-drum" class="mix-fader" min="0" max="150" value="100">
+      <span class="mix-val" id="mix-val-drum">100%</span>
+    </div>
+  </div>
+</div>
+
 <!-- room chat: press T, or the bubble on mobile. the log lives at the
      body level so messages stay visible over the arcade and in the arena -->
 <div id="chat-log"></div>

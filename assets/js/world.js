@@ -2189,6 +2189,54 @@ export function buildWorld() {
   coffee.position.set(0.49, deskTopY + 0.088, 0.04);
   desk.add(coffee);
 
+  /* --- the channel mixer: a little 3-fader board that rides the instrument
+     buses (keys · guitar · drums). client-side + sticky, the twin of the
+     stompboxes — clicking it opens the fader overlay in main.js, and the caps
+     here mirror wherever each level is left. --- */
+  const mixer = new THREE.Group();
+  const mixChassis = box(0.3, 0.04, 0.2, lam(0x15171b));
+  mixChassis.position.y = 0.02;
+  mixChassis.userData.mixer = true;
+  mixer.add(mixChassis);
+  const mixFace = box(0.29, 0.004, 0.19, lam(0x1d2026));   // brushed faceplate, a hair proud
+  mixFace.position.y = 0.041;
+  mixFace.userData.mixer = true;
+  mixer.add(mixFace);
+  const mixHits = [mixChassis, mixFace];
+  const mixCaps = {};
+  // louder = the cap slid toward the back (away from you); pct 0..150 maps along z
+  const MIX_Z0 = 0.058, MIX_Z1 = -0.058;            // front (min) → back (max)
+  const mixZ = (pct) => MIX_Z0 + (MIX_Z1 - MIX_Z0) * Math.min(Math.max(pct, 0), 150) / 150;
+  function mixChannel(px, capCol, id) {
+    const slot = box(0.01, 0.006, 0.135, lam(0x0a0b0d));   // the fader groove
+    slot.position.set(px, 0.044, 0);
+    mixer.add(slot);
+    const cap = box(0.036, 0.02, 0.022, lam(capCol));      // the cap rides the groove
+    cap.position.set(px, 0.052, mixZ(100));
+    cap.userData.mixer = true;
+    mixer.add(cap);
+    mixHits.push(cap);
+    mixCaps[id] = cap;
+    const knob = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.009, 0.01, 12), lam(0x0e0f12));
+    knob.position.set(px, 0.046, -0.082);                  // a trim knob up at the back
+    mixer.add(knob);
+    // the channel's lit eye, color-matched to its stompbox family (toon pass leaves basic mats glowing)
+    const led = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.005, 8),
+      new THREE.MeshBasicMaterial({ color: capCol }));
+    led.position.set(px, 0.044, 0.084);
+    mixer.add(led);
+  }
+  mixChannel(-0.09, 0x4fbfe6, "piano");    // keys   — cyan,  the kb-delay eye
+  mixChannel(0,     0xff7a3c, "guitar");   // guitar — amber, the gtr-od eye
+  mixChannel(0.09,  0x6bff8a, "drum");     // drums  — lime
+  mixer.position.set(-0.44, deskTopY, 0.14);
+  mixer.rotation.x = -0.12;                // tilt the board up toward the player
+  desk.add(mixer);
+  // move a cap to show its level (called from main.js when the fader moves)
+  function setMixFader(id, pct) {
+    const cap = mixCaps[id]; if (cap) cap.position.z = mixZ(pct);
+  }
+
   // cables off the back of the desk
   for (const [cx, tilt] of [[-0.1, 0.18], [0.07, -0.12], [-0.68, 0.1]]) {
     const cable = new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.005, 0.7, 6), lam(0x0c0d0f));
@@ -5324,6 +5372,8 @@ export function buildWorld() {
     pianoMesh: midiKeybed, pressPianoKey,
     pianoVoiceMesh: midiBody,
     stompHits, setStompLED, stompIds: Object.keys(stompLEDs),
+    // the desk channel mixer (keys · guitar · drums) — see main.js openMixer
+    mixerHits: mixHits, setMixFader,
     // the dirty-carpet + vacuum system (bedroom only)
     floorTraffic, vacuumHits: [vNozzle, vBody, vCan, vPole, vGrip, vGripTop],
     grabVacuum, vacuumStep, vacuumHeld: () => vacHeld,
