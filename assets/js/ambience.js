@@ -10,6 +10,9 @@ let master = null;
 let pianoBus = null;   // the keyboard's pedal chain feeds in here (chorus→delay→reverb)
 let guitarBus = null;  // the guitar's pedal chain (overdrive→delay→reverb)
 let drumBus = null;    // the e-kit's level handle (so a mixer can ride it)
+const fxStages = {};        // id → {dry, wet, wet0} — a stompbox toggles these to bypass
+const fxDelays = {};        // id → DelayNode, for tempo-syncing the delay pedals to a song
+const fxDelayDefault = {};  // id → its free-play delayTime (reverted to when no song plays)
 
 function noiseBuffer(seconds = 2) {
   const len = ctx.sampleRate * seconds;
@@ -39,14 +42,16 @@ function impulseBuffer(dur = 2.2, decay = 2.6) {
 
 // one wet/dry stage: (1-wet) of the dry src + wet of wetOut, summed into a
 // fresh gain. connect src→wetIn yourself (the caller wires the effect input)
-// before calling. default 50% — every pedal here is half-wet.
-function fxWetDry(src, wetIn, wetOut, wet = 0.5) {
+// before calling. default 50% — every pedal here is half-wet. pass an `id` and
+// the stage registers so a stompbox can bypass it (dry→unity, wet→0).
+function fxWetDry(src, wetIn, wetOut, wet = 0.5, id = null) {
   const sum = ctx.createGain();
   const dry = ctx.createGain(); dry.gain.value = 1 - wet;
   const wg = ctx.createGain();  wg.gain.value = wet;
   src.connect(dry).connect(sum);
   src.connect(wetIn);
   wetOut.connect(wg).connect(sum);
+  if (id) fxStages[id] = { dry, wet: wg, wet0: wet };
   return sum;
 }
 
@@ -76,23 +81,24 @@ function buildKeyboardFx() {
   lfoG.gain.value = 0.004;              // ±4 ms sweep
   lfo.connect(lfoG).connect(chD.delayTime);
   lfo.start();
-  node = fxWetDry(node, chD, chD);
+  node = fxWetDry(node, chD, chD, 0.5, "kb-chorus");
 
   // delay: a ~quarter-note slap with feedback, repeats darkening as they fade
   const dl = ctx.createDelay();
   dl.delayTime.value = 0.34;
+  fxDelays["kb-delay"] = dl; fxDelayDefault["kb-delay"] = 0.34;   // tempo-synced to songs
   const fb = ctx.createGain();
   fb.gain.value = 0.34;
   const fbLp = ctx.createBiquadFilter();
   fbLp.type = "lowpass";
   fbLp.frequency.value = 2600;
   dl.connect(fbLp).connect(fb).connect(dl);   // feedback loop
-  node = fxWetDry(node, dl, dl);
+  node = fxWetDry(node, dl, dl, 0.5, "kb-delay");
 
   // reverb: the generated impulse through a convolver
   const rev = ctx.createConvolver();
   rev.buffer = impulseBuffer();
-  node = fxWetDry(node, rev, rev);
+  node = fxWetDry(node, rev, rev, 0.5, "kb-reverb");
 
   node.connect(master);
 }
@@ -114,24 +120,47 @@ function buildGuitarFx() {
   odTone.type = "lowpass"; odTone.frequency.value = 3200;
   const odLvl = ctx.createGain(); odLvl.gain.value = 0.5;
   odIn.connect(shaper).connect(odTone).connect(odLvl);
-  node = fxWetDry(node, odIn, odLvl);
+  node = fxWetDry(node, odIn, odLvl, 0.5, "gtr-od");
 
   // delay: a touch longer + more feedback than the keys'
   const dl = ctx.createDelay();
   dl.delayTime.value = 0.38;
+  fxDelays["gtr-delay"] = dl; fxDelayDefault["gtr-delay"] = 0.38;   // tempo-synced to songs
   const fb = ctx.createGain();
   fb.gain.value = 0.36;
   const fbLp = ctx.createBiquadFilter();
   fbLp.type = "lowpass"; fbLp.frequency.value = 2400;
   dl.connect(fbLp).connect(fb).connect(dl);
-  node = fxWetDry(node, dl, dl);
+  node = fxWetDry(node, dl, dl, 0.5, "gtr-delay");
 
   // reverb
   const rev = ctx.createConvolver();
   rev.buffer = impulseBuffer();
-  node = fxWetDry(node, rev, rev);
+  node = fxWetDry(node, rev, rev, 0.5, "gtr-reverb");
 
   node.connect(master);
+}
+
+// click a stompbox: bypass the effect (dry passes at unity) or mix it back in.
+// 50 ms ramp so the switch doesn't pop.
+export function setFx(id, on) {
+  const s = fxStages[id];
+  if (!ctx || !s) return;
+  const t = ctx.currentTime;
+  s.dry.gain.linearRampToValueAtTime(on ? 1 - s.wet0 : 1, t + 0.05);
+  s.wet.gain.linearRampToValueAtTime(on ? s.wet0 : 0, t + 0.05);
+}
+
+// sync the delay pedals to a song's tempo — keys repeat on the eighth, guitar
+// on the dotted-eighth. bpm = null reverts them to their free-play times.
+export function setDelayTempo(bpm) {
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  const sub = { "kb-delay": 0.5, "gtr-delay": 0.75 };   // beats per repeat
+  for (const id in fxDelays) {
+    const tgt = bpm ? Math.max(0.04, Math.min(1, (60 / bpm) * (sub[id] || 0.5))) : fxDelayDefault[id];
+    fxDelays[id].delayTime.linearRampToValueAtTime(tgt, t + 0.12);
+  }
 }
 
 export function startAmbience() {
