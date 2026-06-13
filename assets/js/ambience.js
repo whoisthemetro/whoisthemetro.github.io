@@ -223,6 +223,58 @@ export function setRoomTone(on) {
   roomToneGains[1].gain.linearRampToValueAtTime(on ? 0.006 : 0.0001, t + 1.2);
 }
 
+// the vacuum motor — brown-ish noise through a lowpass for the air rush,
+// a resonant bandpass for the motor whine, and a slow tremolo so it
+// breathes like a real machine leaning into the carpet. built once, lazy.
+let vacNodes = null;
+function buildVacuum() {
+  if (vacNodes || !ctx) return;
+  const out = ctx.createGain(); out.gain.value = 0.0001;   // silent until on
+  out.connect(master);
+  // air rush
+  const src = ctx.createBufferSource();
+  src.buffer = noiseBuffer();
+  src.loop = true;
+  const lp = ctx.createBiquadFilter();
+  lp.type = "lowpass"; lp.frequency.value = 720; lp.Q.value = 0.6;
+  const rush = ctx.createGain(); rush.gain.value = 0.5;
+  src.connect(lp).connect(rush).connect(out);
+  // motor whine — the same noise pushed through a tight bandpass
+  const bp = ctx.createBiquadFilter();
+  bp.type = "bandpass"; bp.frequency.value = 240; bp.Q.value = 7;
+  const whine = ctx.createGain(); whine.gain.value = 0.6;
+  src.connect(bp).connect(whine).connect(out);
+  // a low motor body
+  const osc = ctx.createOscillator();
+  osc.type = "sawtooth"; osc.frequency.value = 116;
+  const oscLp = ctx.createBiquadFilter();
+  oscLp.type = "lowpass"; oscLp.frequency.value = 200;
+  const oscG = ctx.createGain(); oscG.gain.value = 0.05;
+  osc.connect(oscLp).connect(oscG).connect(out);
+  // slow tremolo on the whole thing
+  const trem = ctx.createOscillator();
+  trem.type = "sine"; trem.frequency.value = 7.5;
+  const tremG = ctx.createGain(); tremG.gain.value = 0.12;
+  trem.connect(tremG).connect(out.gain);
+  src.start(); osc.start(); trem.start();
+  vacNodes = { out };
+}
+export function startVacuum() {
+  if (!ctx) return;
+  buildVacuum();
+  const t = ctx.currentTime;
+  vacNodes.out.gain.cancelScheduledValues(t);
+  vacNodes.out.gain.setValueAtTime(Math.max(0.0001, vacNodes.out.gain.value), t);
+  vacNodes.out.gain.linearRampToValueAtTime(0.5, t + 0.18);   // spin-up
+}
+export function stopVacuum() {
+  if (!ctx || !vacNodes) return;
+  const t = ctx.currentTime;
+  vacNodes.out.gain.cancelScheduledValues(t);
+  vacNodes.out.gain.setValueAtTime(Math.max(0.0001, vacNodes.out.gain.value), t);
+  vacNodes.out.gain.linearRampToValueAtTime(0.0001, t + 0.35);  // spin-down
+}
+
 // the club's idle ambience — a soft, soothing bed under the empty room that
 // ducks the moment a set starts. theme-aware: gentle RAIN for the city,
 // muffled WATER for the aquarium, an airy PAD for deep space. all kept quiet

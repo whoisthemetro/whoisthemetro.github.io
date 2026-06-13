@@ -9,7 +9,7 @@ import { NotesWall } from "./notes3d.js";
 import { Ghosts } from "./ghosts.js";
 import { store } from "./store.js";
 import { presence } from "./presence.js";
-import { startAmbience, citySound, pianoNote, semitoneToKey, audioNow, purr, setRain, setWater, setRoomTone, setClubTone, setClubBed, kettleBoil, setThruster, boostSound, discSound, goalHorn, meow, hiss, careSound, drumHit, setArcadeZone, punchSound, shieldClang, stunBuzz, edrumHit, guitarPluck, guitarNote, shotSound, smokeSound, setFx, setDelayTempo } from "./ambience.js";
+import { startAmbience, citySound, pianoNote, semitoneToKey, audioNow, purr, setRain, setWater, setRoomTone, setClubTone, setClubBed, kettleBoil, setThruster, boostSound, discSound, goalHorn, meow, hiss, careSound, drumHit, setArcadeZone, punchSound, shieldClang, stunBuzz, edrumHit, guitarPluck, guitarNote, shotSound, smokeSound, setFx, setDelayTempo, startVacuum, stopVacuum } from "./ambience.js";
 import { SONGS, playSong, stopSong, currentSongId } from "./songs.js";
 import { progress } from "./progress.js";
 import { voice } from "./voice.js";
@@ -215,6 +215,16 @@ let modalOpen = false;
 let pendingPlacement = null;
 let currentNote = null;       // note shown in reader
 let carrying = null;          // {id, home} while re-hanging your own note
+let vacuuming = false;        // true while you're holding the vacuum
+
+// pick the vacuum up / stand it back in its corner
+function setVacuuming(on) {
+  if (on === vacuuming) return;
+  vacuuming = on;
+  world.grabVacuum(on);
+  if (on) { startVacuum(); toast("vacuuming — walk to clean the carpet · " + (IS_TOUCH ? "tap" : "click") + " to put it away"); }
+  else { stopVacuum(); toast("vacuum back in the corner"); }
+}
 let entered = false;
 let lastPostAt = 0;
 const adminMode = location.hash === "#admin";
@@ -235,6 +245,7 @@ controls.onLockChange((locked) => {
     hud.classList.add("show");
   } else if (entered && !modalOpen) {
     if (carrying) { cancelCarry(); toast("put it back — re-hang it again when you're ready"); }
+    if (vacuuming) setVacuuming(false);
     show(paused);
   }
 });
@@ -279,7 +290,7 @@ canvas.addEventListener("click", () => {
 function castAt(ndcX, ndcY) {
   raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera);
   // doors are included as blockers so notes can't be pinned onto them
-  const targets = [cat.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, world.echoPoster, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...notesWall.raycastTargets(), ...world.blockers];
+  const targets = [cat.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, world.echoPoster, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.vacuumHits, ...notesWall.raycastTargets(), ...world.blockers];
   const hits = raycaster.intersectObjects(targets, false);
   return hits[0] || null;
 }
@@ -416,6 +427,7 @@ let lastPetAt = 0;
 controls.onAction((ndcX, ndcY) => {
   if (modalOpen) return;
   if (carrying) { dropCarried(); return; }   // a click while carrying sets it down
+  if (vacuuming) { setVacuuming(false); return; }   // a click while vacuuming puts it away
   const hit = castAt(ndcX, ndcY);
   // in the arena, a click is a swing — unless you're on a catapult
   // handle (then the punch IS the launch) or aiming at something useful
@@ -548,6 +560,8 @@ controls.onAction((ndcX, ndcY) => {
     setFx(id, fxOn[id]);
     world.setStompLED(id, fxOn[id]);
     toast(`${FX_LABEL[id] || "pedal"} ${fxOn[id] ? "on" : "off"}`);
+  } else if (hit.object.userData.vacuum && hit.distance < 2.6) {
+    setVacuuming(true);
   } else if (hit.object.userData.lava && hit.distance < 2.4) {
     toast(world.toggleLava() ? "the wax wakes up 🌋" : "lava lamp off");
   } else if (hit.object.userData.blinds && hit.distance < 3.2) {
@@ -598,8 +612,16 @@ setInterval(() => {
     aimTip.classList.add("show");
     return;
   }
+  if (vacuuming) {
+    aimTip.textContent = `walk to clean the carpet · ${TAP} to put it away`;
+    aimTip.classList.add("show");
+    return;
+  }
   const hit = castAt(0, 0);
-  if (hit && hit.object.userData.cat && hit.distance < 2.2) {
+  if (hit && hit.object.userData.vacuum && hit.distance < 2.6) {
+    aimTip.textContent = `${TAP} to grab the vacuum`;
+    aimTip.classList.add("show");
+  } else if (hit && hit.object.userData.cat && hit.distance < 2.2) {
     const d = store.decayCat(catState);
     aimTip.textContent = `${TAP} to pet the cat · fed ${Math.round(d.fed * 100)}%`;
     aimTip.classList.add("show");
@@ -2187,6 +2209,14 @@ renderer.setAnimationLoop(() => {
   world.setClubEnergy(inClub ? voice.djLevel() : 0);
   world.tick(dt, controls.pos);
   if (carrying) updateCarry();
+  // the carpet grimes with traffic, and the vacuum lifts it — bedroom only
+  if (!inBoat && !inArena && !inClub) {
+    world.floorTraffic(controls.pos.x, controls.pos.z, dt, 1);
+    world.floorTraffic(cat.pos.x, cat.pos.z, dt, 0.6);
+    if (vacuuming) world.vacuumStep(controls.pos.x, controls.pos.z, controls.yaw);
+  } else if (vacuuming) {
+    setVacuuming(false);   // you can't carry it out of the room
+  }
   ghosts.tick(dt, t);
   cat.tick(dt, t, controls.pose());
   discTick(dt);

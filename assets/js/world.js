@@ -4002,8 +4002,111 @@ export function buildWorld() {
   let batT = -1, nextBatAt = 600 + rand(0, 1200);
   const BAT_DUR = 20;
 
+  /* --- the carpet remembers ---
+     a transparent grime layer over the bedroom floor that darkens where
+     feet keep landing (you + the cat), plus a stick vacuum you grab to
+     sweep it clean. the baked stains in floorTexture() are the carpet's
+     permanent past; this layer is the dirt that piles up while you hang
+     out, and lifts where the nozzle passes. MeshBasic so the toon pass
+     leaves its alpha alone. --- */
+  const GRW = 160, GRH = 200;            // grime canvas, room aspect ~0.79
+  const grimeCanvas = document.createElement("canvas");
+  grimeCanvas.width = GRW; grimeCanvas.height = GRH;
+  const grimeCtx = grimeCanvas.getContext("2d");
+  const grimeTex = new THREE.CanvasTexture(grimeCanvas);
+  grimeTex.colorSpace = THREE.SRGBColorSpace;
+  const grimeMesh = add(plane(W, D, new THREE.MeshBasicMaterial({
+    map: grimeTex, transparent: true, depthWrite: false,
+  })));
+  grimeMesh.rotation.x = -Math.PI / 2;
+  grimeMesh.position.y = 0.006;          // a hair over the carpet, under furniture
+  grimeMesh.renderOrder = 1;
+  // room (x,z) → grime pixel, the same mapping floorTexture() uses
+  const grimePX = (x) => ((x + X) / (2 * X)) * GRW;
+  const grimePZ = (z) => ((z - ZF) / (ZB - ZF)) * GRH;
+  let grimeDirty = false, grimeUpAt = 0;
+
+  // a step grinds a little dirt in where it lands; standing still
+  // concentrates it (your chair spot, the cat's perches)
+  function floorTraffic(x, z, dt, mult = 1) {
+    const cx = grimePX(x), cy = grimePZ(z);
+    if (cx < -12 || cx > GRW + 12 || cy < -12 || cy > GRH + 12) return;
+    const r = 9 * mult;
+    const a = Math.min(0.05, dt * 0.07 * mult);
+    const grd = grimeCtx.createRadialGradient(cx, cy, 0, cx, cy, r);
+    grd.addColorStop(0, `rgba(24,19,11,${a})`);
+    grd.addColorStop(1, "rgba(24,19,11,0)");
+    grimeCtx.fillStyle = grd;
+    grimeCtx.beginPath();
+    grimeCtx.arc(cx, cy, r, 0, 7);
+    grimeCtx.fill();
+    grimeDirty = true;
+  }
+
+  // the vacuum lifts the alpha back out in a soft radius
+  function cleanFloor(x, z, rMeters) {
+    const cx = grimePX(x), cy = grimePZ(z);
+    const r = (rMeters / (2 * X)) * GRW;
+    const grd = grimeCtx.createRadialGradient(cx, cy, 0, cx, cy, r);
+    grd.addColorStop(0, "rgba(0,0,0,1)");
+    grd.addColorStop(0.55, "rgba(0,0,0,1)");
+    grd.addColorStop(1, "rgba(0,0,0,0)");
+    grimeCtx.globalCompositeOperation = "destination-out";
+    grimeCtx.fillStyle = grd;
+    grimeCtx.beginPath();
+    grimeCtx.arc(cx, cy, r, 0, 7);
+    grimeCtx.fill();
+    grimeCtx.globalCompositeOperation = "source-over";
+    grimeDirty = true;
+  }
+
+  /* --- the vacuum: an upright stick that lives in the back corner.
+     click it to pick it up; while held, the nozzle rides the floor just
+     ahead of you and the carpet cleans where it passes. click again (or
+     pause) to stand it back in its corner. --- */
+  const VAC_DOCK = { x: 2.16, z: 2.84, ry: -0.5 };
+  const vacuum = new THREE.Group();
+  const vacRed = lam(0xb23a44), vacDark = lam(0x2a2d33), vacSilver = lam(0x9aa0a8);
+  const vNozzle = caster(box(0.34, 0.05, 0.17, vacDark)); vNozzle.position.y = 0.03;
+  const vBody = caster(box(0.16, 0.27, 0.13, vacRed)); vBody.position.y = 0.21;
+  const vCan = box(0.105, 0.13, 0.09, new THREE.MeshLambertMaterial({
+    color: 0x7a8a3e, transparent: true, opacity: 0.66 }));
+  vCan.position.set(0, 0.41, 0.025);
+  const vPole = new THREE.Mesh(new THREE.CylinderGeometry(0.017, 0.017, 0.92, 10), vacSilver);
+  vPole.position.y = 0.7;
+  const vGrip = box(0.045, 0.17, 0.045, vacDark); vGrip.position.set(0, 1.12, 0.015);
+  const vGripTop = box(0.045, 0.045, 0.15, vacDark); vGripTop.position.set(0, 1.19, 0.06);
+  for (const m of [vNozzle, vBody, vCan, vPole, vGrip, vGripTop]) {
+    m.userData.vacuum = true;            // any part of it is grabbable
+    vacuum.add(m);
+  }
+  add(vacuum);
+  let vacHeld = false;
+  function dockVacuum() {
+    vacuum.position.set(VAC_DOCK.x, 0, VAC_DOCK.z);
+    vacuum.rotation.set(0.13, VAC_DOCK.ry, -0.17);   // leaning into the corner
+  }
+  function grabVacuum(on) {
+    vacHeld = !!on;
+    if (!on) dockVacuum();
+  }
+  // every frame while held: stand the nozzle on the floor a bit ahead of
+  // the player, handle tipped back toward their hands, and sweep there
+  function vacuumStep(px, pz, yaw) {
+    if (!vacHeld) return;
+    const fx = -Math.sin(yaw), fz = -Math.cos(yaw);  // player forward
+    const nx = px + fx * 0.62, nz = pz + fz * 0.62;
+    vacuum.position.set(nx, 0, nz);
+    vacuum.rotation.set(0.42, Math.atan2(fx, fz), 0);  // handle leans back to you
+    cleanFloor(nx, nz, 0.4);
+  }
+  dockVacuum();
+
   function tick(dt, ppos) {
     elapsed += dt;
+    if (grimeDirty && elapsed - grimeUpAt > 0.1) {
+      grimeUpAt = elapsed; grimeDirty = false; grimeTex.needsUpdate = true;
+    }
     tickEdrums(dt);
     tickTele(dt);
     tickChair(dt, ppos);
@@ -5244,6 +5347,9 @@ export function buildWorld() {
     pianoMesh: midiKeybed, pressPianoKey,
     pianoVoiceMesh: midiBody,
     stompHits, setStompLED, stompIds: Object.keys(stompLEDs),
+    // the dirty-carpet + vacuum system (bedroom only)
+    floorTraffic, vacuumHits: [vNozzle, vBody, vCan, vPole, vGrip, vGripTop],
+    grabVacuum, vacuumStep, vacuumHeld: () => vacHeld,
     closetHits: [leftLeaf, rightLeaf], toggleCloset, setCloset,
     closetOpen: () => closet.open,
     arcadeHits,
