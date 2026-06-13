@@ -64,6 +64,8 @@ setInterval(() => {
 
 /* ---------------- voice: hold to talk, tap to leave it open ---------------- */
 voice.init(identity.uid, (p) => presence.sendVoice(p));
+// a shared tab/screen killed from the browser's "Stop sharing" pill ends the set
+voice.setOnDJEnded(() => endSet());
 let djHeardAt = 0;            // last dj chunk we received — lights the ON AIR sign for listeners
 presence.onVoice((p) => {
   voice.handleChunk(p);
@@ -1128,11 +1130,38 @@ async function openDJPicker() {
   modalOpen = true;
   controls.unlock();
   const list = $("#dj-list");
-  list.innerHTML = "<p class='fine-print'>finding inputs…</p>";
-  show($("#dj"));
-  const inputs = await voice.listInputs();
   list.innerHTML = "";
-  if (!inputs.length) { list.innerHTML = "<p class='fine-print'>no audio inputs found — grant mic access?</p>"; return; }
+  show($("#dj"));
+  // the easy path first: share a tab / system audio, no driver to install
+  if (voice.canShare()) {
+    const share = document.createElement("button");
+    share.className = "pc-item";
+    share.textContent = "🔊 share a tab / system audio";
+    share.addEventListener("click", goLiveShare);
+    list.appendChild(share);
+    const hint = document.createElement("p");
+    hint.className = "fine-print";
+    hint.textContent = "pick a tab and tick “share tab audio”, or share your screen with system audio";
+    list.appendChild(hint);
+    const sep = document.createElement("div");
+    sep.className = "pc-sec";
+    sep.textContent = "…or pick a raw input";
+    list.appendChild(sep);
+  }
+  // the fallback: a real input device (an interface, or a loopback driver)
+  const finding = document.createElement("p");
+  finding.className = "fine-print";
+  finding.textContent = "finding inputs…";
+  list.appendChild(finding);
+  const inputs = await voice.listInputs();
+  finding.remove();
+  if (!inputs.length) {
+    const none = document.createElement("p");
+    none.className = "fine-print";
+    none.textContent = "no audio inputs found — grant mic access?";
+    list.appendChild(none);
+    return;
+  }
   for (const d of inputs) {
     const b = document.createElement("button");
     b.className = "pc-item";
@@ -1146,6 +1175,16 @@ async function goLive(deviceId) {
   hide($("#dj"));
   modalOpen = false;
   if (!ok) { if (entered) safeLock(); return toast("that input said no — try another"); }
+  world.setOnAir(true);
+  toast("you're on — THE VENUE is live 🔴");
+  if (entered) safeLock();
+}
+async function goLiveShare() {
+  const ok = await voice.startDJShare();
+  if (ok === "no-audio") return toast("no audio came through — tick “share tab audio” in the picker");
+  hide($("#dj"));
+  modalOpen = false;
+  if (!ok) { if (entered) safeLock(); return toast("sharing was cancelled"); }
   world.setOnAir(true);
   toast("you're on — THE VENUE is live 🔴");
   if (entered) safeLock();

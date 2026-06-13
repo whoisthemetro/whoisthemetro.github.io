@@ -28,9 +28,11 @@ const players = new Map();  // uid -> output chain + playhead
 // the DJ broadcast runs on the same chunk pipeline, but its own stream:
 // a loopback input (system audio) recorded full-range and loud, tagged
 // dj:true so the far side skips the squawk box and plays it as music.
-let djStream = null;
+let djStream = null;        // the audio we record + ship (device or shared tab)
+let djShareStream = null;   // the raw getDisplayMedia stream, kept so we can fully stop it
 let djRec = null;
 let djLive = false;
+let onDJEnded = null;       // fires if a shared tab/screen is stopped from the browser bar
 let inClubFlag = false;     // set by main.js — dj audio is club-only
 let djBus = null;           // one shared gain → master (cat. E taps it for reactive light)
 const djHeads = new Map();  // uid -> playhead time, per broadcaster
@@ -136,6 +138,15 @@ function ensureAnalyser(ctx) {
   return djAna;
 }
 
+// tap our own outgoing stream into the analyser so the room reacts to the set
+// we're playing — we never receive our own chunks back over the wire
+function tapForLights() {
+  try {
+    const { ctx } = audioGraph();
+    if (ctx && djStream) { djAnaSrc = ctx.createMediaStreamSource(djStream); djAnaSrc.connect(ensureAnalyser(ctx)); }
+  } catch (e) {}
+}
+
 function gritCurve() {
   const c = new Float32Array(256);
   for (let i = 0; i < 256; i++) {
@@ -179,6 +190,9 @@ export const voice = {
   setArenaFx(on) { arenaFx = !!on; },
   setInClub(on) { inClubFlag = !!on; },
   djLive: () => djLive,
+  // main.js wants to know if a shared tab/screen was killed from the browser bar
+  setOnDJEnded(fn) { onDJEnded = fn; },
+  canShare: () => !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia),
 
   // the audio inputs a dj can pick from — labels only show once we hold a
   // grant, so take a throwaway one first if they're hidden, then release it.
@@ -210,12 +224,32 @@ export const voice = {
       });
     } catch (e) { return false; }
     djLive = true;
-    // tap our own source so the room reacts to the set we're playing, even
-    // though we never receive our own chunks back over the wire
+    tapForLights();
+    djRecordLoop();
+    return true;
+  },
+
+  // the easy path: share a Chrome tab (with "share tab audio") or the whole
+  // screen with system audio — no loopback driver to install. we keep only
+  // the sound; the captured picture is thrown away immediately.
+  async startDJShare() {
+    if (!this.canShare()) return false;
+    let disp;
     try {
-      const { ctx } = audioGraph();
-      if (ctx) { djAnaSrc = ctx.createMediaStreamSource(djStream); djAnaSrc.connect(ensureAnalyser(ctx)); }
-    } catch (e) {}
+      disp = await navigator.mediaDevices.getDisplayMedia({
+        video: true,   // chrome won't show the picker for audio alone
+        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+      });
+    } catch (e) { return false; }     // they hit cancel
+    const aud = disp.getAudioTracks();
+    if (!aud.length) { disp.getTracks().forEach(t => t.stop()); return "no-audio"; }
+    disp.getVideoTracks().forEach(t => t.stop());     // we only ever wanted the sound
+    djShareStream = disp;
+    djStream = new MediaStream(aud);
+    // if they click the browser's "Stop sharing" pill, end the set cleanly
+    aud[0].addEventListener("ended", () => { this.stopDJ(); if (onDJEnded) try { onDJEnded(); } catch (e) {} });
+    djLive = true;
+    tapForLights();
     djRecordLoop();
     return true;
   },
@@ -226,6 +260,7 @@ export const voice = {
     try { if (djAnaSrc) djAnaSrc.disconnect(); } catch (e) {}
     djAnaSrc = null;
     if (djStream) { djStream.getTracks().forEach(t => t.stop()); djStream = null; }
+    if (djShareStream) { djShareStream.getTracks().forEach(t => t.stop()); djShareStream = null; }
   },
 
   // 0..1 energy from the bass/low-mids of whatever's on the decks. lifted,
