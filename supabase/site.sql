@@ -153,6 +153,43 @@ alter table public.notes drop constraint if exists notes_wall_check;
 alter table public.notes add constraint notes_wall_check
   check (wall in ('back', 'west', 'east', 'boat_port', 'boat_stb', 'boat_door'));
 
+-- ---------- re-hang your own note ----------
+-- A visitor may move a note THEY posted to a new spot. We tag each note with
+-- the poster's anonymous uid (going forward only — old rows stay null and so
+-- can never be moved). Still no public UPDATE policy: the move runs through a
+-- security-definer RPC that checks the uid, so you can only ever shove your
+-- own paper around.
+alter table public.notes add column if not exists uid text
+  check (uid is null or char_length(uid) <= 40);
+
+create or replace function public.move_note(
+  note_id uuid, note_uid text,
+  new_wall text, new_x double precision, new_y double precision, new_rot double precision
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_owner text;
+begin
+  if note_uid is null or new_x < 0 or new_x > 1 or new_y < 0 or new_y > 1
+     or new_rot < -0.5 or new_rot > 0.5
+     or new_wall not in ('back', 'west', 'east', 'boat_port', 'boat_stb', 'boat_door') then
+    return false;
+  end if;
+  select uid into v_owner from public.notes where id = note_id and not deleted;
+  if v_owner is null or v_owner <> note_uid then
+    return false;     -- not yours (or it was never tagged) → no move
+  end if;
+  update public.notes
+     set wall = new_wall, x = new_x, y = new_y, rot = new_rot
+   where id = note_id;
+  return true;
+end;
+$$;
+
 -- ---------- messages in bottles ----------
 create table if not exists public.bottles (
   id         uuid primary key default gen_random_uuid(),

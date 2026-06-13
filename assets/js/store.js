@@ -8,8 +8,10 @@
 
    A note row:
      { id, created_at, kind: 'note'|'photo'|'link',
-       text, url, image_path, author, color,
+       text, url, image_path, author, color, uid,
        wall, x, y, rot }            // x,y are 0..1 across the wall
+                                    // uid = who posted it; lets people
+                                    // re-hang their OWN note later
    ============================================================ */
 
 import { blobToDataUrl } from "./util.js";
@@ -21,9 +23,11 @@ let sb = null;                  // supabase client
 let bc = null;                  // BroadcastChannel (local mode + delete events)
 const newListeners = new Set();
 const removedListeners = new Set();
+const movedListeners = new Set();
 
 function emitNew(n)    { newListeners.forEach(fn => { try { fn(n); } catch (e) {} }); }
 function emitRemoved(id) { removedListeners.forEach(fn => { try { fn(id); } catch (e) {} }); }
+function emitMoved(m)  { movedListeners.forEach(fn => { try { fn(m); } catch (e) {} }); }
 
 async function init() {
   const cfg = window.METRO_CONFIG || {};
@@ -51,6 +55,7 @@ async function init() {
       const m = ev.data || {};
       if (m.type === "new" && mode === "local") emitNew(m.note);
       if (m.type === "del") emitRemoved(m.id);
+      if (m.type === "move") emitMoved(m.move);
       if (m.type === "cat" && mode === "local") {
         catListeners.forEach(fn => { try { fn(m.state); } catch (e) {} });
       }
@@ -135,6 +140,30 @@ async function adminDelete(id, pass) {
   }
   bc?.postMessage({ type: "del", id });
   emitRemoved(id);
+}
+
+// re-hang a note you posted. only the original poster's uid is allowed —
+// going forward only (old notes carry no uid, so nobody can move them).
+// returns the moved row (or the place we wrote in local mode).
+async function moveNote(id, uid, place) {
+  if (!uid) throw new Error("no uid");
+  if (mode === "supabase") {
+    const { data, error } = await sb.rpc("move_note", {
+      note_id: id, note_uid: uid,
+      new_wall: place.wall, new_x: place.x, new_y: place.y, new_rot: place.rot ?? 0,
+    });
+    if (error) throw error;
+    if (!data) throw new Error("not yours");
+  } else {
+    const all = lsRead();
+    const n = all.find(x => x.id === id);
+    if (!n || n.uid !== uid) throw new Error("not yours");
+    n.wall = place.wall; n.x = place.x; n.y = place.y; n.rot = place.rot ?? 0;
+    lsWrite(all);
+  }
+  const moved = { id, wall: place.wall, x: place.x, y: place.y, rot: place.rot ?? 0 };
+  bc?.postMessage({ type: "move", move: moved });
+  return moved;
 }
 
 /* ---- cat needs: shared in real time across every visitor ----
@@ -427,7 +456,7 @@ export const store = {
   submitScore, listScores,
   onNewScore: fn => { scoreListeners.add(fn); return () => scoreListeners.delete(fn); },
   _subscribeScores: subscribeScores,
-  init, list, add, imageUrl, adminDelete,
+  init, list, add, imageUrl, adminDelete, moveNote,
   sendDM, readInbox, demoUrl,
   getCatState, catCare, decayCat,
   onCatState: fn => { catListeners.add(fn); return () => catListeners.delete(fn); },
@@ -435,4 +464,5 @@ export const store = {
   get client() { return sb; },
   onNew: fn => { newListeners.add(fn); return () => newListeners.delete(fn); },
   onRemoved: fn => { removedListeners.add(fn); return () => removedListeners.delete(fn); },
+  onMoved: fn => { movedListeners.add(fn); return () => movedListeners.delete(fn); },
 };

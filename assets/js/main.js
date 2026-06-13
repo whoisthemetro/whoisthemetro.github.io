@@ -187,6 +187,7 @@ const aimTip = $("#aim-tip");
 let modalOpen = false;
 let pendingPlacement = null;
 let currentNote = null;       // note shown in reader
+let carrying = null;          // {id, home} while re-hanging your own note
 let entered = false;
 let lastPostAt = 0;
 const adminMode = location.hash === "#admin";
@@ -206,6 +207,7 @@ controls.onLockChange((locked) => {
     hide(paused); hide(intro);
     hud.classList.add("show");
   } else if (entered && !modalOpen) {
+    if (carrying) { cancelCarry(); toast("put it back — re-hang it again when you're ready"); }
     show(paused);
   }
 });
@@ -252,6 +254,70 @@ function castAt(ndcX, ndcY) {
   const targets = [cat.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.clubExitHit, ...world.deckHits, world.volcaHit, world.bottleHit, world.echoPoster, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...notesWall.raycastTargets(), ...world.blockers];
   const hits = raycaster.intersectObjects(targets, false);
   return hits[0] || null;
+}
+
+// a ray that only sees bare wall + the solid things stuck to it — used while
+// re-hanging a note so the note you're carrying (floating on top of the
+// crosshair) doesn't shadow the wall behind it.
+function castWalls(ndcX, ndcY) {
+  raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera);
+  const targets = [...world.walls.map(w => w.mesh), ...world.blockers];
+  return raycaster.intersectObjects(targets, false)[0] || null;
+}
+
+/* ---------- pick up & re-hang your OWN note ---------- */
+
+function pickUpNote(note) {
+  if (carrying || !note || note.uid !== identity.uid) return;
+  const home = notesWall.pickUp(note.id);
+  if (!home) return;
+  carrying = { id: note.id, home };
+  toast("carrying your note — look at bare wall and " + (IS_TOUCH ? "tap" : "click") + " to set it down");
+}
+
+// fired every frame while carrying: hover the note on the wall under the
+// crosshair and tint it by whether that exact patch is free.
+function updateCarry() {
+  if (!carrying) return;
+  const hit = castWalls(0, 0);
+  const place = hit && hit.distance < 4.5 ? notesWall.placementFromHit(hit) : null;
+  const mesh = notesWall.byId.get(carrying.id);
+  if (!mesh) { carrying = null; return; }
+  if (place) {
+    place.rot = mesh.userData.note.rot || 0;   // keep its own tilt, don't re-roll
+    notesWall.preview(carrying.id, place);
+    mesh.material.opacity = notesWall.spotFree(place) ? 0.92 : 0.4;
+    carrying.place = place;
+  } else {
+    carrying.place = null;
+    mesh.material.opacity = 0.5;
+  }
+}
+
+async function dropCarried() {
+  if (!carrying) return;
+  const c = carrying;
+  if (!c.place) return toast("point at some bare wall first");
+  const final = notesWall.drop(c.id, c.place);
+  if (!final) return toast("no room right there — try another spot");
+  carrying = null;
+  refreshNoteVisibility();
+  // tell everyone else live, then make it stick
+  presence.sendAct({ kind: "notemove", id: c.id, ...final });
+  try {
+    await store.moveNote(c.id, identity.uid, final);
+    toast("re-hung. it stays there now.");
+  } catch (err) {
+    toast("moved it here, but couldn't save the new spot");
+  }
+}
+
+// ESC / losing the pointer mid-carry puts the note back where it was
+function cancelCarry() {
+  if (!carrying) return;
+  notesWall.drop(carrying.id, carrying.home);
+  carrying = null;
+  refreshNoteVisibility();
 }
 
 function gotScratched() {
@@ -321,6 +387,7 @@ async function wrapCare(action) {
 let lastPetAt = 0;
 controls.onAction((ndcX, ndcY) => {
   if (modalOpen) return;
+  if (carrying) { dropCarried(); return; }   // a click while carrying sets it down
   const hit = castAt(ndcX, ndcY);
   // in the arena, a click is a swing — unless you're on a catapult
   // handle (then the punch IS the launch) or aiming at something useful
@@ -479,6 +546,13 @@ controls.onAction((ndcX, ndcY) => {
 const TAP = IS_TOUCH ? "tap" : "click";
 setInterval(() => {
   if (!controls.locked || modalOpen) { aimTip.classList.remove("show"); return; }
+  if (carrying) {
+    aimTip.textContent = carrying.place
+      ? `${TAP} to set it down here`
+      : "find some bare wall…";
+    aimTip.classList.add("show");
+    return;
+  }
   const hit = castAt(0, 0);
   if (hit && hit.object.userData.cat && hit.distance < 2.2) {
     const d = store.decayCat(catState);
@@ -662,6 +736,7 @@ $("#post-btn").addEventListener("click", async () => {
   const author = (identity.name || "").trim().slice(0, 24);
   const base = {
     kind, author: author || null, color: null, text: null, url: null,
+    uid: identity.uid,                 // so you can re-hang your own later
     wall: pendingPlacement.wall,
     x: pendingPlacement.x, y: pendingPlacement.y, rot: pendingPlacement.rot,
   };
@@ -758,6 +833,8 @@ function openReader(note) {
   $("#reader-meta").textContent =
     `${note.author ? note.author + " · " : ""}${timeAgo(note.created_at)}`;
   $("#reader-delete").classList.toggle("hidden", !adminMode);
+  // you can re-hang anything you posted (going forward — old notes have no uid)
+  $("#reader-move").classList.toggle("hidden", !(note.uid && note.uid === identity.uid));
   show(reader);
 }
 function closeReader() {
@@ -767,6 +844,13 @@ function closeReader() {
   if (entered) safeLock();
 }
 $("#reader-close").addEventListener("click", closeReader);
+
+$("#reader-move").addEventListener("click", () => {
+  if (!currentNote) return;
+  const note = currentNote;
+  closeReader();                 // closes + relocks the pointer
+  pickUpNote(note);
+});
 
 $("#reader-delete").addEventListener("click", async () => {
   if (!currentNote) return;
@@ -1809,6 +1893,8 @@ addEventListener("keydown", (e) => {
 
   store.onNew((n) => { if (!notesWall.has(n.id)) { notesWall.add(n); refreshNoteVisibility(); } });
   store.onRemoved((id) => notesWall.remove(id));
+  // another tab re-hung a note (local mode) — mirror its new spot
+  store.onMoved((m) => { notesWall.moveTo(m.id, m); refreshNoteVisibility(); });
 
   presence.join(identity, () => controls.pose());
   presence.onPeers((peers) => {
@@ -1909,6 +1995,10 @@ addEventListener("keydown", (e) => {
       } else if (inArena) {
         ghosts.flash(p.target, 0x66e0ff);
       }
+    } else if (p.kind === "notemove") {
+      // someone re-hung their note — slide it to its new home for us too
+      notesWall.moveTo(p.id, { wall: p.wall, x: p.x, y: p.y, rot: p.rot });
+      refreshNoteVisibility();
     }
   });
   presence.onChat((p) => pushChat(p.name || "someone", p.color, p.text));
@@ -1962,6 +2052,7 @@ addEventListener("keydown", (e) => {
 /* ---------------- frame loop ---------------- */
 window.METRO_DEBUG = { renderer, camera, world, controls, THREE, cat, notesWall,
   uid: identity.uid,
+  carry: { pick: pickUpNote, drop: dropCarried, state: () => carrying },
   booth: { dj: () => djState, canDJ: () => canDJ(), headcount: () => clubHeadcount(), live: () => voice.djLive() } };
 
 const clock = new THREE.Clock();
@@ -1982,6 +2073,7 @@ renderer.setAnimationLoop(() => {
   // the club lights dance to the set; everywhere else energy stays at zero
   world.setClubEnergy(inClub ? voice.djLevel() : 0);
   world.tick(dt, controls.pos);
+  if (carrying) updateCarry();
   ghosts.tick(dt, t);
   cat.tick(dt, t, controls.pose());
   discTick(dt);

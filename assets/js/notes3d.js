@@ -243,15 +243,8 @@ export class NotesWall {
     if (!this.occupied.has(wall.id)) this.occupied.set(wall.id, []);
     this.occupied.get(wall.id).push({ id: note.id, ...spot });
 
-    const offset = 0.03 + (this.seq++ % 64) * 0.0008;
-    const pos = wall.origin.clone()
-      .addScaledVector(wall.uDir, spot.cu)
-      .addScaledVector(wall.vDir, spot.cv)
-      .addScaledVector(wall.normal, offset);
-    mesh.position.copy(pos);
-    mesh.quaternion.copy(wall.mesh.quaternion);
-    mesh.rotateZ(note.rot || 0);
     mesh.userData.note = note;
+    this._placeMesh(mesh, wall, spot.cu, spot.cv, note.rot || 0);
     this.group.add(mesh);
     this.byId.set(note.id, mesh);
 
@@ -269,6 +262,107 @@ export class NotesWall {
       }
     }
     return mesh;
+  }
+
+  // pin a note's mesh onto (wall, cu, cv) in meters, proud of the wall by a
+  // staggered offset so coincident notes never z-fight. reused by add + move.
+  _placeMesh(mesh, wall, cu, cv, rot) {
+    if (mesh.userData.zoff == null) mesh.userData.zoff = 0.03 + (this.seq++ % 64) * 0.0008;
+    const pos = wall.origin.clone()
+      .addScaledVector(wall.uDir, cu)
+      .addScaledVector(wall.vDir, cv)
+      .addScaledVector(wall.normal, mesh.userData.zoff);
+    mesh.position.copy(pos);
+    mesh.quaternion.copy(wall.mesh.quaternion);
+    mesh.rotateZ(rot || 0);
+  }
+
+  /* ---------- pick up & re-hang your OWN note ---------- */
+
+  // lift a note off the wall: free its patch, float it on top of everything
+  // (depthTest off) so it reads as "in hand". returns its home spot for cancel.
+  pickUp(id) {
+    const mesh = this.byId.get(id);
+    if (!mesh) return null;
+    const note = mesh.userData.note;
+    for (const taken of this.occupied.values()) {
+      const i = taken.findIndex(o => o.id === id);
+      if (i >= 0) { taken.splice(i, 1); break; }
+    }
+    mesh.userData.carrying = true;
+    mesh.renderOrder = 999;
+    mesh.material.depthTest = false;
+    mesh.material.transparent = true;
+    mesh.material.opacity = 0.82;
+    return { wall: note.wall, x: note.x, y: note.y, rot: note.rot || 0 };
+  }
+
+  // while carried: hover the mesh at a raw (wall, x, y) without claiming a patch
+  preview(id, place) {
+    const mesh = this.byId.get(id);
+    const wall = this.walls.find(w => w.id === place.wall);
+    if (!mesh || !wall) return;
+    this._placeMesh(mesh, wall, place.x * wall.w, place.y * wall.h, mesh.userData.note.rot || 0);
+  }
+
+  // does this exact spot sit clear of every other note + void on the wall?
+  // (no spiral — just the honest "is this patch free" the preview tint wants)
+  spotFree(place) {
+    const wall = this.walls.find(w => w.id === place.wall);
+    if (!wall) return false;
+    const note = { kind: "note", ...place };
+    const [kw, kh] = KIND_SIZE[note.kind] || KIND_SIZE.note;
+    const hu = kw / 2 + PAD, hv = kh / 2 + PAD;
+    const cu = place.x * wall.w, cv = place.y * wall.h;
+    const taken = this.occupied.get(wall.id) || [];
+    const voids = wall.voids || [];
+    return !taken.some(o => Math.abs(cu - o.cu) < hu + o.hu && Math.abs(cv - o.cv) < hv + o.hv)
+      && !voids.some(r => cu + hu > r.u0 && cu - hu < r.u1 && cv + hv > r.v0 && cv - hv < r.v1);
+  }
+
+  // set the note down at place: re-resolve a free patch (spiral, like a fresh
+  // post), settle the mesh, restore solid rendering. returns the FINAL place
+  // (normalized to the resolved spot, so reloads land it exactly here) or null
+  // if the wall has no room.
+  drop(id, place) {
+    const mesh = this.byId.get(id);
+    const wall = this.walls.find(w => w.id === place.wall);
+    if (!mesh || !wall) return null;
+    const note = { ...mesh.userData.note, wall: place.wall, x: place.x, y: place.y };
+    const spot = this._resolveSpot(wall, note);
+    if (!spot) return null;
+    if (!this.occupied.has(wall.id)) this.occupied.set(wall.id, []);
+    this.occupied.get(wall.id).push({ id, ...spot });
+
+    const final = { wall: place.wall, x: spot.cu / wall.w, y: spot.cv / wall.h, rot: place.rot ?? (note.rot || 0) };
+    Object.assign(mesh.userData.note, final);
+    mesh.userData.carrying = false;
+    mesh.renderOrder = 0;
+    mesh.material.depthTest = true;
+    mesh.material.transparent = false;
+    mesh.material.opacity = 1;
+    this._placeMesh(mesh, wall, spot.cu, spot.cv, final.rot);
+    return final;
+  }
+
+  // someone else re-hung their note (live, over presence): just relocate it.
+  // unlike drop() this trusts the incoming spot verbatim — it's already been
+  // resolved on the mover's machine — and reclaims occupancy for it.
+  moveTo(id, place) {
+    const mesh = this.byId.get(id);
+    const wall = this.walls.find(w => w.id === place.wall);
+    if (!mesh || !wall) return;
+    for (const taken of this.occupied.values()) {
+      const i = taken.findIndex(o => o.id === id);
+      if (i >= 0) { taken.splice(i, 1); break; }
+    }
+    const [kw, kh] = KIND_SIZE[mesh.userData.note.kind] || KIND_SIZE.note;
+    const hu = kw / 2 + PAD, hv = kh / 2 + PAD;
+    const cu = place.x * wall.w, cv = place.y * wall.h;
+    if (!this.occupied.has(wall.id)) this.occupied.set(wall.id, []);
+    this.occupied.get(wall.id).push({ id, cu, cv, hu, hv });
+    Object.assign(mesh.userData.note, { wall: place.wall, x: place.x, y: place.y, rot: place.rot ?? (mesh.userData.note.rot || 0) });
+    this._placeMesh(mesh, wall, cu, cv, mesh.userData.note.rot || 0);
   }
 
   remove(id) {
