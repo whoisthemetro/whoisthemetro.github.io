@@ -208,7 +208,22 @@ controls.onLockChange((locked) => {
   }
 });
 
-$("#enter-btn").addEventListener("click", () => {
+// the door wants a name — it floats over your head and signs everything you post
+const nameInput = $("#visitor-name");
+if (nameInput) nameInput.value = identity.name || "";
+function enterRoom() {
+  const name = (nameInput?.value || "").trim().slice(0, 24);
+  if (!name) {
+    nameInput?.focus();
+    nameInput?.classList.remove("nudge");
+    void nameInput?.offsetWidth;          // restart the shake
+    nameInput?.classList.add("nudge");
+    toast("the room wants a name first");
+    return;
+  }
+  identity.name = name;
+  saveIdentity(identity);
+  presence.updateMeta({ name });          // others see your tag the moment you walk in
   entered = true;
   startAmbience();
   hide(intro);
@@ -220,7 +235,9 @@ $("#enter-btn").addEventListener("click", () => {
     world.addAccessory(acc.id);
     if (isNew) toast(`🔓 the room grew something: ${acc.title}`);
   });
-});
+}
+$("#enter-btn").addEventListener("click", enterRoom);
+nameInput?.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); enterRoom(); } });
 $("#resume-btn").addEventListener("click", () => { hide(paused); safeLock(); });
 canvas.addEventListener("click", () => {
   if (entered && !modalOpen && !controls.locked && !IS_TOUCH) safeLock();
@@ -578,7 +595,6 @@ let chosenPaper = PAPERS[0];
 let photoBlob = null;
 
 const noteText = $("#note-text"), charCount = $("#char-count");
-const authorInput = $("#author-name");
 const swatches = $("#swatches");
 
 PAPERS.forEach((p, i) => {
@@ -623,7 +639,6 @@ function openComposer(place) {
   pendingPlacement = place;
   modalOpen = true;
   controls.unlock();
-  authorInput.value = identity.name || "";
   show(composer);
   if (!IS_TOUCH) setTimeout(() => noteText.focus(), 50);
 }
@@ -641,7 +656,8 @@ $("#post-btn").addEventListener("click", async () => {
     return toast("easy — one thing on the wall every 20 seconds");
   }
 
-  const author = authorInput.value.trim().slice(0, 24);
+  // every post is signed with the name you walked in under
+  const author = (identity.name || "").trim().slice(0, 24);
   const base = {
     kind, author: author || null, color: null, text: null, url: null,
     wall: pendingPlacement.wall,
@@ -664,9 +680,6 @@ $("#post-btn").addEventListener("click", async () => {
     base.url = url;
     base.text = $("#link-title").value.trim().slice(0, 80) || null;
   }
-
-  identity.name = author;
-  saveIdentity(identity);
 
   const btn = $("#post-btn");
   btn.disabled = true;

@@ -70,6 +70,23 @@ body {
 #enter-btn:hover, #resume-btn:hover, #post-btn:hover {
   transform: translateY(-1px); box-shadow: 0 0 40px rgba(255, 77, 46, 0.55);
 }
+/* the door asks your name before it lets you in */
+#visitor-name {
+  display: block; margin: 0 auto 22px; width: min(300px, 82%);
+  background: rgba(10, 14, 17, 0.62); border: 1px solid var(--line);
+  border-radius: 2px; color: var(--ink); text-align: center;
+  font-family: "Archivo", sans-serif; font-size: 15px; letter-spacing: 0.04em;
+  padding: 13px 16px; outline: none;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+#visitor-name::placeholder { color: var(--dim); letter-spacing: 0.02em; }
+#visitor-name:focus { border-color: var(--neon); box-shadow: 0 0 16px rgba(255, 77, 46, 0.25); }
+#visitor-name.nudge { border-color: var(--amber); animation: name-nudge 0.32s ease; }
+@keyframes name-nudge {
+  0%,100% { transform: translateX(0); }
+  20% { transform: translateX(-7px); }
+  60% { transform: translateX(7px); }
+}
 .controls-hint { margin-top: 26px; font-size: 11px; color: var(--dim); letter-spacing: 0.06em; }
 .mode-badge { margin-top: 14px; font-size: 11px; color: #5d8aa8; letter-spacing: 0.08em; min-height: 14px; }
 .mode-badge.warn { color: var(--amber); }
