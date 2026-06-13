@@ -1596,6 +1596,58 @@ export function buildWorld() {
     tele.rotation.z = Math.sin(teleWiggle * 22) * 0.02 * teleWiggle;
   }
 
+  /* --- the pedalboard: delay + reverb on the floor in front of the tele.
+     every guitarist's signal chain ends up here, so the tele's cable
+     should too — a tilted board with two stompboxes and a coiled patch. --- */
+  const pedalboard = new THREE.Group();
+  // slanted board, back edge lifted so the switches face you
+  const pbPlate = box(0.34, 0.018, 0.2, lam(0x18191d));
+  pbPlate.position.set(0, 0.055, 0);
+  pbPlate.rotation.x = -0.26;              // tilt up toward the player
+  pedalboard.add(pbPlate);
+  // little rubber feet at the front so the board doesn't float
+  for (const fx of [-0.13, 0.13]) {
+    const ft = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.03, 8), lam(0x0d0e10));
+    ft.position.set(fx, 0.015, 0.085);
+    pedalboard.add(ft);
+  }
+  // a stompbox: enclosure, footswitch, two knobs, status LED. mounted on the tilt.
+  function stompbox(px, bodyCol, ledCol) {
+    const pg = new THREE.Group();
+    const enc = box(0.105, 0.055, 0.125, lam(bodyCol));
+    enc.position.y = 0.0275;
+    pg.add(enc);
+    // the big footswitch up front
+    const sw = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.022, 12), lam(0xb9bec6));
+    sw.position.set(0, 0.06, 0.04);
+    pg.add(sw);
+    // two control knobs across the top
+    for (const kx of [-0.026, 0.026]) {
+      const knob = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.013, 0.016, 10), lam(0x111214));
+      knob.position.set(kx, 0.056, -0.034);
+      pg.add(knob);
+    }
+    // the lit-when-on LED, kept emissive so the toon pass leaves it glowing
+    const led = new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.005, 0.006, 8),
+      new THREE.MeshBasicMaterial({ color: ledCol }));
+    led.position.set(0, 0.058, 0.006);
+    pg.add(led);
+    pg.position.set(px, 0.064, -0.012);
+    pg.rotation.x = -0.26;                 // sit flush on the tilted board
+    pedalboard.add(pg);
+  }
+  stompbox(-0.075, 0x1f7a6e, 0x46f0d6);    // delay — teal, green eye
+  stompbox(0.075, 0x35307a, 0x8a7bff);     // reverb — indigo, violet eye
+  // the patch cable snaking back toward the guitar's jack
+  const patch = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.42, 6), lam(0x0c0d0f));
+  patch.position.set(0.16, 0.05, -0.06);
+  patch.rotation.set(0.5, 0.0, -0.7);
+  pedalboard.add(patch);
+  // tucked on the floor just in front of the tele, squared to its stand
+  pedalboard.position.set(1.52, 0, ZF + 1.02);
+  pedalboard.rotation.y = 0.3;
+  add(pedalboard);
+
   /* --- the closet (z -1.15..0.35 on the west wall) ---
      The left leaf is hinged: click it and it swings AWAY from you,
      into the closet, revealing what's inside. --- */
