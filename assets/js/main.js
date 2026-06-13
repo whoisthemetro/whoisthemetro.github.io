@@ -9,7 +9,7 @@ import { NotesWall } from "./notes3d.js";
 import { Ghosts } from "./ghosts.js";
 import { store } from "./store.js";
 import { presence } from "./presence.js";
-import { startAmbience, citySound, pianoNote, audioNow, purr, setRain, setWater, setRoomTone, setClubTone, kettleBoil, setThruster, boostSound, discSound, goalHorn, meow, hiss, careSound, drumHit, setArcadeZone, punchSound, shieldClang, stunBuzz, edrumHit, guitarPluck, shotSound, smokeSound } from "./ambience.js";
+import { startAmbience, citySound, pianoNote, semitoneToKey, audioNow, purr, setRain, setWater, setRoomTone, setClubTone, kettleBoil, setThruster, boostSound, discSound, goalHorn, meow, hiss, careSound, drumHit, setArcadeZone, punchSound, shieldClang, stunBuzz, edrumHit, guitarPluck, shotSound, smokeSound } from "./ambience.js";
 import { SONGS, playSong, stopSong, currentSongId } from "./songs.js";
 import { progress } from "./progress.js";
 import { voice } from "./voice.js";
@@ -1778,8 +1778,9 @@ function toggleSong(id) {
     now: audioNow,
     // the song keeps rolling while you're in another room — you just
     // don't hear the bedroom piano from there
-    note: (key, vel, when) => { if (!inBoat && !inArena && !inClub) pianoNote(key, pianoVoice, vel * MUSIC_VEL, when); },
-    visual: (key, delay) => setTimeout(() => { if (!inBoat && !inArena && !inClub) world.pressPianoKey(key); }, delay),
+    // songs are chromatic — key is a raw semitone, not a white-key index
+    note: (key, vel, when) => { if (!inBoat && !inArena && !inClub) pianoNote(key, pianoVoice, vel * MUSIC_VEL, when, true); },
+    visual: (key, delay) => setTimeout(() => { if (!inBoat && !inArena && !inClub) world.pressPianoKey(semitoneToKey(key)); }, delay),
     ended: refreshSongUI,
   });
   store.logEvent("piano");

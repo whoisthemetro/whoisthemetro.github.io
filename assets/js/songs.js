@@ -8,9 +8,21 @@
    sheet music. The MIDI keybed is 15 keys of C major (C4..C6),
    so everything here lives in A minor.
 
+   Free-play stays locked to those 15 white keys, but the self-playing
+   songs run through the keybed's CHROMATIC mode — note keys below are
+   white-key indices (0..14, the map under here) and dia() remaps each to
+   its true semitone, so a song can also drop a raw semitone for an
+   accidental the keybed can't free-play (e.g. G#5 = 20, see Crawling).
+
    key map: 0 C4 · 1 D4 · 2 E4 · 3 F4 · 4 G4 · 5 A4 · 6 B4
             7 C5 · 8 D5 · 9 E5 · 10 F5 · 11 G5 · 12 A5 · 13 B5 · 14 C6
    ============================================================ */
+
+// white-key index → chromatic semitone (mirrors ambience.js C_MAJOR);
+// dia() lifts a whole bar of index-keyed events into semitone space so
+// the diatonic body sounds exactly as written, accidentals added raw.
+const SEMI = [0, 2, 4, 5, 7, 9, 11, 12, 14, 16, 17, 19, 21, 23, 24];
+const dia = events => events.map(([b, k, v = 1]) => [b, SEMI[k], v]);
 
 // a bar of eighth-note ostinato: [top, mid, low] chord tones
 function osti(bar, [t, m, l], accent = 1, soft = 0.7) {
@@ -34,7 +46,7 @@ export const SONGS = [
     title: "In the End",
     bpm: 86,
     beats: 32,
-    notes: [
+    notes: dia([
       // Am Am F F C C G G — the dark ostinato carries it
       ...osti(0, [12, 9, 7]), ...osti(1, [12, 9, 7]),
       ...osti(2, [10, 7, 5]), ...osti(3, [10, 7, 5]),
@@ -45,14 +57,14 @@ export const SONGS = [
       // a thin voice over the back half
       [16, 14, 1.1], [19, 13, 1.0], [20, 12, 1.1],
       [24, 11, 1.0], [26, 12, 1.0], [27, 13, 1.0], [28, 12, 1.1],
-    ],
+    ]),
   },
   {
     id: "lasttrain",
     title: "The Messenger",
     bpm: 72,
     beats: 32,
-    notes: [
+    notes: dia([
       // C G Am F, twice — slow broken chords, streetlight tempo
       ...broken(0, [7, 9, 11, 9]), ...broken(1, [6, 8, 11, 8]),
       ...broken(2, [7, 9, 12, 9]), ...broken(3, [5, 7, 10, 7]),
@@ -63,7 +75,7 @@ export const SONGS = [
       // the melody only shows up on the way out
       [16.5, 14, 1.1], [18, 13, 1.0], [20.5, 12, 1.1], [22, 11, 1.0],
       [24.5, 9, 1.0], [26, 11, 1.0], [28, 8, 1.1], [30, 7, 1.0],
-    ],
+    ]),
   },
   {
     // the Crawling request — the real one is someone else's composition,
@@ -74,7 +86,7 @@ export const SONGS = [
     title: "Crawling",
     bpm: 94,
     beats: 32,
-    notes: [
+    notes: [...dia([
       // Am Am F F Dm Dm G G
       ...osti(0, [12, 9, 10], 1, 0.72), ...osti(1, [12, 9, 10], 1, 0.72),
       ...osti(2, [12, 10, 7], 1, 0.72), ...osti(3, [12, 10, 7], 1, 0.72),
@@ -86,6 +98,11 @@ export const SONGS = [
       [16, 14, 1.15], [18, 13, 1.0], [19, 14, 1.05], [20, 12, 1.1],
       [22.5, 11, 1.0], [24, 12, 1.1], [26, 13, 1.0], [27, 14, 1.05],
       [28, 12, 1.15], [30, 9, 1.0],
+    ]),
+    // the half-step itch the keybed can't free-play: a G#5 leading tone
+    // (semitone 20, raw — not on the white-key map) pulling up into the
+    // A5 the plea lands on at beat 20.
+    [19.7, 20, 0.85],
     ],
   },
   {
@@ -93,7 +110,7 @@ export const SONGS = [
     title: "Breaking the Habit",
     bpm: 100,
     beats: 32,
-    notes: [
+    notes: dia([
       // Dm Dm Am Am Em Em Am Am — broodier, faster
       ...osti(0, [12, 10, 8], 1, 0.65), ...osti(1, [12, 10, 8], 1, 0.65),
       ...osti(2, [12, 9, 7], 1, 0.65), ...osti(3, [12, 9, 7], 1, 0.65),
@@ -101,7 +118,7 @@ export const SONGS = [
       ...osti(6, [12, 9, 7], 1, 0.65), ...osti(7, [12, 9, 7], 1, 0.65),
       ...bass(0, 1), ...bass(1, 1), ...bass(2, 5), ...bass(3, 5),
       ...bass(4, 2), ...bass(5, 2), ...bass(6, 5), ...bass(7, 5),
-    ],
+    ]),
   },
 ];
 

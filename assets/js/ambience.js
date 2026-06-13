@@ -113,8 +113,21 @@ export function setClubTone(on) {
 
 // The MIDI keys under the desk — two C major octaves, low to high.
 // Played by visitors (and walked on by the cat). Several voices;
-// click the controller body to cycle them.
+// click the controller body to cycle them. Free-play is locked to these
+// 15 white keys (no wrong notes); the self-playing songs unlock the full
+// chromatic 24-semitone span by passing chromatic=true (see pianoNote).
 const C_MAJOR = [0, 2, 4, 5, 7, 9, 11, 12, 14, 16, 17, 19, 21, 23, 24];
+
+// map a chromatic semitone (0..24) back to the nearest physical white key,
+// so a song's accidental still lights up a real key on the 3D keybed.
+export function semitoneToKey(s) {
+  let best = 0, bd = Infinity;
+  for (let i = 0; i < C_MAJOR.length; i++) {
+    const d = Math.abs(C_MAJOR[i] - s);
+    if (d < bd) { bd = d; best = i; }
+  }
+  return best;
+}
 export const PIANO_VOICES = [
   { name: "E-PIANO",   parts: [[1, "sine", 1], [2, "triangle", 0.35]], dec: 1.3, peak: 0.07 },
   { name: "MUSIC BOX", parts: [[1, "sine", 1], [3, "sine", 0.14], [5.04, "sine", 0.05]], dec: 1.9, peak: 0.06 },
@@ -129,12 +142,16 @@ export function audioNow() { return ctx ? ctx.currentTime : 0; }
 // the graph endpoints, for modules that build their own chains (voice)
 export function audioGraph() { return { ctx, master }; }
 
-export function pianoNote(i = 0, voice = 0, vel = 1, when = null) {
+// i is a white-key index (0..14 → C_MAJOR) for free-play, or a raw
+// chromatic semitone (0..24 from C4) when chromatic=true — the songs use
+// the latter so they can reach accidentals the keybed can't free-play.
+export function pianoNote(i = 0, voice = 0, vel = 1, when = null, chromatic = false) {
   if (!ctx) return;
   const v = PIANO_VOICES[Math.abs(voice) % PIANO_VOICES.length];
   // schedule slightly ahead — no past-start clicks
   const t = Math.max(ctx.currentTime + 0.005, when || 0);
-  const f = 261.63 * Math.pow(2, C_MAJOR[Math.max(0, Math.min(14, i))] / 12);
+  const semi = chromatic ? Math.max(0, Math.min(24, i)) : C_MAJOR[Math.max(0, Math.min(14, i))];
+  const f = 261.63 * Math.pow(2, semi / 12);
   const g = ctx.createGain();
   let out = g;
   if (v.lp) {
