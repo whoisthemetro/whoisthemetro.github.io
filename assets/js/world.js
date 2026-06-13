@@ -2248,6 +2248,50 @@ export function buildWorld() {
   desk.position.set(0.2, 0, ZF + 0.49);
   add(desk);
 
+  /* --- keyboard floor pedals --- */
+  // three stompboxes on the floor where you'd stand to play: chorus · delay ·
+  // reverb. the physical twin of the keybed's FX bus — every piano note runs
+  // through all three at 25% wet (see ambience.pianoNote / buildKeyboardFx).
+  const kbPedals = new THREE.Group();
+  const kbPlate = box(0.42, 0.018, 0.2, lam(0x18191d));
+  kbPlate.position.set(0, 0.055, 0);
+  kbPlate.rotation.x = -0.24;                 // tilt the board up toward the player
+  kbPedals.add(kbPlate);
+  for (const fx of [-0.17, 0.17]) {
+    const ft = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.03, 8), lam(0x0d0e10));
+    ft.position.set(fx, 0.015, 0.085);
+    kbPedals.add(ft);
+  }
+  // a stompbox: enclosure, footswitch, two knobs, status LED — sits on the tilt
+  function kbStomp(px, bodyCol, ledCol) {
+    const pg = new THREE.Group();
+    const enc = box(0.1, 0.05, 0.12, lam(bodyCol));
+    enc.position.y = 0.025;
+    pg.add(enc);
+    const sw = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.02, 12), lam(0xb9bec6));
+    sw.position.set(0, 0.055, 0.038);
+    pg.add(sw);
+    for (const kx of [-0.024, 0.024]) {
+      const knob = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.012, 0.015, 10), lam(0x111214));
+      knob.position.set(kx, 0.052, -0.032);
+      pg.add(knob);
+    }
+    // the eye, kept emissive so the toon pass leaves it glowing
+    const led = new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.005, 0.006, 8),
+      new THREE.MeshBasicMaterial({ color: ledCol }));
+    led.position.set(0, 0.054, 0.004);
+    pg.add(led);
+    pg.position.set(px, 0.063, -0.01);
+    pg.rotation.x = -0.24;
+    kbPedals.add(pg);
+  }
+  kbStomp(-0.13, 0x6a2f7a, 0xd66bff);    // chorus — purple, magenta eye
+  kbStomp(0,     0x1f5a7a, 0x4fbfe6);    // delay  — blue, cyan eye
+  kbStomp(0.13,  0x2f6a3a, 0x6bff8a);    // reverb — green, lime eye
+  kbPedals.position.set(0.2, 0, ZF + 1.18);
+  kbPedals.rotation.y = -0.08;
+  add(kbPedals);
+
   /* --- Kali monitors on stands, flanking the desk --- */
   const kaliTex = kaliFaceTexture();
   function kali(x, toeIn) {

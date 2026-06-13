@@ -7,6 +7,7 @@
 
 let ctx = null;
 let master = null;
+let pianoBus = null;   // the keyboard's pedal chain feeds in here (chorus→delay→reverb)
 
 function noiseBuffer(seconds = 2) {
   const len = ctx.sampleRate * seconds;
@@ -20,6 +21,69 @@ function noiseBuffer(seconds = 2) {
     d[i] = last * 3.5;
   }
   return buf;
+}
+
+// a generated impulse response for the reverb convolver: a stereo burst of
+// noise that decays away — long-ish tail, the bedroom as a real room.
+function impulseBuffer(dur = 2.2, decay = 2.6) {
+  const len = Math.floor(ctx.sampleRate * dur);
+  const buf = ctx.createBuffer(2, len, ctx.sampleRate);
+  for (let c = 0; c < 2; c++) {
+    const d = buf.getChannelData(c);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decay);
+  }
+  return buf;
+}
+
+// The keyboard's floor pedals, in WebAudio: every piano note runs chorus →
+// delay → reverb before the master bus, each mixed 25% wet. Always on — the
+// three stompboxes on the floor by the desk (world.js) are the physical twin.
+function buildKeyboardFx() {
+  pianoBus = ctx.createGain();
+
+  // split `src` into (1-wet) dry + wet*(wetOut), summed into a fresh gain.
+  // connect src→wetIn yourself before calling so the wet node is fed.
+  const wetDry = (src, wetIn, wetOut, wet = 0.25) => {
+    const sum = ctx.createGain();
+    const dry = ctx.createGain(); dry.gain.value = 1 - wet;
+    const wg = ctx.createGain();  wg.gain.value = wet;
+    src.connect(dry).connect(sum);
+    src.connect(wetIn);
+    wetOut.connect(wg).connect(sum);
+    return sum;
+  };
+
+  let node = pianoBus;
+
+  // chorus: a short LFO-swept delay beating against the dry signal
+  const chD = ctx.createDelay();
+  chD.delayTime.value = 0.024;
+  const lfo = ctx.createOscillator();
+  lfo.type = "sine";
+  lfo.frequency.value = 0.7;
+  const lfoG = ctx.createGain();
+  lfoG.gain.value = 0.004;              // ±4 ms sweep
+  lfo.connect(lfoG).connect(chD.delayTime);
+  lfo.start();
+  node = wetDry(node, chD, chD);
+
+  // delay: a ~quarter-note slap with feedback, repeats darkening as they fade
+  const dl = ctx.createDelay();
+  dl.delayTime.value = 0.34;
+  const fb = ctx.createGain();
+  fb.gain.value = 0.34;
+  const fbLp = ctx.createBiquadFilter();
+  fbLp.type = "lowpass";
+  fbLp.frequency.value = 2600;
+  dl.connect(fbLp).connect(fb).connect(dl);   // feedback loop
+  node = wetDry(node, dl, dl);
+
+  // reverb: the generated impulse through a convolver
+  const rev = ctx.createConvolver();
+  rev.buffer = impulseBuffer();
+  node = wetDry(node, rev, rev);
+
+  node.connect(master);
 }
 
 export function startAmbience() {
@@ -63,6 +127,9 @@ export function startAmbience() {
   hum.connect(humLp).connect(humG).connect(master);
   hum.start();
   roomToneGains = [g, humG];
+
+  // the keyboard's pedal chain — built once, every piano note feeds it
+  buildKeyboardFx();
 }
 
 // The bedroom's hum and rumble — silenced while you're aboard the boat.
@@ -161,7 +228,9 @@ export function pianoNote(i = 0, voice = 0, vel = 1, when = null, chromatic = fa
     g.connect(lp);
     out = lp;
   }
-  out.connect(master);
+  // the keyboard runs through its floor pedals (chorus→delay→reverb) on the
+  // way to the bus; falls back to master if the chain hasn't been built yet
+  out.connect(pianoBus || master);
   for (const [mult, type, amt] of v.parts) {
     const o = ctx.createOscillator();
     o.type = type;
