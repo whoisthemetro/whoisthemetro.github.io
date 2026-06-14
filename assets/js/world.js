@@ -841,6 +841,86 @@ export function buildWorld() {
 
   const blockers = [];
 
+  /* --- the radio: a little cream tuner that streams real broadcast (radio.js).
+     built twice — Swedish in Desi's cabin, LA in the bedroom — so it's a
+     factory. dialLabel is the strip text; hitFlag is the userData key main.js
+     keys clicks off ("radio" vs "laradio"). returns the group plus its click
+     meshes and the needle/backlight drivers; the caller places it. visual only
+     — the audio is a bare <audio> element. --- */
+  function makeRadio(dialLabel, hitFlag) {
+    const radio = new THREE.Group();
+    const cream = lam(0xcdb892), dark = lam(0x2a2622);
+    const rbody = caster(box(0.2, 0.11, 0.12, cream));
+    rbody.position.y = 0.055;
+    rbody.userData[hitFlag] = true;
+    radio.add(rbody);
+    // a brown trim band wraps the seam between cabinet and faceplate
+    const rtrim = box(0.205, 0.012, 0.125, dark);
+    rtrim.position.y = 0.018;
+    radio.add(rtrim);
+    // the speaker grille — left half of the front (front faces the player)
+    const grilleTex = canvasTex(120, 110, (g) => {
+      g.fillStyle = "#1c1a17"; g.fillRect(0, 0, 120, 110);
+      g.fillStyle = "#3a352d";
+      for (let y = 6; y < 108; y += 9) for (let x = 6; x < 118; x += 9) { g.beginPath(); g.arc(x, y, 2.6, 0, 7); g.fill(); }
+    });
+    const grille = plane(0.085, 0.075, new THREE.MeshLambertMaterial({ map: grilleTex }));
+    grille.position.set(-0.05, 0.06, 0.0605);
+    grille.userData[hitFlag] = true;
+    radio.add(grille);
+    // the tuning dial — right half. a glowing strip, dark until power-on
+    const dialTex = canvasTex(180, 80, (g) => {
+      g.fillStyle = "#0b0905"; g.fillRect(0, 0, 180, 80);
+      g.strokeStyle = "#6b5a32"; g.lineWidth = 1;
+      for (let i = 0; i <= 18; i++) { const x = 8 + i * 9.1; const big = i % 3 === 0; g.beginPath(); g.moveTo(x, 14); g.lineTo(x, big ? 30 : 23); g.stroke(); }
+      g.fillStyle = "#9c8550"; g.font = "10px monospace";
+      g.fillText("88", 6, 44); g.fillText("96", 78, 44); g.fillText("104", 150, 44);
+      g.fillStyle = "#c8a85a"; g.font = "bold 11px monospace"; g.fillText(dialLabel, 16, 66);
+    });
+    const dialMat = new THREE.MeshBasicMaterial({ map: dialTex, color: 0x2a2010 });  // color rides the backlight
+    const dialFace = plane(0.085, 0.04, dialMat);
+    dialFace.position.set(0.05, 0.075, 0.0605);
+    dialFace.userData[hitFlag] = true;
+    radio.add(dialFace);
+    // the red needle that sweeps the band as you scan
+    const RNDL0 = 0.013, RNDL1 = 0.087;   // x range across the dial face
+    const needle = box(0.0035, 0.036, 0.004, new THREE.MeshBasicMaterial({ color: 0xff4030 }));
+    needle.position.set((RNDL0 + RNDL1) / 2, 0.075, 0.0625);
+    needle.visible = false;
+    radio.add(needle);
+    // two knobs on the lower front — tuning (right) and volume (left)
+    for (const kx of [-0.075, 0.075]) {
+      const knob = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.013, 0.012, 16), dark);
+      knob.rotation.x = Math.PI / 2;
+      knob.position.set(kx, 0.028, 0.061);
+      knob.userData[hitFlag] = true;
+      radio.add(knob);
+    }
+    // the on-air eye, between the knobs
+    const led = box(0.007, 0.007, 0.004, new THREE.MeshBasicMaterial({ color: 0x3a1010 }));
+    led.position.set(0, 0.028, 0.0615);
+    radio.add(led);
+    // a telescoping antenna off the back corner, tilted up
+    const antenna = new THREE.Mesh(new THREE.CylinderGeometry(0.0022, 0.0035, 0.2, 6),
+      new THREE.MeshStandardMaterial({ color: 0xb8bcc2, metalness: 0.8, roughness: 0.3 }));
+    antenna.position.set(0.085, 0.13, -0.045);
+    antenna.rotation.z = -0.5;
+    antenna.rotation.x = -0.2;
+    radio.add(antenna);
+    blockers.push(rbody);
+    return {
+      group: radio,
+      hits: [rbody, grille, dialFace],
+      // slide the needle (frac 0..1 across the band) and light/dim the dial + eye
+      setNeedle: (frac) => { needle.position.x = RNDL0 + (RNDL1 - RNDL0) * Math.min(Math.max(frac, 0), 1); },
+      setPower: (on) => {
+        needle.visible = on;
+        dialMat.color.set(on ? 0xffb347 : 0x2a2010);          // amber backlight on
+        led.material.color.set(on ? 0x57e389 : 0x3a1010);     // on-air green
+      },
+    };
+  }
+
   /* --- shell --- */
   const floor = add(plane(W, D, new THREE.MeshLambertMaterial({ map: floorTexture() })));
   floor.rotation.x = -Math.PI / 2;
@@ -2495,6 +2575,19 @@ export function buildWorld() {
     lavaLight.intensity = 0.8 + 0.12 * Math.sin(elapsed * 0.9);
   }
 
+  /* --- the radio, on the rack-top right (where the little trophy used to sit),
+     behind the Apollo and turned toward the chair. this one's tuned to Los
+     Angeles — the popular FM band plus the college stations clustered down at
+     the bottom of the dial, just like the real thing (radio.js). --- */
+  const laRadio = makeRadio("FM · LOS ANGELES", "laradio");
+  laRadio.group.position.set(0.15, 0.68, -0.1);
+  laRadio.group.rotation.y = 0.3;      // angled past the Apollo, toward the user
+  rack.add(laRadio.group);
+  const laRadioHits = laRadio.hits, setLaRadioNeedle = laRadio.setNeedle, setLaRadioPower = laRadio.setPower;
+  const laRadioPos = new THREE.Vector3();
+  laRadio.group.updateWorldMatrix(true, false);
+  laRadio.group.getWorldPosition(laRadioPos);
+
   /* --- earned accessories: small low-poly things the room grows
      around regulars (progress.js decides when). created on demand,
      after the toon pass — they stay Lambert like the notes and cat --- */
@@ -2557,26 +2650,8 @@ export function buildWorld() {
       g.position.set((AR.x0 + AR.x1) / 2, H - 0.32, (AR.z0 + AR.z1) / 2);
       add(g);
       accessorySpin.push(ball);
-    } else if (id === "trophy") {
-      const g = new THREE.Group();
-      const gold = new THREE.MeshStandardMaterial({ color: 0xd8b04a, metalness: 0.75, roughness: 0.35 });
-      const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.02, 0.05, 9), gold);
-      cup.position.y = 0.085;
-      g.add(cup);
-      const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.012, 0.04, 7), gold);
-      stem.position.y = 0.04;
-      g.add(stem);
-      const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.03, 0.018, 9), lam(0x2a2118));
-      foot.position.y = 0.01;
-      g.add(foot);
-      for (const s of [-1, 1]) {
-        const handle = new THREE.Mesh(new THREE.TorusGeometry(0.016, 0.004, 5, 10), gold);
-        handle.position.set(s * 0.038, 0.09, 0);
-        g.add(handle);
-      }
-      g.position.set(0.18, 0.68, -0.1);
-      rack.add(g);
     }
+    // (the rack "trophy" used to live here — the LA radio took its spot)
   }
 
   /* --- ergo chair, pushed aside --- */
@@ -3245,89 +3320,18 @@ export function buildWorld() {
   greens.scale.y = 0.6;
   greens.position.set(BOAT.x + BW / 2 - 0.36, 0.975, BOAT.z + 1.12);
 
-  /* --- Desi's radio, on the galley counter. a little cream tuner that streams
-     the real Swedish channels (radio.js) — and P4 Gotland, the local station, is
-     literally the sky outside these windows. click it → the scan overlay in
-     main.js; the needle + dial backlight + on-air eye are driven from there as
-     you sweep the band. visual only — the audio is a bare <audio> element. --- */
-  const radio = new THREE.Group();
-  const radioCream = lam(0xcdb892), radioDark = lam(0x2a2622);
-  const rbody = caster(box(0.2, 0.11, 0.12, radioCream));
-  rbody.position.y = 0.055;
-  rbody.userData.radio = true;
-  radio.add(rbody);
-  // a brown trim band wraps the seam between cabinet and faceplate
-  const rtrim = box(0.205, 0.012, 0.125, radioDark);
-  rtrim.position.y = 0.018;
-  radio.add(rtrim);
-  // the speaker grille — left half of the front (front faces the cabin)
-  const grilleTex = canvasTex(120, 110, (g) => {
-    g.fillStyle = "#1c1a17"; g.fillRect(0, 0, 120, 110);
-    g.fillStyle = "#3a352d";
-    for (let y = 6; y < 108; y += 9) for (let x = 6; x < 118; x += 9) { g.beginPath(); g.arc(x, y, 2.6, 0, 7); g.fill(); }
-  });
-  const grille = plane(0.085, 0.075, new THREE.MeshLambertMaterial({ map: grilleTex }));
-  grille.position.set(-0.05, 0.06, 0.0605);
-  grille.userData.radio = true;
-  radio.add(grille);
-  // the tuning dial — right half. a glowing strip, dark until power-on
-  const dialTex = canvasTex(180, 80, (g) => {
-    g.fillStyle = "#0b0905"; g.fillRect(0, 0, 180, 80);
-    g.strokeStyle = "#6b5a32"; g.lineWidth = 1;
-    for (let i = 0; i <= 18; i++) { const x = 8 + i * 9.1; const big = i % 3 === 0; g.beginPath(); g.moveTo(x, 14); g.lineTo(x, big ? 30 : 23); g.stroke(); }
-    g.fillStyle = "#9c8550"; g.font = "10px monospace";
-    g.fillText("88", 6, 44); g.fillText("96", 78, 44); g.fillText("104", 150, 44);
-    g.fillStyle = "#c8a85a"; g.font = "bold 12px monospace"; g.fillText("FM · SVERIGES RADIO", 20, 66);
-  });
-  const dialMat = new THREE.MeshBasicMaterial({ map: dialTex, color: 0x2a2010 });  // color rides the backlight
-  const dialFace = plane(0.085, 0.04, dialMat);
-  dialFace.position.set(0.05, 0.075, 0.0605);
-  dialFace.userData.radio = true;
-  radio.add(dialFace);
-  // the red needle that sweeps the band as you scan
-  const RNDL0 = 0.013, RNDL1 = 0.087;   // x range across the dial face
-  const needle = box(0.0035, 0.036, 0.004, new THREE.MeshBasicMaterial({ color: 0xff4030 }));
-  needle.position.set((RNDL0 + RNDL1) / 2, 0.075, 0.0625);
-  needle.visible = false;
-  radio.add(needle);
-  // two knobs on the lower front — tuning (right) and volume (left)
-  for (const kx of [-0.075, 0.075]) {
-    const knob = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.013, 0.012, 16), radioDark);
-    knob.rotation.x = Math.PI / 2;
-    knob.position.set(kx, 0.028, 0.061);
-    knob.userData.radio = true;
-    radio.add(knob);
-  }
-  // the on-air eye, between the knobs
-  const radioLed = box(0.007, 0.007, 0.004, new THREE.MeshBasicMaterial({ color: 0x3a1010 }));
-  radioLed.position.set(0, 0.028, 0.0615);
-  radio.add(radioLed);
-  // a telescoping antenna off the back corner, tilted up
-  const antenna = new THREE.Mesh(new THREE.CylinderGeometry(0.0022, 0.0035, 0.2, 6),
-    new THREE.MeshStandardMaterial({ color: 0xb8bcc2, metalness: 0.8, roughness: 0.3 }));
-  antenna.position.set(0.085, 0.13, -0.045);
-  antenna.rotation.z = -0.5;
-  antenna.rotation.x = -0.2;
-  radio.add(antenna);
-  // on the counter's near-front corner, dial turned to face the cabin
-  radio.position.set(BOAT.x + BW / 2 - 0.34, 0.94, BOAT.z - 0.08);
-  radio.rotation.y = -Math.PI / 2 + 0.12;
-  addB(radio);
-  blockers.push(rbody);
-  const radioHits = [rbody, grille, dialFace];
+  // Desi's radio, on the galley counter, dial turned to face the cabin. it
+  // streams the real Swedish channels (radio.js) — and P4 Gotland, the local
+  // station, is literally the sky outside these windows.
+  const desiRadio = makeRadio("FM · SVERIGES RADIO", "radio");
+  desiRadio.group.position.set(BOAT.x + BW / 2 - 0.34, 0.94, BOAT.z - 0.08);
+  desiRadio.group.rotation.y = -Math.PI / 2 + 0.12;
+  addB(desiRadio.group);
+  const radioHits = desiRadio.hits, setRadioNeedle = desiRadio.setNeedle, setRadioPower = desiRadio.setPower;
   // where the sound "comes from" — main.js fades the stream by distance to here
   const radioPos = new THREE.Vector3();
-  radio.updateWorldMatrix(true, false);
-  radio.getWorldPosition(radioPos);
-  // slide the needle (frac 0..1 across the band) and light/dim the dial + eye
-  function setRadioNeedle(frac) {
-    needle.position.x = RNDL0 + (RNDL1 - RNDL0) * Math.min(Math.max(frac, 0), 1);
-  }
-  function setRadioPower(on) {
-    needle.visible = on;
-    dialMat.color.set(on ? 0xffb347 : 0x2a2010);          // amber backlight on
-    radioLed.material.color.set(on ? 0x57e389 : 0x3a1010); // on-air green
-  }
+  desiRadio.group.updateWorldMatrix(true, false);
+  desiRadio.group.getWorldPosition(radioPos);
 
   // the bed, done right: headboard against the port wall, frame,
   // mattress, duvet with a fold, two pillows — and a nightstand whose
@@ -5497,8 +5501,10 @@ export function buildWorld() {
     filterPedalHit, setGuitarPedalTilt,
     // the desk channel mixer (keys · guitar · drums) — see main.js openMixer
     mixerHits: mixHits, setMixFader,
-    // the scan-through radio (rack top) — prop hooks; audio lives in radio.js
+    // the two scan-through radios — prop hooks; audio lives in radio.js.
+    // Swedish in Desi's cabin, LA on the bedroom rack behind the Apollo.
     radioHits, setRadioNeedle, setRadioPower, radioPos,
+    laRadioHits, setLaRadioNeedle, setLaRadioPower, laRadioPos,
     // the dirty-carpet + vacuum system (bedroom only)
     floorTraffic, vacuumHits: [vNozzle, vBody, vCan, vPole, vGrip, vGripTop],
     grabVacuum, vacuumStep, vacuumHeld: () => vacHeld,

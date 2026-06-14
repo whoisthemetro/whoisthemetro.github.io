@@ -18,7 +18,7 @@ import { startPlanes } from "./planes.js";
 import { Cat } from "./cat.js";
 import { openArcade, closeArcade, arcadeIsOpen, arcadeWantsEsc, handleGameMessage, setScoreHook } from "./arcade.js";
 import { PIANO_VOICES } from "./ambience.js";
-import { initRadio, radioPower, radioToggle, radioTune, radioScan, radioVolume, radioGain, radioInfo, STATIONS } from "./radio.js";
+import { createRadio, SR_STATIONS, LA_STATIONS } from "./radio.js";
 import {
   PAPERS, IS_TOUCH, safeUrl, hostOf, timeAgo, toast,
   getIdentity, saveIdentity, shrinkImage,
@@ -183,8 +183,9 @@ const cat = new Cat(world.scene, world.catSpots, {
   meow: bedroomSound(meow),
   hiss: bedroomSound(hiss),
   dig: bedroomSound(() => careSound("sand")),
-  // a MIDI song owns the keys — the cat keeps off while one's playing
-  songPlaying: () => currentSongId() !== null,
+  // the music owns the keys — the cat keeps off while a MIDI song plays OR the
+  // bedroom radio is on (radios is built further down; only ever read at tick)
+  songPlaying: () => currentSongId() !== null || !!(radios.la && radios.la.radio.info().on),
 });
 
 // shared cat needs — bowls and litter are the same for every visitor
@@ -313,7 +314,7 @@ canvas.addEventListener("click", () => {
 function castAt(ndcX, ndcY) {
   raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera);
   // doors are included as blockers so notes can't be pinned onto them
-  const targets = [cat.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, world.echoPoster, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.radioHits, ...world.filterPedalHit, ...world.vacuumHits, ...notesWall.raycastTargets(), ...world.blockers];
+  const targets = [cat.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, world.echoPoster, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.radioHits, ...world.laRadioHits, ...world.filterPedalHit, ...world.vacuumHits, ...notesWall.raycastTargets(), ...world.blockers];
   const hits = raycaster.intersectObjects(targets, false);
   return hits[0] || null;
 }
@@ -586,7 +587,9 @@ controls.onAction((ndcX, ndcY) => {
   } else if (hit.object.userData.mixer && hit.distance < 2.8) {
     openMixer();
   } else if (hit.object.userData.radio && hit.distance < 2.8) {
-    openRadio();
+    openRadio(radios.sr);
+  } else if (hit.object.userData.laradio && hit.distance < 2.8) {
+    openRadio(radios.la);
   } else if (hit.object.userData.gtrFilter && hit.distance < 2.8) {
     openFilter();
   } else if (hit.object.userData.vacuum && hit.distance < 2.6) {
@@ -678,6 +681,9 @@ setInterval(() => {
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.radio && hit.distance < 2.8) {
     aimTip.textContent = `${TAP} — the radio · scan the Swedish stations`;
+    aimTip.classList.add("show");
+  } else if (hit && hit.object.userData.laradio && hit.distance < 2.8) {
+    aimTip.textContent = `${TAP} — the radio · scan LA stations`;
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.mixer && hit.distance < 2.8) {
     aimTip.textContent = `${TAP} — the channel mixer (keys · guitar · drums)`;
@@ -1080,15 +1086,18 @@ for (const id of MIX_IDS) {
   if (sl) sl.addEventListener("input", (e) => setMixChannel(id, +e.target.value, true));
 }
 
-/* ---------------- the radio (scan through live Swedish stations) ---------------- */
+/* ---------------- the radios (scan through live broadcast) ----------------
+   two of them, one shared faceplate overlay. Desi's cabin runs Swedish, the
+   bedroom rack runs LA — each is its own radio.js instance with its own dial,
+   prop, and room gate. `radios` bundles each instance with the world hooks that
+   light ITS prop and the room test that decides when it's audible. --- */
 const radioUI = $("#radio-ui");
 const STATE_LABEL = { off: "off air", tuning: "tuning…", live: "on air", error: "no signal" };
-// keep the overlay readout, the dial slider and the 3D prop all in lockstep
-// with radio.js — fires whether the change came from a button, the dial, or a
-// stream event (buffering / error / locked on).
-function onRadioStatus(info) {
-  world.setRadioNeedle(info.total > 1 ? info.idx / (info.total - 1) : 0);
-  world.setRadioPower(info.on);
+const radios = {};   // filled below once createRadio exists
+let activeRadio = null;   // whichever one the open overlay is driving
+
+// paint the open overlay from a radio's current state
+function refreshOverlay(info) {
   const s = info.station;
   const hz = $("#radio-hz"), nm = $("#radio-name"), tg = $("#radio-tag"), st = $("#radio-state"), dial = $("#radio-dial");
   if (hz) hz.textContent = s.hz;
@@ -1102,28 +1111,54 @@ function onRadioStatus(info) {
   const pw = $("#radio-power");
   if (pw) pw.classList.toggle("on", info.on);
 }
-function openRadio() {
+// keep the prop in lockstep always, and the overlay too when this radio is the
+// open one. fires on every change — button, dial, or a stream event.
+function makeRadioStatus(key) {
+  return (info) => {
+    const r = radios[key];
+    r.setNeedle(info.total > 1 ? info.idx / (info.total - 1) : 0);
+    r.setPower(info.on);
+    if (activeRadio === r) refreshOverlay(info);
+  };
+}
+
+radios.sr = {
+  radio: createRadio({ stations: SR_STATIONS, storeKey: "metro.radio.sr", onStatus: makeRadioStatus("sr") }),
+  setNeedle: world.setRadioNeedle, setPower: world.setRadioPower, pos: world.radioPos,
+  audible: () => inBoat,
+};
+radios.la = {
+  radio: createRadio({ stations: LA_STATIONS, storeKey: "metro.radio.la", onStatus: makeRadioStatus("la") }),
+  setNeedle: world.setLaRadioNeedle, setPower: world.setLaRadioPower, pos: world.laRadioPos,
+  audible: () => !inBoat && !inArena && !inClub,
+};
+
+function openRadio(r) {
+  activeRadio = r;
   modalOpen = true;
   controls.unlock();
+  const info = r.radio.info();
   const dial = $("#radio-dial");
-  if (dial) dial.max = String(STATIONS.length - 1);
+  if (dial) dial.max = String(info.total - 1);
   const vol = $("#radio-vol");
-  if (vol) vol.value = Math.round(radioInfo().vol * 100);
-  onRadioStatus(radioInfo());
+  if (vol) vol.value = Math.round(info.vol * 100);
+  refreshOverlay(info);
   show(radioUI);
 }
 function closeRadio() {
   hide(radioUI);
+  activeRadio = null;
   modalOpen = false;
   if (entered) safeLock();
 }
 $("#radio-close").addEventListener("click", closeRadio);
-$("#radio-power").addEventListener("click", () => radioToggle());
-$("#radio-prev").addEventListener("click", () => radioScan(-1));
-$("#radio-next").addEventListener("click", () => radioScan(1));
-$("#radio-dial").addEventListener("input", (e) => radioTune(+e.target.value));
-$("#radio-vol").addEventListener("input", (e) => radioVolume(+e.target.value / 100));
-initRadio(onRadioStatus);
+$("#radio-power").addEventListener("click", () => { if (activeRadio) activeRadio.radio.toggle(); });
+$("#radio-prev").addEventListener("click", () => { if (activeRadio) activeRadio.radio.scan(-1); });
+$("#radio-next").addEventListener("click", () => { if (activeRadio) activeRadio.radio.scan(1); });
+$("#radio-dial").addEventListener("input", (e) => { if (activeRadio) activeRadio.radio.tune(+e.target.value); });
+$("#radio-vol").addEventListener("input", (e) => { if (activeRadio) activeRadio.radio.volume(+e.target.value / 100); });
+radios.sr.radio.init();
+radios.la.radio.init();
 
 /* ---------------- the guitar filter treadle ---------------- */
 // a modal like the mixer (pointer unlocks so the slider drags): one vertical
@@ -2356,15 +2391,16 @@ renderer.setAnimationLoop(() => {
   // the club lights dance to the set; everywhere else energy stays at zero
   world.setClubEnergy(inClub ? voice.djLevel() : 0);
   world.tick(dt, controls.pos);
-  // the radio lives in Desi's cabin: full up close, gone by ~7 m, and dead
-  // silent anywhere but the boat (radio.js pauses the live feed at gain 0)
-  {
+  // each radio rides its own room — full up close, gone by ~7 m, and paused
+  // (radio.js cuts the live feed at gain 0) anywhere it isn't audible
+  for (const key in radios) {
+    const r = radios[key];
     let g = 0;
-    if (inBoat) {
-      const d = Math.hypot(controls.pos.x - world.radioPos.x, controls.pos.z - world.radioPos.z);
+    if (r.audible()) {
+      const d = Math.hypot(controls.pos.x - r.pos.x, controls.pos.z - r.pos.z);
       g = d < 1.4 ? 1 : Math.max(0, 1 - (d - 1.4) / 6);
     }
-    radioGain(g);
+    r.radio.setGain(g);
   }
   if (carrying) updateCarry();
   // the carpet grimes with traffic, and the vacuum lifts it — bedroom only.

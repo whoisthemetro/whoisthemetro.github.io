@@ -19,8 +19,6 @@ export const ACCESSORIES = [
     hint: "play that piano",                 test: s => (s.piano || 0) >= 60 },
   { id: "disco",  title: "a disco ball for the arcade",
     hint: "the cabinets remember you",       test: s => (s.arcade || 0) >= 5 },
-  { id: "trophy", title: "a little trophy on the rack",
-    hint: "visit the other rooms",           test: s => (s.trips || 0) >= 3 },
 ];
 
 function read() {
