@@ -3,6 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<script>
+  // iOS Safari ignores user-scalable=no, so swat its pinch gesture directly.
+  // only an orientation flip may ever change the world's dimensions.
+  ["gesturestart", "gesturechange", "gestureend"].forEach((g) =>
+    document.addEventListener(g, (e) => e.preventDefault(), { passive: false }));
+</script>
 <title>THE METRO — the room is always on</title>
 <meta name="description" content="A living studio room. Walk in, leave a note on the wall. It stays forever.">
 <meta property="og:title" content="THE METRO">
