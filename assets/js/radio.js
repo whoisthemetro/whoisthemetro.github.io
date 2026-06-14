@@ -143,5 +143,23 @@ export function createRadio({ stations, storeKey, onStatus }) {
       gain = ng;
       sync();
     },
+
+    // adopt the room's shared station + power (a presence "radio" act arrived).
+    // no static, no re-broadcast — this is us following someone else. volume
+    // stays whatever this listener set it to.
+    applyRemote(on, i) {
+      const ni = (i % stations.length + stations.length) % stations.length;
+      const stationChanged = ni !== idx;
+      idx = ni;
+      try { localStorage.setItem(storeKey + ".idx", String(idx)); } catch (e) {}
+      wantOn = !!on;
+      if (el) {
+        if (wantOn && (stationChanged || !el.src)) { el.src = stations[idx].url; el.load(); }
+        state = wantOn ? "tuning" : "off";
+        if (!wantOn) el.pause();
+      }
+      sync();
+      status();
+    },
   };
 }

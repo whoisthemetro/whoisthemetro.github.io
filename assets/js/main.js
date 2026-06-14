@@ -1128,12 +1128,26 @@ radios.sr = {
   radio: createRadio({ stations: SR_STATIONS, storeKey: "metro.radio.sr", onStatus: makeRadioStatus("sr") }),
   setNeedle: world.setRadioNeedle, setPower: world.setRadioPower, pos: world.radioPos,
   audible: () => inBoat,
+  which: "sr", shared: { on: false, idx: 0, at: 0 },   // the room's current dial, last-event-wins
 };
 radios.la = {
   radio: createRadio({ stations: LA_STATIONS, storeKey: "metro.radio.la", onStatus: makeRadioStatus("la") }),
   setNeedle: world.setLaRadioNeedle, setPower: world.setLaRadioPower, pos: world.laRadioPos,
   audible: () => !inBoat && !inArena && !inClub,
+  which: "la", shared: { on: false, idx: 0, at: 0 },
 };
+
+// the radio is a SHARED object: changing its station or power tells the whole
+// room (presence "radio" act), so everyone hears the same thing. ordered by a
+// logical clock so a skewed wall-clock can't lock anyone out. volume is the one
+// thing that stays personal to each listener.
+let radioClock = 0;
+function broadcastRadio(desc) {
+  radioClock += 1;
+  const i = desc.radio.info();
+  desc.shared = { on: i.on, idx: i.idx, at: radioClock };
+  presence.sendAct({ kind: "radio", which: desc.which, on: i.on, idx: i.idx, at: radioClock });
+}
 
 function openRadio(r) {
   activeRadio = r;
@@ -1154,11 +1168,11 @@ function closeRadio() {
   if (entered) safeLock();
 }
 $("#radio-close").addEventListener("click", closeRadio);
-$("#radio-power").addEventListener("click", () => { if (activeRadio) activeRadio.radio.toggle(); });
-$("#radio-prev").addEventListener("click", () => { if (activeRadio) activeRadio.radio.scan(-1); });
-$("#radio-next").addEventListener("click", () => { if (activeRadio) activeRadio.radio.scan(1); });
-$("#radio-dial").addEventListener("input", (e) => { if (activeRadio) activeRadio.radio.tune(+e.target.value); });
-$("#radio-vol").addEventListener("input", (e) => { if (activeRadio) activeRadio.radio.volume(+e.target.value / 100); });
+$("#radio-power").addEventListener("click", () => { if (activeRadio) { activeRadio.radio.toggle(); broadcastRadio(activeRadio); } });
+$("#radio-prev").addEventListener("click", () => { if (activeRadio) { activeRadio.radio.scan(-1); broadcastRadio(activeRadio); } });
+$("#radio-next").addEventListener("click", () => { if (activeRadio) { activeRadio.radio.scan(1); broadcastRadio(activeRadio); } });
+$("#radio-dial").addEventListener("input", (e) => { if (activeRadio) { activeRadio.radio.tune(+e.target.value); broadcastRadio(activeRadio); } });
+$("#radio-vol").addEventListener("input", (e) => { if (activeRadio) activeRadio.radio.volume(+e.target.value / 100); });   // volume is personal
 radios.sr.radio.init();
 radios.la.radio.init();
 
@@ -2216,11 +2230,19 @@ addEventListener("keydown", (e) => {
     // on top of the join-on-enter gate, so a stranger with no name (e.g. a stale
     // tab still on old cached code) never renders or counts toward the room
     const peers = new Map([...allPeers].filter(([, m]) => (m.name || "").trim()));
+    const newcomer = [...peers.keys()].some(uid => !lastPeers.has(uid));   // someone just walked in
     ghosts.syncPeers(peers);
     $("#online-count").textContent = String(peers.size + 1);
     lastPeers = peers;
     for (const uid of [...peerX.keys()]) if (!peers.has(uid)) peerX.delete(uid);
     if ($("#booth").classList.contains("show")) renderBooth();
+    // re-announce whatever's playing so the newcomer tunes straight in. we
+    // resend the existing event (same clock) — peers already in sync see it as
+    // stale and ignore it; only the newcomer (clock 0) adopts it.
+    if (newcomer) for (const k in radios) {
+      const d = radios[k];
+      if (d.shared && d.shared.on) presence.sendAct({ kind: "radio", which: d.which, on: true, idx: d.shared.idx, at: d.shared.at });
+    }
   });
   presence.onPose((uid, pose) => { if (lastPeers && !lastPeers.has(uid)) return; ghosts.setPose(uid, pose); peerX.set(uid, pose.x); });
   presence.onNote((uid, i, v) => {
@@ -2325,6 +2347,16 @@ addEventListener("keydown", (e) => {
     } else if (p.kind === "theme") {
       // the dj set the look — the whole room follows
       if (inClub) { world.setClubTheme(p.ix); setClubBed(clubBedFor()); }
+    } else if (p.kind === "radio") {
+      // someone tuned the shared radio — follow it (last-event-wins)
+      const desc = radios[p.which];
+      if (desc) {
+        radioClock = Math.max(radioClock, p.at || 0);              // keep our clock ahead
+        if (!(desc.shared && (p.at || 0) <= desc.shared.at)) {     // ignore anything stale
+          desc.shared = { on: !!p.on, idx: p.idx | 0, at: p.at || 0 };
+          desc.radio.applyRemote(!!p.on, p.idx | 0);
+        }
+      }
     }
   });
   presence.onChat((p) => pushChat(p.name || "someone", p.color, p.text));
