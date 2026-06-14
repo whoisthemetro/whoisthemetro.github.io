@@ -271,7 +271,13 @@ export class NotesWall {
   // pin a note's mesh onto (wall, cu, cv) in meters, proud of the wall by a
   // staggered offset so coincident notes never z-fight. reused by add + move.
   _placeMesh(mesh, wall, cu, cv, rot) {
-    if (mesh.userData.zoff == null) mesh.userData.zoff = 0.03 + (this.seq++ % 64) * 0.0008;
+    // proud-of-wall offset: enough to clear z-fighting, but capped UNDER the
+    // shallowest wall decor so a note can never poke out past it. acoustic
+    // slabs front-face at 0.073 m, the gold-record frame at 0.07 m — a note
+    // that stuck out further read as "floating in front of the panel" at a
+    // grazing angle (the #12 occlusion bug). 48 levels × 0.6 mm → 0.030–0.058 m
+    // keeps every note recessed behind the panels, so depth-test hides them.
+    if (mesh.userData.zoff == null) mesh.userData.zoff = 0.03 + (this.seq++ % 48) * 0.0006;
     const pos = wall.origin.clone()
       .addScaledVector(wall.uDir, cu)
       .addScaledVector(wall.vDir, cv)
