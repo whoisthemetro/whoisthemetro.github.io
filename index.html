@@ -168,6 +168,34 @@
   </div>
 </div>
 
+<!-- ====== radio tuner (live Sveriges Radio streams) ====== -->
+<div id="radio-ui" class="overlay">
+  <div class="panel dim-panel radio-panel">
+    <div class="panel-head">
+      <span class="tab active">radio</span>
+      <button class="x" id="radio-close">×</button>
+    </div>
+    <div class="radio-readout">
+      <span class="radio-hz" id="radio-hz">100.2</span>
+      <div class="radio-meta">
+        <span class="radio-name" id="radio-name">P4 Gotland</span>
+        <span class="radio-tag" id="radio-tag">the island</span>
+      </div>
+      <span class="radio-state" id="radio-state">off air</span>
+    </div>
+    <input type="range" id="radio-dial" class="radio-dial" min="0" max="9" step="1" value="5">
+    <div class="radio-btns">
+      <button class="radio-btn" id="radio-prev">◀ scan</button>
+      <button class="radio-btn radio-power" id="radio-power">power</button>
+      <button class="radio-btn" id="radio-next">scan ▶</button>
+    </div>
+    <div class="dim-row">
+      <span class="dim-label">volume</span>
+      <input type="range" id="radio-vol" min="0" max="100" value="82">
+    </div>
+  </div>
+</div>
+
 <!-- ====== guitar filter treadle (wah-style lowpass) ====== -->
 <div id="filter-ui" class="overlay">
   <div class="panel filter-panel">

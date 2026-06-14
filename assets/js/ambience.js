@@ -510,6 +510,24 @@ export function hiss() {
   src.start(t); src.stop(t + 0.55);
 }
 
+// the squelch of tuning between stations — a short bright noise wash so
+// scanning the radio (radio.js) feels like sweeping a real FM dial.
+export function radioStatic() {
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  const src = ctx.createBufferSource();
+  src.buffer = noiseBuffer(0.4);
+  const hp = ctx.createBiquadFilter();   // FM hiss lives up top, no rumble
+  hp.type = "highpass";
+  hp.frequency.value = 1600;
+  const g = ctx.createGain();
+  src.connect(hp).connect(g).connect(master);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.05, t + 0.012);   // snap on
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);   // quick fade as the station locks
+  src.start(t); src.stop(t + 0.24);
+}
+
 // Kibble hitting a bowl, water filling, sand being shuffled.
 export function careSound(kind) {
   if (!ctx) return;

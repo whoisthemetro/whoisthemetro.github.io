@@ -273,6 +273,67 @@ textarea:focus, input:focus { border-color: var(--amber); }
   color: var(--dim); font-variant-numeric: tabular-nums;
 }
 
+/* ---------- radio tuner ---------- */
+.radio-panel { width: min(92vw, 360px); }
+.radio-readout {
+  display: flex; align-items: center; gap: 12px; margin: 14px 0 18px;
+  padding: 12px 14px; border-radius: 8px;
+  background: linear-gradient(160deg, #1a1407, #0b0905);
+  border: 1px solid #6b5a32;
+  box-shadow: inset 0 0 22px rgba(255,170,60,0.10);
+}
+.radio-hz {
+  font-family: monospace; font-size: 26px; font-weight: bold; color: #ffb347;
+  text-shadow: 0 0 10px rgba(255,150,40,0.5); font-variant-numeric: tabular-nums;
+}
+.radio-meta { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.radio-name { font-size: 14px; color: #f3e4c2; letter-spacing: 0.04em; }
+.radio-tag { font-size: 10px; color: #9c8550; letter-spacing: 0.08em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.radio-state {
+  font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+  color: #6b5a32; white-space: nowrap;
+}
+.radio-state.live { color: #57e389; text-shadow: 0 0 8px rgba(87,227,137,0.5); }
+.radio-state.tuning { color: #ffce54; }
+.radio-state.error { color: #e8705a; }
+/* the dial: low → high across the band */
+.radio-dial {
+  width: 100%; height: 16px; border-radius: 8px; appearance: none; -webkit-appearance: none;
+  outline: none; cursor: pointer; margin: 4px 0 16px;
+  background: repeating-linear-gradient(90deg, #2a2010, #2a2010 2px, #1a1407 2px, #1a1407 9px);
+  border: 1px solid #4a3d20;
+}
+.radio-dial::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 8px; height: 26px; border-radius: 3px;
+  background: #ff4030; border: 1px solid #2a0a06; cursor: pointer;
+  box-shadow: 0 0 8px rgba(255,64,48,0.7);
+}
+.radio-dial::-moz-range-thumb {
+  width: 8px; height: 26px; border-radius: 3px;
+  background: #ff4030; border: 1px solid #2a0a06; cursor: pointer;
+}
+.radio-btns { display: flex; gap: 10px; margin-bottom: 8px; }
+.radio-btn {
+  flex: 1; padding: 11px 0; border-radius: 8px; cursor: pointer;
+  background: #15181d; color: var(--ink); border: 1px solid var(--line);
+  font-size: 12px; letter-spacing: 0.08em; font-variant-numeric: tabular-nums;
+}
+.radio-btn:hover { background: #1d2128; }
+.radio-power.on { background: #1f3a26; color: #57e389; border-color: #2f6b3f; }
+#radio-vol {
+  flex: 1; height: 14px; border-radius: 7px; appearance: none; -webkit-appearance: none;
+  outline: none; cursor: pointer;
+  background: linear-gradient(90deg, #15181d, #ffb347);
+}
+#radio-vol::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 22px; height: 22px; border-radius: 50%;
+  background: var(--ink); border: 3px solid #0a0e11; cursor: pointer;
+}
+#radio-vol::-moz-range-thumb {
+  width: 22px; height: 22px; border-radius: 50%;
+  background: var(--ink); border: 3px solid #0a0e11; cursor: pointer;
+}
+
 /* ---------- guitar filter treadle (drag up/down) ---------- */
 .filter-panel { width: min(80vw, 180px); }
 .filter-body { display: flex; flex-direction: column; align-items: center; gap: 12px; margin: 12px 0; }

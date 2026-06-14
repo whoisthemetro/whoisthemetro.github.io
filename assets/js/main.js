@@ -18,6 +18,7 @@ import { startPlanes } from "./planes.js";
 import { Cat } from "./cat.js";
 import { openArcade, closeArcade, arcadeIsOpen, arcadeWantsEsc, handleGameMessage, setScoreHook } from "./arcade.js";
 import { PIANO_VOICES } from "./ambience.js";
+import { initRadio, radioPower, radioToggle, radioTune, radioScan, radioVolume, radioGain, radioInfo, STATIONS } from "./radio.js";
 import {
   PAPERS, IS_TOUCH, safeUrl, hostOf, timeAgo, toast,
   getIdentity, saveIdentity, shrinkImage,
@@ -312,7 +313,7 @@ canvas.addEventListener("click", () => {
 function castAt(ndcX, ndcY) {
   raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera);
   // doors are included as blockers so notes can't be pinned onto them
-  const targets = [cat.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, world.echoPoster, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.filterPedalHit, ...world.vacuumHits, ...notesWall.raycastTargets(), ...world.blockers];
+  const targets = [cat.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, world.echoPoster, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.radioHits, ...world.filterPedalHit, ...world.vacuumHits, ...notesWall.raycastTargets(), ...world.blockers];
   const hits = raycaster.intersectObjects(targets, false);
   return hits[0] || null;
 }
@@ -584,6 +585,8 @@ controls.onAction((ndcX, ndcY) => {
     toast(`${FX_LABEL[id] || "pedal"} ${fxOn[id] ? "on" : "off"}`);
   } else if (hit.object.userData.mixer && hit.distance < 2.8) {
     openMixer();
+  } else if (hit.object.userData.radio && hit.distance < 2.8) {
+    openRadio();
   } else if (hit.object.userData.gtrFilter && hit.distance < 2.8) {
     openFilter();
   } else if (hit.object.userData.vacuum && hit.distance < 2.6) {
@@ -673,8 +676,12 @@ setInterval(() => {
     const id = hit.object.userData.stomp;
     aimTip.textContent = `${TAP} to ${fxOn[id] ? "bypass" : "switch on"} the ${FX_LABEL[id] || "pedal"}`;
     aimTip.classList.add("show");
+  } else if (hit && hit.object.userData.radio && hit.distance < 2.8) {
+    aimTip.textContent = `${TAP} — the radio · scan the Swedish stations`;
+    aimTip.classList.add("show");
   } else if (hit && hit.object.userData.mixer && hit.distance < 2.8) {
     aimTip.textContent = `${TAP} — the channel mixer (keys · guitar · drums)`;
+    aimTip.classList.add("show");
   } else if (hit && hit.object.userData.gtrFilter && hit.distance < 2.8) {
     aimTip.textContent = `${TAP} — the guitar filter (drag it down to sweep the tone off)`;
     aimTip.classList.add("show");
@@ -1072,6 +1079,51 @@ for (const id of MIX_IDS) {
   const sl = $("#mix-" + id);
   if (sl) sl.addEventListener("input", (e) => setMixChannel(id, +e.target.value, true));
 }
+
+/* ---------------- the radio (scan through live Swedish stations) ---------------- */
+const radioUI = $("#radio-ui");
+const STATE_LABEL = { off: "off air", tuning: "tuning…", live: "on air", error: "no signal" };
+// keep the overlay readout, the dial slider and the 3D prop all in lockstep
+// with radio.js — fires whether the change came from a button, the dial, or a
+// stream event (buffering / error / locked on).
+function onRadioStatus(info) {
+  world.setRadioNeedle(info.total > 1 ? info.idx / (info.total - 1) : 0);
+  world.setRadioPower(info.on);
+  const s = info.station;
+  const hz = $("#radio-hz"), nm = $("#radio-name"), tg = $("#radio-tag"), st = $("#radio-state"), dial = $("#radio-dial");
+  if (hz) hz.textContent = s.hz;
+  if (nm) nm.textContent = s.name;
+  if (tg) tg.textContent = s.tag;
+  if (dial && +dial.value !== info.idx) dial.value = info.idx;
+  if (st) {
+    st.textContent = STATE_LABEL[info.state] || "";
+    st.className = "radio-state" + (info.on && info.state !== "off" ? " " + info.state : "");
+  }
+  const pw = $("#radio-power");
+  if (pw) pw.classList.toggle("on", info.on);
+}
+function openRadio() {
+  modalOpen = true;
+  controls.unlock();
+  const dial = $("#radio-dial");
+  if (dial) dial.max = String(STATIONS.length - 1);
+  const vol = $("#radio-vol");
+  if (vol) vol.value = Math.round(radioInfo().vol * 100);
+  onRadioStatus(radioInfo());
+  show(radioUI);
+}
+function closeRadio() {
+  hide(radioUI);
+  modalOpen = false;
+  if (entered) safeLock();
+}
+$("#radio-close").addEventListener("click", closeRadio);
+$("#radio-power").addEventListener("click", () => radioToggle());
+$("#radio-prev").addEventListener("click", () => radioScan(-1));
+$("#radio-next").addEventListener("click", () => radioScan(1));
+$("#radio-dial").addEventListener("input", (e) => radioTune(+e.target.value));
+$("#radio-vol").addEventListener("input", (e) => radioVolume(+e.target.value / 100));
+initRadio(onRadioStatus);
 
 /* ---------------- the guitar filter treadle ---------------- */
 // a modal like the mixer (pointer unlocks so the slider drags): one vertical
@@ -2304,6 +2356,16 @@ renderer.setAnimationLoop(() => {
   // the club lights dance to the set; everywhere else energy stays at zero
   world.setClubEnergy(inClub ? voice.djLevel() : 0);
   world.tick(dt, controls.pos);
+  // the radio lives in Desi's cabin: full up close, gone by ~7 m, and dead
+  // silent anywhere but the boat (radio.js pauses the live feed at gain 0)
+  {
+    let g = 0;
+    if (inBoat) {
+      const d = Math.hypot(controls.pos.x - world.radioPos.x, controls.pos.z - world.radioPos.z);
+      g = d < 1.4 ? 1 : Math.max(0, 1 - (d - 1.4) / 6);
+    }
+    radioGain(g);
+  }
   if (carrying) updateCarry();
   // the carpet grimes with traffic, and the vacuum lifts it — bedroom only.
   // while you're vacuuming you DON'T track your own dirt (otherwise you'd
