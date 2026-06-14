@@ -457,21 +457,27 @@ textarea:focus, input:focus { border-color: var(--amber); }
   padding: 18px 18px 10px; box-shadow: 0 0 60px rgba(120, 60, 255, 0.25);
 }
 .arcade-shell .x { position: absolute; top: 2px; right: 8px; z-index: 2; }
+/* the game fits the screen in BOTH orientations: width capped by the
+   viewport's width and (×1.6) its height, so a short landscape phone
+   never crops the top. 720px keeps it crisp on desktop. */
 #arcade-canvas {
-  display: block; width: min(86vw, 640px); height: auto;
+  display: block; margin: 0 auto;
+  width: min(94vw, 134vh, 720px); height: auto;
   image-rendering: pixelated; background: #000;
   border: 2px solid #2a2a3a;
   touch-action: none;                 /* canvas owns drag/swipe — no page scroll or pinch-zoom */
 }
 .arcade-shell::after {
   /* scanlines */
-  content: ""; position: absolute; inset: 18px 18px 48px; pointer-events: none;
+  content: ""; position: absolute; inset: 18px; pointer-events: none;
   background: repeating-linear-gradient(0deg, rgba(0,0,0,0.18) 0 1px, transparent 1px 3px);
 }
 #dosbox {
-  width: min(86vw, 640px); height: 400px;
+  width: min(94vw, 134vh, 720px);
+  height: calc(min(94vw, 134vh, 720px) / 1.6);
   background: #000; border: 2px solid #2a2a3a;
 }
+#dosbox .background-image { left: 0 !important; }   /* no dark strip where the kiosk'd sidebar was */
 #dosbox.hidden, #arcade-canvas.hidden { display: none; }
 .dos-loading {
   height: 100%; display: flex; align-items: center; justify-content: center;
@@ -481,15 +487,18 @@ textarea:focus, input:focus { border-color: var(--amber); }
   text-align: center; font-size: 10px; color: var(--dim);
   letter-spacing: 0.1em; margin-top: 8px; text-transform: uppercase;
 }
-/* two thumb zones, built per-game by arcade.js — left steers, right shoots */
+/* two thumb zones, built per-game by arcade.js — left steers, right shoots.
+   floated over the game's bottom corners so they survive landscape, where
+   stacking them below the canvas would push them off a short screen. */
 .arcade-pads {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 3;
   display: none; justify-content: space-between; align-items: flex-end;
-  margin-top: 12px; gap: 16px;
+  padding: 0 18px 16px; gap: 16px; pointer-events: none;
   user-select: none; -webkit-user-select: none;
 }
-.arcade-pads.hidden { display: none; }      /* DOOM brings its own js-dos touch UI */
-.pad-zone { display: flex; align-items: flex-end; gap: 10px; }
-#pad-right { flex-direction: row-reverse; }
+.arcade-pads.hidden { display: none; }      /* pong/tron (finger-only) + DOOM (its own touch UI) */
+.pad-zone { pointer-events: auto; display: flex; align-items: flex-end; gap: 10px; }
+#pad-right { flex-direction: column-reverse; }   /* FIRE under BOMB — stacks narrow */
 .pad {
   min-width: 58px; height: 58px; border-radius: 12px;
   background: #1c1f26; border: 1px solid #34384a; color: var(--ink);

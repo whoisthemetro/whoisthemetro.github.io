@@ -357,7 +357,12 @@ async function openRealDoom() {
   try {
     await loadJsDos();
     box.innerHTML = "";
-    dosProps = await window.Dos(box, { url: DOOM_BUNDLE, autoStart: true });
+    // kiosk + noCloud strip the js-dos chrome — sidebar, save/keyboard/cycles
+    // buttons, the F-key bar and the collapse arrow — leaving just the game
+    // and its own on-screen movement/fire touch controls.
+    dosProps = await window.Dos(box, {
+      url: DOOM_BUNDLE, autoStart: true, kiosk: true, noCloud: true,
+    });
   } catch (e) {
     // CDN down — the homage engine steps in
     box.classList.add("hidden");
@@ -649,8 +654,8 @@ const Pong = (() => {
     netState, applyState,
     netInput: () => ({ y: (peer && peer.role === "guest" ? st.p2 : st.p1) | 0 }),
     applyInput: (d) => { if (peer) peer.p2y = d.y; },
-    pad: { vpad: true, drag: true },
-    help: "↑ ↓ move (or drag the paddle) · first to 7",
+    pad: { drag: true },               // no buttons — just slide a finger up/down
+    help: "↑ ↓ or slide a finger to move · first to 7",
   };
 })();
 
@@ -776,7 +781,7 @@ const Tron = (() => {
     init, update, draw, mp: true,
     netState, applyState, netInput,
     applyInput: (d) => { if (peer) peer.dir = d.dir; },
-    pad: { dpad: true, swipe: true },
+    pad: { swipe: true },              // no buttons — flick a finger to steer
     help: "arrows or swipe to steer · don't touch anything · first to 3",
   };
 })();
@@ -846,13 +851,18 @@ function mkPad(code, label, cls, solo) {
 
 function clearEl(el) { while (el && el.firstChild) el.removeChild(el.firstChild); }
 
-// lay out exactly the controls this game wants. null = hide the bar (DOOM).
+// lay out exactly the controls this game wants. a spec with no buttons
+// (pong = finger drag, tron = finger swipe) hides the bar entirely, as
+// does null (DOOM, which brings its own touch UI).
 function buildPads(spec) {
   const wrap = document.getElementById("arcade-pads");
   const L = document.getElementById("pad-left");
   const R = document.getElementById("pad-right");
   clearEl(L); clearEl(R);
-  if (!spec) { wrap.classList.add("hidden"); return; }
+  if (!spec || (!spec.dpad && !spec.vpad && !(spec.btns && spec.btns.length))) {
+    wrap.classList.add("hidden");
+    return;
+  }
   wrap.classList.remove("hidden");
   if (spec.dpad) {
     const d = document.createElement("div");
@@ -890,13 +900,13 @@ function canvasMove(e) {
   const r = cv.getBoundingClientRect();
   touch.x = (e.clientX - r.left) / r.width;
   touch.y = (e.clientY - r.top) / r.height;
-  if (current && current.pad && current.pad.swipe && !touch.swiped) {
+  if (current && current.pad && current.pad.swipe) {
     const dx = touch.x - touch.sx, dy = touch.y - touch.sy;
     if (Math.hypot(dx, dy) > 0.05) {       // a real flick, not a jitter
-      touch.swiped = true;
       clearDirKeys();
       if (Math.abs(dx) > Math.abs(dy)) keys[dx > 0 ? "ArrowRight" : "ArrowLeft"] = true;
       else keys[dy > 0 ? "ArrowDown" : "ArrowUp"] = true;
+      touch.sx = touch.x; touch.sy = touch.y;   // re-anchor so you can trace turns without lifting
     }
   }
 }
