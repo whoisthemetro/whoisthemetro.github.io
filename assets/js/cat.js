@@ -1,6 +1,6 @@
 /* ============================================================
    THE METRO — the cat
-   A charcoal cat lives here. It sleeps on the chair, watches LA
+   A ginger cat lives here. It sleeps on the chair, watches LA
    out the window, walks across the MIDI keys (you'll hear it),
    wanders, and comes over if you stand still near it. Click it
    to pet it — the pet count is shared by every visitor ever.
@@ -12,7 +12,7 @@ import * as THREE from "three";
 import { rand } from "./util.js";
 
 const WALK = 0.5;            // m/s
-const FUR = 0x2b2b30, CHEST = 0xb8b2a4, EYE = 0x7ddc6a;
+const FUR = 0xd98a3d, CHEST = 0xf0e3c8, EYE = 0x7ddc6a; // ginger tabby, cream belly, green eyes
 
 export class Cat {
   constructor(scene, spots, fx) {
