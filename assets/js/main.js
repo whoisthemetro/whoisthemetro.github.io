@@ -287,7 +287,9 @@ function enterRoom() {
   }
   identity.name = name;
   saveIdentity(identity);
-  presence.updateMeta({ name });          // others see your tag the moment you walk in
+  // only NOW do we appear to anyone else — join broadcasts you as a peer, so
+  // nobody shows up in the room until they've walked in with a name on
+  presence.join(identity, () => controls.pose());
   entered = true;
   startAmbience();
   applyFxStates();                        // restore each stompbox's saved on/off into the new graph
@@ -2206,15 +2208,21 @@ addEventListener("keydown", (e) => {
   // another tab re-hung a note (local mode) — mirror its new spot
   store.onMoved((m) => { notesWall.moveTo(m.id, m); refreshNoteVisibility(); });
 
-  presence.join(identity, () => controls.pose());
-  presence.onPeers((peers) => {
+  // NB: presence.join is deferred to enterRoom — you don't broadcast as a peer
+  // (and so can't show up nameless) until you've entered with a name. These
+  // handlers just register; they fire once join connects.
+  presence.onPeers((allPeers) => {
+    // only ever show people who've actually named themselves — belt-and-braces
+    // on top of the join-on-enter gate, so a stranger with no name (e.g. a stale
+    // tab still on old cached code) never renders or counts toward the room
+    const peers = new Map([...allPeers].filter(([, m]) => (m.name || "").trim()));
     ghosts.syncPeers(peers);
     $("#online-count").textContent = String(peers.size + 1);
     lastPeers = peers;
     for (const uid of [...peerX.keys()]) if (!peers.has(uid)) peerX.delete(uid);
     if ($("#booth").classList.contains("show")) renderBooth();
   });
-  presence.onPose((uid, pose) => { ghosts.setPose(uid, pose); peerX.set(uid, pose.x); });
+  presence.onPose((uid, pose) => { if (lastPeers && !lastPeers.has(uid)) return; ghosts.setPose(uid, pose); peerX.set(uid, pose.x); });
   presence.onNote((uid, i, v) => {
     if (inBoat || inArena) return;   // the bedroom piano stays in the bedroom
     pianoNote(i, v ?? 0);
