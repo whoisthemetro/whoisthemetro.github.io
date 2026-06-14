@@ -461,6 +461,7 @@ textarea:focus, input:focus { border-color: var(--amber); }
   display: block; width: min(86vw, 640px); height: auto;
   image-rendering: pixelated; background: #000;
   border: 2px solid #2a2a3a;
+  touch-action: none;                 /* canvas owns drag/swipe — no page scroll or pinch-zoom */
 }
 .arcade-shell::after {
   /* scanlines */
@@ -480,17 +481,40 @@ textarea:focus, input:focus { border-color: var(--amber); }
   text-align: center; font-size: 10px; color: var(--dim);
   letter-spacing: 0.1em; margin-top: 8px; text-transform: uppercase;
 }
-.arcade-pads { display: none; justify-content: space-between; margin-top: 10px; gap: 12px; }
-.pad-group { display: flex; gap: 8px; }
-.pad {
-  min-width: 52px; height: 52px; border-radius: 10px;
-  background: #1c1f26; border: 1px solid #34384a; color: var(--ink);
-  font-size: 18px; font-family: "Archivo"; touch-action: none;
+/* two thumb zones, built per-game by arcade.js — left steers, right shoots */
+.arcade-pads {
+  display: none; justify-content: space-between; align-items: flex-end;
+  margin-top: 12px; gap: 16px;
+  user-select: none; -webkit-user-select: none;
 }
-.pad:active { background: #34384a; }
-.pad-wide { min-width: 76px; font-size: 13px; letter-spacing: 0.1em; }
+.arcade-pads.hidden { display: none; }      /* DOOM brings its own js-dos touch UI */
+.pad-zone { display: flex; align-items: flex-end; gap: 10px; }
+#pad-right { flex-direction: row-reverse; }
+.pad {
+  min-width: 58px; height: 58px; border-radius: 12px;
+  background: #1c1f26; border: 1px solid #34384a; color: var(--ink);
+  font-size: 20px; font-family: "Archivo";
+  display: flex; align-items: center; justify-content: center;
+  touch-action: none; -webkit-tap-highlight-color: transparent;
+  user-select: none; -webkit-user-select: none;
+}
+.pad:active { background: #3a64ff; border-color: #6f90ff; color: #fff; }
+.pad-wide { min-width: 88px; font-size: 14px; letter-spacing: 0.08em; }
+.pad-fire { background: #311722; border-color: #7a2a3a; }
+.pad-fire:active { background: #e8345f; border-color: #ff7a9c; }
+/* + shaped d-pad — arrows placed by grid-area regardless of DOM order */
+.dpad { display: grid; grid-template-columns: repeat(3, 54px); grid-template-rows: repeat(3, 54px); gap: 5px; }
+.dpad .pad { min-width: 0; width: 54px; height: 54px; }
+.dpad .d-up { grid-area: 1 / 2; }
+.dpad .d-left { grid-area: 2 / 1; }
+.dpad .d-right { grid-area: 2 / 3; }
+.dpad .d-down { grid-area: 3 / 2; }
+/* tall paddle controls (pong) */
+.vpad { display: flex; flex-direction: column; gap: 12px; }
+.vpad .pad { width: 74px; height: 74px; font-size: 24px; }
 @media (pointer: coarse) {
   .arcade-pads { display: flex; }
+  .arcade-pads.hidden { display: none; }
   .arcade-help { display: none; }
 }
 

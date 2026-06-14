@@ -332,17 +332,10 @@
     <canvas id="arcade-canvas" width="640" height="400"></canvas>
     <div id="dosbox" class="hidden"></div>
     <p class="arcade-help">← → thrust · ↑ ↓ move · SPACE fire · B smart bomb · ESC to walk away</p>
-    <div class="arcade-pads">
-      <div class="pad-group">
-        <button class="pad" data-code="ArrowLeft">◀</button>
-        <button class="pad" data-code="ArrowUp">▲</button>
-        <button class="pad" data-code="ArrowDown">▼</button>
-        <button class="pad" data-code="ArrowRight">▶</button>
-      </div>
-      <div class="pad-group">
-        <button class="pad pad-wide" data-code="KeyB">BOMB</button>
-        <button class="pad pad-wide" data-code="Space">FIRE</button>
-      </div>
+    <!-- per-game touch controls are built into these two thumb zones by arcade.js -->
+    <div class="arcade-pads" id="arcade-pads">
+      <div class="pad-zone" id="pad-left"></div>
+      <div class="pad-zone" id="pad-right"></div>
     </div>
   </div>
 </div>

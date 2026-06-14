@@ -59,6 +59,9 @@ export function makeAttractScreen(THREE, title = "DEFENDER", color = "#ff3434") 
 const W = 640, H = 400;
 let cv, g2, raf = null;
 let keys = {};
+// a finger on the canvas: normalized 0..1 coords, used for pong's drag-paddle
+// and tron's swipe-to-steer. games read this straight off the module.
+let touch = { active: false, x: 0, y: 0, sx: 0, sy: 0, swiped: false };
 let current = null;            // active game object
 let net = null;                // { send, myUid } from main
 let peer = null;               // { uid, role: 'host'|'guest', lastSeen }
@@ -307,7 +310,11 @@ const Defender = (() => {
       g2.fillText("PRESS ENTER TO PLAY AGAIN", W / 2, 236);
     }
   }
-  return { init, update, draw, help: "← → thrust · ↑ ↓ move · SPACE fire · B smart bomb" };
+  return {
+    init, update, draw,
+    pad: { dpad: true, btns: [{ code: "Space", label: "FIRE", fire: true }, { code: "KeyB", label: "BOMB" }] },
+    help: "← → thrust · ↑ ↓ move · SPACE fire · B smart bomb",
+  };
 })();
 
 /* ================= DOOM — the real one, via js-dos =================
@@ -554,7 +561,11 @@ const Boom = (() => {
       g2.fillText("PRESS ENTER", W / 2, 200);
     }
   }
-  return { init, update, draw, help: "WASD move · ← → turn · SPACE shoot" };
+  return {
+    init, update, draw,
+    pad: { dpad: true, btns: [{ code: "Space", label: "FIRE", fire: true }] },
+    help: "WASD move · ← → turn · SPACE shoot",
+  };
 })();
 
 /* ================= PONG (2-player capable) ================= */
@@ -573,6 +584,9 @@ const Pong = (() => {
     const mv = (keys.ArrowDown || keys.KeyS ? 1 : 0) - (keys.ArrowUp || keys.KeyW ? 1 : 0);
     const mine = peer && peer.role === "guest" ? "p2" : "p1";
     st[mine] = Math.max(PH / 2, Math.min(H - PH / 2, st[mine] + mv * 330 * dt));
+    // a finger dragging on the canvas places the paddle directly — the best
+    // pong control there is. overrides the keyboard nudge while held.
+    if (touch.active) st[mine] = Math.max(PH / 2, Math.min(H - PH / 2, touch.y * H));
 
     if (peer && peer.role === "guest") return;   // host simulates everything else
 
@@ -635,7 +649,8 @@ const Pong = (() => {
     netState, applyState,
     netInput: () => ({ y: (peer && peer.role === "guest" ? st.p2 : st.p1) | 0 }),
     applyInput: (d) => { if (peer) peer.p2y = d.y; },
-    help: "↑ ↓ move · first to 7",
+    pad: { vpad: true, drag: true },
+    help: "↑ ↓ move (or drag the paddle) · first to 7",
   };
 })();
 
@@ -761,7 +776,8 @@ const Tron = (() => {
     init, update, draw, mp: true,
     netState, applyState, netInput,
     applyInput: (d) => { if (peer) peer.dir = d.dir; },
-    help: "arrows steer · don't touch anything · first to 3",
+    pad: { dpad: true, swipe: true },
+    help: "arrows or swipe to steer · don't touch anything · first to 3",
   };
 })();
 
@@ -804,6 +820,88 @@ function keydown(e) {
 }
 function keyup(e) { keys[e.code] = false; }
 
+/* ---------------- touch controls ---------------- */
+
+const DIR_KEYS = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "KeyW", "KeyA", "KeyS", "KeyD"];
+function clearDirKeys() { for (const k of DIR_KEYS) keys[k] = false; }
+
+// one on-screen button → a held key. `solo` (tron) clears the other
+// directions first so only ever one steer is live at a time.
+function mkPad(code, label, cls, solo) {
+  const b = document.createElement("button");
+  b.className = "pad" + (cls ? " " + cls : "");
+  b.textContent = label;
+  b.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    if (solo) clearDirKeys();
+    keys[code] = true;
+    try { b.setPointerCapture(e.pointerId); } catch (_) {}   // stays held if the finger slides off
+  });
+  const release = () => { keys[code] = false; };
+  b.addEventListener("pointerup", release);
+  b.addEventListener("pointercancel", release);
+  b.addEventListener("pointerleave", release);
+  return b;
+}
+
+function clearEl(el) { while (el && el.firstChild) el.removeChild(el.firstChild); }
+
+// lay out exactly the controls this game wants. null = hide the bar (DOOM).
+function buildPads(spec) {
+  const wrap = document.getElementById("arcade-pads");
+  const L = document.getElementById("pad-left");
+  const R = document.getElementById("pad-right");
+  clearEl(L); clearEl(R);
+  if (!spec) { wrap.classList.add("hidden"); return; }
+  wrap.classList.remove("hidden");
+  if (spec.dpad) {
+    const d = document.createElement("div");
+    d.className = "dpad";
+    d.appendChild(mkPad("ArrowUp", "▲", "d-up", spec.swipe));
+    d.appendChild(mkPad("ArrowLeft", "◀", "d-left", spec.swipe));
+    d.appendChild(mkPad("ArrowRight", "▶", "d-right", spec.swipe));
+    d.appendChild(mkPad("ArrowDown", "▼", "d-down", spec.swipe));
+    L.appendChild(d);
+  }
+  if (spec.vpad) {
+    const v = document.createElement("div");
+    v.className = "vpad";
+    v.appendChild(mkPad("ArrowUp", "▲"));
+    v.appendChild(mkPad("ArrowDown", "▼"));
+    L.appendChild(v);
+  }
+  for (const b of (spec.btns || [])) {
+    R.appendChild(mkPad(b.code, b.label, "pad-wide" + (b.fire ? " pad-fire" : "")));
+  }
+}
+
+// dragging/swiping/tapping straight on the canvas
+function canvasDown(e) {
+  e.preventDefault();
+  const r = cv.getBoundingClientRect();
+  touch.active = true;
+  touch.swiped = false;
+  touch.sx = touch.x = (e.clientX - r.left) / r.width;
+  touch.sy = touch.y = (e.clientY - r.top) / r.height;
+  keys.Enter = true;            // tap to (re)start — games ignore Enter mid-play
+}
+function canvasMove(e) {
+  if (!touch.active) return;
+  const r = cv.getBoundingClientRect();
+  touch.x = (e.clientX - r.left) / r.width;
+  touch.y = (e.clientY - r.top) / r.height;
+  if (current && current.pad && current.pad.swipe && !touch.swiped) {
+    const dx = touch.x - touch.sx, dy = touch.y - touch.sy;
+    if (Math.hypot(dx, dy) > 0.05) {       // a real flick, not a jitter
+      touch.swiped = true;
+      clearDirKeys();
+      if (Math.abs(dx) > Math.abs(dy)) keys[dx > 0 ? "ArrowRight" : "ArrowLeft"] = true;
+      else keys[dy > 0 ? "ArrowDown" : "ArrowUp"] = true;
+    }
+  }
+}
+function canvasUp() { touch.active = false; keys.Enter = false; }
+
 function startLoop() {
   let last = performance.now();
   const loop = (now) => {
@@ -828,6 +926,7 @@ export function openArcade(id, netAdapter) {
 
   if (id === "doom") {
     current = null;
+    buildPads(null);          // DOOM rides js-dos's own on-screen touch controls
     openRealDoom();
     return;
   }
@@ -851,12 +950,12 @@ export function openArcade(id, netAdapter) {
     }, 50);
   }
 
+  buildPads(current.pad);
+  cv.addEventListener("pointerdown", canvasDown, { passive: false });
+  cv.addEventListener("pointermove", canvasMove, { passive: false });
+  cv.addEventListener("pointerup", canvasUp);
+  cv.addEventListener("pointercancel", canvasUp);
   startLoop();
-  document.querySelectorAll("#arcade .pad").forEach(btn => {
-    const code = btn.dataset.code;
-    btn.onpointerdown = (e) => { e.preventDefault(); keys[code] = true; };
-    btn.onpointerup = btn.onpointercancel = btn.onpointerleave = () => { keys[code] = false; };
-  });
 }
 
 // real DOOM owns the ESC key (its menu) — only the × closes it
@@ -877,10 +976,19 @@ export function closeArcade() {
   const box = document.getElementById("dosbox");
   box.classList.add("hidden");
   box.innerHTML = "";
+  if (cv) {
+    cv.removeEventListener("pointerdown", canvasDown);
+    cv.removeEventListener("pointermove", canvasMove);
+    cv.removeEventListener("pointerup", canvasUp);
+    cv.removeEventListener("pointercancel", canvasUp);
+  }
   cv?.classList.remove("hidden");
   peer = null;
   current = null;
   gameId = null;
+  keys = {};                    // never carry a stuck pad into the next game
+  touch.active = false;
+  buildPads(null);
   removeEventListener("keydown", keydown);
   removeEventListener("keyup", keyup);
   document.getElementById("arcade").classList.remove("show");
