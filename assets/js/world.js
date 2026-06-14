@@ -1590,7 +1590,8 @@ export function buildWorld() {
   const teleBody = new THREE.Mesh(
     new THREE.ExtrudeGeometry(bodyShape, { depth: 0.045, bevelEnabled: true, bevelSize: 0.008, bevelThickness: 0.006 }),
     lam(0xf2c84b));
-  teleBody.userData.guitar = true;
+  // the solid body is silent — only the strings/fretboard/neck sound (it stays
+  // a blocker below so the body is still click-solid, just doesn't pluck)
   tele.add(teleBody);
   const guardShape = new THREE.Shape();
   guardShape.moveTo(-0.13, -0.15);
@@ -1601,7 +1602,6 @@ export function buildWorld() {
   const guard = new THREE.Mesh(new THREE.ExtrudeGeometry(guardShape, { depth: 0.004, bevelEnabled: false }),
     lam(0xf4f1e8));
   guard.position.z = 0.046;
-  guard.userData.guitar = true;
   tele.add(guard);
   const neck = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.58, 0.022), lam(0xd8b878));
   neck.position.set(0.0, 0.155 + 0.29 - 0.02, 0.022);
@@ -1612,12 +1612,23 @@ export function buildWorld() {
   tele.add(head);
   const fretboard = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.58, 0.005), lam(0x4a3526));
   fretboard.position.set(0, neck.position.y, 0.036);
+  fretboard.userData.guitar = true;
   tele.add(fretboard);
+  // the strings span body→headstock; they (with the fretboard/neck) are the
+  // only things that pluck — give each a fatter invisible hit-proxy so the
+  // thin visible string is actually clickable, then collect them all
+  const strings = [];
   for (const sx of [-0.012, 0, 0.012]) {
     const str = new THREE.Mesh(new THREE.BoxGeometry(0.0022, 0.74, 0.0022),
       new THREE.MeshBasicMaterial({ color: 0xd9dde2 }));
     str.position.set(sx, 0.26, 0.052);
     tele.add(str);
+    const grip = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.74, 0.01),
+      new THREE.MeshBasicMaterial({ visible: false }));
+    grip.position.set(sx, 0.26, 0.052);
+    grip.userData.guitar = true;
+    tele.add(grip);
+    strings.push(grip);
   }
   const bridge = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.035, 0.012),
     new THREE.MeshStandardMaterial({ color: 0xb9bec6, metalness: 0.8, roughness: 0.35 }));
@@ -1661,7 +1672,7 @@ export function buildWorld() {
   tele.rotation.x = -0.16;                 // leaning back on the stand
   tele.rotation.y = 0.3;
   add(tele);
-  guitarHits.push(teleBody, guard, neck);
+  guitarHits.push(neck, fretboard, ...strings);
   blockers.push(teleBody);
   let teleWiggle = 0;
   function strumTele() { teleWiggle = 1; }
