@@ -13,6 +13,8 @@ Note: README.md describes an older "metro station" concept — the world is now 
 ```sh
 # run locally (any static server)
 python3 -m http.server 8123
+# RULE: always start the server and give the user the address — http://localhost:8123/ —
+# any time there's something to look at (a change to test, a screenshot, a "go check it").
 
 # syntax-check after edits (the only "lint")
 for f in assets/js/*.js; do node --check "$f"; done
