@@ -69,8 +69,8 @@ function driveCurve(k = 10) {
 // — the three stompboxes on the floor by the desk (world.js) are the twin.
 function buildKeyboardFx() {
   pianoBus = ctx.createGain();
-  pianoBus.gain.value = 1.3;            // the keys, turned up a notch
-  busBase.piano = 1.3;
+  pianoBus.gain.value = 2.1;            // the keys, sitting well up front
+  busBase.piano = 2.1;
   let node = pianoBus;
 
   // chorus: a short LFO-swept delay beating against the dry signal
@@ -881,12 +881,12 @@ export function edrumHit(pad = 0, when = null, vel = 1) {
     g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
     g.gain.linearRampToValueAtTime(0, t + dur + 0.04);
   };
-  if (pad === 0) { thump(150, 40, 0.32, 0.34 * A); click(2400, 0.10 * A); }    // kick
-  else if (pad === 1) { thump(215, 150, 0.13, 0.16 * A); hiss(1900, 0.18, 0.2 * A, "bandpass"); hiss(6000, 0.12, 0.05 * A); click(3600, 0.07 * A); }  // snare (+ a little air on top)
-  else if (pad === 2) { metal(0.06, 0.09 * A, 8200); hiss(9000, 0.05, 0.1 * A); click(9000, 0.06 * A); }  // closed hat — crisp + ringing, pushed up (was buried)
+  if (pad === 0) { thump(150, 40, 0.32, 0.46 * A); click(2400, 0.15 * A); }    // kick — fatter low end + harder beater
+  else if (pad === 1) { thump(215, 150, 0.13, 0.22 * A); hiss(1900, 0.18, 0.26 * A, "bandpass"); hiss(6000, 0.12, 0.07 * A); click(3600, 0.10 * A); }  // snare — more crack + body
+  else if (pad === 2) { metal(0.06, 0.14 * A, 8200); hiss(9000, 0.05, 0.15 * A); click(9000, 0.07 * A); }  // closed hat — crisp + ringing, up
   else if (pad === 3) { thump(185, 115, 0.26, 0.24 * A); click(2800, 0.06 * A); }  // tom hi
   else if (pad === 4) { thump(145, 85, 0.32, 0.24 * A); click(2400, 0.06 * A); }   // tom lo
-  else { metal(1.1, 0.08 * A, 5200); hiss(8500, 0.85, 0.13 * A); hiss(4800, 0.5, 0.08 * A); click(6500, 0.05 * A); }  // crash — bright shimmer + splash, pushed up
+  else { metal(1.1, 0.13 * A, 5200); hiss(8500, 0.85, 0.19 * A); hiss(4800, 0.5, 0.11 * A); click(6500, 0.06 * A); }  // crash — bright shimmer + splash, up
 }
 
 /* ---------------- the telecaster: karplus-strong plucks ---------------- */

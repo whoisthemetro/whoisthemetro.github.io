@@ -1891,7 +1891,7 @@ const pcOverlay = $("#pc");
 // (a manual key/pad is velocity 1.0). kept just shy of parity so live
 // playing still sits a touch on top — but close, so a song reads as the
 // instrument actually being played, not a distant backing loop.
-const MUSIC_VEL = 0.9;
+const MUSIC_VEL = 1.05;
 function refreshSongUI() {
   const playing = currentSongId();
   for (const b of $("#pc-songs").children) {
