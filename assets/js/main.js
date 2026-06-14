@@ -9,7 +9,7 @@ import { NotesWall } from "./notes3d.js";
 import { Ghosts } from "./ghosts.js";
 import { store } from "./store.js";
 import { presence } from "./presence.js";
-import { startAmbience, citySound, pianoNote, semitoneToKey, audioNow, purr, setRain, setWater, setRoomTone, setClubTone, setClubBed, kettleBoil, setThruster, boostSound, discSound, goalHorn, meow, hiss, careSound, drumHit, setArcadeZone, punchSound, shieldClang, stunBuzz, edrumHit, guitarPluck, guitarNote, shotSound, smokeSound, setFx, setDelayTempo, setBusLevel, startVacuum, stopVacuum } from "./ambience.js";
+import { startAmbience, citySound, pianoNote, semitoneToKey, audioNow, purr, setRain, setWater, setRoomTone, setClubTone, setClubBed, kettleBoil, setThruster, boostSound, discSound, goalHorn, meow, hiss, careSound, drumHit, setArcadeZone, punchSound, shieldClang, stunBuzz, edrumHit, guitarPluck, guitarNote, shotSound, smokeSound, setFx, setDelayTempo, setBusLevel, setGuitarFilter, startVacuum, stopVacuum } from "./ambience.js";
 import { SONGS, playSong, stopSong, currentSongId } from "./songs.js";
 import { progress } from "./progress.js";
 import { voice } from "./voice.js";
@@ -168,6 +168,11 @@ for (const id of MIX_IDS) {
 // push every channel's level into the bus + slide its 3D cap (call once audio is up)
 function applyMixLevels() { for (const id of MIX_IDS) { setBusLevel(id, mixLevel[id]); world.setMixFader(id, mixLevel[id]); } }
 
+// the guitar filter treadle: 0..1, 1 = lowpass wide open. client-side + sticky.
+let gtrFilterLevel = 1;
+try { const s = localStorage.getItem("metro.gtrfilter"); if (s !== null && isFinite(+s)) gtrFilterLevel = Math.min(Math.max(+s, 0), 1); } catch (e) {}
+function applyGuitarFilter() { setGuitarFilter(gtrFilterLevel); world.setGuitarPedalTilt(gtrFilterLevel); }
+
 // the cat — its key-walking plays the same piano visitors can play.
 // All bedroom sounds are gated: aboard THE DESI you hear only the sea.
 const bedroomSound = (fn) => (...a) => { if (!inBoat && !inArena && !inClub) fn(...a); };
@@ -283,6 +288,7 @@ function enterRoom() {
   startAmbience();
   applyFxStates();                        // restore each stompbox's saved on/off into the new graph
   applyMixLevels();                       // and the mixer's saved channel levels
+  applyGuitarFilter();                     // and where the filter treadle was left
   hide(intro);
   hud.classList.add("show");
   safeLock();
@@ -304,7 +310,7 @@ canvas.addEventListener("click", () => {
 function castAt(ndcX, ndcY) {
   raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera);
   // doors are included as blockers so notes can't be pinned onto them
-  const targets = [cat.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, world.echoPoster, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.vacuumHits, ...notesWall.raycastTargets(), ...world.blockers];
+  const targets = [cat.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, world.echoPoster, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.filterPedalHit, ...world.vacuumHits, ...notesWall.raycastTargets(), ...world.blockers];
   const hits = raycaster.intersectObjects(targets, false);
   return hits[0] || null;
 }
@@ -576,6 +582,8 @@ controls.onAction((ndcX, ndcY) => {
     toast(`${FX_LABEL[id] || "pedal"} ${fxOn[id] ? "on" : "off"}`);
   } else if (hit.object.userData.mixer && hit.distance < 2.8) {
     openMixer();
+  } else if (hit.object.userData.gtrFilter && hit.distance < 2.8) {
+    openFilter();
   } else if (hit.object.userData.vacuum && hit.distance < 2.6) {
     setVacuuming(true);
   } else if (hit.object.userData.lava && hit.distance < 2.4) {
@@ -665,6 +673,8 @@ setInterval(() => {
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.mixer && hit.distance < 2.8) {
     aimTip.textContent = `${TAP} — the channel mixer (keys · guitar · drums)`;
+  } else if (hit && hit.object.userData.gtrFilter && hit.distance < 2.8) {
+    aimTip.textContent = `${TAP} — the guitar filter (drag it down to sweep the tone off)`;
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.dimmer && hit.distance < 2.6) {
     aimTip.textContent = `${TAP} — light dimmer`;
@@ -1060,6 +1070,34 @@ for (const id of MIX_IDS) {
   const sl = $("#mix-" + id);
   if (sl) sl.addEventListener("input", (e) => setMixChannel(id, +e.target.value, true));
 }
+
+/* ---------------- the guitar filter treadle ---------------- */
+// a modal like the mixer (pointer unlocks so the slider drags): one vertical
+// fader sweeping the front-of-chain lowpass. client-side + sticky.
+const filterUI = $("#filter-ui");
+function setFilterLevel(pct, save) {
+  gtrFilterLevel = Math.min(Math.max(pct, 0), 1);
+  setGuitarFilter(gtrFilterLevel);
+  world.setGuitarPedalTilt(gtrFilterLevel);
+  const val = $("#filter-val");
+  if (val) val.textContent = gtrFilterLevel > 0.985 ? "open" : Math.round(100 * Math.pow(200, gtrFilterLevel)) + " Hz";
+  if (save) { try { localStorage.setItem("metro.gtrfilter", gtrFilterLevel.toFixed(3)); } catch (e) {} }
+}
+function openFilter() {
+  modalOpen = true;
+  controls.unlock();
+  const sl = $("#filter-slider");
+  if (sl) sl.value = Math.round(gtrFilterLevel * 100);
+  setFilterLevel(gtrFilterLevel, false);   // refresh the readout
+  show(filterUI);
+}
+function closeFilter() {
+  hide(filterUI);
+  modalOpen = false;
+  if (entered) safeLock();
+}
+$("#filter-close").addEventListener("click", closeFilter);
+$("#filter-slider").addEventListener("input", (e) => setFilterLevel(+e.target.value / 100, true));
 
 /* ---------------- room chat — press T, or the bubble ---------------- */
 const chatLog = $("#chat-log");
@@ -2027,6 +2065,7 @@ addEventListener("keydown", (e) => {
     if (bottleOverlay.classList.contains("show")) closeBottle();
     if (dimmerUI.classList.contains("show")) closeDimmer();
     if (mixerUI.classList.contains("show")) closeMixer();
+    if (filterUI.classList.contains("show")) closeFilter();
     // real DOOM owns ESC (its own menu) — only its × button closes it
     if (arcadeIsOpen() && !arcadeWantsEsc()) closeArcadeOverlay();
   }

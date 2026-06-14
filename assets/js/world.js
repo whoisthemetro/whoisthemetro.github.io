@@ -1631,6 +1631,43 @@ export function buildWorld() {
   stompbox(-0.15, 0x8a3b1e, 0xff7a3c, "gtr-od");      // overdrive — burnt orange, amber eye
   stompbox(0, 0x1f7a6e, 0x46f0d6, "gtr-delay");       // delay — teal, green eye
   stompbox(0.15, 0x35307a, 0x8a7bff, "gtr-reverb");   // reverb — indigo, violet eye
+
+  /* --- the filter treadle: a wah-style rocker, FIRST in the chain ---
+     sits on the floor left of the board (signal hits it before the
+     overdrive). rock it (click opens a vertical slider): toe-down = the
+     lowpass wide open / no cut, heel-up = it sweeps down to 100 Hz. --- */
+  const wah = new THREE.Group();
+  const wahBase = box(0.135, 0.05, 0.215, lam(0x101216));
+  wahBase.position.y = 0.025;
+  wah.add(wahBase);
+  // the rocking foot plate, pivoting about its middle like a real treadle
+  const treadle = new THREE.Group();
+  const tPlate = box(0.125, 0.02, 0.205, lam(0x7a1f2a));     // cry-baby burgundy
+  tPlate.position.y = 0.01;
+  treadle.add(tPlate);
+  for (const tz of [-0.06, -0.02, 0.02, 0.06]) {            // grip ridges
+    const r = box(0.115, 0.006, 0.012, lam(0x0c0d0f));
+    r.position.set(0, 0.023, tz);
+    treadle.add(r);
+  }
+  // a lit eye on the toe so you can read it from across the room (basic mat = glows)
+  const wahLed = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.006, 8),
+    new THREE.MeshBasicMaterial({ color: 0xffe04a }));
+  wahLed.position.set(0, 0.026, 0.092);
+  treadle.add(wahLed);
+  treadle.position.set(0, 0.052, 0);
+  treadle.userData.gtrFilter = true; tPlate.userData.gtrFilter = true;
+  wahBase.userData.gtrFilter = true;
+  wah.add(treadle);
+  wah.position.set(-0.44, 0, 0.0);
+  pedalboard.add(wah);
+  const filterPedalHit = [tPlate, treadle, wahBase];
+  // rock the treadle to show the cutoff: pct 1 = toe-down (open), 0 = heel-down
+  function setGuitarPedalTilt(pct) {
+    const p = Math.max(0, Math.min(1, pct));
+    treadle.rotation.x = 0.34 - p * 0.6;     // heel-down (nose up) → toe-down
+  }
+  setGuitarPedalTilt(1);   // arrives wide open
   // the patch cable snaking back toward the guitar's jack
   const patch = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.42, 6), lam(0x0c0d0f));
   patch.position.set(0.25, 0.05, -0.06);
@@ -5372,6 +5409,8 @@ export function buildWorld() {
     pianoMesh: midiKeybed, pressPianoKey,
     pianoVoiceMesh: midiBody,
     stompHits, setStompLED, stompIds: Object.keys(stompLEDs),
+    // the guitar filter treadle (wah-style lowpass) — see main.js openFilter
+    filterPedalHit, setGuitarPedalTilt,
     // the desk channel mixer (keys · guitar · drums) — see main.js openMixer
     mixerHits: mixHits, setMixFader,
     // the dirty-carpet + vacuum system (bedroom only)

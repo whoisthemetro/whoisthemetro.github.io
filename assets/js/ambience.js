@@ -10,6 +10,7 @@ let master = null;
 let pianoBus = null;   // the keyboard's pedal chain feeds in here (chorus→delay→reverb)
 let guitarBus = null;  // the guitar's pedal chain (overdrive→delay→reverb)
 let drumBus = null;    // the e-kit's level handle (so a mixer can ride it)
+let gtrFilter = null;  // the guitar's front-of-chain lowpass, ridden by a draggable pedal
 const busBase = {};    // id → the gain each bus was built at (100% on the mixer)
 const fxStages = {};        // id → {dry, wet, wet0} — a stompbox toggles these to bypass
 const fxDelays = {};        // id → DelayNode, for tempo-syncing the delay pedals to a song
@@ -69,8 +70,8 @@ function driveCurve(k = 10) {
 // — the three stompboxes on the floor by the desk (world.js) are the twin.
 function buildKeyboardFx() {
   pianoBus = ctx.createGain();
-  pianoBus.gain.value = 2.1;            // the keys, sitting well up front
-  busBase.piano = 2.1;
+  pianoBus.gain.value = 2.9;            // the keys, pushed right out front
+  busBase.piano = 2.9;
   let node = pianoBus;
 
   // chorus: a short LFO-swept delay beating against the dry signal
@@ -115,6 +116,16 @@ function buildGuitarFx() {
   busBase.guitar = guitarBus.gain.value;   // unity — the string already has its level
   let node = guitarBus;
 
+  // filter pedal — FIRST in line, the whole signal passes through it (not wet/dry).
+  // wide open by default (20 kHz = no audible filtering); the draggable pedal in
+  // world.js rides it down to 100 Hz, sweeping the brightness right off.
+  gtrFilter = ctx.createBiquadFilter();
+  gtrFilter.type = "lowpass";
+  gtrFilter.frequency.value = 20000;
+  gtrFilter.Q.value = 0.7;
+  node.connect(gtrFilter);
+  node = gtrFilter;
+
   // overdrive: push the quiet string hard into the clipper, shape, level back
   const odIn = ctx.createGain(); odIn.gain.value = 6;
   const shaper = ctx.createWaveShaper();
@@ -152,6 +163,15 @@ export function setFx(id, on) {
   const t = ctx.currentTime;
   s.dry.gain.linearRampToValueAtTime(on ? 1 - s.wet0 : 1, t + 0.05);
   s.wet.gain.linearRampToValueAtTime(on ? s.wet0 : 0, t + 0.05);
+}
+
+// the guitar filter pedal: pct 0..1. 1 = wide open (20 kHz, no audible cut),
+// 0 = clamped down to 100 Hz. log sweep so the drag feels even across the range.
+export function setGuitarFilter(pct) {
+  if (!ctx || !gtrFilter) return;
+  const p = Math.max(0, Math.min(1, pct));
+  const f = 100 * Math.pow(20000 / 100, p);     // 100 Hz … 20 kHz, exponential
+  gtrFilter.frequency.setTargetAtTime(f, ctx.currentTime, 0.02);
 }
 
 // sync the delay pedals to a song's tempo — keys repeat on the eighth, guitar
@@ -883,10 +903,10 @@ export function edrumHit(pad = 0, when = null, vel = 1) {
   };
   if (pad === 0) { thump(150, 40, 0.32, 0.46 * A); click(2400, 0.15 * A); }    // kick — fatter low end + harder beater
   else if (pad === 1) { thump(215, 150, 0.13, 0.22 * A); hiss(1900, 0.18, 0.26 * A, "bandpass"); hiss(6000, 0.12, 0.07 * A); click(3600, 0.10 * A); }  // snare — more crack + body
-  else if (pad === 2) { metal(0.06, 0.14 * A, 8200); hiss(9000, 0.05, 0.15 * A); click(9000, 0.07 * A); }  // closed hat — crisp + ringing, up
+  else if (pad === 2) { metal(0.06, 0.21 * A, 8200); hiss(9000, 0.05, 0.22 * A); click(9000, 0.07 * A); }  // closed hat — crisp + ringing, +50%
   else if (pad === 3) { thump(185, 115, 0.26, 0.24 * A); click(2800, 0.06 * A); }  // tom hi
   else if (pad === 4) { thump(145, 85, 0.32, 0.24 * A); click(2400, 0.06 * A); }   // tom lo
-  else { metal(1.1, 0.13 * A, 5200); hiss(8500, 0.85, 0.19 * A); hiss(4800, 0.5, 0.11 * A); click(6500, 0.06 * A); }  // crash — bright shimmer + splash, up
+  else { metal(1.1, 0.20 * A, 5200); hiss(8500, 0.85, 0.28 * A); hiss(4800, 0.5, 0.16 * A); click(6500, 0.06 * A); }  // crash — bright shimmer + splash, +50%
 }
 
 /* ---------------- the telecaster: karplus-strong plucks ---------------- */

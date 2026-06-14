@@ -168,6 +168,22 @@
   </div>
 </div>
 
+<!-- ====== guitar filter treadle (wah-style lowpass) ====== -->
+<div id="filter-ui" class="overlay">
+  <div class="panel filter-panel">
+    <div class="panel-head">
+      <span class="tab active">guitar filter</span>
+      <button class="x" id="filter-close">×</button>
+    </div>
+    <div class="filter-body">
+      <span class="filter-mark filter-top">open</span>
+      <input type="range" id="filter-slider" min="0" max="100" value="100">
+      <span class="filter-mark filter-bot">100 Hz</span>
+    </div>
+    <div class="mix-val" id="filter-val" style="width:100%;text-align:center;">open</div>
+  </div>
+</div>
+
 <!-- room chat: press T, or the bubble on mobile. the log lives at the
      body level so messages stay visible over the arcade and in the arena -->
 <div id="chat-log"></div>

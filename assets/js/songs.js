@@ -164,6 +164,46 @@ export const SONGS = [
       return d;
     })(),
   },
+  {
+    // the one that isn't ours: Beethoven's Moonlight (Op. 27 No. 2, mvt I) —
+    // the unbroken triplet arpeggios in C# minor, a slow dotted melody
+    // floating two octaves above, the low octave roots on the guitar standing
+    // in for the left hand. no drums — like The Messenger, the still one.
+    id: "moonlight",
+    title: "Moonlight Sonata",
+    bpm: 52,
+    beats: 32,
+    piano: (() => {
+      // four triplet groups a bar = the famous rocking ostinato
+      const trip = (bar, a, b, c, vel = 0.4) => {
+        const e = [];
+        for (let g = 0; g < 4; g++) { const t = bar * 4 + g; e.push([t, a, vel], [t + 1 / 3, b, vel], [t + 2 / 3, c, vel]); }
+        return e;
+      };
+      // arpeggio voicings, kept inside the keybed (C4..C6) so it plays for real
+      const Cs = [N("C#4"), N("E4"), N("G#4")];   // i  — C# minor
+      const A  = [N("C#4"), N("E4"), N("A4")];    // VI — A major
+      const Fs = [N("C#4"), N("F#4"), N("A4")];   // iv — F# minor
+      const Gs = [N("D#4"), N("G#4"), N("C5")];   // V  — G# major (B# = C)
+      const prog = [Cs, Cs, A, A, Fs, Gs, Cs, Gs];
+      const arp = prog.flatMap((ch, i) => trip(i, ch[0], ch[1], ch[2], 0.42));
+      // the dotted melody, sparse, up at octave 5
+      const mel = [
+        [8, N("G#5"), 0.75], [11, N("G#5"), 0.7],
+        [12, N("G#5"), 0.75], [13.5, N("A5"), 0.6], [14, N("G#5"), 0.7],
+        [16, N("A5"), 0.75], [18, N("F#5"), 0.7],
+        [20, N("G#5"), 0.75], [22, N("C#5"), 0.7],
+        [24, N("F#5"), 0.7], [25.5, N("G#5"), 0.6], [26, N("F#5"), 0.7],
+        [28, N("E5"), 0.78], [30, N("C#5"), 0.72],
+      ];
+      return [...arp, ...mel];
+    })(),
+    guitar: (() => {
+      // the deep octave roots under each bar — the left hand's low foundation
+      const root = [N("C#3"), N("C#3"), N("A2"), N("A2"), N("F#2"), N("G#2"), N("C#3"), N("G#2")];
+      return root.map((r, i) => [i * 4, r, 0.6]);
+    })(),
+  },
 ];
 
 /* ---------------- the player ----------------
