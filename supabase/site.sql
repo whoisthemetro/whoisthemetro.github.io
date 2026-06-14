@@ -80,6 +80,45 @@ begin
 end;
 $$;
 
+-- ---------- the room's interactables, shared and persistent ----------
+-- a single jsonb bag of toggle states so the room comes back exactly as people
+-- left it: blinds, curtains, closet, the lava lamp, and each radio
+-- ({on, idx}). keys are whitelisted in the setter so nothing arbitrary lands
+-- here. it rides room_state, so it persists and broadcasts over realtime for free.
+alter table public.room_state add column if not exists flags jsonb not null default '{}'::jsonb;
+
+create or replace function public.set_room_flag(p_key text, p_val jsonb)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_ip text;
+  v_recent int;
+begin
+  if p_key not in ('blinds', 'curtains', 'closet', 'lava', 'radio_sr', 'radio_la') then
+    raise exception 'unknown room flag: %', p_key;
+  end if;
+  begin
+    v_ip := coalesce(current_setting('request.headers', true)::json ->> 'x-real-ip', 'unknown');
+  exception when others then
+    v_ip := 'unknown';
+  end;
+  select count(*) into v_recent from private.post_log
+   where ip = 'flag:' || v_ip and at > now() - interval '1 minute';
+  if v_recent >= 40 then
+    raise exception 'rate limit: flags';
+  end if;
+  insert into private.post_log (ip) values ('flag:' || v_ip);
+
+  update public.room_state
+     set flags = coalesce(flags, '{}'::jsonb) || jsonb_build_object(p_key, p_val),
+         updated_at = now()
+   where id = 1;
+end;
+$$;
+
 -- ---------- metrics: what people do in the room ----------
 -- (anonymous: just an event type and a timestamp, nothing else)
 create table if not exists public.events (

@@ -295,6 +295,7 @@ function enterRoom() {
   applyFxStates();                        // restore each stompbox's saved on/off into the new graph
   applyMixLevels();                       // and the mixer's saved channel levels
   applyGuitarFilter();                     // and where the filter treadle was left
+  if (roomFlags) applyRoomFlags(roomFlags);   // now that audio's unlocked, tune the radio to the room
   hide(intro);
   hud.classList.add("show");
   safeLock();
@@ -489,6 +490,7 @@ controls.onAction((ndcX, ndcY) => {
   } else if (hit.object.userData.closet && hit.distance < 3) {
     const open = world.toggleCloset();
     presence.sendAct({ kind: "closet", open });
+    store.saveRoomFlag("closet", open).catch(() => {});
     toast(open ? "the closet creaks open…" : "closet closed");
   } else if (hit.object.userData.arcade && hit.distance < 3.2) {
     modalOpen = true;
@@ -597,15 +599,20 @@ controls.onAction((ndcX, ndcY) => {
   } else if (hit.object.userData.vacuum && hit.distance < 2.6) {
     setVacuuming(true);
   } else if (hit.object.userData.lava && hit.distance < 2.4) {
-    toast(world.toggleLava() ? "the wax wakes up 🌋" : "lava lamp off");
+    const on = world.toggleLava();
+    presence.sendAct({ kind: "lava", on });               // the lamp is the room's, not yours
+    store.saveRoomFlag("lava", on).catch(() => {});
+    toast(on ? "the wax wakes up 🌋" : "lava lamp off");
   } else if (hit.object.userData.blinds && hit.distance < 3.2) {
     const open = world.toggleBlinds();
     presence.sendAct({ kind: "blinds", open });
+    store.saveRoomFlag("blinds", open).catch(() => {});
     toast(open ? "blinds gathered — there's the city" : "blinds drawn across the glass");
   } else if (hit.object.userData.curtain && hit.distance < 3.2) {
     const closed = world.toggleCurtains();
     store.logEvent("curtains");
     presence.sendAct({ kind: "curtains", closed });
+    store.saveRoomFlag("curtains", closed).catch(() => {});
     toast(closed ? "curtains drawn — it's just you and the glow now" : "curtains open");
   } else if (hit.object.userData.glass && hit.uv) {
     // the plane hunt: a jet on the glass is fair game
@@ -1142,11 +1149,39 @@ radios.la = {
 // logical clock so a skewed wall-clock can't lock anyone out. volume is the one
 // thing that stays personal to each listener.
 let radioClock = 0;
+const radioSaveTimers = {};
 function broadcastRadio(desc) {
   radioClock += 1;
   const i = desc.radio.info();
   desc.shared = { on: i.on, idx: i.idx, at: radioClock };
   presence.sendAct({ kind: "radio", which: desc.which, on: i.on, idx: i.idx, at: radioClock });
+  // persist too (debounced — a scan-through shouldn't hammer the DB), so the
+  // room's dial survives a reload, not just a live session
+  clearTimeout(radioSaveTimers[desc.which]);
+  radioSaveTimers[desc.which] = setTimeout(() => {
+    store.saveRoomFlag("radio_" + desc.which, { on: desc.shared.on, idx: desc.shared.idx }).catch(() => {});
+  }, 1000);
+}
+
+// the room comes back the way it was left. visual toggles apply anytime (and
+// re-apply on realtime updates as a backstop to the live presence acts); the
+// radio only adopts persisted state on cold entry — its writes are debounced,
+// so re-applying them on a realtime tick could stomp a newer live scan, and the
+// presence "radio" acts (Lamport-ordered) own live sync.
+let roomFlags = null;
+function applyRoomFlags(f, withRadio = true) {
+  if (!f) return;
+  if (typeof f.blinds === "boolean") world.setBlinds(f.blinds);
+  if (typeof f.curtains === "boolean") world.setCurtains(f.curtains);
+  if (typeof f.closet === "boolean") world.setCloset(f.closet);
+  if (typeof f.lava === "boolean") world.setLava(f.lava);
+  if (withRadio && entered) for (const which of ["sr", "la"]) {
+    const rs = f["radio_" + which];
+    if (rs && typeof rs.idx === "number") {
+      radios[which].shared = { on: !!rs.on, idx: rs.idx | 0, at: radios[which].shared.at };
+      radios[which].radio.applyRemote(!!rs.on, rs.idx | 0);
+    }
+  }
 }
 
 function openRadio(r) {
@@ -2262,6 +2297,8 @@ addEventListener("keydown", (e) => {
     } else if (p.kind === "blinds") {
       world.setBlinds(p.open);
       toast(p.open ? "someone gathered the blinds" : "someone drew the blinds");
+    } else if (p.kind === "lava") {
+      world.setLava(p.on);
     } else if (p.kind === "pet") {
       if (!inBoat) cat.remoteHearts();
     } else if (p.kind === "dimmer") {
@@ -2391,7 +2428,11 @@ addEventListener("keydown", (e) => {
     dimLevel = s.light_level ?? 0;
     world.setRoomLight(dimLevel, s.light_color);
     $("#dim-level").value = Math.round(dimLevel * 100);
+    applyRoomFlags(s.flags, false);            // blinds/curtains/closet/lava backstop (no radio)
   });
+
+  // and so do the blinds, curtains, closet, lava lamp + radios
+  store.getRoomFlags().then(f => { roomFlags = f; applyRoomFlags(f); }).catch(() => {});
 
   // the booth remembers who it was handed to
   store.getDJ().then(dj => { djState = dj; wasGranted = djGrantedToMe(); }).catch(() => {});

@@ -364,6 +364,30 @@ function subscribeRoomLight() {
   }
 }
 
+/* ---- shared interactables (blinds/curtains/closet/lava/radio): the toggle
+   states that should survive a reload. live sync still rides presence; this is
+   the persistence half. degrades quietly if the migration hasn't been run. ---- */
+async function getRoomFlags() {
+  if (mode === "supabase") {
+    const { data, error } = await sb.from("room_state").select("flags").eq("id", 1).single();
+    if (error) return {};                 // column missing (pre-migration) → no persisted flags
+    return data?.flags || {};
+  }
+  try { return JSON.parse(localStorage.getItem("metro.roomflags") || "{}"); } catch (e) { return {}; }
+}
+async function saveRoomFlag(key, val) {
+  if (mode === "supabase") {
+    const { error } = await sb.rpc("set_room_flag", { p_key: key, p_val: val });
+    if (error) throw error;               // RPC missing (pre-migration) → caller .catch()es
+    return;
+  }
+  try {
+    const f = JSON.parse(localStorage.getItem("metro.roomflags") || "{}");
+    f[key] = val;
+    localStorage.setItem("metro.roomflags", JSON.stringify(f));
+  } catch (e) {}
+}
+
 /* ---- the booth: who's been handed the decks (admin-gated, persists) ---- */
 async function getDJ() {
   if (mode === "supabase") {
@@ -458,6 +482,7 @@ function subscribeScores() {
 
 export const store = {
   getRoomLight, saveRoomLight, logEvent,
+  getRoomFlags, saveRoomFlag,
   castBottle, readBottle,
   onRoomLight: fn => { roomLightListeners.add(fn); return () => roomLightListeners.delete(fn); },
   getDJ, saveDJ,

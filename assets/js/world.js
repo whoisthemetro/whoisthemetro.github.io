@@ -2555,13 +2555,13 @@ export function buildWorld() {
   rack.add(lava);
   blockers.push(lampGlass);
   let lavaOn = true;
-  function toggleLava() {
-    lavaOn = !lavaOn;
+  function setLava(on) {
+    lavaOn = !!on;
     lavaLight.intensity = lavaOn ? 0.85 : 0;
     blobMat.color.set(lavaOn ? 0xff8a3c : 0x5a2c16);
     lampGlass.material.opacity = lavaOn ? 0.34 : 0.18;
-    return lavaOn;
   }
+  function toggleLava() { setLava(!lavaOn); return lavaOn; }
   function tickLava(elapsed) {
     if (!lavaOn) return;
     for (const b of lavaBlobs) {
@@ -5546,8 +5546,8 @@ export function buildWorld() {
     triggerBat: () => { if (batT < 0) batT = 0; },
     // force the star projector on (smoke tests, impatient daylight hours)
     forceAstro: () => { astroPlane.visible = true; astroPlane.material.opacity = 0.92; drawAstro(); },
-    lavaHit: lampGlass, toggleLava,
-    blindsHit: blinds, toggleBlinds, setBlinds,
+    lavaHit: lampGlass, toggleLava, setLava, lavaOn: () => lavaOn,
+    blindsHit: blinds, toggleBlinds, setBlinds, blindsOpen: () => blindsState.open,
     edrumHits, pressEdrum, guitarHits, strumTele,
     addAccessory,
     // how much arcade you should hear from (x, z): 1 inside, a leak
