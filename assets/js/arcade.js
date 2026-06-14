@@ -312,7 +312,7 @@ const Defender = (() => {
   }
   return {
     init, update, draw,
-    pad: { dpad: true, btns: [{ code: "Space", label: "FIRE", fire: true }, { code: "KeyB", label: "BOMB" }] },
+    pad: { stick: true, btns: [{ code: "Space", label: "FIRE", fire: true }, { code: "KeyB", label: "BOMB" }] },
     help: "← → thrust · ↑ ↓ move · SPACE fire · B smart bomb",
   };
 })();
@@ -859,6 +859,7 @@ function buildPads(spec) {
   const L = document.getElementById("pad-left");
   const R = document.getElementById("pad-right");
   clearEl(L); clearEl(R);
+  hideStick();                 // a fresh cabinet never inherits the last one's stick
   if (!spec || (!spec.dpad && !spec.vpad && !(spec.btns && spec.btns.length))) {
     wrap.classList.add("hidden");
     return;
@@ -885,21 +886,70 @@ function buildPads(spec) {
   }
 }
 
-// dragging/swiping/tapping straight on the canvas
-function canvasDown(e) {
-  e.preventDefault();
-  const r = cv.getBoundingClientRect();
-  touch.active = true;
-  touch.swiped = false;
-  touch.sx = touch.x = (e.clientX - r.left) / r.width;
-  touch.sy = touch.y = (e.clientY - r.top) / r.height;
-  keys.Enter = true;            // tap to (re)start — games ignore Enter mid-play
+// --- a floating thumbstick (defender's "finger movement") ---
+// it springs up wherever your left thumb lands and maps its tilt to the
+// four movement keys, so the ship flies without a fixed pad to aim for.
+const STICK_R = 46;
+let stick = null;          // { base, knob } DOM, lazily made
+let stickOn = false, stickCx = 0, stickCy = 0;
+function ensureStick() {
+  if (stick) return;
+  const shell = document.querySelector(".arcade-shell");
+  const base = document.createElement("div"); base.className = "stickbase";
+  const knob = document.createElement("div"); knob.className = "stickknob";
+  base.appendChild(knob); base.style.display = "none";
+  shell.appendChild(base);
+  stick = { base, knob };
 }
-function canvasMove(e) {
-  if (!touch.active) return;
+function showStick(px, py) {
+  ensureStick();
+  const s = document.querySelector(".arcade-shell").getBoundingClientRect();
+  stickCx = px; stickCy = py;
+  stick.base.style.left = (px - s.left - STICK_R) + "px";
+  stick.base.style.top = (py - s.top - STICK_R) + "px";
+  stick.knob.style.transform = "translate(0,0)";
+  stick.base.style.display = "block";
+}
+function moveStick(px, py) {
+  let dx = px - stickCx, dy = py - stickCy;
+  const d = Math.hypot(dx, dy);
+  if (d > STICK_R) { dx = dx / d * STICK_R; dy = dy / d * STICK_R; }
+  stick.knob.style.transform = `translate(${dx}px,${dy}px)`;
+  const dead = STICK_R * 0.34;
+  keys.ArrowLeft = dx < -dead; keys.ArrowRight = dx > dead;
+  keys.ArrowUp = dy < -dead; keys.ArrowDown = dy > dead;
+}
+function hideStick() {
+  if (stick) stick.base.style.display = "none";
+  stickOn = false;
+  keys.ArrowLeft = keys.ArrowRight = keys.ArrowUp = keys.ArrowDown = false;
+}
+
+// movement reads the WHOLE overlay, not just the canvas, so a thumb can sit
+// out in the letterbox margins (landscape) instead of on top of the action.
+// buttons (.arcade-pads) and the × handle their own touches — skip those.
+const clamp01 = (v) => v < 0 ? 0 : v > 1 ? 1 : v;
+let movePtr = null;        // the one pointer that drives movement this gesture
+function ovDown(e) {
+  if (e.target.closest(".arcade-pads") || e.target.closest("#arcade-close")) return;
+  if (movePtr !== null) return;            // a second finger doesn't hijack movement
+  e.preventDefault();
+  movePtr = e.pointerId;
   const r = cv.getBoundingClientRect();
-  touch.x = (e.clientX - r.left) / r.width;
-  touch.y = (e.clientY - r.top) / r.height;
+  touch.active = true; touch.swiped = false;
+  touch.sx = touch.x = clamp01((e.clientX - r.left) / r.width);
+  touch.sy = touch.y = clamp01((e.clientY - r.top) / r.height);
+  keys.Enter = true;                       // tap to (re)start — ignored mid-play
+  if (current && current.pad && current.pad.stick && e.clientX < innerWidth / 2) {
+    stickOn = true; showStick(e.clientX, e.clientY);
+  }
+}
+function ovMove(e) {
+  if (e.pointerId !== movePtr) return;
+  const r = cv.getBoundingClientRect();
+  touch.x = clamp01((e.clientX - r.left) / r.width);
+  touch.y = clamp01((e.clientY - r.top) / r.height);
+  if (stickOn) { moveStick(e.clientX, e.clientY); return; }
   if (current && current.pad && current.pad.swipe) {
     const dx = touch.x - touch.sx, dy = touch.y - touch.sy;
     if (Math.hypot(dx, dy) > 0.05) {       // a real flick, not a jitter
@@ -910,7 +960,13 @@ function canvasMove(e) {
     }
   }
 }
-function canvasUp() { touch.active = false; keys.Enter = false; }
+function ovUp(e) {
+  if (e.pointerId !== movePtr) return;
+  movePtr = null;
+  touch.active = false;
+  keys.Enter = false;
+  if (stickOn) hideStick();
+}
 
 function startLoop() {
   let last = performance.now();
@@ -961,10 +1017,11 @@ export function openArcade(id, netAdapter) {
   }
 
   buildPads(current.pad);
-  cv.addEventListener("pointerdown", canvasDown, { passive: false });
-  cv.addEventListener("pointermove", canvasMove, { passive: false });
-  cv.addEventListener("pointerup", canvasUp);
-  cv.addEventListener("pointercancel", canvasUp);
+  const ov = document.getElementById("arcade");
+  ov.addEventListener("pointerdown", ovDown, { passive: false });
+  ov.addEventListener("pointermove", ovMove, { passive: false });
+  ov.addEventListener("pointerup", ovUp);
+  ov.addEventListener("pointercancel", ovUp);
   startLoop();
 }
 
@@ -986,18 +1043,19 @@ export function closeArcade() {
   const box = document.getElementById("dosbox");
   box.classList.add("hidden");
   box.innerHTML = "";
-  if (cv) {
-    cv.removeEventListener("pointerdown", canvasDown);
-    cv.removeEventListener("pointermove", canvasMove);
-    cv.removeEventListener("pointerup", canvasUp);
-    cv.removeEventListener("pointercancel", canvasUp);
-  }
+  const ov = document.getElementById("arcade");
+  ov.removeEventListener("pointerdown", ovDown);
+  ov.removeEventListener("pointermove", ovMove);
+  ov.removeEventListener("pointerup", ovUp);
+  ov.removeEventListener("pointercancel", ovUp);
   cv?.classList.remove("hidden");
   peer = null;
   current = null;
   gameId = null;
   keys = {};                    // never carry a stuck pad into the next game
   touch.active = false;
+  movePtr = null;
+  hideStick();
   buildPads(null);
   removeEventListener("keydown", keydown);
   removeEventListener("keyup", keyup);
