@@ -1169,12 +1169,21 @@ function broadcastRadio(desc) {
 // so re-applying them on a realtime tick could stomp a newer live scan, and the
 // presence "radio" acts (Lamport-ordered) own live sync.
 let roomFlags = null;
+// the shared carpet: skip a restore if the snapshot hasn't changed (this also
+// swallows the realtime echo of our OWN save — same string back is a no-op)
+let lastGrimeStr = null;
+function applyGrime(str) {
+  if (typeof str !== "string" || str === lastGrimeStr) return;
+  lastGrimeStr = str;
+  world.grimeRestore(str);
+}
 function applyRoomFlags(f, withRadio = true) {
   if (!f) return;
   if (typeof f.blinds === "boolean") world.setBlinds(f.blinds);
   if (typeof f.curtains === "boolean") world.setCurtains(f.curtains);
   if (typeof f.closet === "boolean") world.setCloset(f.closet);
   if (typeof f.lava === "boolean") world.setLava(f.lava);
+  applyGrime(f.grime);   // accumulated dirt + vacuumed lanes, shared across visitors
   if (withRadio && entered) for (const which of ["sr", "la"]) {
     const rs = f["radio_" + which];
     if (rs && typeof rs.idx === "number") {
@@ -2456,6 +2465,7 @@ window.METRO_DEBUG = { renderer, camera, world, controls, THREE, cat, notesWall,
 
 const clock = new THREE.Clock();
 let t = 0;
+let grimeSaveAt = 0;     // last time we pushed the carpet snapshot to room_state
 renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta(), 0.05);
   t += dt;
@@ -2491,6 +2501,13 @@ renderer.setAnimationLoop(() => {
     if (!vacuuming) world.floorTraffic(controls.pos.x, controls.pos.z, dt, 1);
     world.floorTraffic(cat.pos.x, cat.pos.z, dt, 0.6);
     if (vacuuming) world.vacuumStep(controls.pos.x, controls.pos.z, controls.yaw);
+    // persist the carpet for everyone on a slow throttle — the room stays as
+    // dirty (or as freshly-vacuumed) as the last person left it
+    if (world.grimeNeedsSave() && t - grimeSaveAt > 8) {
+      grimeSaveAt = t;
+      lastGrimeStr = world.grimeSnapshot();
+      store.saveRoomFlag("grime", lastGrimeStr).catch(() => {});
+    }
   } else if (vacuuming) {
     setVacuuming(false);   // you can't carry it out of the room
   }

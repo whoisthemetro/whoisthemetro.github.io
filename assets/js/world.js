@@ -4172,6 +4172,7 @@ export function buildWorld() {
   const grimePX = (x) => ((x + X) / (2 * X)) * GRW;
   const grimePZ = (z) => ((z - ZF) / (ZB - ZF)) * GRH;
   let grimeDirty = false, grimeUpAt = 0;
+  let grimeSaveDirty = false;            // changed since we last persisted it?
 
   // a step grinds a little dirt in where it lands; standing still
   // concentrates it (your chair spot, the cat's perches)
@@ -4187,7 +4188,7 @@ export function buildWorld() {
     grimeCtx.beginPath();
     grimeCtx.arc(cx, cy, r, 0, 7);
     grimeCtx.fill();
-    grimeDirty = true;
+    grimeDirty = true; grimeSaveDirty = true;
   }
 
   // the vacuum lifts the alpha back out in a soft radius
@@ -4204,7 +4205,48 @@ export function buildWorld() {
     grimeCtx.arc(cx, cy, r, 0, 7);
     grimeCtx.fill();
     grimeCtx.globalCompositeOperation = "source-over";
-    grimeDirty = true;
+    grimeDirty = true; grimeSaveDirty = true;
+  }
+
+  /* --- the carpet REMEMBERS for everyone --- the grime is session-local
+     until we snapshot it: downsample the 160x200 alpha canvas to a 32x40 grid
+     and quantize each cell's mean alpha to one hex digit (0..15). that's a
+     ~1.3KB string — small enough to ride the room_state flags jsonb + realtime,
+     so accumulated dirt AND the lanes you vacuumed clean survive reload and sync
+     across visitors (vacuuming is a shared chore). soft dirt doesn't need fine
+     resolution; the texture's linear filter smooths the grid back out over the
+     5.2m floor. --- */
+  const GGW = 32, GGH = 40;              // snapshot grid
+  const GBX = GRW / GGW, GBZ = GRH / GGH;   // 5x5 source px per cell
+  function grimeSnapshot() {
+    grimeSaveDirty = false;
+    const img = grimeCtx.getImageData(0, 0, GRW, GRH).data;
+    let out = "";
+    for (let gy = 0; gy < GGH; gy++) {
+      for (let gx = 0; gx < GGW; gx++) {
+        let sum = 0;
+        for (let py = 0; py < GBZ; py++)
+          for (let px = 0; px < GBX; px++)
+            sum += img[((gy * GBZ + py) * GRW + (gx * GBX + px)) * 4 + 3];  // alpha byte
+        const a = sum / (GBX * GBZ) / 255;        // 0..1 mean alpha for the cell
+        out += Math.min(15, Math.round(a * 15)).toString(16);
+      }
+    }
+    return out;
+  }
+  function grimeRestore(str) {
+    if (typeof str !== "string" || str.length !== GGW * GGH) return;
+    grimeCtx.clearRect(0, 0, GRW, GRH);
+    for (let gy = 0; gy < GGH; gy++) {
+      for (let gx = 0; gx < GGW; gx++) {
+        const q = parseInt(str[gy * GGW + gx], 16);
+        if (!q) continue;
+        grimeCtx.fillStyle = `rgba(24,19,11,${(q / 15).toFixed(3)})`;
+        grimeCtx.fillRect(gx * GBX, gy * GBZ, GBX, GBZ);
+      }
+    }
+    grimeTex.needsUpdate = true;
+    grimeSaveDirty = false;   // we just adopted the shared truth — nothing new to push back
   }
 
   /* --- the vacuum: an upright stick that lives in the back corner.
@@ -5508,6 +5550,8 @@ export function buildWorld() {
     // the dirty-carpet + vacuum system (bedroom only)
     floorTraffic, vacuumHits: [vNozzle, vBody, vCan, vPole, vGrip, vGripTop],
     grabVacuum, vacuumStep, vacuumHeld: () => vacHeld,
+    // persist + share the carpet's dirt (rides room_state.flags.grime)
+    grimeSnapshot, grimeRestore, grimeNeedsSave: () => grimeSaveDirty,
     closetHits: [leftLeaf, rightLeaf], toggleCloset, setCloset,
     closetOpen: () => closet.open,
     arcadeHits,

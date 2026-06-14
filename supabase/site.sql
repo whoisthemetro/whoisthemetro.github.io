@@ -82,8 +82,9 @@ $$;
 
 -- ---------- the room's interactables, shared and persistent ----------
 -- a single jsonb bag of toggle states so the room comes back exactly as people
--- left it: blinds, curtains, closet, the lava lamp, and each radio
--- ({on, idx}). keys are whitelisted in the setter so nothing arbitrary lands
+-- left it: blinds, curtains, closet, the lava lamp, each radio ({on, idx}), and
+-- the carpet's grime (a downsampled hex grid, ~1.3KB). keys are whitelisted in
+-- the setter so nothing arbitrary lands
 -- here. it rides room_state, so it persists and broadcasts over realtime for free.
 alter table public.room_state add column if not exists flags jsonb not null default '{}'::jsonb;
 
@@ -97,7 +98,7 @@ declare
   v_ip text;
   v_recent int;
 begin
-  if p_key not in ('blinds', 'curtains', 'closet', 'lava', 'radio_sr', 'radio_la') then
+  if p_key not in ('blinds', 'curtains', 'closet', 'lava', 'radio_sr', 'radio_la', 'grime') then
     raise exception 'unknown room flag: %', p_key;
   end if;
   begin
