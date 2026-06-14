@@ -182,6 +182,8 @@ const cat = new Cat(world.scene, world.catSpots, {
   meow: bedroomSound(meow),
   hiss: bedroomSound(hiss),
   dig: bedroomSound(() => careSound("sand")),
+  // a MIDI song owns the keys — the cat keeps off while one's playing
+  songPlaying: () => currentSongId() !== null,
 });
 
 // shared cat needs — bowls and litter are the same for every visitor

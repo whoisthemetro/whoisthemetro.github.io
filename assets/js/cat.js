@@ -116,7 +116,8 @@ export class Cat {
     const r = Math.random();
     if (r < 0.30) return this._goto(s.chair.x, s.chair.z, "sleep", s.chair.y);
     if (r < 0.50) return this._goto(s.windowFloor.x, s.windowFloor.z, "window", 0);
-    if (r < 0.68) return this._goto(s.keys.x1, s.keys.z, "keys", s.keys.y);
+    // a MIDI song owns the keybed — the cat keeps off while one's playing
+    if (r < 0.68 && !this.fx.songPlaying?.()) return this._goto(s.keys.x1, s.keys.z, "keys", s.keys.y);
     // wander somewhere on the carpet
     const b = s.bounds;
     return this._goto(rand(b.minX + 0.4, b.maxX - 0.4), rand(b.minZ + 0.4, b.maxZ - 0.4), "sit", 0);
@@ -252,6 +253,9 @@ export class Cat {
         this.baseY += ((this.target.thenY && dist < 0.5 ? this.target.thenY : 0) - this.baseY) * dt * 5;
       }
     } else if (this.state === "keys") {
+      // a song just started? hop off and find something else to do —
+      // the keys are taken
+      if (this.fx.songPlaying?.()) { this.baseY = 0; this.state = "walk"; this._pick(playerPose); return; }
       // pace across the keybed, plinking as it steps
       const k = this.spots.keys;
       const dx = this.target.x - this.pos.x;
