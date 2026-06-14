@@ -930,42 +930,76 @@ export function edrumHit(pad = 0, when = null, vel = 1) {
 /* ---------------- the telecaster: karplus-strong plucks ---------------- */
 // A minor pentatonic, low A up two octaves — pick a fret, get a note
 const PENTA_AM = [110, 130.81, 146.83, 164.81, 196, 220, 261.63, 293.66, 329.63, 392, 440];
-// the string itself: pluck a frequency at audio time `when`, peak `peak`.
-function pluckString(f, when = null, peak = 0.17) {
+// the guitar's voices — one Karplus-Strong string, four sets of knobs. `damp`
+// is how fast the string sheds its top end (sustain + brightness), `lp` the
+// cab's darkness, `dur` how long it can ring, `body` an optional boxy
+// resonance, `soft` how many times the pick attack is rounded off. Same idea
+// as PIANO_VOICES — switch them on the tele's blade selector.
+export const GUITAR_VOICES = [
+  // the bright twang we started with — the reference tele sound
+  { name: "TELE",      damp: 0.996, lp: 4400, dur: 1.7, peak: 0.17 },
+  // a flat-top steel: more sustain, brighter top, a boxy low + softer pick
+  { name: "ACOUSTIC",  damp: 0.997, lp: 5400, dur: 1.95, peak: 0.15, body: { f: 196, q: 1.1, gain: 7 }, soft: 1 },
+  // nylon classical: rounder, darker, a gentle thumb attack
+  { name: "NYLON",     damp: 0.994, lp: 3000, dur: 1.5, peak: 0.16, body: { f: 230, q: 1.4, gain: 5 }, soft: 3 },
+  // palm-muted chug: choked decay, dark, short — a percussive thunk
+  { name: "PALM MUTE", damp: 0.945, lp: 2500, dur: 0.5, peak: 0.2 },
+];
+// pick a voice descriptor safely from any index (matches PIANO_VOICES' guard)
+function gvoice(voice) { return GUITAR_VOICES[Math.abs(voice | 0) % GUITAR_VOICES.length]; }
+// the string itself: pluck a frequency at audio time `when`, peak `peak`,
+// shaped by a GUITAR_VOICES entry `v`.
+function pluckString(f, when = null, peak = 0.17, v = GUITAR_VOICES[0]) {
   if (!ctx) return;
   const sr = ctx.sampleRate;
   const N = Math.max(2, Math.round(sr / f));
-  const dur = 1.7;
+  const dur = v.dur || 1.7;
+  const damp = v.damp || 0.996;
   const buf = ctx.createBuffer(1, Math.ceil(sr * dur), sr);
   const d = buf.getChannelData(0);
   const line = new Float32Array(N);
   for (let i = 0; i < N; i++) line[i] = Math.random() * 2 - 1;
+  // a softer pick = pre-smooth the noise burst so the attack is rounded, not
+  // spiky (acoustic/nylon); a hard tele/mute pick leaves the burst alone
+  for (let s = 0; s < (v.soft || 0); s++) {
+    let prev = line[N - 1];
+    for (let i = 0; i < N; i++) { const cur = line[i]; line[i] = 0.5 * (prev + cur); prev = cur; }
+  }
   let idx = 0;
   for (let i = 0; i < d.length; i++) {
     const cur = line[idx];
     const nxt = line[(idx + 1) % N];
     d[i] = cur;
-    line[idx] = 0.996 * 0.5 * (cur + nxt);   // the string loses its top end
+    line[idx] = damp * 0.5 * (cur + nxt);   // the string loses its top end
     idx = (idx + 1) % N;
   }
   const src = ctx.createBufferSource();
   src.buffer = buf;
   const lp = ctx.createBiquadFilter();
-  lp.type = "lowpass"; lp.frequency.value = 4400;
+  lp.type = "lowpass"; lp.frequency.value = v.lp || 4400;
   const g = ctx.createGain();
   g.gain.value = Math.max(0.01, peak);
+  // an optional body resonance (the boxy thump of a flat-top) in series
+  let head = lp;
+  if (v.body) {
+    const peakF = ctx.createBiquadFilter();
+    peakF.type = "peaking";
+    peakF.frequency.value = v.body.f; peakF.Q.value = v.body.q; peakF.gain.value = v.body.gain;
+    lp.connect(peakF); head = peakF;
+  }
   // the string runs the tele's pedalboard (overdrive→delay→reverb) to master
-  src.connect(lp).connect(g).connect(guitarBus || master);
+  src.connect(lp);
+  head.connect(g).connect(guitarBus || master);
   src.start(Math.max(ctx.currentTime + 0.005, when || 0));
 }
-// live play: a fret on the A-minor-pentatonic neck
-export function guitarPluck(n = 0, when = null) {
-  pluckString(PENTA_AM[Math.max(0, Math.min(PENTA_AM.length - 1, n | 0))], when);
+// live play: a fret on the A-minor-pentatonic neck, in the chosen timbre
+export function guitarPluck(n = 0, voice = 0, when = null) {
+  pluckString(PENTA_AM[Math.max(0, Math.min(PENTA_AM.length - 1, n | 0))], when, 0.17, gvoice(voice));
 }
 // song play: a chromatic note, `semi` semitones from C4 (negative = lower),
 // so the guitar can track a song's real key instead of the pentatonic frets.
-export function guitarNote(semi = 0, vel = 1, when = null) {
-  pluckString(261.63 * Math.pow(2, semi / 12), when, 0.17 * Math.max(0.05, vel));
+export function guitarNote(semi = 0, vel = 1, when = null, voice = 0) {
+  pluckString(261.63 * Math.pow(2, semi / 12), when, 0.17 * Math.max(0.05, vel), gvoice(voice));
 }
 
 /* ---------------- arena combat: swings, clangs, stuns ---------------- */

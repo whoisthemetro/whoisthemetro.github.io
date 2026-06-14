@@ -17,7 +17,7 @@ import { weather } from "./weather.js";
 import { startPlanes } from "./planes.js";
 import { Cat } from "./cat.js";
 import { openArcade, closeArcade, arcadeIsOpen, arcadeWantsEsc, handleGameMessage, setScoreHook } from "./arcade.js";
-import { PIANO_VOICES } from "./ambience.js";
+import { PIANO_VOICES, GUITAR_VOICES } from "./ambience.js";
 import { createRadio, SR_STATIONS, LA_STATIONS } from "./radio.js";
 import {
   PAPERS, IS_TOUCH, safeUrl, hostOf, timeAgo, toast,
@@ -147,6 +147,9 @@ addEventListener("keyup", (e) => {
 // piano voice — sticky per visitor, broadcast with each note
 let pianoVoice = 0;
 try { pianoVoice = (parseInt(localStorage.getItem("metro.voice") || "0", 10) || 0) % PIANO_VOICES.length; } catch (e) {}
+let guitarVoice = 0;
+try { guitarVoice = (parseInt(localStorage.getItem("metro.gvoice") || "0", 10) || 0) % GUITAR_VOICES.length; } catch (e) {}
+world.setGuitarVoiceSwitch(guitarVoice, GUITAR_VOICES.length);   // flick the blade to the saved voice
 
 // the stompboxes — each on/off is client-side + sticky (everyone runs their own
 // pedalboard, like the mixer to come). default on. labels for the toast/aim-tip.
@@ -317,7 +320,7 @@ canvas.addEventListener("click", () => {
 function castAt(ndcX, ndcY) {
   raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera);
   // doors are included as blockers so notes can't be pinned onto them
-  const targets = [cat.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, world.echoPoster, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.radioHits, ...world.laRadioHits, ...world.filterPedalHit, ...world.vacuumHits, ...notesWall.raycastTargets(), ...world.blockers];
+  const targets = [cat.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, world.echoPoster, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.guitarVoiceHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.radioHits, ...world.laRadioHits, ...world.filterPedalHit, ...world.vacuumHits, ...notesWall.raycastTargets(), ...world.blockers];
   const hits = raycaster.intersectObjects(targets, false);
   return hits[0] || null;
 }
@@ -535,9 +538,15 @@ controls.onAction((ndcX, ndcY) => {
   } else if (hit.object.userData.guitar && hit.distance < 2.4) {
     // higher on the neck, higher the note
     const n = Math.max(0, Math.min(10, Math.round((hit.point.y - 0.25) * 12)));
-    guitarPluck(n);
+    guitarPluck(n, guitarVoice);
     world.strumTele();
-    presence.sendAct({ kind: "guitar", n });
+    presence.sendAct({ kind: "guitar", n, voice: guitarVoice });
+  } else if (hit.object.userData.guitarVoice && hit.distance < 2.4) {
+    guitarVoice = (guitarVoice + 1) % GUITAR_VOICES.length;
+    try { localStorage.setItem("metro.gvoice", String(guitarVoice)); } catch (e) {}
+    world.setGuitarVoiceSwitch(guitarVoice, GUITAR_VOICES.length);
+    // flick the switch — no preview note (the blade shouldn't sound a fret)
+    toast(`guitar voice: ${GUITAR_VOICES[guitarVoice].name}`);
   } else if (hit.object.userData.boatExit && hit.distance < 2.6) {
     leaveBoat();
   } else if (hit.object.userData.clubExit && hit.distance < 2.6) {
@@ -753,6 +762,9 @@ setInterval(() => {
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.guitar && hit.distance < 2.4) {
     aimTip.textContent = `${TAP} — the tele (A minor pentatonic lives here)`;
+    aimTip.classList.add("show");
+  } else if (hit && hit.object.userData.guitarVoice && hit.distance < 2.4) {
+    aimTip.textContent = `${TAP} to flick the guitar voice (${GUITAR_VOICES[guitarVoice].name})`;
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.boatExit && hit.distance < 2.6) {
     aimTip.textContent = `${TAP} to go back to the room`;
@@ -2102,7 +2114,7 @@ function toggleSong(id) {
     play: (track, value, vel, when) => {
       if (!here()) return;
       if (track === "piano") pianoNote(value, pianoVoice, vel * MUSIC_VEL, when, true);
-      else if (track === "guitar") guitarNote(value, vel * MUSIC_VEL, when);
+      else if (track === "guitar") guitarNote(value, vel * MUSIC_VEL, when, guitarVoice);
       else edrumHit(value, when, vel * MUSIC_VEL);
     },
     press: (track, value, delay) => setTimeout(() => {
@@ -2368,7 +2380,7 @@ addEventListener("keydown", (e) => {
     } else if (p.kind === "edrum") {
       if (!inBoat && !inArena && !inClub) { edrumHit(p.pad); world.pressEdrum(p.pad); }
     } else if (p.kind === "guitar") {
-      if (!inBoat && !inArena && !inClub) { guitarPluck(p.n); world.strumTele(); }
+      if (!inBoat && !inArena && !inClub) { guitarPluck(p.n, p.voice || 0); world.strumTele(); }
     } else if (p.kind === "ready") {
       applyReady(p.team, p.t);
     } else if (p.kind === "match") {

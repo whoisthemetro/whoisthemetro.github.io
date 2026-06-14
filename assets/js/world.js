@@ -1623,6 +1623,27 @@ export function buildWorld() {
     new THREE.MeshStandardMaterial({ color: 0xb9bec6, metalness: 0.8, roughness: 0.35 }));
   bridge.position.set(0.02, -0.12, 0.052);
   tele.add(bridge);
+  // a chrome control plate with a blade selector — flick it to change the
+  // guitar's voice (tele/acoustic/nylon/palm-mute). its own click target so a
+  // flick switches tone without sounding a fret. sits on the lower treble bout,
+  // clear of the strings (x≈0) and the guard (negative x).
+  const ctrlPlate = new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.022, 0.006),
+    new THREE.MeshStandardMaterial({ color: 0xc6cbd2, metalness: 0.85, roughness: 0.28 }));
+  ctrlPlate.position.set(0.115, -0.04, 0.05);
+  ctrlPlate.rotation.z = -0.5;
+  ctrlPlate.userData.guitarVoice = true;
+  tele.add(ctrlPlate);
+  const blade = new THREE.Mesh(new THREE.BoxGeometry(0.009, 0.024, 0.013), lam(0x16181c));
+  blade.position.set(0.115, -0.04, 0.059);
+  blade.userData.guitarVoice = true;
+  tele.add(blade);
+  const guitarVoiceHits = [blade, ctrlPlate];
+  // flick the blade across the plate to the voice's slot (0..total-1)
+  function setGuitarVoiceSwitch(idx, total) {
+    const t = total > 1 ? idx / (total - 1) : 0;
+    blade.rotation.z = -0.5 + (t - 0.5) * 0.7;
+  }
+  setGuitarVoiceSwitch(0, 4);
   // the A-frame stand
   for (const sd of [-1, 1]) {
     const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.011, 0.46, 8), lam(0x23262b));
@@ -5592,7 +5613,7 @@ export function buildWorld() {
     forceAstro: () => { astroPlane.visible = true; astroPlane.material.opacity = 0.92; drawAstro(); },
     lavaHit: lampGlass, toggleLava, setLava, lavaOn: () => lavaOn,
     blindsHit: blinds, toggleBlinds, setBlinds, blindsOpen: () => blindsState.open,
-    edrumHits, pressEdrum, guitarHits, strumTele,
+    edrumHits, pressEdrum, guitarHits, strumTele, guitarVoiceHits, setGuitarVoiceSwitch,
     addAccessory,
     // how much arcade you should hear from (x, z): 1 inside, a leak
     // through the open closet doorway, near-nothing across the bedroom
