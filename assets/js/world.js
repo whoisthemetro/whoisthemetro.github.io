@@ -1905,10 +1905,12 @@ export function buildWorld() {
   arcBack.rotation.y = -Math.PI / 2;
   arcBack.position.set(AR.x0, ARC_H / 2, (AR.z0 + AR.z1) / 2);
   add(arcBack);
-  for (const [zz, ry] of [[AR.z0, 0], [AR.z1, Math.PI]]) {
+  // north (long) wall only — the SOUTH wall is built down in the elevator
+  // section, where it gets a doorway cut into it for the lift
+  {
     const side = plane(arcW, ARC_H, arcMatWall.clone());
-    side.rotation.y = ry;
-    side.position.set((AR.x0 + AR.x1) / 2, ARC_H / 2, zz);
+    side.rotation.y = Math.PI;
+    side.position.set((AR.x0 + AR.x1) / 2, ARC_H / 2, AR.z1);
     add(side);
   }
   const arcCeil = plane(arcW, arcD, lam(0x0e0d14));
@@ -2158,19 +2160,163 @@ export function buildWorld() {
   arcSign.scale.setScalar(1.6);   // big wall, big sign
   add(arcSign);
 
-  // the Echo VR poster — step through, no password anymore
-  const posterTex = new THREE.TextureLoader().load("assets/img/echo.jpg");
-  posterTex.colorSpace = THREE.SRGBColorSpace;
-  const echoPoster = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.85),
-    new THREE.MeshBasicMaterial({ map: posterTex }));
-  // south wall — on your right as you walk in; centered, and floated
-  // off the wall so it can't z-fight with the planks up close
-  echoPoster.position.set((AR.x0 + AR.x1) / 2, 1.5, AR.z0 + 0.1);
-  echoPoster.userData.portalArena = true;
-  add(echoPoster);
-  const posterFrame = box(1.58, 0.93, 0.03, lam(0x0c0e14));
-  posterFrame.position.set((AR.x0 + AR.x1) / 2, 1.5, AR.z0 + 0.07);
-  add(posterFrame);
+  /* --- arcade elevator: a real car you step INTO, recessed into the south
+     wall like a building lift — only the doors are flush; the cab is carved
+     in behind. it replaces the echo poster AND the computer's room menu.
+     walk up, hit CALL, the doors part with a chime; step in; the floor
+     buttons on the back wall are the rooms. pick one and the doors shut, the
+     car hums, the world fades. it sits left of the hoop. body/frame are
+     Lambert (cel-shaded with the room); every lit sign/button is MeshBasic
+     so it glows. --- */
+  const ELC = { x: -18.05, w: 1.80, d: 1.45, h: 2.25, dh: 2.05 }; // cab: center-x, width, depth INTO wall, ceiling, door-height
+  const zWall = AR.z0;                       // the south wall plane — doors sit flush here
+  const zBack = zWall - ELC.d;               // the cab's back wall, recessed behind the wall
+  const zMid = (zWall + zBack) / 2;
+  const xW = ELC.x - ELC.w / 2, xE = ELC.x + ELC.w / 2;      // cab side walls (-18.95 / -17.15)
+  const OW = 1.14, xOL = ELC.x - OW / 2, xOR = ELC.x + OW / 2; // doorway opening + its edges
+  const elBody = lam(0x23272e);             // brushed-graphite cab shell
+  const elDoorMat = lam(0x33424e);          // doors a touch bluer than the shell
+  const elTrim = lam(0x4a515c);
+  // CUT THE SOUTH WALL around the doorway: a segment each side + a lintel above.
+  // (the rest of the arcade's south wall is built here, not in the wall loop,
+  // because the lift needs a hole in it.)
+  for (const [sx0, sx1] of [[AR.x0, xOL], [xOR, AR.x1]]) {
+    const seg = plane(sx1 - sx0, ARC_H, arcMatWall.clone());
+    seg.position.set((sx0 + sx1) / 2, ARC_H / 2, zWall); add(seg);
+  }
+  const elLintel = plane(OW, ARC_H - ELC.dh, arcMatWall.clone());
+  elLintel.position.set(ELC.x, (ARC_H + ELC.dh) / 2, zWall); add(elLintel);
+  // the cab shell, recessed behind the wall: back + two sides + ceiling + floor
+  const elBack = box(ELC.w, ELC.h, 0.07, elBody);
+  elBack.position.set(ELC.x, ELC.h / 2, zBack - 0.035); add(elBack);
+  for (const wx of [xW, xE]) {
+    const sw = box(0.07, ELC.h, ELC.d, elBody);
+    sw.position.set(wx, ELC.h / 2, zMid); add(sw);
+  }
+  const elCeil = box(ELC.w, 0.07, ELC.d, elBody);
+  elCeil.position.set(ELC.x, ELC.h, zMid); add(elCeil);
+  // floor pad runs from the back to just past the threshold (no gap underfoot)
+  const elPad = box(ELC.w - 0.12, 0.04, ELC.d + 0.08, lam(0x1a1d22));
+  elPad.position.set(ELC.x, 0.02, zMid + 0.04); add(elPad);
+  const elPadLine = box(ELC.w - 0.4, 0.045, 0.04, new THREE.MeshBasicMaterial({ color: 0x2b3340 }));
+  elPadLine.position.set(ELC.x, 0.022, zMid); add(elPadLine);
+  // a steel frame lining the opening (jambs + sill + head), set in the reveal
+  for (const jx of [xOL + 0.04, xOR - 0.04]) {
+    const jamb = box(0.08, ELC.dh, 0.12, elTrim);
+    jamb.position.set(jx, ELC.dh / 2, zWall - 0.04); add(jamb);
+  }
+  const elSill = box(OW, 0.04, 0.16, elTrim);
+  elSill.position.set(ELC.x, 0.022, zWall - 0.03); add(elSill);
+  const elHeadTrim = box(OW + 0.06, 0.1, 0.12, elTrim);
+  elHeadTrim.position.set(ELC.x, ELC.dh + 0.03, zWall - 0.04); add(elHeadTrim);
+  // neon outline of the doorway, proud on the arcade side (emissive)
+  const elNeon = new THREE.MeshBasicMaterial({ color: 0x57d9ff });
+  for (const nx of [xOL - 0.03, xOR + 0.03]) {
+    const v = box(0.03, ELC.dh + 0.06, 0.03, elNeon);
+    v.position.set(nx, (ELC.dh + 0.06) / 2, zWall + 0.04); add(v);
+  }
+  const elNeonTop = box(OW + 0.12, 0.03, 0.03, elNeon);
+  elNeonTop.position.set(ELC.x, ELC.dh + 0.06, zWall + 0.04); add(elNeonTop);
+  // the two sliding leaves — flush-ish, just behind the wall face, so when they
+  // part they slide behind the wall (out of sight) and reveal the cab
+  const elLeafW = 0.60, elLeafH = ELC.dh - 0.04;
+  const elLeafLx = ELC.x - OW / 4, elLeafRx = ELC.x + OW / 4;   // closed centers
+  const zLeaf = zWall - 0.06;
+  const elevDoorL = box(elLeafW, elLeafH, 0.05, elDoorMat);
+  const elevDoorR = box(elLeafW, elLeafH, 0.05, elDoorMat);
+  elevDoorL.position.set(elLeafLx, elLeafH / 2 + 0.02, zLeaf);
+  elevDoorR.position.set(elLeafRx, elLeafH / 2 + 0.02, zLeaf);
+  add(elevDoorL); add(elevDoorR);
+  elevDoorL.userData.elevCall = true; elevDoorR.userData.elevCall = true;   // tap the doors to call, too
+  // a hairline of light down the seam (fades as the leaves part)
+  const elSeam = box(0.014, elLeafH - 0.1, 0.014,
+    new THREE.MeshBasicMaterial({ color: 0x7fe9ff, transparent: true }));
+  elSeam.position.set(ELC.x, elLeafH / 2 + 0.02, zLeaf + 0.03); add(elSeam);
+  // a lit floor-display above the doors, on the arcade side
+  const elSign = new THREE.Mesh(new THREE.PlaneGeometry(0.86, 0.13),
+    new THREE.MeshBasicMaterial({
+      map: canvasTex(256, 40, (g) => {
+        g.fillStyle = "#05070c"; g.fillRect(0, 0, 256, 40);
+        g.font = "900 22px monospace"; g.textAlign = "center"; g.textBaseline = "middle";
+        g.fillStyle = "#ffd23c"; g.shadowColor = "#ffd23c"; g.shadowBlur = 8;
+        g.fillText("▲ METRO LIFT ▼", 128, 21);
+      }), transparent: true,
+    }));
+  elSign.position.set(ELC.x, ELC.dh + 0.28, zWall + 0.05); add(elSign);
+  // the CALL button on the wall to the right of the doors, on the arcade side
+  const elCallTex = canvasTex(96, 128, (g) => {
+    g.fillStyle = "#0a0c12"; g.fillRect(0, 0, 96, 128);
+    g.strokeStyle = "#3bff9d"; g.lineWidth = 4; g.strokeRect(6, 6, 84, 116);
+    g.fillStyle = "#3bff9d"; g.shadowColor = "#3bff9d"; g.shadowBlur = 12;
+    g.font = "900 30px monospace"; g.textAlign = "center"; g.textBaseline = "middle";
+    g.fillText("▲", 48, 34); g.fillText("▼", 48, 70);
+    g.font = "900 18px monospace"; g.fillText("CALL", 48, 102);
+  });
+  const elCall = new THREE.Mesh(new THREE.PlaneGeometry(0.17, 0.22),
+    new THREE.MeshBasicMaterial({ map: elCallTex, transparent: true }));
+  elCall.position.set(xOR + 0.18, 1.25, zWall + 0.05);
+  elCall.userData.elevCall = true;
+  add(elCall);
+  // INSIDE: the floor buttons, a 2×2 grid on the back wall facing whoever enters
+  const elevHits = [];
+  const FLOORS = [
+    ["home",  "HOME",      "🛏️", "#ffb454", -1, 1],
+    ["desi",  "THE DESI",  "🌊",        "#29c5ff",  1, 1],
+    ["crew",  "THE CREW",  "🥏",        "#ff8a3c", -1, 0],
+    ["venue", "THE VENUE", "🪩",        "#ff3da0",  1, 0],
+  ];
+  const zPanel = zBack + 0.10;             // the lit buttons stand proud of the backlit plate, toward the door
+  const elBtnPanel = box(1.5, 1.06, 0.05, lam(0x0d0f15));
+  elBtnPanel.position.set(ELC.x, 1.18, zBack + 0.04); add(elBtnPanel);
+  const elInSign = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 0.12),
+    new THREE.MeshBasicMaterial({
+      map: canvasTex(320, 38, (g) => {
+        g.fillStyle = "#05070c"; g.fillRect(0, 0, 320, 38);
+        g.font = "900 20px monospace"; g.textAlign = "center"; g.textBaseline = "middle";
+        g.fillStyle = "#57d9ff"; g.shadowColor = "#57d9ff"; g.shadowBlur = 8;
+        g.fillText("◇ SELECT A FLOOR ◇", 160, 20);
+      }), transparent: true,
+    }));
+  elInSign.position.set(ELC.x, 1.78, zPanel); add(elInSign);
+  FLOORS.forEach(([floor, label, emoji, accent, col, row]) => {
+    const x = ELC.x + col * 0.36;
+    const y = 1.0 + row * 0.42;
+    const tex = canvasTex(256, 150, (g) => {
+      g.fillStyle = "#0a0c12"; g.fillRect(0, 0, 256, 150);
+      g.fillStyle = accent; g.fillRect(0, 0, 256, 12);       // accent cap
+      g.font = "62px serif"; g.textAlign = "center"; g.textBaseline = "middle";
+      g.fillText(emoji, 128, 64);
+      g.font = "900 30px monospace";
+      g.fillStyle = "#eaf2ff"; g.shadowColor = accent; g.shadowBlur = 10;
+      g.fillText(label, 128, 118);
+    });
+    const ring = box(0.6, 0.36, 0.012, new THREE.MeshBasicMaterial({ color: accent }));
+    ring.position.set(x, y, zPanel - 0.012); add(ring);   // seated behind the plate's face
+    const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.57, 0.33),
+      new THREE.MeshBasicMaterial({ map: tex }));
+    plate.position.set(x, y, zPanel);
+    plate.userData.elevFloor = floor;
+    plate.userData.elevLabel = label;
+    add(plate);
+    elevHits.push(plate);
+  });
+  const elevCallHits = [elCall, elevDoorL, elevDoorR];
+  // a warm light + a glowing ceiling panel so the cab interior isn't a cave.
+  // the light is OFF when shut (so it can't leak through the wall into the
+  // arcade) and ramps up as the doors open.
+  const elCeilGlow = box(ELC.w - 0.3, 0.02, ELC.d - 0.3, new THREE.MeshBasicMaterial({ color: 0xffeccb }));
+  elCeilGlow.position.set(ELC.x, ELC.h - 0.05, zMid); add(elCeilGlow);
+  const elLight = new THREE.PointLight(0xffe6bf, 0, 2.8, 2);
+  elLight.position.set(ELC.x, ELC.h - 0.25, zMid); add(elLight);
+  // door glide state — eased every frame in tick (0 shut, 1 open)
+  let elevDoorPos = 0, elevDoorTarget = 0;
+  const setElevatorDoors = (open) => { elevDoorTarget = open ? 1 : 0; };
+  const elevatorOpen = () => elevDoorPos > 0.55;
+  // the cab sits behind the south wall, outside the arcade floor — so it (and
+  // its threshold) only become walkable once the doors are open
+  const ELWALK = { x0: ELC.x - 0.5, x1: ELC.x + 0.5, z0: zBack + 0.1, z1: zWall + 0.5 };
+  // (used by the safety net in main.js) — true when you're standing in the cab
+  const inElevatorCab = (x, z) => x >= xW && x <= xE && z >= zBack - 0.1 && z <= zWall + 0.05;
 
   // cabinet factory — one per game
   const arcadeHits = [];
@@ -6240,6 +6386,14 @@ export function buildWorld() {
       else s.material.color.copy(vuOff);
     });
     if (onAirLive) onAirLight.intensity = 3.4 + Math.sin(elapsed * 2.2) * 0.8 + e * 2.2;
+    // the lift doors glide toward their target; the seam light fades as they
+    // part, and the cab brightens as it opens to the room
+    elevDoorPos += (elevDoorTarget - elevDoorPos) * Math.min(1, dt * 6);
+    const elSlide = elevDoorPos * 0.5;
+    elevDoorL.position.x = elLeafLx - elSlide;
+    elevDoorR.position.x = elLeafRx + elSlide;
+    elSeam.material.opacity = 1 - elevDoorPos;
+    elLight.intensity = elevDoorPos * 15;
     tickFireworks(dt);
     tickBackdrop(dt);
     tickFog(dt);
@@ -6264,7 +6418,11 @@ export function buildWorld() {
     { x0: CLUB.x + 1.4, x1: CLUB.x + 2.05, z0: CLUB.z - 3.6, z1: CLUB.z - 2.5 },
     { x0: CLUB.x - 2.05, x1: CLUB.x - 1.4, z0: CLUB.z - 3.6, z1: CLUB.z - 2.5 },
   ];
-  const isWalkable = (x, z) => WALK_RECTS.some(r => x >= r.x0 && x <= r.x1 && z >= r.z0 && z <= r.z1);
+  const isWalkable = (x, z) =>
+    WALK_RECTS.some(r => x >= r.x0 && x <= r.x1 && z >= r.z0 && z <= r.z1) ||
+    // the recessed elevator cab + its threshold, walkable only when open
+    (elevDoorPos > 0.45 &&
+      x >= ELWALK.x0 && x <= ELWALK.x1 && z >= ELWALK.z0 && z <= ELWALK.z1);
 
   /* --- stylized cel shading: every lit material gets a stepped toon
      ramp. Bright emissive things (screens, neon, signs) stay as-is. --- */
@@ -6388,7 +6546,7 @@ export function buildWorld() {
     arcadeReturn: { x: -4.8, z: -0.4, yaw: Math.PI },
     pool, darts, hoops,
     discGroup, discHit, setArenaScore,
-    echoPoster,
+    elevHits, elevCallHits, setElevatorDoors, elevatorOpen, inElevatorCab,
     updateScores,
     setParallax,
     boatSpawn: { x: BOAT.x, z: BOAT.z + 0.4, yaw: 0 },

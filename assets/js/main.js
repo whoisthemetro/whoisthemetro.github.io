@@ -9,7 +9,7 @@ import { NotesWall } from "./notes3d.js";
 import { Ghosts } from "./ghosts.js";
 import { store } from "./store.js";
 import { presence } from "./presence.js";
-import { startAmbience, citySound, pianoNote, semitoneToKey, audioNow, purr, setRain, setWater, setRoomTone, setClubTone, setClubBed, kettleBoil, setThruster, boostSound, discSound, goalHorn, meow, hiss, careSound, drumHit, setArcadeZone, punchSound, shieldClang, stunBuzz, edrumHit, guitarPluck, guitarNote, shotSound, smokeSound, setFx, setDelayTempo, setBusLevel, setGuitarFilter, startVacuum, stopVacuum } from "./ambience.js";
+import { startAmbience, citySound, pianoNote, semitoneToKey, audioNow, purr, setRain, setWater, setRoomTone, setClubTone, setClubBed, kettleBoil, setThruster, boostSound, discSound, goalHorn, meow, hiss, careSound, drumHit, setArcadeZone, punchSound, shieldClang, stunBuzz, edrumHit, guitarPluck, guitarNote, shotSound, smokeSound, setFx, setDelayTempo, setBusLevel, setGuitarFilter, startVacuum, stopVacuum, beep } from "./ambience.js";
 import { SONGS, playSong, stopSong, currentSongId } from "./songs.js";
 import { progress } from "./progress.js";
 import { voice } from "./voice.js";
@@ -325,7 +325,7 @@ canvas.addEventListener("click", () => {
 function castAt(ndcX, ndcY) {
   raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera);
   // doors are included as blockers so notes can't be pinned onto them
-  const targets = [cat.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, world.echoPoster, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.guitarVoiceHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, world.pool.hit, world.pool.resetHit, world.pool.joinHit, world.darts.hit, world.darts.joinHit, world.darts.resetHit, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.radioHits, ...world.laRadioHits, ...world.filterPedalHit, ...world.vacuumHits, ...notesWall.raycastTargets(), ...world.blockers];
+  const targets = [cat.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, ...world.elevHits, ...world.elevCallHits, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.guitarVoiceHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, world.pool.hit, world.pool.resetHit, world.pool.joinHit, world.darts.hit, world.darts.joinHit, world.darts.resetHit, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.radioHits, ...world.laRadioHits, ...world.filterPedalHit, ...world.vacuumHits, ...notesWall.raycastTargets(), ...world.blockers];
   const hits = raycaster.intersectObjects(targets, false);
   return hits[0] || null;
 }
@@ -769,8 +769,10 @@ controls.onAction((ndcX, ndcY) => {
     } else {
       toast("the city glitters — only the booth can light the sky");
     }
-  } else if (hit.object.userData.portalArena && hit.distance < 3) {
-    tryArena();
+  } else if (hit.object.userData.elevCall && hit.distance < 3.4) {
+    callElevator();
+  } else if (hit.object.userData.elevFloor && hit.distance < 3.2) {
+    rideElevator(hit.object.userData.elevFloor);
   } else if (hit.object.userData.arenaExit && hit.distance < 4) {
     leaveArena();
   } else if (hit.object.userData.disc && hit.distance < 3.2) {
@@ -892,7 +894,7 @@ setInterval(() => {
     aimTip.textContent = `${hit.object.userData.arcadeSoon} — coming soon`;
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.dm && hit.distance < 3) {
-    aimTip.textContent = `${TAP} — the computer · rooms · messages · music`;
+    aimTip.textContent = `${TAP} — the computer · messages · music`;
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.piano && hit.distance < 2.4) {
     aimTip.textContent = `${TAP} the keys to play`;
@@ -931,8 +933,11 @@ setInterval(() => {
   } else if (hit && hit.object.userData.smoke && hit.distance < 2.4) {
     aimTip.textContent = hit.object.userData.smoke === "bong" ? `${TAP} — the bong` : `${TAP} — a little joint`;
     aimTip.classList.add("show");
-  } else if (hit && hit.object.userData.portalArena && hit.distance < 3) {
-    aimTip.textContent = "ECHO VR — step through";
+  } else if (hit && hit.object.userData.elevCall && hit.distance < 3.4) {
+    aimTip.textContent = world.elevatorOpen() ? `${TAP} — step in, pick a floor` : `${TAP} — call the elevator`;
+    aimTip.classList.add("show");
+  } else if (hit && hit.object.userData.elevFloor && hit.distance < 3.2) {
+    aimTip.textContent = `${TAP} — ${hit.object.userData.elevLabel}`;
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.arenaExit && hit.distance < 4) {
     aimTip.textContent = `${TAP} — airlock back to the arcade`;
@@ -1538,6 +1543,50 @@ function fadeTo(fn) {
   const f = $("#fade");
   f.classList.add("dark");
   setTimeout(() => { fn(); setTimeout(() => f.classList.remove("dark"), 150); }, 480);
+}
+// the arcade elevator — a car you ride. CALL parts the doors with a chime;
+// step inside and the back-wall buttons are the rooms. each floor reuses the
+// existing portal flow, so the desi/venue passwords and the crew team-pick
+// still stand; HOME just rides back to the bedroom.
+let elevBusy = false;
+function elevChime(up = true) {
+  // a soft two-note ding (arrival/open)
+  try {
+    beep(up ? 784 : 988, 0.14, "sine", 0.05);
+    setTimeout(() => beep(up ? 1047 : 659, 0.18, "sine", 0.05), 140);
+  } catch (e) {}
+}
+function callElevator() {
+  if (elevBusy) return;
+  if (world.elevatorOpen()) return;        // already open — nothing to do
+  world.setElevatorDoors(true);
+  elevChime(true);
+}
+function rideElevator(floor) {
+  if (elevBusy) return;
+  elevBusy = true;
+  modalOpen = true;
+  controls.unlock();                       // hands off — you're riding
+  world.setElevatorDoors(false);           // doors slide shut in front of you
+  try { beep(660, 0.05, "square", 0.04); beep(150, 0.6, "sine", 0.03, 120); } catch (e) {}  // button + departure hum
+  setTimeout(() => {
+    modalOpen = false;                      // each flow re-arms its own modal/lock
+    elevBusy = false;
+    if (floor === "home") goHome();
+    else if (floor === "desi") tryBoat();
+    else if (floor === "crew") tryArena();
+    else if (floor === "venue") tryClub();
+  }, 700);                                  // let the doors shut + the hum land
+}
+function goHome() {
+  fadeTo(() => {
+    controls.pos.x = world.spawn.x;
+    controls.pos.z = world.spawn.z;
+    controls.yaw = world.spawn.yaw;
+    setRoomTone(true);
+    refreshNoteVisibility();
+    if (entered) safeLock();                // re-lock — the ride unlocked us
+  });
 }
 async function tryBoat() {
   modalOpen = true;                      // keep the pause screen away
@@ -2370,9 +2419,7 @@ function closePC() {
   if (entered) safeLock();
 }
 $("#pc-close").addEventListener("click", closePC);
-$("#pc-desi").addEventListener("click", () => { hide(pcOverlay); tryBoat(); });
-$("#pc-club").addEventListener("click", () => { hide(pcOverlay); tryClub(); });
-$("#pc-echo").addEventListener("click", () => { hide(pcOverlay); modalOpen = false; tryArena(); });
+// rooms moved to the arcade elevator — the computer is now just messages + music
 $("#pc-dm").addEventListener("click", () => { hide(pcOverlay); openDM(); });
 $("#pc-inbox").addEventListener("click", () => { hide(pcOverlay); openDM(); });
 $("#dm-file").addEventListener("change", (e) => {
@@ -2702,6 +2749,14 @@ renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta(), 0.05);
   t += dt;
   controls.update(dt);
+  // safety: never leave anyone shut inside the cab. if you're standing in the
+  // car at home (not riding, not mid-fade, not in another room) with the doors
+  // closed — e.g. you backed out of a password — part them so you can step out.
+  if (!elevBusy && !inBoat && !inClub && !inArena && !modalOpen &&
+      !$("#fade").classList.contains("dark") &&
+      !world.elevatorOpen() && world.inElevatorCab(controls.pos.x, controls.pos.z)) {
+    world.setElevatorDoors(true);
+  }
   if (poolGame.isPlaying()) {
     poolGame.update(dt, { rotate: controls.poolRotate, charging: controls.poolCharging });
     controls.poolRotate = 0;
