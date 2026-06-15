@@ -18,6 +18,7 @@ import { startPlanes } from "./planes.js";
 import { Cat } from "./cat.js";
 import { openArcade, closeArcade, arcadeIsOpen, arcadeWantsEsc, handleGameMessage, setScoreHook } from "./arcade.js";
 import { initPool } from "./pool.js";
+import { initDarts } from "./darts.js";
 import { PIANO_VOICES, GUITAR_VOICES } from "./ambience.js";
 import { createRadio, SR_STATIONS, LA_STATIONS } from "./radio.js";
 import {
@@ -271,6 +272,7 @@ controls.onLockChange((locked) => {
     hud.classList.add("show");
   } else if (entered && !modalOpen) {
     if (controls.pooling) leavePool();   // ESC drops you out of the table first
+    if (controls.darting) leaveDarts();
     if (carrying) { cancelCarry(); toast("put it back — re-hang it again when you're ready"); }
     if (vacuuming) setVacuuming(false);
     show(paused);
@@ -322,7 +324,7 @@ canvas.addEventListener("click", () => {
 function castAt(ndcX, ndcY) {
   raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera);
   // doors are included as blockers so notes can't be pinned onto them
-  const targets = [cat.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, world.echoPoster, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.guitarVoiceHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, world.pool.hit, world.pool.resetHit, world.pool.joinHit, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.radioHits, ...world.laRadioHits, ...world.filterPedalHit, ...world.vacuumHits, ...notesWall.raycastTargets(), ...world.blockers];
+  const targets = [cat.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, world.echoPoster, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.guitarVoiceHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, world.pool.hit, world.pool.resetHit, world.pool.joinHit, world.darts.hit, world.darts.joinHit, world.darts.resetHit, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.radioHits, ...world.laRadioHits, ...world.filterPedalHit, ...world.vacuumHits, ...notesWall.raycastTargets(), ...world.blockers];
   const hits = raycaster.intersectObjects(targets, false);
   return hits[0] || null;
 }
@@ -521,9 +523,78 @@ function leavePool() {
   if (poolShootBtn) poolShootBtn.style.display = "none";
 }
 
+/* ---- DARTS: a board on the north wall you stand at to throw. darts.js runs
+   501 + the gravity projectile; controls.js feeds it 2-axis aim + the charge
+   button; the game drives the camera while you throw. ---- */
+const dartSound = {
+  throw: (p) => { try { drumHit(2); } catch (e) {} },
+  hit: (r) => {
+    try {
+      if (r.region === "bull50" || r.mult === 3) discSound("score");
+      else if (r.region === "miss") drumHit(1);
+      else drumHit(r.mult === 2 ? 3 : 4);
+    } catch (e) {}
+  },
+  bust: () => { try { stunBuzz(); } catch (e) {} },
+  win: () => { try { goalHorn(); } catch (e) {} },
+};
+const dartHudEl = document.createElement("div");
+dartHudEl.style.cssText =
+  "position:fixed;left:50%;top:14px;transform:translateX(-50%);z-index:55;display:none;" +
+  "text-align:center;font:700 15px monospace;color:#eaf3ff;text-shadow:0 1px 3px #000;pointer-events:none";
+dartHudEl.innerHTML =
+  '<div id="dart-status">501</div>' +
+  '<div style="margin:6px auto 0;width:180px;height:9px;border:1px solid #6a4a8a;border-radius:6px;overflow:hidden;background:rgba(0,0,0,.4)">' +
+  '<div id="dart-power" style="height:100%;width:0;background:linear-gradient(90deg,#3bd17a,#ffd23c,#e23a52)"></div></div>' +
+  '<div id="dart-hint" style="margin-top:5px;font-weight:400;opacity:.8;font-size:12px"></div>';
+document.body.appendChild(dartHudEl);
+const dartStatusEl = dartHudEl.querySelector("#dart-status");
+const dartPowerEl = dartHudEl.querySelector("#dart-power");
+const dartHintEl = dartHudEl.querySelector("#dart-hint");
+const dartHud = {
+  status: (s) => { dartStatusEl.textContent = s; },
+  power: (frac) => { dartPowerEl.style.width = Math.round(frac * 100) + "%"; },
+  over: (msg) => { dartHintEl.textContent = msg; },
+};
+const dartGame = initDarts(world.darts, {
+  net: { send: (p) => presence.sendGame(p), myUid: identity.uid },
+  sound: dartSound, hud: dartHud, camera,
+  youName: identity.name || "YOU",
+});
+let dartShootBtn = null;
+if (IS_TOUCH) {
+  dartShootBtn = document.createElement("button");
+  dartShootBtn.textContent = "● THROW";
+  dartShootBtn.style.cssText =
+    "position:fixed;right:18px;bottom:88px;z-index:60;display:none;width:104px;height:104px;border:0;" +
+    "border-radius:52px;font:800 16px monospace;background:#7a3bb0;color:#fff;box-shadow:0 4px 14px rgba(0,0,0,.45)";
+  const press = (v) => (e) => { e.preventDefault(); controls.dartCharging = v; };
+  dartShootBtn.addEventListener("pointerdown", press(true));
+  dartShootBtn.addEventListener("pointerup", press(false));
+  dartShootBtn.addEventListener("pointercancel", press(false));
+  document.body.appendChild(dartShootBtn);
+}
+function sitAtDarts() {
+  dartGame.setName(identity.name || "YOU");
+  controls.enterDarts();
+  dartGame.dock();
+  hideFlightStrip();
+  dartHudEl.style.display = "block";
+  if (dartShootBtn) dartShootBtn.style.display = "block";
+  toast(IS_TOUCH ? "drag to aim · hold THROW for power (aim high — it drops!)"
+                 : "move mouse to aim · hold click for power, release to throw — aim high, it drops");
+}
+function leaveDarts() {
+  if (!controls.darting) return;
+  dartGame.undock();
+  controls.exitDarts();
+  dartHudEl.style.display = "none";
+  if (dartShootBtn) dartShootBtn.style.display = "none";
+}
+
 let lastPetAt = 0;
 controls.onAction((ndcX, ndcY) => {
-  if (controls.pooling) return;   // at the table the mouse aims; clicks charge
+  if (controls.pooling || controls.darting) return;   // at the table/board the mouse aims; clicks charge
   if (modalOpen) return;
   if (carrying) { dropCarried(); return; }   // a click while carrying sets it down
   if (vacuuming) { setVacuuming(false); return; }   // a click while vacuuming puts it away
@@ -572,6 +643,14 @@ controls.onAction((ndcX, ndcY) => {
     toast("fresh rack — break 'em");
   } else if (hit.object.userData.pool && hit.distance < 3.0) {
     sitAtPool();
+  } else if (hit.object.userData.dartsJoin && hit.distance < 4.8) {
+    sitAtDarts();
+  } else if (hit.object.userData.dartsReset && hit.distance < 4.8) {
+    dartGame.reset();
+    sitAtDarts();
+    toast("fresh leg — 501, double out");
+  } else if (hit.object.userData.darts && hit.distance < 3.5) {
+    sitAtDarts();
   } else if (hit.object.userData.arcade && hit.distance < 3.2) {
     modalOpen = true;
     controls.unlock();
@@ -2072,7 +2151,7 @@ let stripTimer = null;
 // the LAX strip stays off while you're in a game or a menu — no plane
 // banners over the pool table, a cabinet, or any modal
 function stripBlocked() {
-  return controls.pooling || modalOpen ||
+  return controls.pooling || controls.darting || modalOpen ||
     (typeof arcadeIsOpen === "function" && arcadeIsOpen());
 }
 function showFlightStrip(info) {
@@ -2390,7 +2469,11 @@ addEventListener("keydown", (e) => {
     pianoNote(i, v ?? 0);
     world.pressPianoKey(i);
   });
-  presence.onGame((p) => { if (p.game === "pool") poolGame.handleNet(p); else handleGameMessage(p); });
+  presence.onGame((p) => {
+    if (p.game === "pool") poolGame.handleNet(p);
+    else if (p.game === "darts") dartGame.handleNet(p);
+    else handleGameMessage(p);
+  });
   // the room is one shared physical space: doors, curtains, affection
   presence.onAct((p) => {
     if (p.kind === "curtains") {
@@ -2556,6 +2639,7 @@ addEventListener("keydown", (e) => {
 /* ---------------- frame loop ---------------- */
 window.METRO_DEBUG = { renderer, camera, world, controls, THREE, cat, notesWall,
   uid: identity.uid, pool: poolGame, sitAtPool, leavePool,
+  darts: dartGame, sitAtDarts, leaveDarts,
   carry: { pick: pickUpNote, drop: dropCarried, state: () => carrying },
   booth: { dj: () => djState, canDJ: () => canDJ(), headcount: () => clubHeadcount(), live: () => voice.djLive() } };
 
@@ -2569,6 +2653,10 @@ renderer.setAnimationLoop(() => {
   if (poolGame.isPlaying()) {
     poolGame.update(dt, { rotate: controls.poolRotate, charging: controls.poolCharging });
     controls.poolRotate = 0;
+  }
+  if (dartGame.isPlaying()) {
+    dartGame.update(dt, { aimX: controls.dartAimX, aimY: controls.dartAimY, charging: controls.dartCharging });
+    controls.dartAimX = 0; controls.dartAimY = 0;
   }
   world.setParallax(camera.position.x);
   // aboard THE DESI the whole world rolls a little — set absolutely
