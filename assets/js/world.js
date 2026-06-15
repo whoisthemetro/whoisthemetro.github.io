@@ -3058,7 +3058,7 @@ export function buildWorld() {
     const courtMesh = new THREE.Mesh(new THREE.PlaneGeometry(Wc, Dc),
       new THREE.MeshLambertMaterial({ map: courtTex }));
     courtMesh.rotation.x = -Math.PI / 2;                            // lie flat
-    courtMesh.rotation.z = Math.PI;                                 // baseline toward the wall (-z)
+    courtMesh.rotation.z = 0;                                       // baseline+key+3pt arc toward the wall (-z), under the rim
     courtMesh.position.set((court.x0 + court.x1) / 2, 0.02, (court.z0 + court.z1) / 2);
     add(courtMesh);
 
