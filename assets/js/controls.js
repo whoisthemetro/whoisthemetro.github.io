@@ -16,6 +16,11 @@ export class Controls {
     this.canvas = canvas;
     this.bounds = bounds;
     this.walkable = walkable;   // fn(x,z) — overrides bounds when provided
+    // pool: the game owns the camera; we only collect aim rotation + the
+    // power-charge button state
+    this.pooling = false;
+    this.poolRotate = 0;        // accumulated aim delta since last frame (game zeroes it)
+    this.poolCharging = false;
     // zero-g flight (THE CREW arena)
     this.zerog = false;
     this.arena = null;            // {x,y,z,hx,hy,hz} when flying
@@ -62,6 +67,9 @@ export class Controls {
 
   pose() { return { x: this.pos.x, y: this.zerog ? this.flyY : 0, z: this.pos.z, yaw: this.yaw }; }
 
+  enterPool() { this.pooling = true; this.poolRotate = 0; this.poolCharging = false; this.keys.clear(); }
+  exitPool() { this.pooling = false; this.poolCharging = false; this._applyCamera(); }
+
   /* ---------- desktop ---------- */
   _bindDesktop() {
     document.addEventListener("pointerlockchange", () => {
@@ -72,6 +80,7 @@ export class Controls {
     });
     document.addEventListener("mousemove", (e) => {
       if (!this.locked) return;
+      if (this.pooling) { this.poolRotate -= e.movementX * 0.0032; return; }   // aim, not look
       this.yaw -= e.movementX * 0.0023;
       this.pitch = clamp(this.pitch - e.movementY * 0.0023, -1.25, 1.25);
     });
@@ -80,7 +89,12 @@ export class Controls {
       this.keys.add(e.code);
     });
     document.addEventListener("keyup", (e) => this.keys.delete(e.code));
+    // hold the mouse button to charge a pool shot; release to fire (the game
+    // reads poolCharging). normal click still fires the crosshair action.
+    document.addEventListener("mousedown", () => { if (this.pooling && this.locked) this.poolCharging = true; });
+    document.addEventListener("mouseup", () => { if (this.pooling) this.poolCharging = false; });
     this.canvas.addEventListener("click", () => {
+      if (this.pooling) return;
       if (this.locked) this.actionFns.forEach(f => f(0, 0));   // crosshair center
     });
   }
@@ -128,6 +142,7 @@ export class Controls {
       const dx = e.clientX - look.x, dy = e.clientY - look.y;
       look.moved += Math.abs(dx) + Math.abs(dy);
       look.x = e.clientX; look.y = e.clientY;
+      if (this.pooling) { this.poolRotate -= dx * 0.006; return; }   // drag to aim
       this.yaw -= dx * 0.005;
       this.pitch = clamp(this.pitch - dy * 0.005, -1.25, 1.25);
     });
@@ -146,6 +161,7 @@ export class Controls {
   /* ---------- per-frame ---------- */
   update(dt) {
     if (!this.enabled) return;
+    if (this.pooling) return;     // the pool game drives the camera
     if (this.zerog) { this._updateZeroG(dt); return; }
     let fwd = 0, strafe = 0;
     if (this.keys.has("KeyW") || this.keys.has("ArrowUp")) fwd += 1;

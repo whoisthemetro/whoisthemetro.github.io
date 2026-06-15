@@ -17,6 +17,7 @@ import { weather } from "./weather.js";
 import { startPlanes } from "./planes.js";
 import { Cat } from "./cat.js";
 import { openArcade, closeArcade, arcadeIsOpen, arcadeWantsEsc, handleGameMessage, setScoreHook } from "./arcade.js";
+import { initPool } from "./pool.js";
 import { PIANO_VOICES, GUITAR_VOICES } from "./ambience.js";
 import { createRadio, SR_STATIONS, LA_STATIONS } from "./radio.js";
 import {
@@ -269,6 +270,7 @@ controls.onLockChange((locked) => {
     hide(paused); hide(intro);
     hud.classList.add("show");
   } else if (entered && !modalOpen) {
+    if (controls.pooling) leavePool();   // ESC drops you out of the table first
     if (carrying) { cancelCarry(); toast("put it back — re-hang it again when you're ready"); }
     if (vacuuming) setVacuuming(false);
     show(paused);
@@ -320,7 +322,7 @@ canvas.addEventListener("click", () => {
 function castAt(ndcX, ndcY) {
   raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera);
   // doors are included as blockers so notes can't be pinned onto them
-  const targets = [cat.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, world.echoPoster, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.guitarVoiceHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.radioHits, ...world.laRadioHits, ...world.filterPedalHit, ...world.vacuumHits, ...notesWall.raycastTargets(), ...world.blockers];
+  const targets = [cat.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, world.echoPoster, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.guitarVoiceHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, world.pool.hit, world.pool.resetHit, world.pool.joinHit, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.radioHits, ...world.laRadioHits, ...world.filterPedalHit, ...world.vacuumHits, ...notesWall.raycastTargets(), ...world.blockers];
   const hits = raycaster.intersectObjects(targets, false);
   return hits[0] || null;
 }
@@ -453,8 +455,75 @@ async function wrapCare(action) {
   return res ? { ...res, updated_at: new Date().toISOString() } : res;
 }
 
+/* ---- POOL: an in-world 8-ball table you stand at to aim. pool.js runs the
+   turn-based game + VRChat-style physics; controls.js feeds it aim rotation +
+   the charge button; the game drives the camera while you play. ---- */
+const poolSound = {
+  click: (hard) => { try { drumHit(hard > 0.5 ? 3 : 4); } catch (e) {} },
+  rail: () => { try { drumHit(1); } catch (e) {} },
+  pocket: () => { try { discSound("score"); } catch (e) {} },
+  strike: () => { try { drumHit(2); } catch (e) {} },
+  foul: () => { try { stunBuzz(); } catch (e) {} },
+  win: () => { try { goalHorn(); } catch (e) {} },
+};
+// a small HUD: status line + power bar, shown only while at the table
+const poolHudEl = document.createElement("div");
+poolHudEl.style.cssText =
+  "position:fixed;left:50%;top:14px;transform:translateX(-50%);z-index:55;display:none;" +
+  "text-align:center;font:700 15px monospace;color:#eaf3ff;text-shadow:0 1px 3px #000;pointer-events:none";
+poolHudEl.innerHTML =
+  '<div id="pool-status">YOUR SHOT</div>' +
+  '<div style="margin:6px auto 0;width:180px;height:9px;border:1px solid #4a6a8a;border-radius:6px;overflow:hidden;background:rgba(0,0,0,.4)">' +
+  '<div id="pool-power" style="height:100%;width:0;background:linear-gradient(90deg,#3bd17a,#ffd23c,#e23a52)"></div></div>' +
+  '<div id="pool-hint" style="margin-top:5px;font-weight:400;opacity:.8;font-size:12px"></div>';
+document.body.appendChild(poolHudEl);
+const poolStatusEl = poolHudEl.querySelector("#pool-status");
+const poolPowerEl = poolHudEl.querySelector("#pool-power");
+const poolHintEl = poolHudEl.querySelector("#pool-hint");
+const poolHud = {
+  status: (s) => { poolStatusEl.textContent = s; },
+  power: (frac, charging) => { poolPowerEl.style.width = Math.round(frac * 100) + "%"; },
+  over: (msg) => { poolHintEl.textContent = msg; },
+};
+const poolGame = initPool(world.pool, {
+  net: { send: (p) => presence.sendGame(p), myUid: identity.uid },
+  sound: poolSound, hud: poolHud, camera,
+  youName: identity.name || "YOU",
+});
+let poolShootBtn = null;
+if (IS_TOUCH) {
+  poolShootBtn = document.createElement("button");
+  poolShootBtn.textContent = "● SHOOT";
+  poolShootBtn.style.cssText =
+    "position:fixed;right:18px;bottom:88px;z-index:60;display:none;width:104px;height:104px;border:0;" +
+    "border-radius:52px;font:800 16px monospace;background:#2a6fb0;color:#fff;box-shadow:0 4px 14px rgba(0,0,0,.45)";
+  const press = (v) => (e) => { e.preventDefault(); controls.poolCharging = v; };
+  poolShootBtn.addEventListener("pointerdown", press(true));
+  poolShootBtn.addEventListener("pointerup", press(false));
+  poolShootBtn.addEventListener("pointercancel", press(false));
+  document.body.appendChild(poolShootBtn);
+}
+function sitAtPool() {
+  poolGame.setName(identity.name || "YOU");
+  const end = poolGame.nearestEnd(controls.pos.x);
+  controls.enterPool();
+  poolGame.dock(end);
+  hideFlightStrip();                 // no LAX banners while you're shooting
+  poolHudEl.style.display = "block";
+  if (poolShootBtn) poolShootBtn.style.display = "block";
+  toast(IS_TOUCH ? "drag to aim · hold SHOOT for power" : "move mouse to aim · hold click for power, release to shoot");
+}
+function leavePool() {
+  if (!controls.pooling) return;
+  poolGame.undock();
+  controls.exitPool();
+  poolHudEl.style.display = "none";
+  if (poolShootBtn) poolShootBtn.style.display = "none";
+}
+
 let lastPetAt = 0;
 controls.onAction((ndcX, ndcY) => {
+  if (controls.pooling) return;   // at the table the mouse aims; clicks charge
   if (modalOpen) return;
   if (carrying) { dropCarried(); return; }   // a click while carrying sets it down
   if (vacuuming) { setVacuuming(false); return; }   // a click while vacuuming puts it away
@@ -495,6 +564,14 @@ controls.onAction((ndcX, ndcY) => {
     presence.sendAct({ kind: "closet", open });
     store.saveRoomFlag("closet", open).catch(() => {});
     toast(open ? "the closet creaks open…" : "closet closed");
+  } else if (hit.object.userData.poolJoin && hit.distance < 4.8) {
+    sitAtPool();
+  } else if (hit.object.userData.poolReset && hit.distance < 4.8) {
+    poolGame.reset();
+    sitAtPool();
+    toast("fresh rack — break 'em");
+  } else if (hit.object.userData.pool && hit.distance < 3.0) {
+    sitAtPool();
   } else if (hit.object.userData.arcade && hit.distance < 3.2) {
     modalOpen = true;
     controls.unlock();
@@ -1992,7 +2069,14 @@ function getHigh() {
 
 /* ---------------- flight strip: the jet crossing the glass ---------------- */
 let stripTimer = null;
+// the LAX strip stays off while you're in a game or a menu — no plane
+// banners over the pool table, a cabinet, or any modal
+function stripBlocked() {
+  return controls.pooling || modalOpen ||
+    (typeof arcadeIsOpen === "function" && arcadeIsOpen());
+}
 function showFlightStrip(info) {
+  if (stripBlocked()) return;
   const el = $("#flight-strip");
   el.innerHTML =
     `<span class="fs-plane">✈</span> <span class="fs-flight">${(info.flight || "").replace(/[<>&]/g, "")}</span>` +
@@ -2306,7 +2390,7 @@ addEventListener("keydown", (e) => {
     pianoNote(i, v ?? 0);
     world.pressPianoKey(i);
   });
-  presence.onGame((p) => handleGameMessage(p));
+  presence.onGame((p) => { if (p.game === "pool") poolGame.handleNet(p); else handleGameMessage(p); });
   // the room is one shared physical space: doors, curtains, affection
   presence.onAct((p) => {
     if (p.kind === "curtains") {
@@ -2471,7 +2555,7 @@ addEventListener("keydown", (e) => {
 
 /* ---------------- frame loop ---------------- */
 window.METRO_DEBUG = { renderer, camera, world, controls, THREE, cat, notesWall,
-  uid: identity.uid,
+  uid: identity.uid, pool: poolGame, sitAtPool, leavePool,
   carry: { pick: pickUpNote, drop: dropCarried, state: () => carrying },
   booth: { dj: () => djState, canDJ: () => canDJ(), headcount: () => clubHeadcount(), live: () => voice.djLive() } };
 
@@ -2482,6 +2566,10 @@ renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta(), 0.05);
   t += dt;
   controls.update(dt);
+  if (poolGame.isPlaying()) {
+    poolGame.update(dt, { rotate: controls.poolRotate, charging: controls.poolCharging });
+    controls.poolRotate = 0;
+  }
   world.setParallax(camera.position.x);
   // aboard THE DESI the whole world rolls a little — set absolutely
   // (never accumulate), so pausing/ESC can't drift you up or down

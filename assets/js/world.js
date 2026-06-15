@@ -2314,7 +2314,7 @@ export function buildWorld() {
   }
   // staked-out zones (centers + footprints). non-overlapping, with aisles;
   // tuned again when each real table arrives.
-  zoneMarker("POOL",       -9.0,  2.9, 5.0, 3.4, 0x3bff7a);
+  // (POOL marker retired — the real table lands below)
   // air hockey rotated long-axis N-S (table ends face the long walls) and
   // tucked into the south row, in the gap between foosball (west) and the
   // bar (east) — ~2 m clear of each
@@ -2323,6 +2323,282 @@ export function buildWorld() {
   zoneMarker("SKEE-BALL", -15.8,  1.0, 2.2, 4.2, 0xff2da0);
   zoneMarker("DARTS",     -13.2,  4.3, 3.2, 1.3, 0x9d4dff);
   zoneMarker("BAR",        -6.0, -3.6, 2.0, 3.6, 0xff7a30);
+
+  /* ============================================================
+     POOL / 8-BALL — a real in-world table. world.js builds the
+     furniture + the balls + the cue + the aim guide and hands them
+     back; pool.js runs the turn-based game (aim, power, 2D physics on
+     the cloth plane). Turn-based + a drawn aim line = deliberate and
+     controllable, on purpose. Long axis runs E-W. Table-local coords:
+     u = x-centre (length), w = z-centre (width).
+     ============================================================ */
+  const pool = (() => {
+    const PT = { x: -9.0, z: 2.9 };
+    const surfaceY = 0.78;
+    const hl = 1.2, hw = 0.6;             // playfield half-extents (length, width)
+    const r = 0.03;                       // ball radius
+    const pocketR = 0.072;
+    const railTop = 0.05;                 // cushion rises this far above cloth
+    const woodH = 0.1;                    // wooden rail cap thickness
+
+    const grp = new THREE.Group();
+    grp.position.set(PT.x, 0, PT.z);
+
+    const wood = lam(0x4a2c18), woodDark = lam(0x351d10);
+    const clothCol = 0x0c7a39;
+
+    // cabinet body + legs
+    const body = box(2 * hl + 0.28, 0.34, 2 * hw + 0.28, lam(0x2a1810));
+    body.position.y = surfaceY - 0.22; grp.add(body);
+    for (const su of [-1, 1]) for (const sw of [-1, 1]) {
+      const lh = surfaceY - 0.39;
+      const leg = box(0.13, lh, 0.13, woodDark);
+      leg.position.set(su * (hl - 0.02), lh / 2, sw * (hw - 0.02));
+      grp.add(leg);
+    }
+
+    // cloth bed (lit canvas: felt + spots + head string)
+    const clothTex = canvasTex(512, 256, (g, cw, ch) => {
+      g.fillStyle = "#0c7a39"; g.fillRect(0, 0, cw, ch);
+      g.fillStyle = "rgba(0,0,0,0.10)";
+      g.fillRect(0, 0, cw, 10); g.fillRect(0, ch - 10, cw, 10);
+      g.strokeStyle = "rgba(255,255,255,0.16)"; g.lineWidth = 2;
+      g.beginPath(); g.moveTo(cw * 0.25, 14); g.lineTo(cw * 0.25, ch - 14); g.stroke(); // head string
+      g.fillStyle = "rgba(255,255,255,0.18)";                                          // head + foot spots
+      g.beginPath(); g.arc(cw * 0.25, ch / 2, 4, 0, 7); g.fill();
+      g.beginPath(); g.arc(cw * 0.75, ch / 2, 4, 0, 7); g.fill();
+    });
+    const cloth = new THREE.Mesh(new THREE.PlaneGeometry(2 * hl, 2 * hw),
+      new THREE.MeshLambertMaterial({ map: clothTex, color: clothCol }));
+    cloth.rotation.x = -Math.PI / 2; cloth.position.y = surfaceY + 0.001;
+    grp.add(cloth);
+
+    // pocket positions (table-local) — 4 corners + 2 sides
+    const pockets = [
+      { u: -hl, w: -hw }, { u: -hl, w: hw }, { u: hl, w: -hw }, { u: hl, w: hw },
+      { u: 0, w: -hw }, { u: 0, w: hw },
+    ];
+    for (const p of pockets) {
+      const hole = new THREE.Mesh(new THREE.CylinderGeometry(pocketR, pocketR * 0.8, 0.05, 18),
+        lam(0x05060a));
+      hole.position.set(p.u, surfaceY - 0.005, p.w); grp.add(hole);
+      const jaw = new THREE.Mesh(new THREE.TorusGeometry(pocketR, 0.018, 8, 18),
+        new THREE.MeshLambertMaterial({ color: 0x161616 }));
+      jaw.rotation.x = Math.PI / 2; jaw.position.set(p.u, surfaceY + 0.01, p.w); grp.add(jaw);
+    }
+
+    // wooden rail cap (frame) — 4 boxes around the outside
+    const railW = 0.085;
+    for (const sw of [-1, 1]) {
+      const rail = box(2 * hl + 2 * railW + 0.05, woodH, railW, wood);
+      rail.position.set(0, surfaceY + woodH / 2, sw * (hw + railW / 2 + 0.012)); grp.add(rail);
+    }
+    for (const su of [-1, 1]) {
+      const rail = box(railW, woodH, 2 * hw + 0.024, wood);
+      rail.position.set(su * (hl + railW / 2 + 0.012), surfaceY + woodH / 2, 0); grp.add(rail);
+    }
+
+    // cushions (green rubber) just inside the playfield, broken at the pockets
+    const cushMat = lam(0x0a5c2b);
+    const ct = 0.032, chh = railTop, cg = pocketR + 0.028, sg = pocketR + 0.02;
+    function cush(u, w, lu, lw) {
+      const c = box(lu, chh, lw, cushMat);
+      c.position.set(u, surfaceY + chh / 2, w); grp.add(c);
+    }
+    const segL = hl - cg - sg;                        // long rail, split by the side pocket
+    for (const sw of [-1, 1]) {
+      const wpos = sw * (hw + ct / 2);
+      cush(-(sg + segL / 2), wpos, segL, ct);
+      cush(sg + segL / 2, wpos, segL, ct);
+    }
+    for (const su of [-1, 1]) {                       // short rail (single span)
+      cush(su * (hl + ct / 2), 0, ct, 2 * hw - 2 * cg);
+    }
+
+    /* ---- balls: cue + 15. solids are flat colours, stripes a banded
+       texture, 8 is black, cue is white ---- */
+    // brighter, more saturated than reference so they read under the toon ramp
+    const COLORS = [0xffcf1f, 0x2f6bff, 0xe8302c, 0x9a40e0, 0xff7a1f, 0x2bb24c, 0xc23340];
+    function stripeTex(col) {
+      const hex = "#" + col.toString(16).padStart(6, "0");
+      return canvasTex(64, 32, (g, cw, ch) => {
+        g.fillStyle = "#f4f1e8"; g.fillRect(0, 0, cw, ch);
+        // a fat, saturated band so the colour reads even from above (you see
+        // the ball's poles looking down) and the toon light can't wash it out
+        g.fillStyle = hex;
+        g.fillRect(0, ch * 0.2, cw, ch * 0.6);
+      });
+    }
+    const balls = [];
+    function mkBall(id) {
+      let mat;
+      if (id === 0) mat = lam(0xf4f2ea);                         // cue
+      else if (id === 8) mat = lam(0x111114);                    // 8
+      else if (id <= 7) mat = lam(COLORS[id - 1]);               // solids
+      else mat = new THREE.MeshLambertMaterial({ map: stripeTex(COLORS[id - 9]) }); // stripes
+      const m = new THREE.Mesh(new THREE.SphereGeometry(r, 20, 16), mat);
+      m.position.set(0, surfaceY + r, 0);
+      grp.add(m);
+      const b = { id, mesh: m, type: id === 0 ? "cue" : id === 8 ? "eight" : id <= 7 ? "solid" : "stripe" };
+      balls.push(b); return b;
+    }
+    for (let i = 0; i <= 15; i++) mkBall(i);
+
+    // cue stick — a tapered shaft the game swings; tip sits near origin,
+    // butt extends back along -x by default (game rotates the group)
+    const cueGrp = new THREE.Group();
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.007, 0.014, 1.45, 14),
+      new THREE.MeshLambertMaterial({ color: 0xb9892f }));
+    shaft.rotation.z = Math.PI / 2;                  // lie along x
+    shaft.position.x = -(0.06 + 1.45 / 2);           // tip ~6cm off origin, body to -x
+    const tip = new THREE.Mesh(new THREE.CylinderGeometry(0.007, 0.007, 0.03, 10),
+      new THREE.MeshLambertMaterial({ color: 0x2a6fb0 }));
+    tip.rotation.z = Math.PI / 2; tip.position.x = -0.06 - 0.015;
+    cueGrp.add(shaft); cueGrp.add(tip);
+    cueGrp.position.y = surfaceY + r;
+    cueGrp.visible = false;
+    grp.add(cueGrp);
+
+    // aim guide: a bright line from the cue ball, a ghost ring at first
+    // contact, and a short line for where the struck ball will go
+    function mkLine(col) {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(6), 3));
+      const ln = new THREE.Line(geo, new THREE.LineBasicMaterial({
+        color: col, transparent: true, depthTest: false,
+      }));
+      ln.renderOrder = 999; ln.visible = false; grp.add(ln); return ln;
+    }
+    const aimLine = mkLine(0xffffff);
+    const targetLine = mkLine(0xffd23c);
+    const ghost = new THREE.Mesh(new THREE.RingGeometry(r * 0.86, r, 22),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, depthTest: false, opacity: 0.9 }));
+    ghost.rotation.x = -Math.PI / 2; ghost.renderOrder = 999; ghost.visible = false; grp.add(ghost);
+
+    // a billiard lamp hung low over the cloth — the fixture AND the light.
+    // the bulbs are POINT lights kept short (distance ≤3) so the warm pool
+    // glow stays in the arcade and can't crawl into the bedroom (light.layers
+    // doesn't scope illumination — only a short throw does).
+    const lampY = 1.78;
+    const shade = box(1.74, 0.14, 0.4, lam(0x123524));
+    shade.position.set(0, lampY, 0); grp.add(shade);
+    const shadeLip = box(1.8, 0.045, 0.46, lam(0x6a5028));
+    shadeLip.position.set(0, lampY - 0.085, 0); grp.add(shadeLip);
+    const glowPanel = new THREE.Mesh(new THREE.PlaneGeometry(1.66, 0.34),
+      new THREE.MeshBasicMaterial({ color: 0xffe6b8 }));
+    glowPanel.rotation.x = Math.PI / 2;            // face down at the cloth
+    glowPanel.position.set(0, lampY - 0.1, 0); grp.add(glowPanel);
+    for (const ru of [-0.62, 0.62]) {              // hang rods up to the ceiling
+      const rodLen = ARC_H - (lampY + 0.07);
+      const rod = box(0.022, rodLen, 0.022, lam(0x2a2a2e));
+      rod.position.set(ru, lampY + 0.07 + rodLen / 2, 0); grp.add(rod);
+    }
+    for (const lu of [-0.66, 0, 0.66]) {           // 3 bulbs down the length
+      const bulb = new THREE.PointLight(0xffe2ac, 7.5, 2.9, 2);
+      bulb.position.set(lu, lampY - 0.16, 0); grp.add(bulb);
+    }
+
+    // wall scoreboard (VRChat-style) on the wall nearest the table — the
+    // north wall, a couple metres off the foot. both players' names, the
+    // group they're shooting, and how many of their balls are down.
+    const sbCanvas = document.createElement("canvas");
+    sbCanvas.width = 640; sbCanvas.height = 300;
+    const sbTex = new THREE.CanvasTexture(sbCanvas);
+    sbTex.colorSpace = THREE.SRGBColorSpace;
+    function setBoard(d) {
+      const g = sbCanvas.getContext("2d");
+      g.fillStyle = "#06080f"; g.fillRect(0, 0, 640, 300);
+      g.strokeStyle = "#2a78ff"; g.lineWidth = 8; g.strokeRect(5, 5, 630, 290);
+      g.strokeStyle = "rgba(42,120,255,0.4)"; g.lineWidth = 2;
+      g.beginPath(); g.moveTo(320, 56); g.lineTo(320, 270); g.stroke();
+      g.textAlign = "center"; g.textBaseline = "middle";
+      g.fillStyle = "#ffd23c"; g.font = "700 26px monospace"; g.fillText("8-BALL", 320, 34);
+      if (!d) {                                   // attract: nobody seated yet
+        g.fillStyle = "#3ce47e"; g.font = "700 36px monospace"; g.fillText("▸ JOIN TO PLAY", 320, 138);
+        g.fillStyle = "#7f8a99"; g.font = "700 19px monospace";
+        g.fillText("solo vs the CPU — or a 2nd player", 320, 190);
+        g.fillText("can grab the open seat", 320, 218);
+        sbTex.needsUpdate = true; return;
+      }
+      const cols = [{ x: 162, p: d && d.you, on: d && d.turn === "you" },
+                    { x: 478, p: d && d.opp, on: d && d.turn === "cpu" }];
+      for (const c of cols) {
+        const p = c.p || {};
+        g.fillStyle = c.on ? "#7fffd0" : "#dfe7f0";
+        g.font = "700 28px monospace";
+        g.fillText((p.name || "—").slice(0, 12), c.x, 92);
+        const grp = p.group;
+        g.font = "700 20px monospace";
+        g.fillStyle = grp === "solid" ? "#ffb01f" : grp === "stripe" ? "#34c6ff" : "#5a6678";
+        g.fillText(grp === "solid" ? "● SOLIDS" : grp === "stripe" ? "◍ STRIPES" : (d && d.open ? "OPEN TABLE" : "—"), c.x, 132);
+        g.fillStyle = "#ffffff"; g.font = "900 86px monospace";
+        g.fillText(String(p.made == null ? 0 : p.made), c.x - 26, 204);
+        g.fillStyle = "#6a7686"; g.font = "700 34px monospace"; g.fillText("/7", c.x + 42, 218);
+        if (c.on) { g.fillStyle = "#7fffd0"; g.font = "700 20px monospace"; g.fillText("▼ SHOOTING", c.x, 262); }
+      }
+      sbTex.needsUpdate = true;
+    }
+    setBoard(null);
+    const sbY = 2.5;                              // high enough to clear the lamp
+    const sbFrame = box(2.1, 1.05, 0.05, lam(0x05060a));
+    sbFrame.position.set(PT.x, sbY, AR.z1 - 0.03); add(sbFrame);
+    const sbPanel = new THREE.Mesh(new THREE.PlaneGeometry(1.96, 0.92),
+      new THREE.MeshBasicMaterial({ map: sbTex }));
+    sbPanel.position.set(PT.x, sbY, AR.z1 - 0.06);
+    sbPanel.rotation.y = Math.PI;                 // face into the room (north wall)
+    add(sbPanel);
+
+    // control panel on the wall under the scoreboard: JOIN to take a seat
+    // (alone you play the CPU; a second person can grab the other seat) and
+    // RESET to rack fresh. Up here on the wall, RESET can't be fat-fingered
+    // mid-game the way a table-side button could. Sits low enough to clear
+    // the lamp on the sightline from where you stand.
+    function wallBtn(label, col, dx, key) {
+      const gb = new THREE.Group();
+      const bw = 0.58, bh = 0.26;
+      gb.add(box(bw, bh, 0.07, lam(0x0a0d14)));
+      const face = new THREE.Mesh(new THREE.PlaneGeometry(bw * 0.9, bh * 0.74),
+        new THREE.MeshBasicMaterial({
+          map: canvasTex(256, 104, (g, cw, ch) => {
+            g.fillStyle = "#070a10"; g.fillRect(0, 0, cw, ch);
+            g.strokeStyle = col; g.lineWidth = 6; g.strokeRect(6, 6, cw - 12, ch - 12);
+            g.fillStyle = col; g.font = "700 52px monospace";
+            g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(label, cw / 2, ch / 2 + 2);
+          }),
+        }));
+      face.position.z = -0.037; face.rotation.y = Math.PI; gb.add(face);
+      const hm = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, 0.26),
+        new THREE.MeshBasicMaterial({ visible: false }));
+      hm.userData[key] = true; gb.add(hm);
+      gb.position.set(PT.x + dx, sbY - 0.88, AR.z1 - 0.06);
+      add(gb);
+      return hm;
+    }
+    const joinHit = wallBtn("JOIN", "#3ce47e", -0.36, "poolJoin");
+    const resetHit = wallBtn("RESET", "#ff5a5a", 0.36, "poolReset");
+
+    // click target over the whole table
+    const hit = new THREE.Mesh(new THREE.BoxGeometry(2 * hl + 0.3, 0.4, 2 * hw + 0.3),
+      new THREE.MeshBasicMaterial({ visible: false }));
+    hit.position.set(PT.x, surfaceY + 0.1, PT.z);
+    hit.userData.pool = true;
+    add(hit);
+    add(grp);
+
+    // dock poses: stand at each end of the table, behind the head/foot rail,
+    // eyes pitched down the cloth (the game orbits the aim around the cue ball)
+    const stand = 0.62, eye = 1.6, pitch = -0.62;
+    return {
+      center: PT, surfaceY, half: { l: hl, w: hw }, ballR: r, pocketR,
+      pockets, balls, cueGrp, cueShaft: cueGrp,
+      aimLine, targetLine, ghost, hit, resetHit, joinHit, group: grp, setBoard,
+      // -x end looks +x (yaw -π/2... set in game); we expose both standing spots
+      dock: {
+        west: { x: PT.x - hl - stand, z: PT.z, eye, pitch },
+        east: { x: PT.x + hl + stand, z: PT.z, eye, pitch },
+      },
+    };
+  })();
 
   /* --- the desk rig --- */
   const deskTopY = 0.74;
@@ -5739,6 +6015,7 @@ export function buildWorld() {
     arenaGoalX: GOAL_X, arenaBubbleR: BUBBLE_R,
     setTubeBarriers, inTube,
     arcadeReturn: { x: -4.8, z: -0.4, yaw: Math.PI },
+    pool,
     discGroup, discHit, setArenaScore,
     echoPoster,
     updateScores,
