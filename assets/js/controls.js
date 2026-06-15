@@ -28,6 +28,9 @@ export class Controls {
     this.aimDX = 0;
     this.aimDY = 0;
     this.aimCharge = false;
+    // primary button held (free-roam basketball reads this to wind up a shot);
+    // on desktop it's the mouse button, on touch a dedicated SHOOT button sets it
+    this.pointerDown = false;
     // zero-g flight (THE CREW arena)
     this.zerog = false;
     this.arena = null;            // {x,y,z,hx,hy,hz} when flying
@@ -105,10 +108,12 @@ export class Controls {
     document.addEventListener("mousedown", () => {
       if (this.pooling && this.locked) this.poolCharging = true;
       if (this.aiming && this.locked) this.aimCharge = true;
+      if (this.locked) this.pointerDown = true;
     });
     document.addEventListener("mouseup", () => {
       if (this.pooling) this.poolCharging = false;
       if (this.aiming) this.aimCharge = false;
+      this.pointerDown = false;
     });
     this.canvas.addEventListener("click", () => {
       if (this.pooling || this.aiming) return;

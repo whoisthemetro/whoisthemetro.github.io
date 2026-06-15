@@ -2319,7 +2319,6 @@ export function buildWorld() {
   // tucked into the south row, in the gap between foosball (west) and the
   // bar (east) — ~2 m clear of each
   zoneMarker("AIR HOCKEY", -10.1, -3.6, 2.2, 3.6, 0x22d4ff);
-  zoneMarker("FOOSBALL",  -14.5, -3.7, 2.6, 2.4, 0xffe93c);
   zoneMarker("BAR",        -6.0, -3.6, 2.0, 3.6, 0xff7a30);
 
   /* ============================================================
@@ -2840,53 +2839,77 @@ export function buildWorld() {
      and leaderboard panels; basketball.js runs the game.
      ============================================================ */
   const hoops = (() => {
-    const BX = -16.5;                       // hoop centre x
-    const BBz = AR.z1 - 0.06;               // backboard front face (north wall)
-    const rimY = 2.6, rimR = 0.225, ballR = 0.12;
-    const rimZ = BBz - 0.42;                // rim sticks out from the board
-    const ocheZ = 2.1, eyeY = 1.6;
+    // mounted on the SOUTH wall (z = AR.z0), you shoot toward -z. Everything on
+    // the wall sits ≥3 cm proud of it and the painted court floats just over the
+    // floor — the z-fighting rule the room learned the hard way (notes use 0.03).
+    const BX = -14.5;                       // hoop centre x (the old foosball spot)
+    const WALLZ = AR.z0;                     // south wall plane
+    const BBz = WALLZ + 0.07;                // backboard front face, proud of the wall
+    const rimY = 2.72, rimR = 0.225, ballR = 0.12;
+    const rimZ = BBz + 0.42;                 // rim reaches out into the court (+z)
 
-    // backboard (white, with the red shooter's square)
+    // --- backboard (white, red shooter's square) facing the court (+z) ---
     const bbTex = canvasTex(280, 200, (g, cw, ch) => {
       g.fillStyle = "#f2f0ea"; g.fillRect(0, 0, cw, ch);
       g.strokeStyle = "#20242a"; g.lineWidth = 8; g.strokeRect(4, 4, cw - 8, ch - 8);
-      g.strokeStyle = "#d8392a"; g.lineWidth = 6;                 // the box above the rim
-      g.strokeRect(cw / 2 - 46, ch - 96, 92, 64);
+      g.strokeStyle = "#d8392a"; g.lineWidth = 6; g.strokeRect(cw / 2 - 46, ch - 96, 92, 64);
     });
     const bb = box(1.34, 0.96, 0.06, lam(0x20242a));
-    bb.position.set(BX, 2.92, AR.z1 - 0.03); add(bb);
+    bb.position.set(BX, 2.94, WALLZ + 0.035); add(bb);
     const bbFace = new THREE.Mesh(new THREE.PlaneGeometry(1.28, 0.9),
       new THREE.MeshBasicMaterial({ map: bbTex }));
-    bbFace.position.set(BX, 2.92, BBz); bbFace.rotation.y = Math.PI; add(bbFace);
+    bbFace.position.set(BX, 2.94, BBz); add(bbFace);     // PlaneGeometry faces +z = into the court
 
-    // rim + mount + net
+    // --- rim + mount + net ---
     const rimMat = lam(0xff7a1f);
     const rim = new THREE.Mesh(new THREE.TorusGeometry(rimR, 0.018, 10, 28), rimMat);
     rim.rotation.x = Math.PI / 2; rim.position.set(BX, rimY, rimZ); add(rim);
     const mount = box(0.12, 0.05, 0.44, rimMat);
-    mount.position.set(BX, rimY, (rimZ + BBz) / 2 + 0.01); add(mount);
+    mount.position.set(BX, rimY, (rimZ + BBz) / 2); add(mount);
     const net = new THREE.Mesh(
       new THREE.CylinderGeometry(rimR * 0.96, rimR * 0.5, 0.36, 16, 3, true),
       new THREE.MeshBasicMaterial({ color: 0xeef2f6, wireframe: true, transparent: true, opacity: 0.55 }));
     net.position.set(BX, rimY - 0.18, rimZ); add(net);
-    // a short net pulse on a made basket, self-driven (no per-frame hook needed)
     function pulseNet() {
       let t = 0; const iv = setInterval(() => {
-        t += 0.05; const s = 1 + Math.sin(Math.min(t, 0.3) / 0.3 * Math.PI) * 0.35;
-        net.scale.set(1, 1 + (s - 1) * 0.6, 1); net.position.y = rimY - 0.18 - (s - 1) * 0.12;
+        t += 0.05; const s = Math.sin(Math.min(t, 0.3) / 0.3 * Math.PI) * 0.35;
+        net.scale.set(1, 1 + s * 0.6, 1); net.position.y = rimY - 0.18 - s * 0.12;
         if (t >= 0.32) { clearInterval(iv); net.scale.set(1, 1, 1); net.position.y = rimY - 0.18; }
       }, 25);
     }
+    const hoopLamp = new THREE.PointLight(0xfff0d6, 5, 3.2, 2);
+    hoopLamp.position.set(BX, 3.0, rimZ + 0.4); add(hoopLamp);
 
-    // a small short-throw light so the ball + board pop
-    const hoopLamp = new THREE.PointLight(0xfff0d6, 5, 3, 2);
-    hoopLamp.position.set(BX, 3.0, rimZ - 0.4); add(hoopLamp);
+    // --- the court: a painted hardwood decal floating 2 cm over the floor ---
+    const court = { x0: BX - 2.4, x1: BX + 2.4, z0: WALLZ + 0.12, z1: WALLZ + 4.9 };
+    const Wc = court.x1 - court.x0, Dc = court.z1 - court.z0;
+    const courtTex = canvasTex(512, 512, (g, cw, ch) => {
+      // hardwood: warm planks running across, hoop/baseline at the TOP (y=0)
+      g.fillStyle = "#c79350"; g.fillRect(0, 0, cw, ch);
+      g.strokeStyle = "rgba(120,80,30,0.35)"; g.lineWidth = 2;
+      for (let y = 0; y < ch; y += 26) { g.beginPath(); g.moveTo(0, y); g.lineTo(cw, y); g.stroke(); }
+      const cx = cw / 2, white = "#f4efe2";
+      g.strokeStyle = white; g.lineWidth = 6;
+      g.strokeRect(14, 14, cw - 28, ch - 28);                       // boundary
+      // the key (lane) hanging from the baseline, with the free-throw circle
+      const keyW = cw * 0.32, keyH = ch * 0.42;
+      g.lineWidth = 5; g.strokeRect(cx - keyW / 2, 14, keyW, keyH);
+      g.beginPath(); g.arc(cx, 14 + keyH, keyW * 0.5, 0, Math.PI * 2); g.stroke();
+      g.beginPath(); g.arc(cx, 14, cw * 0.07, 0, Math.PI); g.stroke();  // the half-circle under the rim
+      // 3-point arc sweeping out from the baseline
+      g.lineWidth = 6; g.beginPath(); g.arc(cx, 40, cw * 0.46, 0.18 * Math.PI, 0.82 * Math.PI); g.stroke();
+      // center-court mark
+      g.fillStyle = "rgba(244,239,226,0.25)"; g.font = "700 46px monospace";
+      g.textAlign = "center"; g.textBaseline = "middle"; g.fillText("METRO", cx, ch * 0.78);
+    });
+    const courtMesh = new THREE.Mesh(new THREE.PlaneGeometry(Wc, Dc),
+      new THREE.MeshLambertMaterial({ map: courtTex }));
+    courtMesh.rotation.x = -Math.PI / 2;                            // lie flat
+    courtMesh.rotation.z = Math.PI;                                 // baseline toward the wall (-z)
+    courtMesh.position.set((court.x0 + court.x1) / 2, 0.02, (court.z0 + court.z1) / 2);
+    add(courtMesh);
 
-    // oche line on the floor
-    const oche = box(1.4, 0.012, 0.05, new THREE.MeshBasicMaterial({ color: 0xff7a1f }));
-    oche.position.set(BX, 0.012, ocheZ); add(oche);
-
-    // ball pool (6 in flight + 1 in hand) — orange with seams
+    // --- a ball rack off to the side, holding a few rocks ---
     const ballTex = canvasTex(64, 64, (g, cw, ch) => {
       g.fillStyle = "#d4631f"; g.fillRect(0, 0, cw, ch);
       g.strokeStyle = "#160d05"; g.lineWidth = 2.5;
@@ -2895,20 +2918,34 @@ export function buildWorld() {
       g.beginPath(); g.arc(-cw * 0.15, ch / 2, cw * 0.62, -1, 1); g.stroke();
       g.beginPath(); g.arc(cw * 1.15, ch / 2, cw * 0.62, Math.PI - 1, Math.PI + 1); g.stroke();
     });
+    const ballMat = new THREE.MeshLambertMaterial({ map: ballTex });
+    const rack = new THREE.Group();
+    rack.position.set(court.x1 - 0.35, 0, court.z1 - 0.5);
+    rack.add(box(0.78, 0.06, 0.46, lam(0x2a2e36))).position.set(0, 0.5, 0);   // tray
+    for (const sx of [-0.34, 0.34]) for (const sz of [-0.2, 0.2]) {
+      const leg = box(0.05, 0.5, 0.05, lam(0x20242a)); leg.position.set(sx, 0.25, sz); rack.add(leg);
+    }
+    rack.add(box(0.78, 0.22, 0.05, lam(0x20242a))).position.set(0, 0.62, -0.2);  // back lip
+    for (let i = 0; i < 4; i++) {
+      const rb = new THREE.Mesh(new THREE.SphereGeometry(ballR, 16, 12), ballMat);
+      rb.position.set(-0.24 + i * 0.16, 0.5 + ballR, 0.02); rack.add(rb);
+    }
+    add(rack);
+
+    // --- ball pool (10 in flight) + the one in your hands ---
     function mkBall() {
-      const m = new THREE.Mesh(new THREE.SphereGeometry(ballR, 18, 14),
-        new THREE.MeshLambertMaterial({ map: ballTex }));
+      const m = new THREE.Mesh(new THREE.SphereGeometry(ballR, 18, 14), ballMat.clone());
       m.visible = false; add(m); return m;
     }
-    const balls = [mkBall(), mkBall(), mkBall(), mkBall(), mkBall(), mkBall()];
+    const balls = []; for (let i = 0; i < 10; i++) balls.push(mkBall());
     const handBall = mkBall();
 
-    // aim guide: a faint parabola
+    // --- aim guide: a faint parabola while you wind up ---
     const ARC_N = 64;
     const arcGeo = new THREE.BufferGeometry();
     arcGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(ARC_N * 3), 3));
     const arcLine = new THREE.Line(arcGeo, new THREE.LineBasicMaterial({
-      color: 0xffd23c, transparent: true, opacity: 0.34, depthTest: false }));
+      color: 0xffd23c, transparent: true, opacity: 0.4, depthTest: false }));
     arcLine.renderOrder = 998; arcLine.visible = false; add(arcLine);
     function setArc(pts) {
       const pos = arcGeo.attributes.position, n = pts.length;
@@ -2918,92 +2955,10 @@ export function buildWorld() {
     }
     function hideGuide() { arcLine.visible = false; }
 
-    // shot-clock panel above the backboard
-    const dispCanvas = document.createElement("canvas");
-    dispCanvas.width = 512; dispCanvas.height = 256;
-    const dispCtx = dispCanvas.getContext("2d");
-    const dispTex = new THREE.CanvasTexture(dispCanvas); dispTex.colorSpace = THREE.SRGBColorSpace;
-    function setDisplay(d) {
-      const g = dispCtx; g.fillStyle = "#070a10"; g.fillRect(0, 0, 512, 256);
-      g.strokeStyle = "#ff7a1f"; g.lineWidth = 7; g.strokeRect(5, 5, 502, 246);
-      g.textAlign = "center"; g.textBaseline = "middle";
-      if (!d || d.phase === "idle") {
-        g.fillStyle = "#ff7a1f"; g.font = "700 40px monospace"; g.fillText("🏀 HOOPS", 256, 90);
-        g.fillStyle = "#3ce47e"; g.font = "700 34px monospace"; g.fillText("▸ PLAY", 256, 160);
-        dispTex.needsUpdate = true; return;
-      }
-      // TIME on the left, SCORE on the right
-      g.fillStyle = "#7f8a99"; g.font = "700 22px monospace";
-      g.fillText("TIME", 130, 44); g.fillText("SCORE", 382, 44);
-      g.fillStyle = d.ready ? "#ffd23c" : (d.time <= 10 ? "#ff5a5a" : "#eaf3ff");
-      g.font = "900 96px monospace"; g.fillText(d.ready ? (d.time > 0 ? String(d.time) : "GO!") : String(d.time), 130, 120);
-      g.fillStyle = "#ffd23c"; g.font = "900 96px monospace"; g.fillText(String(d.score), 382, 120);
-      g.fillStyle = "#7f8a99"; g.font = "700 24px monospace";
-      g.fillText(`${d.made}/${d.shots} made`, 256, 210);
-      if (d.streak >= 3) { g.fillStyle = "#ff7a1f"; g.font = "700 26px monospace"; g.fillText("🔥 ON FIRE", 256, 238); }
-      dispTex.needsUpdate = true;
-    }
-    setDisplay(null);
-    const dispPanel = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.75),
-      new THREE.MeshBasicMaterial({ map: dispTex }));
-    dispPanel.position.set(BX, 3.75, AR.z1 - 0.05); dispPanel.rotation.y = Math.PI; add(dispPanel);
-    add(box(1.6, 0.85, 0.05, lam(0x05060a))).position.set(BX, 3.75, AR.z1 - 0.03);
-
-    // leaderboard panel, east side toward the darts
-    const lbCanvas = document.createElement("canvas");
-    lbCanvas.width = 320; lbCanvas.height = 460;
-    const lbCtx = lbCanvas.getContext("2d");
-    const lbTex = new THREE.CanvasTexture(lbCanvas); lbTex.colorSpace = THREE.SRGBColorSpace;
-    function setLeaders(rows) {
-      const g = lbCtx; g.fillStyle = "#06080f"; g.fillRect(0, 0, 320, 460);
-      g.strokeStyle = "#ff7a1f"; g.lineWidth = 6; g.strokeRect(4, 4, 312, 452);
-      g.textAlign = "center"; g.fillStyle = "#ff7a1f"; g.font = "700 26px monospace";
-      g.fillText("★ HOOPS ★", 160, 40); g.font = "700 18px monospace"; g.fillStyle = "#7f8a99";
-      g.fillText("TOP SHOOTERS", 160, 66);
-      g.textAlign = "left"; const list = (rows || []).slice(0, 10);
-      if (!list.length) { g.textAlign = "center"; g.fillStyle = "#5a6678"; g.font = "700 18px monospace";
-        g.fillText("no shooters yet —", 160, 230); g.fillText("be the first", 160, 256); lbTex.needsUpdate = true; return; }
-      for (let i = 0; i < list.length; i++) {
-        const y = 104 + i * 35;
-        g.fillStyle = i === 0 ? "#ffd23c" : "#dfe7f0"; g.font = "700 20px monospace";
-        g.fillText(`${i + 1}.`, 18, y);
-        g.fillText((list[i].name || "—").slice(0, 11), 52, y);
-        g.textAlign = "right"; g.fillStyle = "#ff9a4f"; g.fillText(String(list[i].score), 300, y); g.textAlign = "left";
-      }
-      lbTex.needsUpdate = true;
-    }
-    setLeaders(null);
-    const lbPanel = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 1.44),
-      new THREE.MeshBasicMaterial({ map: lbTex }));
-    lbPanel.position.set(BX + 1.55, 2.3, AR.z1 - 0.05); lbPanel.rotation.y = Math.PI; add(lbPanel);
-    add(box(1.1, 1.54, 0.05, lam(0x05060a))).position.set(BX + 1.55, 2.3, AR.z1 - 0.03);
-
-    // PLAY button (west side) + a click target over the shooting area
-    function wallBtn(label, col, x, y, key) {
-      const gb = new THREE.Group(); const bw = 0.62, bh = 0.3;
-      gb.add(box(bw, bh, 0.07, lam(0x0a0d14)));
-      const fc = new THREE.Mesh(new THREE.PlaneGeometry(bw * 0.9, bh * 0.74),
-        new THREE.MeshBasicMaterial({ map: canvasTex(256, 110, (g, cw, ch) => {
-          g.fillStyle = "#070a10"; g.fillRect(0, 0, cw, ch);
-          g.strokeStyle = col; g.lineWidth = 6; g.strokeRect(6, 6, cw - 12, ch - 12);
-          g.fillStyle = col; g.font = "700 50px monospace"; g.textAlign = "center"; g.textBaseline = "middle";
-          g.fillText(label, cw / 2, ch / 2 + 2);
-        }) }));
-      fc.position.z = -0.037; fc.rotation.y = Math.PI; gb.add(fc);
-      const hm = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, 0.26), new THREE.MeshBasicMaterial({ visible: false }));
-      hm.userData[key] = true; gb.add(hm);
-      gb.position.set(x, y, AR.z1 - 0.06); add(gb); return hm;
-    }
-    const playHit = wallBtn("PLAY", "#3ce47e", BX - 1.5, 1.5, "hoopsPlay");
-    const hit = new THREE.Mesh(new THREE.BoxGeometry(1.6, 2.2, 0.4), new THREE.MeshBasicMaterial({ visible: false }));
-    hit.position.set(BX, 1.5, ocheZ + 0.4); hit.userData.hoops = true; add(hit);
-
     return {
-      rim: { x: BX, y: rimY, z: rimZ }, rimR, ballR,
-      backboard: { z: BBz, x0: BX - 0.64, x1: BX + 0.64, y0: 2.46, y1: 3.38 },
-      oche: { x: BX, z: ocheZ, eyeY }, floorY: 0,
-      balls, handBall, setArc, hideGuide, swish: pulseNet, setDisplay, setLeaders,
-      hit, playHit,
+      rim: { x: BX, y: rimY, z: rimZ }, rimR, ballR, faceSign: 1, floorY: 0,
+      backboard: { z: BBz, x0: BX - 0.64, x1: BX + 0.64, y0: 2.48, y1: 3.40 },
+      court, balls, handBall, setArc, hideGuide, swish: pulseNet,
     };
   })();
 

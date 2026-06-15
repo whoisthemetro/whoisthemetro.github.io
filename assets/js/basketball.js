@@ -1,132 +1,100 @@
 /* ============================================================
-   THE METRO — ARCADE BASKETBALL (pop-a-shot)
-   A 60-second rapid-fire shootout against the clock. You stand at
-   the line and arc a 3D ball at the hoop — gravity does the rest.
-   The skill is the arc: too short clanks the front rim, too long
-   banks long off the back; a clean swish is worth more than a
-   rim-rattle. A slight hand-sway + the clock keep it honest, so the
-   leaderboard means something.
+   THE METRO — BASKETBALL (free-roam pop-a-shot, no scoreboard)
+   Not a game — just a hoop, a ball rack and a little court. Walk
+   onto the court and you've always got a rock in your hands; face
+   the rim, HOLD to wind up a shot, release to let it fly. Move
+   around for different looks. Gravity arcs it; a clean swish feels
+   great and that's the whole reward.
 
-   world.js owns the meshes (hoop, rim, net, balls, the guide arc,
-   the shot-clock + leaderboard panels); this file is the game — aim,
-   power, the projectile sim with rim/backboard/floor bounces, scoring
-   and the timer. No three.js here; mesh positions are plain writes.
+   You shoot with your own first-person view (no locked camera) —
+   the ball launches where you're FACING with a natural loft, and
+   how long you hold sets the power (= range). A faint arc previews
+   the shot while you wind up. world.js owns every mesh; this file
+   is the throw + the projectile sim with rim/backboard/floor
+   bounces. No three.js here — mesh positions are plain writes.
    ============================================================ */
 
 const G = 9.8;
 const DT = 1 / 180;            // fixed sim substep
-const MIN_SPEED = 5.0;         // m/s at no charge — makeable band (~6.0-6.3) sits mid-bar
-const MAX_SPEED = 7.0;         // m/s at full charge
-const CHARGE_T = 0.85;         // seconds hold to full power
-const REST_POWER = 0.55;       // preview-arc power before you charge
-const SWAY_AMP = 0.009;        // radians (~0.5°) — a little wobble
-const RELOAD = 0.48;           // seconds between a shot and the next ball in hand
-const GAME_TIME = 60;          // a real arcade minute
-const READY_TIME = 2.2;        // 3-2-1 countdown before the clock starts
-const FOV = 56;                // frames the hoop + the arc apex
-const CAM_PITCH = 0.45;        // look UP at the hoop (not along the steep launch)
-const WIRE_R = 0.02;           // rim tube radius (for bounce maths)
+const MIN_SPEED = 4.4;         // m/s, a soft floater up close
+const MAX_SPEED = 10.6;        // m/s, a full-court heave — it goes HIGH and FAR
+const CHARGE_T = 0.95;         // seconds hold to full power
+const LOFT_BASE = 0.82;        // ~47° launch even looking level (a real arc)
+const LOFT_LOOK = 0.42;        // looking up adds loft
+const RELOAD = 0.32;           // a new ball in your hands this fast
+const WIRE_R = 0.02;
 const RIM_E = 0.46, BB_E = 0.55, FLOOR_E = 0.5;
-const SWISH = 3, RIMIN = 2;    // clean swish beats a rim-rattle make
 
 export function initBasket(h, opts = {}) {
   const snd = opts.sound || {};
-  const hud = opts.hud || {};
-  const cam = opts.camera;
-  const onScore = opts.onScore || (() => {});      // (finalScore) => submit to leaderboard
-  let youName = (opts.youName || "YOU").slice(0, 14);
-
-  const rim = h.rim;                               // {x,y,z} rim centre (world)
-  const rimR = h.rimR, ballR = h.ballR;
-  const BB = h.backboard;                          // {z, x0, x1, y0, y1} front face
+  const onBucket = opts.onBucket || (() => {});
+  const court = h.court;                  // {x0,x1,z0,z1}
+  const rim = h.rim, rimR = h.rimR, ballR = h.ballR, BB = h.backboard;
   const floorY = h.floorY ?? 0;
-  const eyeY = h.oche.eyeY, oX = h.oche.x, oZ = h.oche.z;
-  const P0 = { x: oX, y: eyeY - 0.12, z: oZ + 0.12 };  // the hand (centred on the rim)
-  const meshes = h.balls;                          // pool of ball meshes
+  const south = h.faceSign || 1;          // +1: rim is toward -z from the shooter (south wall)
+  const meshes = h.balls;
   const handMesh = h.handBall;
 
-  let playing = false, started = false;
-  let phase = "idle";          // idle | ready | play | over
-  let timeLeft = GAME_TIME, readyCd = 0;
-  let score = 0, made = 0, shots = 0, streak = 0, best = 0;
-  let aimYaw = 0, aimPitch = 0.95, power = 0, charging = false, swayT = 0;
-  let inHand = true, reloadCd = 0;
-  let overLatch = false;
-  const balls = [];            // active flying balls
-  let meshCursor = 0;
+  let hasBall = false, reloadCd = 0;
+  let charging = false, charge = 0, prevPressed = false;
+  let streak = 0;
+  const balls = [];
+  let cursor = 0;
+  let lastCtx = null;
 
-  function sway() {
-    return {
-      y: SWAY_AMP * (Math.sin(swayT * 1.4) * 0.6 + Math.sin(swayT * 0.83 + 1.0) * 0.4),
-      p: SWAY_AMP * (Math.sin(swayT * 1.1 + 1.7) * 0.6 + Math.sin(swayT * 0.67 + 0.3) * 0.4),
-    };
-  }
-  function dir(yaw, pitch) {
-    const cp = Math.cos(pitch);
-    return { x: Math.sin(yaw) * cp, y: Math.sin(pitch), z: Math.cos(yaw) * cp };
-  }
-  function speedFor(p) { return MIN_SPEED + (MAX_SPEED - MIN_SPEED) * p; }
+  const inCourt = (x, z) => x > court.x0 && x < court.x1 && z > court.z0 && z < court.z1;
 
-  /* ---- the aim guide: a faint parabola (no make/miss tell — read it) ---- */
-  function arcPts(yaw, pitch, speed) {
-    const d = dir(yaw, pitch);
-    let x = P0.x, y = P0.y, z = P0.z, vx = d.x * speed, vy = d.y * speed, vz = d.z * speed;
+  function launchDir(yaw, pitch) {
+    const lp = Math.max(0.45, Math.min(1.25, LOFT_BASE + Math.max(0, pitch) * LOFT_LOOK));
+    const cp = Math.cos(lp);
+    return { x: -Math.sin(yaw) * cp, y: Math.sin(lp), z: -Math.cos(yaw) * cp };
+  }
+  function speedFor(c) { return MIN_SPEED + (MAX_SPEED - MIN_SPEED) * c; }
+
+  // where the ball sits in your hands (front-low of the camera)
+  function handPos(ctx) {
+    const fx = -Math.sin(ctx.yaw), fz = -Math.cos(ctx.yaw);   // horizontal facing
+    return { x: ctx.x + fx * 0.42, y: ctx.eyeY - 0.32, z: ctx.z + fz * 0.42 };
+  }
+
+  function arcPts(origin, dir, speed) {
+    let x = origin.x, y = origin.y, z = origin.z, vx = dir.x * speed, vy = dir.y * speed, vz = dir.z * speed;
     const pts = [{ x, y, z }];
-    for (let s = 0; s < 360; s++) {
+    for (let s = 0; s < 400; s++) {
       vy -= G * DT; x += vx * DT; y += vy * DT; z += vz * DT;
-      if (s % 2 === 0) pts.push({ x, y, z });
-      if (y < floorY || z > BB.z + 0.25) break;
+      if (s % 3 === 0) pts.push({ x, y, z });
+      if (y < floorY) break;
     }
     return pts;
   }
-  function showAim() {
-    const s = sway();
-    h.setArc(arcPts(aimYaw + s.y, aimPitch + s.p, speedFor(charging ? power : REST_POWER)));
-  }
 
-  function placeCamera() {
-    if (!cam) return;
-    cam.position.set(oX, eyeY, oZ);
-    cam.rotation.order = "YXZ";
-    cam.rotation.y = aimYaw + Math.PI;          // pan left/right with aim
-    // look at the hoop, not along the steep launch angle — the arc shows the
-    // shot; the view just keeps the rim framed (with a little pitch response)
-    cam.rotation.x = CAM_PITCH + (aimPitch - 0.95) * 0.3;
-    cam.rotation.z = 0;
-    if (cam.fov !== FOV) { cam.fov = FOV; cam.updateProjectionMatrix(); }
-  }
-
-  /* ---- shooting ---- */
-  function shoot() {
-    const s = sway();
-    const d = dir(aimYaw + s.y, aimPitch + s.p), sp = speedFor(power);
-    const mi = meshCursor; meshCursor = (meshCursor + 1) % meshes.length;
-    balls.push({ mi, x: P0.x, y: P0.y, z: P0.z, vx: d.x * sp, vy: d.y * sp, vz: d.z * sp,
+  function throwBall(ctx) {
+    const o = handPos(ctx), d = launchDir(ctx.yaw, ctx.pitch), sp = speedFor(charge);
+    const mi = cursor; cursor = (cursor + 1) % meshes.length;
+    balls.push({ mi, x: o.x, y: o.y, z: o.z, vx: d.x * sp, vy: d.y * sp, vz: d.z * sp,
       scored: false, touchedRim: false, bounces: 0, age: 0, dead: false });
-    inHand = false; reloadCd = RELOAD; shots++;
-    snd.shoot && snd.shoot(power);
+    hasBall = false; reloadCd = RELOAD;
+    snd.shoot && snd.shoot(charge);
   }
 
   function onMake(b) {
-    streak++;
-    const fire = streak >= 3;
-    const pts = (b.touchedRim ? RIMIN : SWISH) + (fire ? 1 : 0);
-    score += pts; made++;
+    streak = b.touchedRim ? 1 : streak + 1;   // a clean swish keeps a swish-streak
     snd.score && snd.score(b.touchedRim ? 0 : 1);
     h.swish && h.swish();
-    hud.pop && hud.pop(`+${pts}${fire ? "  🔥" : b.touchedRim ? "" : "  SWISH!"}`);
+    onBucket({ swish: !b.touchedRim, streak });
   }
 
   function stepBall(b) {
     const py = b.y;
     b.vy -= G * DT; b.x += b.vx * DT; b.y += b.vy * DT; b.z += b.vz * DT; b.age += DT;
 
-    // backboard (bank shots)
-    if (b.vz > 0 && b.z + ballR > BB.z && b.x > BB.x0 && b.x < BB.x1 && b.y > BB.y0 && b.y < BB.y1) {
-      b.z = BB.z - ballR; b.vz = -b.vz * BB_E; b.vx *= 0.8; b.vy *= 0.92; b.touchedRim = true;
+    // backboard (bank shots) — front face toward the court
+    const intoBoard = south > 0 ? (b.vz < 0 && b.z - ballR < BB.z) : (b.vz > 0 && b.z + ballR > BB.z);
+    if (intoBoard && b.x > BB.x0 && b.x < BB.x1 && b.y > BB.y0 && b.y < BB.y1) {
+      b.z = BB.z + south * ballR; b.vz = -b.vz * BB_E; b.vx *= 0.8; b.vy *= 0.92; b.touchedRim = true;
       snd.bank && snd.bank();
     }
-    // rim — nearest point on the ring, bounce off it
+    // rim — nearest point on the ring
     const dx = b.x - rim.x, dz = b.z - rim.z, hd = Math.hypot(dx, dz);
     if (hd > 1e-4) {
       const nx = rim.x + dx / hd * rimR, nz = rim.z + dz / hd * rimR;
@@ -139,84 +107,19 @@ export function initBasket(h, opts = {}) {
         b.touchedRim = true; snd.rim && snd.rim();
       }
     }
-    // score: dropping down through the hoop
-    if (!b.scored && py > rim.y && b.y <= rim.y && b.vy < 0 && hd < rimR - ballR * 0.15) onMake(b);
-    // floor
+    if (!b.scored && py > rim.y && b.y <= rim.y && b.vy < 0 && hd < rimR - ballR * 0.15) { b.scored = true; onMake(b); }
     if (b.y - ballR <= floorY) {
-      b.y = floorY + ballR; b.vy = -b.vy * FLOOR_E; b.vx *= 0.7; b.vz *= 0.7; b.bounces++;
+      b.y = floorY + ballR; b.vy = -b.vy * FLOOR_E; b.vx *= 0.72; b.vz *= 0.72; b.bounces++;
       if (Math.abs(b.vy) > 1) snd.bounce && snd.bounce();
     }
-    if (b.bounces > 2 || b.age > 3.8 || (b.scored && b.y < rim.y - 0.6)) {
-      if (!b.scored) streak = 0;            // a clean miss snaps the streak
-      b.dead = true;
-    }
-  }
-
-  /* ---- lifecycle ---- */
-  function newGame() {
-    for (const b of balls) meshes[b.mi].visible = false;
-    balls.length = 0;
-    score = 0; made = 0; shots = 0; streak = 0;
-    timeLeft = GAME_TIME; readyCd = READY_TIME; phase = "ready";
-    aimYaw = 0; aimPitch = 0.95; power = 0; charging = false;
-    inHand = false; reloadCd = 0.3;
-    started = true;
-    display();
-  }
-  function endGame() {
-    phase = "over"; best = Math.max(best, score);
-    inHand = false; handMesh.visible = false;
-    h.hideGuide();
-    snd.buzzer && snd.buzzer();
-    onScore(score);                          // push to the leaderboard
-    hud.over && hud.over(`TIME! you scored ${score} — ${made}/${shots} made. PLAY again?`);
-    display();
-  }
-
-  function display() {
-    h.setDisplay && h.setDisplay({
-      phase, score, made, shots, streak,
-      time: phase === "ready" ? Math.ceil(readyCd) : Math.ceil(timeLeft),
-      ready: phase === "ready",
-    });
-    hud.status && hud.status(
-      phase === "over" ? `FINAL ${score}` :
-      phase === "ready" ? "GET READY…" :
-      `${Math.ceil(timeLeft)}s   ·   ${score}` + (streak >= 3 ? "   🔥 ON FIRE" : ""));
+    if (b.bounces > 3 || b.age > 4.5 || (b.scored && b.y < rim.y - 0.6)) { if (!b.scored) streak = 0; b.dead = true; }
   }
 
   /* ---- per-frame ---- */
-  function update(dt, input) {
-    if (!playing) return;
+  function tick(dt, ctx) {
     dt = Math.min(dt, 0.05);
-    swayT += dt;
-    placeCamera();
-
-    if (phase === "over") {
-      if (input && input.charging && !overLatch) { overLatch = true; newGame(); }
-      if (input && !input.charging) overLatch = false;
-      return;
-    }
-    if (phase === "ready") {
-      readyCd -= dt;
-      if (input) { aimYaw += input.aimX || 0; aimPitch = clampPitch(aimPitch + (input.aimY || 0)); }
-      showAim();
-      if (Math.ceil(readyCd) !== lastReadyShown) { lastReadyShown = Math.ceil(readyCd); display(); }
-      if (readyCd <= 0) { phase = "play"; inHand = true; display(); }
-      return;
-    }
-
-    // phase === "play"
-    timeLeft -= dt;
-    if (input) {
-      aimYaw += input.aimX || 0;
-      aimPitch = clampPitch(aimPitch + (input.aimY || 0));
-      if (input.charging) { charging = true; power = Math.min(1, (power || 0) + dt / CHARGE_T); }
-      else if (charging) { const p = power; charging = false; power = 0; if (p > 0.05 && inHand) shoot(); }
-    }
-    if (!inHand) { reloadCd -= dt; if (reloadCd <= 0) inHand = true; }
-
-    // step every ball through fixed substeps
+    lastCtx = ctx;
+    // flying balls keep going even if you wander off the court
     let acc = dt;
     while (acc >= DT) { for (const b of balls) if (!b.dead) stepBall(b); acc -= DT; }
     for (let i = balls.length - 1; i >= 0; i--) {
@@ -224,38 +127,40 @@ export function initBasket(h, opts = {}) {
       if (b.dead) { m.visible = false; balls.splice(i, 1); }
       else { m.position.set(b.x, b.y, b.z); m.visible = true; }
     }
-    // the ball in your hands, ready to fire
-    if (inHand) { handMesh.position.set(P0.x, P0.y - 0.02, P0.z); handMesh.visible = true; }
-    else handMesh.visible = false;
 
-    showAim();
-    hud.power && hud.power(charging ? power : 0);
-    display();
+    const active = ctx && ctx.locked && inCourt(ctx.x, ctx.z);
+    if (!active) {
+      hasBall = false; charging = false; charge = 0; prevPressed = false;
+      handMesh.visible = false; h.hideGuide();
+      return;
+    }
+    if (!hasBall) { reloadCd -= dt; if (reloadCd <= 0) hasBall = true; }
 
-    if (timeLeft <= 0) endGame();
-  }
-  let lastReadyShown = -1;
-  function clampPitch(p) { return Math.max(0.5, Math.min(1.3, p)); }
+    // hold to wind up, release to shoot
+    if (hasBall && ctx.pressed) { charging = true; charge = Math.min(1, charge + dt / CHARGE_T); }
+    else if (charging && !ctx.pressed) { throwBall(ctx); charging = false; charge = 0; }
 
-  /* ---- dock / undock ---- */
-  function dock() {
-    playing = true;
-    if (!started || phase === "over") newGame();    // a fresh minute
-    else display();                                 // resume a paused run
-    return h.oche;
+    if (hasBall) {
+      const hp = handPos(ctx);
+      handMesh.position.set(hp.x, hp.y - (charging ? charge * 0.08 : 0), hp.z); handMesh.visible = true;
+      if (charging) {
+        h.setArc(arcPts(hp, launchDir(ctx.yaw, ctx.pitch), speedFor(charge)));
+        opts.hud && opts.hud.power && opts.hud.power(charge);
+      } else { h.hideGuide(); opts.hud && opts.hud.power && opts.hud.power(0); }
+    } else { handMesh.visible = false; h.hideGuide(); }
+    prevPressed = ctx.pressed;
   }
-  function undock() {                                // leaving pauses the clock
-    playing = false; charging = false; power = 0;
-    handMesh.visible = false; h.hideGuide();
-    if (cam) { cam.fov = opts.baseFov || 72; cam.updateProjectionMatrix(); }
+
+  function reset() {
+    for (const b of balls) meshes[b.mi].visible = false;
+    balls.length = 0; hasBall = false; charging = false; charge = 0; streak = 0; handMesh.visible = false; h.hideGuide();
   }
-  function reset() { newGame(); }
 
   return {
-    dock, undock, update, reset,
-    isPlaying: () => playing,
-    setName: (n) => { youName = (n || "YOU").slice(0, 14); },
-    _debugShoot: (p, pitch) => { if (pitch != null) aimPitch = pitch; power = Math.max(0, Math.min(1, p)); if (phase === "play") { inHand = true; shoot(); } power = 0; },
-    _debug: () => ({ phase, timeLeft: +timeLeft.toFixed(1), score, made, shots, streak, balls: balls.length, inHand }),
+    tick, reset,
+    wantsPointer: () => !!(lastCtx && lastCtx.locked && inCourt(lastCtx.x, lastCtx.z)),
+    onCourt: () => !!(lastCtx && inCourt(lastCtx.x, lastCtx.z)),
+    _debug: () => ({ hasBall, charging, charge: +charge.toFixed(2), streak, balls: balls.length }),
+    _debugThrow: (c) => { if (!lastCtx) return; hasBall = true; charge = Math.max(0, Math.min(1, c)); throwBall(lastCtx); charge = 0; charging = false; },
   };
 }

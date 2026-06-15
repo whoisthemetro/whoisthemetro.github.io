@@ -274,7 +274,6 @@ controls.onLockChange((locked) => {
   } else if (entered && !modalOpen) {
     if (controls.pooling) leavePool();   // ESC drops you out of the table first
     if (controls.aiming && controls.aimGame === 'darts') leaveDarts();
-    if (controls.aiming && controls.aimGame === 'hoops') leaveHoops();
     if (carrying) { cancelCarry(); toast("put it back — re-hang it again when you're ready"); }
     if (vacuuming) setVacuuming(false);
     show(paused);
@@ -326,7 +325,7 @@ canvas.addEventListener("click", () => {
 function castAt(ndcX, ndcY) {
   raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera);
   // doors are included as blockers so notes can't be pinned onto them
-  const targets = [cat.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, world.echoPoster, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.guitarVoiceHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, world.pool.hit, world.pool.resetHit, world.pool.joinHit, world.darts.hit, world.darts.joinHit, world.darts.resetHit, world.hoops.hit, world.hoops.playHit, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.radioHits, ...world.laRadioHits, ...world.filterPedalHit, ...world.vacuumHits, ...notesWall.raycastTargets(), ...world.blockers];
+  const targets = [cat.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, world.echoPoster, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.guitarVoiceHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, world.pool.hit, world.pool.resetHit, world.pool.joinHit, world.darts.hit, world.darts.joinHit, world.darts.resetHit, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.radioHits, ...world.laRadioHits, ...world.filterPedalHit, ...world.vacuumHits, ...notesWall.raycastTargets(), ...world.blockers];
   const hits = raycaster.intersectObjects(targets, false);
   return hits[0] || null;
 }
@@ -594,89 +593,59 @@ function leaveDarts() {
   if (dartShootBtn) dartShootBtn.style.display = "none";
 }
 
-/* ---- BASKETBALL: an arcade pop-a-shot on the north wall. 60-second
-   clock, rapid-fire 3D arc shooting, its own leaderboard. Reuses the
-   shared 2-axis aim mode; basketball.js runs the game + the projectile
-   sim with rim/backboard/floor bounces. ---- */
+/* ---- BASKETBALL: free-roam shoot-around on the lil court (south wall).
+   Not a game — walk onto the court and you've always got a ball; HOLD to
+   wind up, release to shoot where you're facing. basketball.js runs the
+   throw + the projectile sim; the camera stays your own (no lock). ---- */
 const basketSound = {
   shoot: () => { try { drumHit(2); } catch (e) {} },
   score: (clean) => { try { discSound("score"); if (clean) discSound("score"); } catch (e) {} },
   rim: () => { try { drumHit(4); } catch (e) {} },
   bank: () => { try { drumHit(3); } catch (e) {} },
   bounce: () => { try { drumHit(1); } catch (e) {} },
-  buzzer: () => { try { goalHorn(); } catch (e) {} },
 };
-const basketHudEl = document.createElement("div");
-basketHudEl.style.cssText =
-  "position:fixed;left:50%;top:14px;transform:translateX(-50%);z-index:55;display:none;" +
-  "text-align:center;font:800 17px monospace;color:#ffe9d2;text-shadow:0 1px 3px #000;pointer-events:none";
-basketHudEl.innerHTML =
-  '<div id="bb-status">HOOPS</div>' +
-  '<div style="margin:6px auto 0;width:180px;height:9px;border:1px solid #8a5a3a;border-radius:6px;overflow:hidden;background:rgba(0,0,0,.4)">' +
-  '<div id="bb-power" style="height:100%;width:0;background:linear-gradient(90deg,#3bd17a,#ffd23c,#e23a52)"></div></div>' +
-  '<div id="bb-pop" style="margin-top:5px;font-weight:800;font-size:20px;color:#ffd23c;min-height:22px"></div>' +
-  '<div id="bb-hint" style="font-weight:400;opacity:.8;font-size:12px"></div>';
-document.body.appendChild(basketHudEl);
-const bbStatusEl = basketHudEl.querySelector("#bb-status");
-const bbPowerEl = basketHudEl.querySelector("#bb-power");
-const bbPopEl = basketHudEl.querySelector("#bb-pop");
-const bbHintEl = basketHudEl.querySelector("#bb-hint");
-let bbPopTimer = null;
+// a slim power bar at the bottom, shown only while you're winding up a shot
+const bbPowerWrap = document.createElement("div");
+bbPowerWrap.style.cssText =
+  "position:fixed;left:50%;bottom:120px;transform:translateX(-50%);z-index:55;display:none;" +
+  "width:200px;height:11px;border:1px solid #8a5a3a;border-radius:7px;overflow:hidden;background:rgba(0,0,0,.45)";
+bbPowerWrap.innerHTML = '<div id="bb-power" style="height:100%;width:0;background:linear-gradient(90deg,#3bd17a,#ffd23c,#e23a52)"></div>';
+document.body.appendChild(bbPowerWrap);
+const bbPowerEl = bbPowerWrap.querySelector("#bb-power");
 const basketHud = {
-  status: (s) => { bbStatusEl.textContent = s; },
-  power: (frac) => { bbPowerEl.style.width = Math.round(frac * 100) + "%"; },
-  pop: (msg) => {
-    bbPopEl.textContent = msg;
-    clearTimeout(bbPopTimer); bbPopTimer = setTimeout(() => { bbPopEl.textContent = ""; }, 850);
+  power: (frac) => {
+    if (frac > 0) { bbPowerWrap.style.display = "block"; bbPowerEl.style.width = Math.round(frac * 100) + "%"; }
+    else bbPowerWrap.style.display = "none";
   },
-  over: (msg) => { bbHintEl.textContent = msg; },
 };
-function refreshHoopScores() {
-  store.listScores("hoops", 10).then(rows => world.hoops.setLeaders(rows)).catch(() => {});
-}
 const hoopGame = initBasket(world.hoops, {
-  sound: basketSound, hud: basketHud, camera, baseFov: camera.fov,
-  youName: identity.name || "YOU",
-  onScore: (final) => {
-    if (final <= 0) return;
-    store.submitScore("hoops", identity.name || "YOU", final, identity.uid)
-      .then(refreshHoopScores).catch(() => {});
+  sound: basketSound, hud: basketHud,
+  onBucket: ({ swish, streak }) => {
+    toast(swish ? (streak >= 3 ? `SWISH! ${streak} in a row 🔥` : "SWISH! 🏀") : "bucket 🏀");
   },
 });
-let bbShootBtn = null;
+// once you walk onto the court a one-time hint nudges how to shoot
+let hoopHinted = false;
+// mobile: a SHOOT button (canvas drag stays look-only) — hold to wind up,
+// shown only while you're on the court
+let hoopShootBtn = null;
 if (IS_TOUCH) {
-  bbShootBtn = document.createElement("button");
-  bbShootBtn.textContent = "● SHOOT";
-  bbShootBtn.style.cssText =
+  hoopShootBtn = document.createElement("button");
+  hoopShootBtn.textContent = "🏀";
+  hoopShootBtn.style.cssText =
     "position:fixed;right:18px;bottom:88px;z-index:60;display:none;width:104px;height:104px;border:0;" +
-    "border-radius:52px;font:800 16px monospace;background:#d4631f;color:#fff;box-shadow:0 4px 14px rgba(0,0,0,.45)";
-  const press = (v) => (e) => { e.preventDefault(); controls.aimCharge = v; };
-  bbShootBtn.addEventListener("pointerdown", press(true));
-  bbShootBtn.addEventListener("pointerup", press(false));
-  bbShootBtn.addEventListener("pointercancel", press(false));
-  document.body.appendChild(bbShootBtn);
-}
-function sitAtHoops() {
-  hoopGame.setName(identity.name || "YOU");
-  controls.enterAim(); controls.aimGame = "hoops";
-  hoopGame.dock();
-  hideFlightStrip();
-  basketHudEl.style.display = "block";
-  if (bbShootBtn) bbShootBtn.style.display = "block";
-  toast(IS_TOUCH ? "drag to aim · hold SHOOT to set the arc — drain as many as you can!"
-                 : "move mouse to aim · hold click to set the arc, release to shoot — beat the clock!");
-}
-function leaveHoops() {
-  if (!controls.aiming || controls.aimGame !== "hoops") return;
-  hoopGame.undock();
-  controls.exitAim();
-  basketHudEl.style.display = "none";
-  if (bbShootBtn) bbShootBtn.style.display = "none";
+    "border-radius:52px;font:800 34px monospace;background:#d4631f;color:#fff;box-shadow:0 4px 14px rgba(0,0,0,.45)";
+  const press = (v) => (e) => { e.preventDefault(); controls.pointerDown = v; };
+  hoopShootBtn.addEventListener("pointerdown", press(true));
+  hoopShootBtn.addEventListener("pointerup", press(false));
+  hoopShootBtn.addEventListener("pointercancel", press(false));
+  document.body.appendChild(hoopShootBtn);
 }
 
 let lastPetAt = 0;
 controls.onAction((ndcX, ndcY) => {
   if (controls.pooling || controls.aiming) return;   // at the table/board the mouse aims; clicks charge
+  if (hoopGame.wantsPointer()) return;               // on the court a press is a shot, not an interaction
   if (modalOpen) return;
   if (carrying) { dropCarried(); return; }   // a click while carrying sets it down
   if (vacuuming) { setVacuuming(false); return; }   // a click while vacuuming puts it away
@@ -733,10 +702,6 @@ controls.onAction((ndcX, ndcY) => {
     toast("fresh leg — 501, double out");
   } else if (hit.object.userData.darts && hit.distance < 3.5) {
     sitAtDarts();
-  } else if (hit.object.userData.hoopsPlay && hit.distance < 5) {
-    sitAtHoops();
-  } else if (hit.object.userData.hoops && hit.distance < 4) {
-    sitAtHoops();
   } else if (hit.object.userData.arcade && hit.distance < 3.2) {
     modalOpen = true;
     controls.unlock();
@@ -2676,8 +2641,7 @@ addEventListener("keydown", (e) => {
   const refreshScores = () =>
     store.listScores("defender", 8).then(rows => world.updateScores(rows)).catch(() => {});
   refreshScores();
-  refreshHoopScores();                       // the basketball cabinet's own board
-  store.onNewScore(() => { refreshScores(); refreshHoopScores(); });
+  store.onNewScore(refreshScores);
   setScoreHook((game, score) => {
     store.submitScore(game, (identity.name || "anon").slice(0, 24), score, identity.uid)
       .then(refreshScores)
@@ -2727,7 +2691,7 @@ addEventListener("keydown", (e) => {
 window.METRO_DEBUG = { renderer, camera, world, controls, THREE, cat, notesWall,
   uid: identity.uid, pool: poolGame, sitAtPool, leavePool,
   darts: dartGame, sitAtDarts, leaveDarts,
-  hoops: hoopGame, sitAtHoops, leaveHoops,
+  hoops: hoopGame,
   carry: { pick: pickUpNote, drop: dropCarried, state: () => carrying },
   booth: { dj: () => djState, canDJ: () => canDJ(), headcount: () => clubHeadcount(), live: () => voice.djLive() } };
 
@@ -2746,9 +2710,20 @@ renderer.setAnimationLoop(() => {
     dartGame.update(dt, { aimX: controls.aimDX, aimY: controls.aimDY, charging: controls.aimCharge });
     controls.aimDX = 0; controls.aimDY = 0;
   }
-  if (hoopGame.isPlaying()) {
-    hoopGame.update(dt, { aimX: controls.aimDX, aimY: controls.aimDY, charging: controls.aimCharge });
-    controls.aimDX = 0; controls.aimDY = 0;
+  // basketball is free-roam — tick it every frame with your live pose; it only
+  // does anything once you're standing on the court
+  if (!inBoat && !inArena && !inClub) {
+    hoopGame.tick(dt, {
+      x: controls.pos.x, z: controls.pos.z, yaw: controls.yaw, pitch: controls.pitch,
+      eyeY: 1.62, pressed: controls.pointerDown, locked: controls.locked,
+    });
+    const onCourt = hoopGame.onCourt();
+    if (onCourt && !hoopHinted) {
+      hoopHinted = true;
+      toast(IS_TOUCH ? "grab a ball — hold 🏀 to wind up, release to shoot"
+                     : "you've got a ball — HOLD click to wind up, release to shoot 🏀");
+    }
+    if (hoopShootBtn) hoopShootBtn.style.display = onCourt ? "block" : "none";
   }
   world.setParallax(camera.position.x);
   // aboard THE DESI the whole world rolls a little — set absolutely
