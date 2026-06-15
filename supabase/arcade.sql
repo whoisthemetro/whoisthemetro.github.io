@@ -7,11 +7,17 @@
 create table if not exists public.scores (
   id          uuid primary key default gen_random_uuid(),
   created_at  timestamptz not null default now(),
-  game        text not null check (game in ('defender', 'doom', 'tron', 'pong')),
+  game        text not null check (game in ('defender', 'doom', 'tron', 'pong', 'hoops')),
   name        text check (name is null or char_length(name) <= 24),
   score       integer not null check (score > 0 and score < 10000000)
 );
 create index if not exists scores_game_score on public.scores (game, score desc);
+
+-- widen the allowed games on an existing table too (idempotent) — add 'hoops'
+-- for the arcade basketball leaderboard
+alter table public.scores drop constraint if exists scores_game_check;
+alter table public.scores add constraint scores_game_check
+  check (game in ('defender', 'doom', 'tron', 'pong', 'hoops'));
 
 alter table public.scores enable row level security;
 

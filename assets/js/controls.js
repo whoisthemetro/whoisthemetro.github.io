@@ -21,12 +21,13 @@ export class Controls {
     this.pooling = false;
     this.poolRotate = 0;        // accumulated aim delta since last frame (game zeroes it)
     this.poolCharging = false;
-    // darts: like pool but the aim is 2-axis (yaw + pitch) — the game owns
-    // the camera and reads these per-frame deltas + the charge button
-    this.darting = false;
-    this.dartAimX = 0;
-    this.dartAimY = 0;
-    this.dartCharging = false;
+    // 2-axis aim mode shared by darts + basketball (any stand-and-throw game):
+    // the game owns the camera and reads these per-frame yaw/pitch deltas +
+    // the charge button
+    this.aiming = false;
+    this.aimDX = 0;
+    this.aimDY = 0;
+    this.aimCharge = false;
     // zero-g flight (THE CREW arena)
     this.zerog = false;
     this.arena = null;            // {x,y,z,hx,hy,hz} when flying
@@ -76,8 +77,8 @@ export class Controls {
   enterPool() { this.pooling = true; this.poolRotate = 0; this.poolCharging = false; this.keys.clear(); }
   exitPool() { this.pooling = false; this.poolCharging = false; this._applyCamera(); }
 
-  enterDarts() { this.darting = true; this.dartAimX = 0; this.dartAimY = 0; this.dartCharging = false; this.keys.clear(); }
-  exitDarts() { this.darting = false; this.dartCharging = false; this._applyCamera(); }
+  enterAim() { this.aiming = true; this.aimDX = 0; this.aimDY = 0; this.aimCharge = false; this.keys.clear(); }
+  exitAim() { this.aiming = false; this.aimCharge = false; this._applyCamera(); }
 
   /* ---------- desktop ---------- */
   _bindDesktop() {
@@ -90,7 +91,7 @@ export class Controls {
     document.addEventListener("mousemove", (e) => {
       if (!this.locked) return;
       if (this.pooling) { this.poolRotate -= e.movementX * 0.0032; return; }   // aim, not look
-      if (this.darting) { this.dartAimX -= e.movementX * 0.0026; this.dartAimY -= e.movementY * 0.0026; return; }
+      if (this.aiming) { this.aimDX -= e.movementX * 0.0026; this.aimDY -= e.movementY * 0.0026; return; }
       this.yaw -= e.movementX * 0.0023;
       this.pitch = clamp(this.pitch - e.movementY * 0.0023, -1.25, 1.25);
     });
@@ -103,14 +104,14 @@ export class Controls {
     // reads poolCharging). normal click still fires the crosshair action.
     document.addEventListener("mousedown", () => {
       if (this.pooling && this.locked) this.poolCharging = true;
-      if (this.darting && this.locked) this.dartCharging = true;
+      if (this.aiming && this.locked) this.aimCharge = true;
     });
     document.addEventListener("mouseup", () => {
       if (this.pooling) this.poolCharging = false;
-      if (this.darting) this.dartCharging = false;
+      if (this.aiming) this.aimCharge = false;
     });
     this.canvas.addEventListener("click", () => {
-      if (this.pooling || this.darting) return;
+      if (this.pooling || this.aiming) return;
       if (this.locked) this.actionFns.forEach(f => f(0, 0));   // crosshair center
     });
   }
@@ -159,7 +160,7 @@ export class Controls {
       look.moved += Math.abs(dx) + Math.abs(dy);
       look.x = e.clientX; look.y = e.clientY;
       if (this.pooling) { this.poolRotate -= dx * 0.006; return; }   // drag to aim
-      if (this.darting) { this.dartAimX -= dx * 0.005; this.dartAimY -= dy * 0.005; return; }
+      if (this.aiming) { this.aimDX -= dx * 0.005; this.aimDY -= dy * 0.005; return; }
       this.yaw -= dx * 0.005;
       this.pitch = clamp(this.pitch - dy * 0.005, -1.25, 1.25);
     });
@@ -178,7 +179,7 @@ export class Controls {
   /* ---------- per-frame ---------- */
   update(dt) {
     if (!this.enabled) return;
-    if (this.pooling || this.darting) return;     // the table/board game drives the camera
+    if (this.pooling || this.aiming) return;     // the table/board game drives the camera
     if (this.zerog) { this._updateZeroG(dt); return; }
     let fwd = 0, strafe = 0;
     if (this.keys.has("KeyW") || this.keys.has("ArrowUp")) fwd += 1;

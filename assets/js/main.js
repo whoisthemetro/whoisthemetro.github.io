@@ -19,6 +19,7 @@ import { Cat } from "./cat.js";
 import { openArcade, closeArcade, arcadeIsOpen, arcadeWantsEsc, handleGameMessage, setScoreHook } from "./arcade.js";
 import { initPool } from "./pool.js";
 import { initDarts } from "./darts.js";
+import { initBasket } from "./basketball.js";
 import { PIANO_VOICES, GUITAR_VOICES } from "./ambience.js";
 import { createRadio, SR_STATIONS, LA_STATIONS } from "./radio.js";
 import {
@@ -272,7 +273,8 @@ controls.onLockChange((locked) => {
     hud.classList.add("show");
   } else if (entered && !modalOpen) {
     if (controls.pooling) leavePool();   // ESC drops you out of the table first
-    if (controls.darting) leaveDarts();
+    if (controls.aiming && controls.aimGame === 'darts') leaveDarts();
+    if (controls.aiming && controls.aimGame === 'hoops') leaveHoops();
     if (carrying) { cancelCarry(); toast("put it back — re-hang it again when you're ready"); }
     if (vacuuming) setVacuuming(false);
     show(paused);
@@ -324,7 +326,7 @@ canvas.addEventListener("click", () => {
 function castAt(ndcX, ndcY) {
   raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera);
   // doors are included as blockers so notes can't be pinned onto them
-  const targets = [cat.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, world.echoPoster, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.guitarVoiceHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, world.pool.hit, world.pool.resetHit, world.pool.joinHit, world.darts.hit, world.darts.joinHit, world.darts.resetHit, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.radioHits, ...world.laRadioHits, ...world.filterPedalHit, ...world.vacuumHits, ...notesWall.raycastTargets(), ...world.blockers];
+  const targets = [cat.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, world.echoPoster, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.guitarVoiceHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, world.pool.hit, world.pool.resetHit, world.pool.joinHit, world.darts.hit, world.darts.joinHit, world.darts.resetHit, world.hoops.hit, world.hoops.playHit, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.radioHits, ...world.laRadioHits, ...world.filterPedalHit, ...world.vacuumHits, ...notesWall.raycastTargets(), ...world.blockers];
   const hits = raycaster.intersectObjects(targets, false);
   return hits[0] || null;
 }
@@ -568,7 +570,7 @@ if (IS_TOUCH) {
   dartShootBtn.style.cssText =
     "position:fixed;right:18px;bottom:88px;z-index:60;display:none;width:104px;height:104px;border:0;" +
     "border-radius:52px;font:800 16px monospace;background:#7a3bb0;color:#fff;box-shadow:0 4px 14px rgba(0,0,0,.45)";
-  const press = (v) => (e) => { e.preventDefault(); controls.dartCharging = v; };
+  const press = (v) => (e) => { e.preventDefault(); controls.aimCharge = v; };
   dartShootBtn.addEventListener("pointerdown", press(true));
   dartShootBtn.addEventListener("pointerup", press(false));
   dartShootBtn.addEventListener("pointercancel", press(false));
@@ -576,7 +578,7 @@ if (IS_TOUCH) {
 }
 function sitAtDarts() {
   dartGame.setName(identity.name || "YOU");
-  controls.enterDarts();
+  controls.enterAim(); controls.aimGame = 'darts';
   dartGame.dock();
   hideFlightStrip();
   dartHudEl.style.display = "block";
@@ -585,16 +587,96 @@ function sitAtDarts() {
                  : "move mouse to aim · hold click for power, release to throw — aim high, it drops");
 }
 function leaveDarts() {
-  if (!controls.darting) return;
+  if (!controls.aiming || controls.aimGame !== 'darts') return;
   dartGame.undock();
-  controls.exitDarts();
+  controls.exitAim();
   dartHudEl.style.display = "none";
   if (dartShootBtn) dartShootBtn.style.display = "none";
 }
 
+/* ---- BASKETBALL: an arcade pop-a-shot on the north wall. 60-second
+   clock, rapid-fire 3D arc shooting, its own leaderboard. Reuses the
+   shared 2-axis aim mode; basketball.js runs the game + the projectile
+   sim with rim/backboard/floor bounces. ---- */
+const basketSound = {
+  shoot: () => { try { drumHit(2); } catch (e) {} },
+  score: (clean) => { try { discSound("score"); if (clean) discSound("score"); } catch (e) {} },
+  rim: () => { try { drumHit(4); } catch (e) {} },
+  bank: () => { try { drumHit(3); } catch (e) {} },
+  bounce: () => { try { drumHit(1); } catch (e) {} },
+  buzzer: () => { try { goalHorn(); } catch (e) {} },
+};
+const basketHudEl = document.createElement("div");
+basketHudEl.style.cssText =
+  "position:fixed;left:50%;top:14px;transform:translateX(-50%);z-index:55;display:none;" +
+  "text-align:center;font:800 17px monospace;color:#ffe9d2;text-shadow:0 1px 3px #000;pointer-events:none";
+basketHudEl.innerHTML =
+  '<div id="bb-status">HOOPS</div>' +
+  '<div style="margin:6px auto 0;width:180px;height:9px;border:1px solid #8a5a3a;border-radius:6px;overflow:hidden;background:rgba(0,0,0,.4)">' +
+  '<div id="bb-power" style="height:100%;width:0;background:linear-gradient(90deg,#3bd17a,#ffd23c,#e23a52)"></div></div>' +
+  '<div id="bb-pop" style="margin-top:5px;font-weight:800;font-size:20px;color:#ffd23c;min-height:22px"></div>' +
+  '<div id="bb-hint" style="font-weight:400;opacity:.8;font-size:12px"></div>';
+document.body.appendChild(basketHudEl);
+const bbStatusEl = basketHudEl.querySelector("#bb-status");
+const bbPowerEl = basketHudEl.querySelector("#bb-power");
+const bbPopEl = basketHudEl.querySelector("#bb-pop");
+const bbHintEl = basketHudEl.querySelector("#bb-hint");
+let bbPopTimer = null;
+const basketHud = {
+  status: (s) => { bbStatusEl.textContent = s; },
+  power: (frac) => { bbPowerEl.style.width = Math.round(frac * 100) + "%"; },
+  pop: (msg) => {
+    bbPopEl.textContent = msg;
+    clearTimeout(bbPopTimer); bbPopTimer = setTimeout(() => { bbPopEl.textContent = ""; }, 850);
+  },
+  over: (msg) => { bbHintEl.textContent = msg; },
+};
+function refreshHoopScores() {
+  store.listScores("hoops", 10).then(rows => world.hoops.setLeaders(rows)).catch(() => {});
+}
+const hoopGame = initBasket(world.hoops, {
+  sound: basketSound, hud: basketHud, camera, baseFov: camera.fov,
+  youName: identity.name || "YOU",
+  onScore: (final) => {
+    if (final <= 0) return;
+    store.submitScore("hoops", identity.name || "YOU", final, identity.uid)
+      .then(refreshHoopScores).catch(() => {});
+  },
+});
+let bbShootBtn = null;
+if (IS_TOUCH) {
+  bbShootBtn = document.createElement("button");
+  bbShootBtn.textContent = "● SHOOT";
+  bbShootBtn.style.cssText =
+    "position:fixed;right:18px;bottom:88px;z-index:60;display:none;width:104px;height:104px;border:0;" +
+    "border-radius:52px;font:800 16px monospace;background:#d4631f;color:#fff;box-shadow:0 4px 14px rgba(0,0,0,.45)";
+  const press = (v) => (e) => { e.preventDefault(); controls.aimCharge = v; };
+  bbShootBtn.addEventListener("pointerdown", press(true));
+  bbShootBtn.addEventListener("pointerup", press(false));
+  bbShootBtn.addEventListener("pointercancel", press(false));
+  document.body.appendChild(bbShootBtn);
+}
+function sitAtHoops() {
+  hoopGame.setName(identity.name || "YOU");
+  controls.enterAim(); controls.aimGame = "hoops";
+  hoopGame.dock();
+  hideFlightStrip();
+  basketHudEl.style.display = "block";
+  if (bbShootBtn) bbShootBtn.style.display = "block";
+  toast(IS_TOUCH ? "drag to aim · hold SHOOT to set the arc — drain as many as you can!"
+                 : "move mouse to aim · hold click to set the arc, release to shoot — beat the clock!");
+}
+function leaveHoops() {
+  if (!controls.aiming || controls.aimGame !== "hoops") return;
+  hoopGame.undock();
+  controls.exitAim();
+  basketHudEl.style.display = "none";
+  if (bbShootBtn) bbShootBtn.style.display = "none";
+}
+
 let lastPetAt = 0;
 controls.onAction((ndcX, ndcY) => {
-  if (controls.pooling || controls.darting) return;   // at the table/board the mouse aims; clicks charge
+  if (controls.pooling || controls.aiming) return;   // at the table/board the mouse aims; clicks charge
   if (modalOpen) return;
   if (carrying) { dropCarried(); return; }   // a click while carrying sets it down
   if (vacuuming) { setVacuuming(false); return; }   // a click while vacuuming puts it away
@@ -651,6 +733,10 @@ controls.onAction((ndcX, ndcY) => {
     toast("fresh leg — 501, double out");
   } else if (hit.object.userData.darts && hit.distance < 3.5) {
     sitAtDarts();
+  } else if (hit.object.userData.hoopsPlay && hit.distance < 5) {
+    sitAtHoops();
+  } else if (hit.object.userData.hoops && hit.distance < 4) {
+    sitAtHoops();
   } else if (hit.object.userData.arcade && hit.distance < 3.2) {
     modalOpen = true;
     controls.unlock();
@@ -2151,7 +2237,7 @@ let stripTimer = null;
 // the LAX strip stays off while you're in a game or a menu — no plane
 // banners over the pool table, a cabinet, or any modal
 function stripBlocked() {
-  return controls.pooling || controls.darting || modalOpen ||
+  return controls.pooling || controls.aiming || modalOpen ||
     (typeof arcadeIsOpen === "function" && arcadeIsOpen());
 }
 function showFlightStrip(info) {
@@ -2590,7 +2676,8 @@ addEventListener("keydown", (e) => {
   const refreshScores = () =>
     store.listScores("defender", 8).then(rows => world.updateScores(rows)).catch(() => {});
   refreshScores();
-  store.onNewScore(refreshScores);
+  refreshHoopScores();                       // the basketball cabinet's own board
+  store.onNewScore(() => { refreshScores(); refreshHoopScores(); });
   setScoreHook((game, score) => {
     store.submitScore(game, (identity.name || "anon").slice(0, 24), score, identity.uid)
       .then(refreshScores)
@@ -2640,6 +2727,7 @@ addEventListener("keydown", (e) => {
 window.METRO_DEBUG = { renderer, camera, world, controls, THREE, cat, notesWall,
   uid: identity.uid, pool: poolGame, sitAtPool, leavePool,
   darts: dartGame, sitAtDarts, leaveDarts,
+  hoops: hoopGame, sitAtHoops, leaveHoops,
   carry: { pick: pickUpNote, drop: dropCarried, state: () => carrying },
   booth: { dj: () => djState, canDJ: () => canDJ(), headcount: () => clubHeadcount(), live: () => voice.djLive() } };
 
@@ -2655,8 +2743,12 @@ renderer.setAnimationLoop(() => {
     controls.poolRotate = 0;
   }
   if (dartGame.isPlaying()) {
-    dartGame.update(dt, { aimX: controls.dartAimX, aimY: controls.dartAimY, charging: controls.dartCharging });
-    controls.dartAimX = 0; controls.dartAimY = 0;
+    dartGame.update(dt, { aimX: controls.aimDX, aimY: controls.aimDY, charging: controls.aimCharge });
+    controls.aimDX = 0; controls.aimDY = 0;
+  }
+  if (hoopGame.isPlaying()) {
+    hoopGame.update(dt, { aimX: controls.aimDX, aimY: controls.aimDY, charging: controls.aimCharge });
+    controls.aimDX = 0; controls.aimDY = 0;
   }
   world.setParallax(camera.position.x);
   // aboard THE DESI the whole world rolls a little — set absolutely
