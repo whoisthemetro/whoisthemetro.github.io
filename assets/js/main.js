@@ -1636,15 +1636,21 @@ function leaveBoat() {
 /* ---------------- THE VENUE: the dj bar, name pending ---------------- */
 // dev placeholder ("soundcheck") — swap for the real hash before the event
 const CLUB_PASS_HASH = "7aaaa3946f3f4de633bda31fc85970434577eb3b0d4540b00879727861012586";
+// the venue is open to everyone for now (nothing happens in there yet —
+// people can just go look around). flip CLUB_OPEN back to false to put the
+// bouncer + password back for showtime.
+const CLUB_OPEN = true;
 let inClub = false;
 async function tryClub() {
   modalOpen = true;                      // keep the pause screen away
-  const pass = prompt("an unmarked door. bass through the brick. password:");
-  if (!pass) { modalOpen = false; if (entered) safeLock(); return; }
-  if (await sha256(pass.trim().toLowerCase()) !== CLUB_PASS_HASH) {
-    modalOpen = false;
-    if (entered) safeLock();
-    return toast("the bouncer shakes his head.");
+  if (!CLUB_OPEN) {
+    const pass = prompt("an unmarked door. bass through the brick. password:");
+    if (!pass) { modalOpen = false; if (entered) safeLock(); return; }
+    if (await sha256(pass.trim().toLowerCase()) !== CLUB_PASS_HASH) {
+      modalOpen = false;
+      if (entered) safeLock();
+      return toast("the bouncer shakes his head.");
+    }
   }
   fadeTo(() => {
     inClub = true;
