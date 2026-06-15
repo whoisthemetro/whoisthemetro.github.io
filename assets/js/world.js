@@ -1874,38 +1874,44 @@ export function buildWorld() {
   }
   function setCloset(open) { closet.open = !!open; }
 
-  /* --- METRO'S ARCADE: the room beyond the closet --- */
-  // a proper room: ~4.7 x 5.0 m, doorway aligned with the closet opening
-  const AR = { x0: -8.2, x1: -X - ALCOVE_D, z0: -2.9, z1: 2.1 };
+  /* --- METRO'S ARCADE: the big room beyond the closet --- */
+  // a proper amusement arcade now: ~16 x 11 m. the doorway is on the EAST
+  // wall (x1), aligned with the closet opening and dead-centered in z (the
+  // room is symmetric about CZ). it grows toward -x — away from the boat at
+  // +40 — and stays windowless, so it's lit by downward SPOTLIGHTS only:
+  // three.js lights ignore walls, and a directional or long-throw point
+  // light would pour straight through the shared wall into the bedroom.
+  const AR = { x0: -19.6, x1: -X - ALCOVE_D, z0: -5.9, z1: 5.1 };
+  const ARC_H = 3.4;   // loftier than the 2.7 m house — it's a hall now
   // double-sided: these walls must be solid from BOTH sides, or you can
   // see straight through them from inside the arcade
   const arcMatWall = new THREE.MeshLambertMaterial({ color: 0x191722, side: THREE.DoubleSide });
   const arcW = AR.x1 - AR.x0, arcD = AR.z1 - AR.z0;
-  // front wall (two segments + lintel around the doorway)
+  // front (east) wall (two segments + lintel around the doorway)
   for (const [w0, w1] of [[AR.z0, CZ - OPEN_W / 2], [CZ + OPEN_W / 2, AR.z1]]) {
-    const seg = plane(w1 - w0, H, arcMatWall.clone());
+    const seg = plane(w1 - w0, ARC_H, arcMatWall.clone());
     seg.rotation.y = Math.PI / 2;
-    seg.position.set(AR.x1, H / 2, (w0 + w1) / 2);
+    seg.position.set(AR.x1, ARC_H / 2, (w0 + w1) / 2);
     add(seg);
   }
-  const lintel = plane(OPEN_W, H - OPEN_H, arcMatWall.clone());
+  const lintel = plane(OPEN_W, ARC_H - OPEN_H, arcMatWall.clone());
   lintel.rotation.y = Math.PI / 2;
-  lintel.position.set(AR.x1, OPEN_H + (H - OPEN_H) / 2, CZ);
+  lintel.position.set(AR.x1, OPEN_H + (ARC_H - OPEN_H) / 2, CZ);
   add(lintel);
-  // back, sides, ceiling
-  const arcBack = plane(arcD, H, arcMatWall.clone());
+  // back (west), sides, ceiling
+  const arcBack = plane(arcD, ARC_H, arcMatWall.clone());
   arcBack.rotation.y = -Math.PI / 2;
-  arcBack.position.set(AR.x0, H / 2, (AR.z0 + AR.z1) / 2);
+  arcBack.position.set(AR.x0, ARC_H / 2, (AR.z0 + AR.z1) / 2);
   add(arcBack);
   for (const [zz, ry] of [[AR.z0, 0], [AR.z1, Math.PI]]) {
-    const side = plane(arcW, H, arcMatWall.clone());
+    const side = plane(arcW, ARC_H, arcMatWall.clone());
     side.rotation.y = ry;
-    side.position.set((AR.x0 + AR.x1) / 2, H / 2, zz);
+    side.position.set((AR.x0 + AR.x1) / 2, ARC_H / 2, zz);
     add(side);
   }
   const arcCeil = plane(arcW, arcD, lam(0x0e0d14));
   arcCeil.rotation.x = Math.PI / 2;
-  arcCeil.position.set((AR.x0 + AR.x1) / 2, H, (AR.z0 + AR.z1) / 2);
+  arcCeil.position.set((AR.x0 + AR.x1) / 2, ARC_H, (AR.z0 + AR.z1) / 2);
   add(arcCeil);
   // arcade carpet — dark with neon confetti
   const arcFloor = plane(arcW, arcD, new THREE.MeshLambertMaterial({
@@ -1926,21 +1932,57 @@ export function buildWorld() {
   arcFloor.rotation.x = -Math.PI / 2;
   arcFloor.position.set((AR.x0 + AR.x1) / 2, 0.002, (AR.z0 + AR.z1) / 2);
   add(arcFloor);
-  // neon trim + mood lights
-  for (const [zz, col] of [[AR.z0 + 0.02, 0xff2da0], [AR.z1 - 0.02, 0x22d4ff]]) {
-    const strip = box(arcW - 0.2, 0.02, 0.02, new THREE.MeshBasicMaterial({ color: col }));
-    strip.position.set((AR.x0 + AR.x1) / 2, 2.3, zz);
+  // tile the confetti so it stays fine-grained across the big floor instead
+  // of stretching to dinner-plate scrawls
+  const arcMap = arcFloor.material.map;
+  arcMap.wrapS = arcMap.wrapT = THREE.RepeatWrapping;
+  arcMap.repeat.set(3.4, 2.4);
+
+  // neon cove trim running the length of both long walls, near the ceiling
+  for (const [zz, col] of [[AR.z0 + 0.04, 0xff2da0], [AR.z1 - 0.04, 0x22d4ff]]) {
+    const strip = box(arcW - 0.3, 0.03, 0.03, new THREE.MeshBasicMaterial({ color: col }));
+    strip.position.set((AR.x0 + AR.x1) / 2, ARC_H - 0.14, zz);
     add(strip);
   }
-  const magenta = add(new THREE.PointLight(0xff2da0, 11, 3.4, 2));
-  magenta.position.set(-6.2, 2.2, -2.3);
-  const cyan = add(new THREE.PointLight(0x22d4ff, 11, 3.4, 2));
-  cyan.position.set(-6.2, 2.2, 1.6);
-  // cool ceiling wash so the room reads — throws too short to leak out
-  for (const [fx2, fd] of [[-7.3, 2.8], [-5.8, 2.6], [-4.7, 2.0]]) {
-    const fill2 = add(new THREE.PointLight(0x9aa4c8, 16, fd, 2));
-    fill2.position.set(fx2, 2.4, -0.4);
+
+  /* --- lighting: DOWNWARD SPOTLIGHTS ONLY ---
+     the arcade shares a wall with the bedroom and three.js lights ignore
+     geometry, so a point light's only leash is its `distance` falloff and a
+     directional reaches the whole scene. spot CONES aim at the floor and
+     physically can't splash sideways through the wall — the one safe way to
+     flood a big windowless hall this close to home. a few short-throw colored
+     points add arcade glow, but only DEEP in the room where -2.6 (the bedroom
+     wall) is well out of their reach. */
+  function arcSpot(x, z, color, intensity) {
+    const s = new THREE.SpotLight(color, intensity, 8.5, 0.72, 0.55, 1.5);
+    s.position.set(x, ARC_H - 0.04, z);
+    s.target.position.set(x, 0, z);
+    add(s); add(s.target);
+    // a visible can so each pool of light reads as a fixture, not magic
+    const can = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.15, 0.1, 12), lam(0x0c0e12));
+    can.position.set(x, ARC_H - 0.05, z);
+    add(can);
+    const glow = new THREE.Mesh(new THREE.CircleGeometry(0.1, 14),
+      new THREE.MeshBasicMaterial({ color }));
+    glow.rotation.x = Math.PI / 2;
+    glow.position.set(x, ARC_H - 0.108, z);
+    add(glow);
   }
+  // a warm/cool grid over the whole floor (the door bay near x1 is left to
+  // the smoking corner's own warm downlights)
+  let arcSi = 0;
+  for (const gx of [-6.6, -10.2, -13.8, -17.4]) {
+    for (const gz of [-3.6, 0.4, 3.8]) {
+      arcSpot(gx, gz, (arcSi++ % 2) ? 0xffe6c4 : 0xccd6ff, 40);
+    }
+  }
+  // deep neon pools — short throw, far from the bedroom wall
+  const magenta = add(new THREE.PointLight(0xff2da0, 14, 4.2, 2));
+  magenta.position.set(-12, 2.3, -4.7);
+  const cyan = add(new THREE.PointLight(0x22d4ff, 14, 4.2, 2));
+  cyan.position.set(-15, 2.3, 4.5);
+  const violet = add(new THREE.PointLight(0x9d4dff, 12, 4.0, 2));
+  violet.position.set(-18.6, 2.2, -0.4);
 
   /* --- the smoking corner: two stools flanking the arcade door ---
      warm downlights in all that neon, a bong on one side, an ashtray
@@ -1991,12 +2033,12 @@ export function buildWorld() {
     smokeStool(z);
     // a warm cone in the neon: fixture on the ceiling + short-throw light
     const fix = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.06, 10), lam(0x0c0e12));
-    fix.position.set(AR.x1 - 0.6, H - 0.03, z);
+    fix.position.set(AR.x1 - 0.6, ARC_H - 0.03, z);
     add(fix);
     const fixGlow = new THREE.Mesh(new THREE.CircleGeometry(0.04, 10),
       new THREE.MeshBasicMaterial({ color: 0xffc890 }));
     fixGlow.rotation.x = Math.PI / 2;
-    fixGlow.position.set(AR.x1 - 0.6, H - 0.065, z);
+    fixGlow.position.set(AR.x1 - 0.6, ARC_H - 0.065, z);
     add(fixGlow);
     // hung low enough to actually reach the seats; throw stays shorter
     // than the gap to the bedroom wall, as the house rules demand
@@ -2107,7 +2149,8 @@ export function buildWorld() {
     map: arcSignTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
   }));
   arcSign.rotation.y = Math.PI / 2;
-  arcSign.position.set(AR.x0 + 0.02, 2.25, (AR.z0 + AR.z1) / 2);
+  arcSign.position.set(AR.x0 + 0.02, 2.65, (AR.z0 + AR.z1) / 2);
+  arcSign.scale.setScalar(1.6);   // big wall, big sign
   add(arcSign);
 
   // the Echo VR poster — step through, no password anymore
@@ -2186,11 +2229,12 @@ export function buildWorld() {
     grp.rotation.y = rotY;
     add(grp);
   }
-  // the four machines along the back wall, facing the door
-  cabinet("defender", "DEFENDER", "#ff3434", AR.x0 + 0.42, -2.0, Math.PI / 2);
-  cabinet("doom", "DOOM", "#ff7320", AR.x0 + 0.42, -0.85, Math.PI / 2);
-  cabinet("tron", "TRON", "#22d4ff", AR.x0 + 0.42, 0.3, Math.PI / 2);
-  cabinet("pong", "PONG", "#e8e8e8", AR.x0 + 0.42, 1.45, Math.PI / 2);
+  // the four classic machines: a row along the back (west) wall, screens
+  // facing east down the length of the hall toward whoever walks in
+  cabinet("defender", "DEFENDER", "#ff3434", AR.x0 + 0.42, -3.0, Math.PI / 2);
+  cabinet("doom", "DOOM", "#ff7320", AR.x0 + 0.42, -1.1, Math.PI / 2);
+  cabinet("tron", "TRON", "#22d4ff", AR.x0 + 0.42, 0.8, Math.PI / 2);
+  cabinet("pong", "PONG", "#e8e8e8", AR.x0 + 0.42, 2.7, Math.PI / 2);
 
   // HIGH SCORES board on the north wall — shared, all-time
   const scoreCanvas = document.createElement("canvas");
@@ -2230,8 +2274,55 @@ export function buildWorld() {
   const scoreBoard = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 1.28),
     new THREE.MeshBasicMaterial({ map: scoreTex }));
   scoreBoard.rotation.y = Math.PI;
-  scoreBoard.position.set(-5.6, 1.55, AR.z1 - 0.05);
+  scoreBoard.scale.setScalar(1.25);
+  scoreBoard.position.set(-16, 1.75, AR.z1 - 0.06);   // north wall, by the cabinets
   add(scoreBoard);
+
+  /* --- floor plan: every game that's coming gets its footprint taped out
+     on the carpet now. so the empty hall reads as an arcade mid-build, not a
+     bare box — and every later session has an exact, claimed spot to drop its
+     table into. subtle: a dashed neon outline + a dim stencil, nothing you'd
+     trip on. these are MeshBasic decals (toon pass skips them) just proud of
+     the carpet. delete a marker the session its real game lands. */
+  function zoneMarker(label, cx, cz, w, d, color) {
+    const c = "#" + color.toString(16).padStart(6, "0");
+    const ch = Math.max(128, Math.round(320 * d / w));
+    const tex = canvasTex(320, ch, (g, cw, chh) => {
+      // a dark mat that dims the confetti beneath, so the zone reads as a
+      // claimed floor panel and not a thin line lost in the carpet
+      g.fillStyle = "rgba(8,9,18,0.62)";
+      g.fillRect(0, 0, cw, chh);
+      g.strokeStyle = c; g.lineWidth = 7; g.setLineDash([26, 16]);
+      g.strokeRect(12, 12, cw - 24, chh - 24);
+      g.setLineDash([]);
+      g.fillStyle = c;
+      g.font = "700 40px monospace";
+      g.textAlign = "center"; g.textBaseline = "middle";
+      g.fillText(label, cw / 2, chh / 2);
+      g.globalAlpha = 0.6;
+      g.font = "600 18px monospace";
+      g.fillText("coming soon", cw / 2, chh / 2 + 36);
+    });
+    const decal = new THREE.Mesh(new THREE.PlaneGeometry(w, d),
+      new THREE.MeshBasicMaterial({
+        map: tex, transparent: true, opacity: 0.82, depthWrite: false,
+      }));
+    decal.rotation.x = -Math.PI / 2;
+    decal.rotation.z = Math.PI;   // labels read facing the door, not the back wall
+    decal.position.set(cx, 0.006, cz);
+    add(decal);
+  }
+  // staked-out zones (centers + footprints). non-overlapping, with aisles;
+  // tuned again when each real table arrives.
+  zoneMarker("POOL",       -9.0,  2.9, 5.0, 3.4, 0x3bff7a);
+  // air hockey rotated long-axis N-S (table ends face the long walls) and
+  // tucked into the south row, in the gap between foosball (west) and the
+  // bar (east) — ~2 m clear of each
+  zoneMarker("AIR HOCKEY", -10.1, -3.6, 2.2, 3.6, 0x22d4ff);
+  zoneMarker("FOOSBALL",  -14.5, -3.7, 2.6, 2.4, 0xffe93c);
+  zoneMarker("SKEE-BALL", -15.8,  1.0, 2.2, 4.2, 0xff2da0);
+  zoneMarker("DARTS",     -13.2,  4.3, 3.2, 1.3, 0x9d4dff);
+  zoneMarker("BAR",        -6.0, -3.6, 2.0, 3.6, 0xff7a30);
 
   /* --- the desk rig --- */
   const deskTopY = 0.74;
@@ -2679,7 +2770,7 @@ export function buildWorld() {
       const ball = new THREE.Mesh(new THREE.SphereGeometry(0.11, 10, 8),
         new THREE.MeshStandardMaterial({ color: 0xc8ccd8, metalness: 0.9, roughness: 0.18, flatShading: true }));
       g.add(ball);
-      g.position.set((AR.x0 + AR.x1) / 2, H - 0.32, (AR.z0 + AR.z1) / 2);
+      g.position.set((AR.x0 + AR.x1) / 2, ARC_H - 0.32, (AR.z0 + AR.z1) / 2);
       add(g);
       accessorySpin.push(ball);
     }
@@ -5647,7 +5738,7 @@ export function buildWorld() {
     grabHandles, kiosks, arenaExits,
     arenaGoalX: GOAL_X, arenaBubbleR: BUBBLE_R,
     setTubeBarriers, inTube,
-    arcadeReturn: { x: -4.6, z: 0.6, yaw: Math.PI },
+    arcadeReturn: { x: -4.8, z: -0.4, yaw: Math.PI },
     discGroup, discHit, setArenaScore,
     echoPoster,
     updateScores,
