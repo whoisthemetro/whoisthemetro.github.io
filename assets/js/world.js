@@ -2845,7 +2845,9 @@ export function buildWorld() {
     const BX = -14.5;                       // hoop centre x (the old foosball spot)
     const WALLZ = AR.z0;                     // south wall plane
     const BBz = WALLZ + 0.07;                // backboard front face, proud of the wall
-    const rimY = 2.72, rimR = 0.225, ballR = 0.12;
+    // rim lowered to 2.5 m: the hall ceiling is only 3.4 m, so a regulation
+    // 3.05 m rim leaves no room to arc a ball in — this is a low-roof gym hoop
+    const rimY = 2.5, rimR = 0.225, ballR = 0.12;
     const rimZ = BBz + 0.42;                 // rim reaches out into the court (+z)
 
     // --- backboard (white, red shooter's square) facing the court (+z) ---
@@ -2855,10 +2857,10 @@ export function buildWorld() {
       g.strokeStyle = "#d8392a"; g.lineWidth = 6; g.strokeRect(cw / 2 - 46, ch - 96, 92, 64);
     });
     const bb = box(1.34, 0.96, 0.06, lam(0x20242a));
-    bb.position.set(BX, 2.94, WALLZ + 0.035); add(bb);
+    bb.position.set(BX, 2.74, WALLZ + 0.035); add(bb);
     const bbFace = new THREE.Mesh(new THREE.PlaneGeometry(1.28, 0.9),
       new THREE.MeshBasicMaterial({ map: bbTex }));
-    bbFace.position.set(BX, 2.94, BBz); add(bbFace);     // PlaneGeometry faces +z = into the court
+    bbFace.position.set(BX, 2.74, BBz); add(bbFace);     // PlaneGeometry faces +z = into the court
 
     // --- rim + mount + net ---
     const rimMat = lam(0xff7a1f);
@@ -2881,7 +2883,7 @@ export function buildWorld() {
     hoopLamp.position.set(BX, 3.0, rimZ + 0.4); add(hoopLamp);
 
     // --- the court: a painted hardwood decal floating 2 cm over the floor ---
-    const court = { x0: BX - 2.4, x1: BX + 2.4, z0: WALLZ + 0.12, z1: WALLZ + 4.9 };
+    const court = { x0: BX - 2.4, x1: BX + 2.4, z0: WALLZ + 0.12, z1: WALLZ + 4.0 };
     const Wc = court.x1 - court.x0, Dc = court.z1 - court.z0;
     const courtTex = canvasTex(512, 512, (g, cw, ch) => {
       // hardwood: warm planks running across, hoop/baseline at the TOP (y=0)
@@ -2920,7 +2922,7 @@ export function buildWorld() {
     });
     const ballMat = new THREE.MeshLambertMaterial({ map: ballTex });
     const rack = new THREE.Group();
-    rack.position.set(court.x1 - 0.35, 0, court.z1 - 0.5);
+    rack.position.set(BX + 1.55, 0, WALLZ + 0.42);   // under the hoop, off to one side, against the wall
     rack.add(box(0.78, 0.06, 0.46, lam(0x2a2e36))).position.set(0, 0.5, 0);   // tray
     for (const sx of [-0.34, 0.34]) for (const sz of [-0.2, 0.2]) {
       const leg = box(0.05, 0.5, 0.05, lam(0x20242a)); leg.position.set(sx, 0.25, sz); rack.add(leg);
@@ -2937,7 +2939,7 @@ export function buildWorld() {
       const m = new THREE.Mesh(new THREE.SphereGeometry(ballR, 18, 14), ballMat.clone());
       m.visible = false; add(m); return m;
     }
-    const balls = []; for (let i = 0; i < 10; i++) balls.push(mkBall());
+    const balls = []; for (let i = 0; i < 14; i++) balls.push(mkBall());  // realistic bounces live longer
     const handBall = mkBall();
 
     // --- aim guide: a faint parabola while you wind up ---
@@ -2956,8 +2958,8 @@ export function buildWorld() {
     function hideGuide() { arcLine.visible = false; }
 
     return {
-      rim: { x: BX, y: rimY, z: rimZ }, rimR, ballR, faceSign: 1, floorY: 0,
-      backboard: { z: BBz, x0: BX - 0.64, x1: BX + 0.64, y0: 2.48, y1: 3.40 },
+      rim: { x: BX, y: rimY, z: rimZ }, rimR, ballR, faceSign: 1, floorY: 0, ceilY: ARC_H,
+      backboard: { z: BBz, x0: BX - 0.64, x1: BX + 0.64, y0: 2.28, y1: 3.20 },
       court, balls, handBall, setArc, hideGuide, swish: pulseNet,
     };
   })();
