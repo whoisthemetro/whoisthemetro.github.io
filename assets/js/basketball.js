@@ -20,14 +20,14 @@
 // a sphere's Cd≈0.47, so a hard shot loses a little range — like the real thing.
 const G = 9.81;
 const DT = 1 / 240;            // fixed sim substep
-const MIN_SPEED = 4.0;         // m/s, a soft floater right under the rim
-const MAX_SPEED = 9.5;         // m/s full charge — but a heave clips the low ceiling
+const MIN_SPEED = 4.2;         // m/s, a soft floater up close
+const MAX_SPEED = 10.0;        // m/s full charge — a deep heave
 const CHARGE_T = 0.95;         // seconds hold to full power
-const LOFT_BASE = 0.90;        // ~52° — a high, soft arc that drops in (low ceiling needs it steep)
-const LOFT_LOOK = 0.22;        // looking up nudges the loft a touch
+const LOFT_BASE = 0.90;        // ~52° — a high, soft arc that drops in
+const LOFT_LOOK = 0.15;        // looking up nudges the loft a touch
 const RELOAD = 0.32;           // a new ball in your hands this fast
 const WIRE_R = 0.02;
-const RIM_E = 0.5, BB_E = 0.55, FLOOR_E = 0.82, CEIL_E = 0.5;
+const RIM_E = 0.5, BB_E = 0.55, CEIL_E = 0.5;   // rim/backboard/ceiling restitution (the ball doesn't bounce on the floor — it vanishes)
 const DRAG = 0.021;            // quadratic air drag coefficient (½·ρ·Cd·A / m)
 
 export function initBasket(h, opts = {}) {
@@ -125,14 +125,12 @@ export function initBasket(h, opts = {}) {
       }
     }
     if (!b.scored && py > rim.y && b.y <= rim.y && b.vy < 0 && hd < rimR - ballR * 0.15) { b.scored = true; onMake(b); }
-    if (b.y - ballR <= floorY) {
-      b.y = floorY + ballR; b.vy = -b.vy * FLOOR_E; b.vx *= 0.8; b.vz *= 0.8; b.bounces++;  // hardwood bounce
-      if (Math.abs(b.vy) > 1) snd.bounce && snd.bounce();
-    }
-    // let it bounce naturally and die once it's basically come to rest (or gone stale)
-    const atRest = b.y - ballR < 0.03 && Math.hypot(b.vx, b.vy, b.vz) < 0.5;
-    if ((atRest && b.age > 0.9) || b.age > 9 || (b.scored && b.y < rim.y - 0.6)) {
-      if (!b.scored) streak = 0; b.dead = true;
+    // the ball just vanishes when it reaches the ground (a miss) or drops
+    // through the net (a make) — it never bounces and rolls around the court
+    if (b.y - ballR <= floorY || (b.scored && b.y < rim.y - 0.55) || b.age > 6) {
+      if (b.y - ballR <= floorY) snd.bounce && snd.bounce();
+      if (!b.scored) streak = 0;
+      b.dead = true;
     }
   }
 

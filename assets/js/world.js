@@ -1882,7 +1882,9 @@ export function buildWorld() {
   // three.js lights ignore walls, and a directional or long-throw point
   // light would pour straight through the shared wall into the bedroom.
   const AR = { x0: -19.6, x1: -X - ALCOVE_D, z0: -5.9, z1: 5.1 };
-  const ARC_H = 3.4;   // loftier than the 2.7 m house — it's a hall now
+  const ARC_H = 4.3;   // a tall hall — high enough to arc a basketball without clipping the roof
+  const LIGHT_H = 3.4; // the downlight grid hangs here (pendant-style), not at the raised ceiling,
+                       // so the floor stays as lit as it was before the roof went up
   // double-sided: these walls must be solid from BOTH sides, or you can
   // see straight through them from inside the arcade
   const arcMatWall = new THREE.MeshLambertMaterial({ color: 0x191722, side: THREE.DoubleSide });
@@ -1955,17 +1957,20 @@ export function buildWorld() {
      wall) is well out of their reach. */
   function arcSpot(x, z, color, intensity) {
     const s = new THREE.SpotLight(color, intensity, 8.5, 0.72, 0.55, 1.5);
-    s.position.set(x, ARC_H - 0.04, z);
+    s.position.set(x, LIGHT_H - 0.04, z);
     s.target.position.set(x, 0, z);
     add(s); add(s.target);
-    // a visible can so each pool of light reads as a fixture, not magic
+    // a visible can so each pool of light reads as a fixture, not magic. a thin
+    // rod hangs it down from the raised ceiling so it reads as a pendant.
+    const rod = box(0.02, ARC_H - (LIGHT_H - 0.04), 0.02, lam(0x0c0e12));
+    rod.position.set(x, (ARC_H + LIGHT_H - 0.04) / 2, z); add(rod);
     const can = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.15, 0.1, 12), lam(0x0c0e12));
-    can.position.set(x, ARC_H - 0.05, z);
+    can.position.set(x, LIGHT_H - 0.05, z);
     add(can);
     const glow = new THREE.Mesh(new THREE.CircleGeometry(0.1, 14),
       new THREE.MeshBasicMaterial({ color }));
     glow.rotation.x = Math.PI / 2;
-    glow.position.set(x, ARC_H - 0.108, z);
+    glow.position.set(x, LIGHT_H - 0.108, z);
     add(glow);
   }
   // a warm/cool grid over the whole floor (the door bay near x1 is left to
@@ -2845,9 +2850,9 @@ export function buildWorld() {
     const BX = -14.5;                       // hoop centre x (the old foosball spot)
     const WALLZ = AR.z0;                     // south wall plane
     const BBz = WALLZ + 0.07;                // backboard front face, proud of the wall
-    // rim lowered to 2.5 m: the hall ceiling is only 3.4 m, so a regulation
-    // 3.05 m rim leaves no room to arc a ball in — this is a low-roof gym hoop
-    const rimY = 2.5, rimR = 0.225, ballR = 0.12;
+    // rim at 2.9 m — near-regulation; the hall ceiling was raised to 4.3 m so
+    // there's headroom to arc a ball in
+    const rimY = 2.9, rimR = 0.225, ballR = 0.12;
     const rimZ = BBz + 0.42;                 // rim reaches out into the court (+z)
 
     // --- backboard (white, red shooter's square) facing the court (+z) ---
@@ -2857,10 +2862,10 @@ export function buildWorld() {
       g.strokeStyle = "#d8392a"; g.lineWidth = 6; g.strokeRect(cw / 2 - 46, ch - 96, 92, 64);
     });
     const bb = box(1.34, 0.96, 0.06, lam(0x20242a));
-    bb.position.set(BX, 2.74, WALLZ + 0.035); add(bb);
+    bb.position.set(BX, 3.12, WALLZ + 0.035); add(bb);
     const bbFace = new THREE.Mesh(new THREE.PlaneGeometry(1.28, 0.9),
       new THREE.MeshBasicMaterial({ map: bbTex }));
-    bbFace.position.set(BX, 2.74, BBz); add(bbFace);     // PlaneGeometry faces +z = into the court
+    bbFace.position.set(BX, 3.12, BBz); add(bbFace);     // PlaneGeometry faces +z = into the court
 
     // --- rim + mount + net ---
     const rimMat = lam(0xff7a1f);
@@ -2879,8 +2884,8 @@ export function buildWorld() {
         if (t >= 0.32) { clearInterval(iv); net.scale.set(1, 1, 1); net.position.y = rimY - 0.18; }
       }, 25);
     }
-    const hoopLamp = new THREE.PointLight(0xfff0d6, 5, 3.2, 2);
-    hoopLamp.position.set(BX, 3.0, rimZ + 0.4); add(hoopLamp);
+    const hoopLamp = new THREE.PointLight(0xfff0d6, 5.5, 3.6, 2);
+    hoopLamp.position.set(BX, 3.6, rimZ + 0.4); add(hoopLamp);
 
     // --- the court: a painted hardwood decal floating 2 cm over the floor ---
     const court = { x0: BX - 2.4, x1: BX + 2.4, z0: WALLZ + 0.12, z1: WALLZ + 4.0 };
@@ -2961,7 +2966,7 @@ export function buildWorld() {
 
     return {
       rim: { x: BX, y: rimY, z: rimZ }, rimR, ballR, faceSign: 1, floorY: 0, ceilY: ARC_H,
-      backboard: { z: BBz, x0: BX - 0.64, x1: BX + 0.64, y0: 2.28, y1: 3.20 },
+      backboard: { z: BBz, x0: BX - 0.64, x1: BX + 0.64, y0: 2.64, y1: 3.60 },
       court, balls, handBall, setArc, hideGuide, swish: pulseNet,
     };
   })();
