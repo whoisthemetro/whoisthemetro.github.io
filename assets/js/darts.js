@@ -28,6 +28,7 @@ const CPU_ERR = 0.052;         // metres of landing spread (beatable)
 const BETWEEN = 0.8;           // seconds a landed dart lingers before the next
 const START_SCORE = 501;
 const AIM_FOV = 36;            // zoom in on the board while throwing (real distance stays)
+const SPECTATE_FOV = 50;       // CPU's turn: pull back + widen so the whole board frames up
 
 export function initDarts(h, opts = {}) {
   const net = opts.net || null;
@@ -137,12 +138,22 @@ export function initDarts(h, opts = {}) {
 
   function placeCamera() {
     if (!cam) return;
-    cam.position.set(cx, eyeY, ocheZ);
     cam.rotation.order = "YXZ";
-    cam.rotation.y = aimYaw + Math.PI;        // face the board (+z), aim turns the view
-    cam.rotation.x = aimPitch;
     cam.rotation.z = 0;
-    if (cam.fov !== AIM_FOV) { cam.fov = AIM_FOV; cam.updateProjectionMatrix(); }
+    if (turn === "cpu") {
+      // spectating: pull the camera back + down and centre it on the board so
+      // the whole face frames up while the CPU throws (no leftover player aim)
+      const camY = eyeY - 0.18, camZ = ocheZ - 0.55;
+      cam.position.set(cx, camY, camZ);
+      cam.rotation.y = Math.PI;
+      cam.rotation.x = Math.atan2(cy - camY, boardZ - camZ);
+      if (cam.fov !== SPECTATE_FOV) { cam.fov = SPECTATE_FOV; cam.updateProjectionMatrix(); }
+    } else {
+      cam.position.set(cx, eyeY, ocheZ);
+      cam.rotation.y = aimYaw + Math.PI;      // face the board (+z), aim turns the view
+      cam.rotation.x = aimPitch;
+      if (cam.fov !== AIM_FOV) { cam.fov = AIM_FOV; cam.updateProjectionMatrix(); }
+    }
   }
 
   /* ---------- throwing ---------- */
