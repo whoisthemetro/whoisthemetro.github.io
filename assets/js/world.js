@@ -2923,11 +2923,13 @@ export function buildWorld() {
     const ballMat = new THREE.MeshLambertMaterial({ map: ballTex });
     const rack = new THREE.Group();
     rack.position.set(BX + 1.55, 0, WALLZ + 0.42);   // under the hoop, off to one side, against the wall
-    rack.add(box(0.78, 0.06, 0.46, lam(0x2a2e36))).position.set(0, 0.5, 0);   // tray
+    // NB: Group.add() returns the GROUP, not the child — so build each piece,
+    // set ITS position, THEN add it (the old chained form moved the whole rack)
+    const tray = box(0.78, 0.06, 0.46, lam(0x2a2e36)); tray.position.set(0, 0.5, 0); rack.add(tray);
     for (const sx of [-0.34, 0.34]) for (const sz of [-0.2, 0.2]) {
       const leg = box(0.05, 0.5, 0.05, lam(0x20242a)); leg.position.set(sx, 0.25, sz); rack.add(leg);
     }
-    rack.add(box(0.78, 0.22, 0.05, lam(0x20242a))).position.set(0, 0.62, -0.2);  // back lip
+    const lip = box(0.78, 0.22, 0.05, lam(0x20242a)); lip.position.set(0, 0.62, -0.2); rack.add(lip);
     for (let i = 0; i < 4; i++) {
       const rb = new THREE.Mesh(new THREE.SphereGeometry(ballR, 16, 12), ballMat);
       rb.position.set(-0.24 + i * 0.16, 0.5 + ballR, 0.02); rack.add(rb);
