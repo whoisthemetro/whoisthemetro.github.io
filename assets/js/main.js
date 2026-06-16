@@ -209,8 +209,9 @@ const bartender = new Bartender(world.scene, world.barInfo, {
 // your saved outfit spec (the picker writes it; defaults to the owner's look
 // with the face glowing in your identity color)
 function loadOutfit() {
-  try { const s = JSON.parse(localStorage.getItem("metro.outfit")); if (s) return s; } catch (e) {}
-  return { ...DEFAULT_SPEC, faceColor: identity.color || DEFAULT_SPEC.faceColor };
+  const base = { ...DEFAULT_SPEC, faceColor: identity.color || DEFAULT_SPEC.faceColor };
+  try { const s = JSON.parse(localStorage.getItem("metro.outfit")); if (s) return { ...base, ...s }; } catch (e) {}
+  return base;   // merge so saves from before a new option (e.g. skin) still fill in
 }
 function saveOutfit(spec) { try { localStorage.setItem("metro.outfit", JSON.stringify(spec)); } catch (e) {} }
 let outfitSpec = loadOutfit();

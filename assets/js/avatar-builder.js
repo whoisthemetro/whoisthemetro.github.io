@@ -24,11 +24,12 @@ export const OPTIONS = {
   swatches: ["#191920", "#0d0d11", "#3a2c1c", "#7a2a34", "#274a7a", "#2f6b4a",
              "#caa23c", "#b8b3ad", "#e9e4d8", "#8a4a6a"],
   hairColors: ["#1a140e", "#2a2018", "#5a4326", "#caa23c", "#9a9088", "#3a6a8a", "#8a4a6a"],
+  skinTones: ["#f4d6bd", "#e8bd98", "#d8a878", "#c08a55", "#a06b3c", "#7a4f2b", "#583618", "#3a2414"],
   faceColors: ["#9fe6ff", "#7dff9a", "#ff7ad0", "#ffd23c", "#ff5a4a", "#b18bff", "#ffffff"],
 };
 
 export const DEFAULT_SPEC = {
-  build: "average", hair: "short", hairColor: "#2a2018",
+  build: "average", skin: "#d8a878", hair: "short", hairColor: "#2a2018",
   top: "hoodie", topColor: "#191920", hood: true,
   bottom: "pants", bottomColor: "#0d0d11",
   beard: "none", faceColor: "#9fe6ff", logo: "METRO",
@@ -70,8 +71,8 @@ export function buildAvatarFigure(spec = {}) {
     const skirt = new THREE.Mesh(track(new THREE.ConeGeometry(0.28 * wide, isDress ? 0.66 : 0.52, 16, 1, true)),
       lam(isDress ? topC : botC));
     skirt.position.y = isDress ? 0.5 : 0.47; group.add(skirt);
-    for (const sx of [-0.07, 0.07]) {                 // calves below the hem
-      const leg = new THREE.Mesh(track(new THREE.CylinderGeometry(0.05, 0.045, 0.3, 8)), lam(0x14110e));
+    for (const sx of [-0.07, 0.07]) {                 // bare calves below the hem
+      const leg = new THREE.Mesh(track(new THREE.CylinderGeometry(0.05, 0.045, 0.3, 8)), lam(s.skin));
       leg.position.set(sx, 0.15, 0); group.add(leg);
     }
   } else {
@@ -83,7 +84,7 @@ export function buildAvatarFigure(spec = {}) {
     }
     if (s.bottom === "shorts") {                       // bare shins
       for (const sx of [-0.085, 0.085]) {
-        const shin = new THREE.Mesh(track(new THREE.CylinderGeometry(0.05, 0.045, 0.34, 8)), lam(0x14110e));
+        const shin = new THREE.Mesh(track(new THREE.CylinderGeometry(0.05, 0.045, 0.34, 8)), lam(s.skin));
         shin.position.set(sx * wide, 0.17, 0); group.add(shin);
       }
     }
@@ -110,8 +111,8 @@ export function buildAvatarFigure(spec = {}) {
     logo.position.set(0, 0.99, 0.2 * wide + 0.025); group.add(logo);
   }
 
-  // --- head ---
-  const head = new THREE.Mesh(track(new THREE.SphereGeometry(0.15, 16, 14)), lam(0x16161c));
+  // --- head (skin) ---
+  const head = new THREE.Mesh(track(new THREE.SphereGeometry(0.15, 16, 14)), lam(s.skin));
   head.position.y = 1.44; group.add(head);
 
   // --- hair ---
