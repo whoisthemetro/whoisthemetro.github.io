@@ -218,6 +218,7 @@ function loadOutfit() {
 }
 function saveOutfit(spec) { try { localStorage.setItem("metro.outfit", JSON.stringify(spec)); } catch (e) {} }
 let outfitSpec = loadOutfit();
+identity.outfit = outfitSpec;   // broadcast over presence so others see your fit
 
 // the arcade mirror — a framed panel that renders a live "you" (your dressed
 // figure + 8-bit face, driven by your mic level). click it to open the picker.
@@ -245,7 +246,7 @@ function openPicker() {
   camera.updateMatrixWorld(true);
   openOutfitPicker(outfitSpec, {
     onChange: (s) => mirror.setSpec(s),
-    onSave: (s) => { outfitSpec = s; saveOutfit(s); mirror.setSpec(s); toast("look saved"); },
+    onSave: (s) => { outfitSpec = s; saveOutfit(s); mirror.setSpec(s); presence.updateMeta({ outfit: s }); toast("look saved"); },
     onClose: () => {
       pickerOpen = false; modalOpen = false; mirror.setSpec(outfitSpec);
       if (pickerReturn) { controls.pos.x = pickerReturn.x; controls.pos.z = pickerReturn.z; controls.yaw = pickerReturn.yaw; controls.pitch = pickerReturn.pitch; pickerReturn = null; }

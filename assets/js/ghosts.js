@@ -1,47 +1,23 @@
 /* ============================================================
    THE METRO — other people, rendered
-   Each live visitor is a soft glowing figure with their name
-   floating overhead. Poses arrive over presence broadcast and
-   get smoothed here so movement looks human, not teleporty.
+   Each live visitor is their chosen avatar (built from the outfit
+   spec they broadcast) with their name floating overhead, or a soft
+   glow-blob if they haven't picked a look yet. Poses arrive over
+   presence and get smoothed here so movement looks human. Each
+   figure's face glows + flaps to that person's live mic level.
    ============================================================ */
 
 import * as THREE from "three";
-import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import * as SkeletonUtils from "three/addons/utils/SkeletonUtils.js";
 import { makeFace } from "./face.js";
-
-const gltfLoader = new GLTFLoader();
-const avatarCache = new Map();   // url -> Promise<THREE.Object3D template>
-
-function loadAvatar(url) {
-  if (!avatarCache.has(url)) {
-    avatarCache.set(url, new Promise((resolve, reject) => {
-      gltfLoader.load(url, (gltf) => {
-        const model = gltf.scene;
-        // Ready Player Me avatars arrive in A-pose — relax the arms
-        model.traverse((o) => {
-          if (o.isBone) {
-            if (/LeftArm$/.test(o.name)) o.rotation.z = 1.15;
-            if (/RightArm$/.test(o.name)) o.rotation.z = -1.15;
-          }
-          if (o.isMesh) { o.frustumCulled = false; }
-        });
-        resolve(model);
-      }, undefined, reject);
-    }));
-  }
-  return avatarCache.get(url);
-}
+import { buildAvatarFigure } from "./avatar-builder.js";
 
 function nameSprite(name, color) {
   const c = document.createElement("canvas");
   c.width = 256; c.height = 64;
   const g = c.getContext("2d");
   g.font = "600 30px Archivo, sans-serif";
-  g.textAlign = "center";
-  g.textBaseline = "middle";
-  g.shadowColor = "rgba(0,0,0,0.9)";
-  g.shadowBlur = 8;
+  g.textAlign = "center"; g.textBaseline = "middle";
+  g.shadowColor = "rgba(0,0,0,0.9)"; g.shadowBlur = 8;
   g.fillStyle = color;
   g.fillText(name || "someone", 128, 32, 240);
   const tex = new THREE.CanvasTexture(c);
@@ -51,8 +27,10 @@ function nameSprite(name, color) {
   return sp;
 }
 
-function makeFigure(color) {
-  const grp = new THREE.Group();
+// the fallback look for someone who hasn't built an avatar: a glow-blob with the
+// 8-bit face. returns { node, setVoice, dispose } like buildAvatarFigure.
+function makeBlob(color) {
+  const node = new THREE.Group();
   const mat = new THREE.MeshBasicMaterial({
     color, transparent: true, opacity: 0.32,
     blending: THREE.AdditiveBlending, depthWrite: false,
@@ -61,65 +39,75 @@ function makeFigure(color) {
   body.position.y = 0.85;
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.15, 14, 12), mat);
   head.position.y = 1.62;
-  grp.add(body, head);
-
-  // 8-bit glowing face in front of the head
   const face = makeFace(0.22, "#9fe6ff");
   face.mesh.position.set(0, 1.62, 0.135);
-  grp.add(face.mesh);
+  node.add(body, head, face.mesh);
+  let op = 0.32;
+  return {
+    node,
+    setVoice(lvl, dt = 0.016) {
+      op += (0.32 + lvl * 0.5 - op) * Math.min(1, dt * 12);
+      mat.opacity = op;
+      face.draw({ mouth: Math.min(1, lvl * 1.3) });
+    },
+    dispose() { body.geometry.dispose(); head.geometry.dispose(); mat.dispose(); },
+  };
+}
 
-  grp.userData.glow = { mat, baseOpacity: 0.32, face };
-  return grp;
+// build a peer's visual from their meta: their outfit if they've set one,
+// otherwise the glow-blob fallback
+function buildPeerVisual(meta) {
+  if (meta.outfit) {
+    const a = buildAvatarFigure(meta.outfit);
+    return { node: a.group, setVoice: a.setVoice, dispose: a.dispose };
+  }
+  return makeBlob(meta.color || "#ffb347");
+}
+
+// a key that changes when someone's look changes, so we rebuild only then
+function lookKey(meta) {
+  return meta.outfit ? "o:" + JSON.stringify(meta.outfit) : "c:" + (meta.color || "");
 }
 
 export class Ghosts {
   constructor(group) {
     this.group = group;
-    this.byUid = new Map();   // uid -> {grp, target:{x,z,yaw}, bobSeed}
+    this.byUid = new Map();   // uid -> { grp, setVoice, dispose, lookKey, target, bobSeed }
   }
 
   syncPeers(peers) {
     // remove the departed
     for (const [uid, g] of this.byUid) {
       if (!peers.has(uid)) {
-        this.group.remove(g.grp);
-        this.byUid.delete(uid);
+        this.group.remove(g.grp); g.dispose && g.dispose(); this.byUid.delete(uid);
       }
     }
-    // avatar changed mid-session → rebuild that figure
+    // look changed mid-session → rebuild that figure (keep its place so it
+    // doesn't teleport)
+    const carry = new Map();
     for (const [uid, meta] of peers) {
       const rec = this.byUid.get(uid);
-      if (rec && rec.avatarUrl !== (meta.avatar || null)) {
-        this.group.remove(rec.grp);
-        this.byUid.delete(uid);
+      if (rec && rec.lookKey !== lookKey(meta)) {
+        carry.set(uid, { pos: rec.grp.position.clone(), target: rec.target });
+        this.group.remove(rec.grp); rec.dispose && rec.dispose(); this.byUid.delete(uid);
       }
     }
-    // add the newly arrived
+    // add the newly arrived (or just-rebuilt)
     for (const [uid, meta] of peers) {
       if (this.byUid.has(uid)) continue;
-      const grp = makeFigure(meta.color || "#ffb347");
+      const vis = buildPeerVisual(meta);
+      const grp = new THREE.Group();
+      grp.add(vis.node);
       const label = nameSprite(meta.name, meta.color || "#ffb347");
-      label.position.y = 2.0;
-      grp.add(label);
-      grp.position.set(0, 0, 2.5);
+      label.position.y = 2.05; grp.add(label);
+      const kept = carry.get(uid);
+      grp.position.copy(kept ? kept.pos : new THREE.Vector3(0, 0, 2.5));
       this.group.add(grp);
       this.byUid.set(uid, {
-        grp,
-        avatarUrl: meta.avatar || null,
-        target: { x: 0, z: 2.5, yaw: 0 },
+        grp, setVoice: vis.setVoice, dispose: vis.dispose, lookKey: lookKey(meta),
+        target: kept ? kept.target : { x: 0, z: 2.5, yaw: 0 },
         bobSeed: Math.random() * 10,
       });
-      // if they made themselves a body, swap the ghost shell for it
-      if (meta.avatar) {
-        loadAvatar(meta.avatar).then((template) => {
-          const rec = this.byUid.get(uid);
-          if (!rec) return;                  // they left while loading
-          const body = SkeletonUtils.clone(template);
-          // hide the glow capsule + head, keep the name label
-          rec.grp.children.forEach((c) => { if (!c.isSprite) c.visible = false; });
-          rec.grp.add(body);
-        }).catch(() => { /* bad url — ghost shell stays */ });
-      }
     }
   }
 
@@ -146,31 +134,19 @@ export class Ghosts {
     }, 260);
   }
 
-  // levelFn(uid) -> 0..1 live voice level; drives each blob's glow + mouth
+  // levelFn(uid) -> 0..1 live voice level; drives each figure's glow + mouth
   tick(dt, t, levelFn) {
     const k = Math.min(1, dt * 7);   // smoothing
     for (const [uid, g] of this.byUid) {
-      // voice-reactive glow + mouth (an envelope follower assigned to the glow)
-      const gd = g.grp.userData.glow;
-      if (gd) {
-        const lvl = levelFn ? (levelFn(uid) || 0) : 0;
-        const targetOp = gd.baseOpacity + lvl * 0.5;     // swell while they talk
-        gd.mat.opacity += (targetOp - gd.mat.opacity) * Math.min(1, dt * 12);
-        gd.face.draw({ mouth: Math.min(1, lvl * 1.3) });  // mouth flaps with voice
-
-      }
-    }
-    for (const g of this.byUid.values()) {
+      if (g.setVoice) g.setVoice(levelFn ? (levelFn(uid) || 0) : 0, dt);
       const px = g.grp.position.x, py = g.grp.position.y, pz = g.grp.position.z;
       g.grp.position.x += (g.target.x - g.grp.position.x) * k;
       g.grp.position.z += (g.target.z - g.grp.position.z) * k;
-      g.floatY = (g.floatY ?? 0) + (((g.target.y || 0)) - (g.floatY ?? 0)) * k;
+      g.floatY = (g.floatY ?? 0) + ((g.target.y || 0) - (g.floatY ?? 0)) * k;
       let dy = g.target.yaw - g.grp.rotation.y;
       dy = Math.atan2(Math.sin(dy), Math.cos(dy));
       g.grp.rotation.y += dy * k;
-      // gentle idle bob — they're alive (plus zero-g altitude)
       g.grp.position.y = (g.floatY || 0) + Math.sin(t * 1.8 + g.bobSeed) * 0.025;
-      // velocity estimate, smoothed — teammates slingshot off this
       if (dt > 0) {
         const vx = (g.grp.position.x - px) / dt, vy = (g.grp.position.y - py) / dt, vz = (g.grp.position.z - pz) / dt;
         if (!g.vel) g.vel = { x: 0, y: 0, z: 0 };
