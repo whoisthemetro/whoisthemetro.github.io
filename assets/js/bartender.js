@@ -34,15 +34,35 @@ export class Bartender {
        patronAxis:"x"|"z", patronSign:+1|-1, patronLine  // you're a patron if
                                 //   (yourPos[patronAxis] - patronLine) * patronSign > 0
      } */
-  constructor(scene, bar, fx = {}) {
+  constructor(scene, bar, fx = {}, opts = {}) {
     this.bar = bar;
     this.fx = fx;
     this.run = bar.run;
     this.faceYaw = bar.faceYaw;
 
     this.grp = new THREE.Group();
+    // the procedural box body lives in its own group so a rigged GLB can take
+    // over: when the model loads we hide procBody and show the avatar instead.
+    this.procBody = new THREE.Group();
+    this.grp.add(this.procBody);
     this._build();
     scene.add(this.grp);
+
+    // optional rigged GLB skin (brain stays procedural; only the body swaps)
+    this.avatar = null;
+    this.animState = null;
+    if (opts.avatarUrl) {
+      import("./avatar.js").then(({ makeAvatar }) => {
+        const av = makeAvatar(opts.avatarUrl, { height: opts.avatarHeight || 1.7 });
+        this.grp.add(av.root);
+        av.ready.then(() => {
+          if (!av.loaded) return;            // load failed → keep the box body
+          this.avatar = av;
+          this.procBody.visible = false;     // hand the body over to the rig
+          av.play("idle", 0);
+        });
+      }).catch(() => { /* no module → box body stays */ });
+    }
 
     // roomy invisible hitbox over his upper half (visible above the counter)
     this.hitMesh = new THREE.Mesh(
@@ -82,14 +102,14 @@ export class Bartender {
     for (const sx of [-0.1, 0.1]) {
       const leg = box(0.15, 0.86, 0.18, lam(TROUSER));
       leg.position.set(sx, 0.43, 0);
-      this.grp.add(leg);
+      this.procBody.add(leg);
     }
 
     // upper body: ONE group that pivots at the hips, so leaning bends the whole
     // torso + arms + head together instead of sliding layers apart
     this.upper = new THREE.Group();
     this.upper.position.y = 0.84;          // hip pivot
-    this.grp.add(this.upper);
+    this.procBody.add(this.upper);
 
     // the body is the dark vest (a single box). the shirt is a proud front
     // panel, the apron a proud lower panel, the tie proud above the shirt —
@@ -204,7 +224,10 @@ export class Bartender {
       this.yaw = this._turn(this.yaw, this._faceTowards(playerPose) ?? this.faceYaw, dt * 6);
     } else if (near) {
       if (this.state !== "attend") { this.state = "attend"; this._showProp(null); this.phase = 0; }
-      if (!this.greeted) { this.greeted = true; this.fx.greet?.(); }
+      if (!this.greeted) {
+        this.greeted = true; this.fx.greet?.();
+        if (this.avatar) { this.avatar.once("agree", "idle"); this.animState = "idle"; }  // a nod hello
+      }
       this.yaw = this._turn(this.yaw, this._faceTowards(playerPose), dt * 6);
     } else {
       this.greeted = false;
@@ -224,6 +247,16 @@ export class Bartender {
     }
 
     this._apply(t, dt);
+
+    // drive the rigged body if it loaded: the stand-in only has idle/walk/nod,
+    // so the prop-specific chores (wipe/shake/pour) read as idle for now — they
+    // come back when real bartender clips are sourced. position/yaw still come
+    // from the brain in _apply, which the avatar.root inherits as grp's child.
+    if (this.avatar) {
+      this.avatar.update(dt);
+      const want = this.state === "walk" ? "walk" : "idle";
+      if (want !== this.animState) { this.animState = want; this.avatar.play(want, 0.25); }
+    }
   }
 
   // yaw that points his front (+z) at a world point; null if no point
