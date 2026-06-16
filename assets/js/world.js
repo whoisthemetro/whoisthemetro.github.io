@@ -6543,14 +6543,15 @@ export function buildWorld() {
     grabHandles, kiosks, arenaExits,
     arenaGoalX: GOAL_X, arenaBubbleR: BUBBLE_R,
     setTubeBarriers, inTube,
-    arcadeReturn: { x: -4.8, z: -0.4, yaw: Math.PI },
     pool, darts, hoops,
     discGroup, discHit, setArenaScore,
     elevHits, elevCallHits, setElevatorDoors, elevatorOpen, inElevatorCab,
+    // where you land when you leave any room — back inside the cab, facing out
+    // the (open) doors into the arcade, so the lift is the hub for every trip
+    elevReturn: { x: ELC.x, z: zWall - 0.4, yaw: Math.PI },
     updateScores,
     setParallax,
     boatSpawn: { x: BOAT.x, z: BOAT.z + 0.4, yaw: 0 },
-    bathroomSpawn: { x: -1.85, z: -2.1, yaw: -Math.PI / 2 },
     inBoat: (x) => x > 30,
     // THE CLUB (the dj bar — name pending)
     clubInfo: CLUB,

@@ -1549,6 +1549,35 @@ function fadeTo(fn) {
 // existing portal flow, so the desi/venue passwords and the crew team-pick
 // still stand; HOME just rides back to the bedroom.
 let elevBusy = false;
+// every room exit empties back into the cab (doors open) — the lift is the one
+// hub all the trips run through, so you step out of it the same way you'd ride.
+function returnToLift() {
+  controls.pos.x = world.elevReturn.x;
+  controls.pos.z = world.elevReturn.z;
+  controls.yaw = world.elevReturn.yaw;
+  world.setElevatorDoors(true);          // the doors are already parted on arrival
+}
+// ride-cam — the car actually moves. while it travels the controls are unlocked
+// (so nothing else writes the camera) and we nudge it: a sink as it pulls away
+// from the floor, a faint sway down the shaft, a little settle as the brakes
+// grab. the lit ceiling panel keeps the sealed cab from going pitch black.
+const rideCam = { active: false, t: 0, dur: 1.1, baseX: 0, baseY: 0 };
+function startRideCam() {
+  rideCam.active = true; rideCam.t = 0;
+  rideCam.baseX = camera.position.x; rideCam.baseY = camera.position.y;
+}
+function stepRideCam(dt) {
+  if (!rideCam.active) return;
+  rideCam.t += dt;
+  const p = Math.min(1, rideCam.t / rideCam.dur);
+  const depart = Math.exp(-p * 6) * -0.11;             // weight in your knees as it pulls away
+  const arrive = Math.exp(-(1 - p) * 7) * 0.08;        // float up as the brakes grab
+  const hum = Math.sin(p * Math.PI) * Math.sin(p * 46) * 0.006;   // a faint shaft rattle, fades at the ends
+  const sway = Math.sin(p * Math.PI) * Math.sin(p * 17) * 0.010;  // gentle side-to-side
+  camera.position.y = rideCam.baseY + depart + arrive + hum;
+  camera.position.x = rideCam.baseX + sway;
+  if (p >= 1) rideCam.active = false;
+}
 function elevChime(up = true) {
   // a soft two-note ding (arrival/open)
   try {
@@ -1568,15 +1597,19 @@ function rideElevator(floor) {
   modalOpen = true;
   controls.unlock();                       // hands off — you're riding
   world.setElevatorDoors(false);           // doors slide shut in front of you
-  try { beep(660, 0.05, "square", 0.04); beep(150, 0.6, "sine", 0.03, 120); } catch (e) {}  // button + departure hum
+  startRideCam();                          // the car lurches off down the shaft
+  try { beep(660, 0.05, "square", 0.04); beep(150, 0.9, "sine", 0.03, 120); } catch (e) {}  // button + departure hum
+  // a couple of soft ticks as floors slip past the window
+  try { setTimeout(() => beep(440, 0.04, "sine", 0.03), 420); setTimeout(() => beep(440, 0.04, "sine", 0.03), 760); } catch (e) {}
   setTimeout(() => {
+    elevChime(floor === "home");            // a ding as the car arrives at your floor
     modalOpen = false;                      // each flow re-arms its own modal/lock
     elevBusy = false;
     if (floor === "home") goHome();
     else if (floor === "desi") tryBoat();
     else if (floor === "crew") tryArena();
     else if (floor === "venue") tryClub();
-  }, 700);                                  // let the doors shut + the hum land
+  }, 1100);                                 // let the ride-cam play out before the doors open
 }
 function goHome() {
   fadeTo(() => {
@@ -1624,9 +1657,7 @@ function refreshNoteVisibility() {
 function leaveBoat() {
   fadeTo(() => {
     inBoat = false;
-    controls.pos.x = world.bathroomSpawn.x;
-    controls.pos.z = world.bathroomSpawn.z;
-    controls.yaw = world.bathroomSpawn.yaw;
+    returnToLift();
     setWater(false);                     // the sea stays on the boat, fully
     setRoomTone(true);
     refreshNoteVisibility();
@@ -1686,10 +1717,8 @@ function leaveClub() {
   document.body.classList.remove("in-club");   // the mic + cat HUD come back home
   fadeTo(() => {
     inClub = false;
-    // the walk home ends at your own front door
-    controls.pos.x = world.spawn.x;
-    controls.pos.z = world.spawn.z;
-    controls.yaw = world.spawn.yaw;
+    // the lift was waiting — you step back out of it into the arcade
+    returnToLift();
     setRoomTone(true);
     refreshNoteVisibility();
   });
@@ -1979,9 +2008,7 @@ function leaveArena() {
     controls._launchDir = null;
     voice.setArenaFx(false);
     setThruster(false);
-    controls.pos.x = world.arcadeReturn.x;
-    controls.pos.z = world.arcadeReturn.z;
-    controls.yaw = world.arcadeReturn.yaw;
+    returnToLift();
     controls.pitch = 0;
     setRoomTone(true);
     refreshNoteVisibility();
@@ -2845,5 +2872,6 @@ renderer.setAnimationLoop(() => {
   }
   shieldMesh.visible = inArena && !!controls.blocking;
   if (inArena) setThruster(controls.thrusting);
+  stepRideCam(dt);                         // nudge the camera while the car travels
   renderer.render(world.scene, camera);
 });
