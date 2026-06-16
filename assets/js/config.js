@@ -13,4 +13,11 @@
 window.METRO_CONFIG = {
   SUPABASE_URL: "https://donnxntnewmkzrycugpn.supabase.co",
   SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRvbm54bnRuZXdta3pyeWN1Z3BuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwNjU3OTEsImV4cCI6MjA5NjY0MTc5MX0.rOl_otqZqZPM7czYVWLHFLxLMSAcYj7mChlrS9xytps",
+
+  // PostHog product analytics (optional). Paste your PostHog Project API key
+  // (it starts with "phc_" and is safe to publish). Leave empty to disable
+  // analytics entirely. Set POSTHOG_HOST to your project's region:
+  // US "https://us.i.posthog.com" / EU "https://eu.i.posthog.com". See docs/analytics.md.
+  POSTHOG_KEY: "",
+  POSTHOG_HOST: "https://us.i.posthog.com",
 };

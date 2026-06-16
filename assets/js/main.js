@@ -20,6 +20,7 @@ import { Bartender } from "./bartender.js";
 import { makeSelfieMirror } from "./mirror.js";
 import { DEFAULT_SPEC } from "./avatar-builder.js";
 import { openOutfitPicker } from "./picker.js";
+import { initAnalytics, track, analyticsBuffer } from "./analytics.js";
 import { openArcade, closeArcade, arcadeIsOpen, arcadeWantsEsc, handleGameMessage, setScoreHook } from "./arcade.js";
 import { initPool } from "./pool.js";
 import { initDarts } from "./darts.js";
@@ -51,6 +52,51 @@ const camera = new THREE.PerspectiveCamera(72, innerWidth / innerHeight, 0.05, 1
 camera.layers.enable(1);   // boat layer
 camera.layers.enable(2);   // arena layer
 const world = buildWorld(renderer);
+
+/* ---------------- analytics (PostHog, env-gated; see docs/analytics.md) ----
+   Exploration/interaction events, all aggregated by the callers. No-op until a
+   key is set in config.js. ------------------------------------------------- */
+initAnalytics();
+const A_DEVICE = IS_TOUCH ? "mobile" : "desktop";
+let aWorldLoaded = false;
+addEventListener("error", (e) => {
+  if (!aWorldLoaded) track("world_load_failed", { reason: String((e && (e.message || (e.error && e.error.message))) || "error").slice(0, 160), device: A_DEVICE });
+});
+function aWorldReady() {
+  if (aWorldLoaded) return;
+  aWorldLoaded = true;
+  track("world_loaded", { loadSeconds: +(performance.now() / 1000).toFixed(2), device: A_DEVICE });
+}
+// which space the player is in — flags for the far rooms, x for bedroom vs arcade
+function aRoomNow() {
+  if (inBoat) return "desi";
+  if (inArena) return "crew";
+  if (inClub) return "venue";
+  return controls.pos.x < -3.6 ? "arcade" : "bedroom";
+}
+let aRoom = null, aRoomAt = performance.now(), aRoomCount = 0, aEngaged = false;
+function aEngage() { if (aEngaged) return; aEngaged = true; track("session_engaged", { device: A_DEVICE }); }
+function aSetRoom(name) {
+  if (name === aRoom) return;
+  if (aRoom) track("room_exited", { room: aRoom, dwellSeconds: Math.round((performance.now() - aRoomAt) / 1000) });
+  aRoom = name; aRoomAt = performance.now(); aRoomCount++;
+  track("room_entered", { room: name });
+  if (aRoomCount >= 2) aEngage();           // explored past the first space = engaged
+}
+function aItem(item) { track("item_interacted", { item, room: aRoom || aRoomNow() }); aEngage(); }
+// instruments: one summary event when you stop, never per note
+let aInstName = null, aInstCount = 0, aInstStart = 0, aInstT = null;
+function aInstFlush() {
+  if (aInstName && aInstCount > 0) track("instrument_played", { instrument: aInstName, notes: aInstCount, seconds: Math.round((performance.now() - aInstStart) / 1000) });
+  aInstName = null; aInstCount = 0;
+}
+function aInstrument(name) {
+  const now = performance.now();
+  if (aInstName !== name) { aInstFlush(); aInstName = name; aInstStart = now; aInstCount = 0; }
+  aInstCount++; aEngage();
+  clearTimeout(aInstT); aInstT = setTimeout(aInstFlush, 2500);
+}
+let aArcadeGame = null, aArcadeStart = 0;
 const controls = new Controls(camera, canvas, world.bounds, world.isWalkable);
 const notesWall = new NotesWall(world.noteGroup, world.walls, store);
 const ghosts = new Ghosts(world.ghostGroup);
@@ -730,8 +776,10 @@ controls.onAction((ndcX, ndcY) => {
   }
   if (!hit) return;
   if (hit.object.userData.mirror && hit.distance < 3.5) {
+    aItem("mirror");
     openPicker();
   } else if (hit.object.userData.bartender && hit.distance < 3.2) {
+    aItem("bartender");
     const line = bartender.serve();
     toast(`🍸 ${line}`);
   } else if (hit.object.userData.cat && hit.distance < 2.2) {
@@ -741,6 +789,7 @@ controls.onAction((ndcX, ndcY) => {
     if (outcome === "scratch") gotScratched();
     else presence.sendAct({ kind: "pet" });
     if (outcome === "love") { store.logEvent("pet"); progress.bump("pets"); }
+    aItem("cat");
     wrapCare("pet").then(res => {
       if (res && outcome === "love") {
         toast(`purrrr — this cat has been petted ${res.pets} time${res.pets === 1 ? "" : "s"}`);
@@ -773,6 +822,8 @@ controls.onAction((ndcX, ndcY) => {
     controls.unlock();
     store.logEvent("arcade_" + hit.object.userData.arcade);
     progress.bump("arcade");
+    aArcadeGame = hit.object.userData.arcade; aArcadeStart = performance.now();
+    track("arcade_game_opened", { game: aArcadeGame }); aEngage();
     openArcade(hit.object.userData.arcade, {
       send: (p) => presence.sendGame(p),
       myUid: identity.uid,
@@ -787,11 +838,13 @@ controls.onAction((ndcX, ndcY) => {
     world.pressPianoKey(key);
     presence.sendNote(key, pianoVoice);
     progress.bump("piano");
+    aInstrument("piano");
     if (Date.now() - (window.__pianoLogAt || 0) > 60000) {
       window.__pianoLogAt = Date.now();
       store.logEvent("piano");
     }
   } else if (hit.object.userData.dimmer && hit.distance < 2.6) {
+    aItem("dimmer");
     openDimmer();
   } else if (hit.object.userData.launchHandle && hit.distance < 3) {
     const h = hit.object.userData.launchHandle;
@@ -808,12 +861,14 @@ controls.onAction((ndcX, ndcY) => {
     edrumHit(pad);
     world.pressEdrum(pad);
     presence.sendAct({ kind: "edrum", pad });
+    aInstrument("drums");
   } else if (hit.object.userData.guitar && hit.distance < 2.4) {
     // higher on the neck, higher the note
     const n = Math.max(0, Math.min(10, Math.round((hit.point.y - 0.25) * 12)));
     guitarPluck(n, guitarVoice);
     world.strumTele();
     presence.sendAct({ kind: "guitar", n, voice: guitarVoice });
+    aInstrument("guitar");
   } else if (hit.object.userData.guitarVoice && hit.distance < 2.4) {
     guitarVoice = (guitarVoice + 1) % GUITAR_VOICES.length;
     try { localStorage.setItem("metro.gvoice", String(guitarVoice)); } catch (e) {}
@@ -1198,6 +1253,8 @@ $("#post-btn").addEventListener("click", async () => {
     const placed = notesWall.add(saved);
     refreshNoteVisibility();
     store.logEvent(saved.kind);
+    track("note_left", { room: aRoomNow(), kind: saved.kind });   // analytics
+    aEngage();
     lastPostAt = Date.now();
     // we pre-checked, but a realtime post from someone else could have taken
     // the last patch during the await — skip cleanly if so (rare).
@@ -1665,6 +1722,7 @@ function callElevator() {
 }
 function rideElevator(floor) {
   if (elevBusy) return;
+  track("elevator_used", { from: aRoomNow(), to: floor });   // analytics
   elevBusy = true;
   modalOpen = true;
   controls.unlock();                       // hands off — you're riding
@@ -2562,6 +2620,10 @@ $("#dm-send").addEventListener("click", async () => {
 });
 
 function closeArcadeOverlay() {
+  if (aArcadeGame) {
+    track("arcade_game_ended", { game: aArcadeGame, seconds: Math.round((performance.now() - aArcadeStart) / 1000) });
+    aArcadeGame = null;
+  }
   closeArcade();
   modalOpen = false;
   if (entered) safeLock();
@@ -2840,7 +2902,7 @@ addEventListener("keydown", (e) => {
 })();
 
 /* ---------------- frame loop ---------------- */
-window.METRO_DEBUG = { renderer, camera, world, controls, THREE, cat, bartender, ghosts, voice, mirror, openPicker, notesWall,
+window.METRO_DEBUG = { renderer, camera, world, controls, THREE, cat, bartender, ghosts, voice, mirror, openPicker, analytics: analyticsBuffer, notesWall,
   uid: identity.uid, pool: poolGame, sitAtPool, leavePool,
   darts: dartGame, sitAtDarts, leaveDarts,
   hoops: hoopGame,
@@ -2854,6 +2916,8 @@ renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta(), 0.05);
   t += dt;
   controls.update(dt);
+  aWorldReady();                       // analytics: world_loaded (first frame)
+  if (entered) aSetRoom(aRoomNow());   // analytics: room_entered/exited + session_engaged
   // safety: never leave anyone shut inside the cab. if you're standing in the
   // car at home (not riding, not mid-fade, not in another room) with the doors
   // closed — e.g. you backed out of a password — part them so you can step out.
