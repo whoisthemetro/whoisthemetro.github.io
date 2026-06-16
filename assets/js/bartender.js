@@ -226,7 +226,7 @@ export class Bartender {
       if (this.state !== "attend") { this.state = "attend"; this._showProp(null); this.phase = 0; }
       if (!this.greeted) {
         this.greeted = true; this.fx.greet?.();
-        if (this.avatar) { this.avatar.once("agree", "idle"); this.animState = "idle"; }  // a nod hello
+        if (this.avatar) { this.avatar.once("wave", "idle"); this.animState = "idle"; }  // wave hello
       }
       this.yaw = this._turn(this.yaw, this._faceTowards(playerPose), dt * 6);
     } else {
