@@ -210,7 +210,10 @@ const bartender = new Bartender(world.scene, world.barInfo, {
 // with the face glowing in your identity color)
 function loadOutfit() {
   const base = { ...DEFAULT_SPEC, faceColor: identity.color || DEFAULT_SPEC.faceColor };
-  try { const s = JSON.parse(localStorage.getItem("metro.outfit")); if (s) return { ...base, ...s }; } catch (e) {}
+  try {
+    const s = JSON.parse(localStorage.getItem("metro.outfit"));
+    if (s) { const m = { ...base, ...s }; if (m.top === "hoodie") m.top = "tee"; return m; }  // hoodie retired
+  } catch (e) {}
   return base;   // merge so saves from before a new option (e.g. skin) still fill in
 }
 function saveOutfit(spec) { try { localStorage.setItem("metro.outfit", JSON.stringify(spec)); } catch (e) {} }
@@ -226,13 +229,28 @@ const mirror = makeSelfieMirror(renderer, outfitSpec);
   world.scene.add(mirror.group);
 }
 let pickerOpen = false;
+let pickerReturn = null;
 function openPicker() {
   if (pickerOpen) return;
   pickerOpen = true; modalOpen = true; controls.unlock();
+  // pull the camera back to frame the WHOLE mirror (nothing cut off): straight
+  // in front of it, centred on its middle, far enough that the full panel fits.
+  pickerReturn = { x: controls.pos.x, z: controls.pos.z, yaw: controls.yaw, pitch: controls.pitch };
+  const a = world.mirrorAnchor;
+  const dist = 1.7, side = 0.3;            // back up to fit the full panel; small shift to clear the left UI
+  controls.pos.x = a.x - 0.02 - dist; controls.pos.z = a.z + side;
+  camera.position.set(controls.pos.x, a.y, controls.pos.z);
+  camera.lookAt(a.x, a.y, a.z);
+  controls.yaw = camera.rotation.y; controls.pitch = camera.rotation.x;
+  camera.updateMatrixWorld(true);
   openOutfitPicker(outfitSpec, {
     onChange: (s) => mirror.setSpec(s),
     onSave: (s) => { outfitSpec = s; saveOutfit(s); mirror.setSpec(s); toast("look saved"); },
-    onClose: () => { pickerOpen = false; modalOpen = false; mirror.setSpec(outfitSpec); if (entered) safeLock(); },
+    onClose: () => {
+      pickerOpen = false; modalOpen = false; mirror.setSpec(outfitSpec);
+      if (pickerReturn) { controls.pos.x = pickerReturn.x; controls.pos.z = pickerReturn.z; controls.yaw = pickerReturn.yaw; controls.pitch = pickerReturn.pitch; pickerReturn = null; }
+      if (entered) safeLock();
+    },
   });
 }
 

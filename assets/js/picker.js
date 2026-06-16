@@ -102,7 +102,6 @@ export function openOutfitPicker(spec, { onChange, onSave, onClose } = {}) {
   chips("hair", OPTIONS.hair);
   swatches("hairColor", OPTIONS.hairColors);
   chips("top", OPTIONS.top);
-  chips("hood", OPTIONS.hood, (v) => v ? "Hood up" : "Hood down");
   swatches("topColor", OPTIONS.swatches);
   chips("bottom", OPTIONS.bottom);
   swatches("bottomColor", OPTIONS.swatches);

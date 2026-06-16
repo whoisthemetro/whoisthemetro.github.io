@@ -17,10 +17,9 @@ import { makeFace } from "./face.js";
 export const OPTIONS = {
   build: ["slim", "average", "broad"],
   hair: ["none", "short", "long", "bun", "buzz", "afro"],
-  top: ["hoodie", "tee", "jacket", "dress"],
+  top: ["tee", "jacket", "dress"],
   bottom: ["pants", "shorts", "skirt"],
   beard: ["none", "stubble", "full", "long"],
-  hood: [true, false],
   swatches: ["#191920", "#0d0d11", "#3a2c1c", "#7a2a34", "#274a7a", "#2f6b4a",
              "#caa23c", "#b8b3ad", "#e9e4d8", "#8a4a6a"],
   hairColors: ["#1a140e", "#2a2018", "#5a4326", "#caa23c", "#9a9088", "#3a6a8a", "#8a4a6a"],
@@ -30,7 +29,7 @@ export const OPTIONS = {
 
 export const DEFAULT_SPEC = {
   build: "average", skin: "#d8a878", hair: "short", hairColor: "#2a2018",
-  top: "hoodie", topColor: "#191920", hood: true,
+  top: "tee", topColor: "#191920",
   bottom: "pants", bottomColor: "#0d0d11",
   beard: "none", faceColor: "#9fe6ff", logo: "METRO",
 };
@@ -117,18 +116,6 @@ export function buildAvatarFigure(spec = {}) {
 
   // --- hair ---
   buildHair(group, s, lam, track);
-
-  // --- hood (only if a hoodie, hood up) ---
-  // OPEN-FRONT: a top/back shell pushed back + a cowl drape, so the face stays
-  // clear — the hood never comes down past the top of the eyes (~y 1.50).
-  if (s.top === "hoodie" && s.hood) {
-    const shell = new THREE.Mesh(track(new THREE.SphereGeometry(0.2, 18, 14, 0, Math.PI * 2, 0, Math.PI * 0.5)),
-      lam(shade(topC, -0.3)));
-    shell.position.set(0, 1.5, -0.08); shell.scale.set(1.12, 1.18, 1.14); group.add(shell);
-    const cowl = new THREE.Mesh(track(new THREE.CylinderGeometry(0.15, 0.27 * wide, 0.34, 14, 1, true)),
-      lam(shade(topC, -0.2)));
-    cowl.position.set(0, 1.16, -0.02); group.add(cowl);
-  }
 
   // --- beard ---
   if (s.beard && s.beard !== "none") {
