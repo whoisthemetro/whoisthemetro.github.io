@@ -50,6 +50,16 @@ function nameSprite(name, color) {
   return sp;
 }
 
+// a simple face: two eyes + a mouth that opens. drawn on a small canvas so the
+// mouth can flap from the speaker's live mic level. mouthOpen is 0..1.
+function drawGhostFace(g, mouthOpen) {
+  g.clearRect(0, 0, 64, 64);
+  g.fillStyle = "#0e0e16";
+  g.beginPath(); g.arc(23, 27, 4, 0, 7); g.arc(41, 27, 4, 0, 7); g.fill();   // eyes
+  const mh = 1.5 + mouthOpen * 11;                                            // mouth height grows with voice
+  g.beginPath(); g.ellipse(32, 45, 7, mh / 2, 0, 0, 7); g.fill();
+}
+
 function makeFigure(color) {
   const grp = new THREE.Group();
   const mat = new THREE.MeshBasicMaterial({
@@ -61,6 +71,18 @@ function makeFigure(color) {
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.15, 14, 12), mat);
   head.position.y = 1.62;
   grp.add(body, head);
+
+  // face plane in front of the head (transparent, drawn on top of the glow)
+  const fc = document.createElement("canvas"); fc.width = fc.height = 64;
+  drawGhostFace(fc.getContext("2d"), 0);
+  const ftex = new THREE.CanvasTexture(fc); ftex.colorSpace = THREE.SRGBColorSpace;
+  const face = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.2),
+    new THREE.MeshBasicMaterial({ map: ftex, transparent: true, depthWrite: false }));
+  face.position.set(0, 1.62, 0.135);
+  face.renderOrder = 12;
+  grp.add(face);
+
+  grp.userData.glow = { mat, baseOpacity: 0.32, fc, ftex, mouthStep: 0 };
   return grp;
 }
 
@@ -138,8 +160,24 @@ export class Ghosts {
     }, 260);
   }
 
-  tick(dt, t) {
+  // levelFn(uid) -> 0..1 live voice level; drives each blob's glow + mouth
+  tick(dt, t, levelFn) {
     const k = Math.min(1, dt * 7);   // smoothing
+    for (const [uid, g] of this.byUid) {
+      // voice-reactive glow + mouth (an envelope follower assigned to the glow)
+      const gd = g.grp.userData.glow;
+      if (gd) {
+        const lvl = levelFn ? (levelFn(uid) || 0) : 0;
+        const targetOp = gd.baseOpacity + lvl * 0.5;     // swell while they talk
+        gd.mat.opacity += (targetOp - gd.mat.opacity) * Math.min(1, dt * 12);
+        const step = Math.round(Math.min(1, lvl * 1.3) * 3);   // quantize mouth (0..3)
+        if (step !== gd.mouthStep) {
+          gd.mouthStep = step;
+          drawGhostFace(gd.fc.getContext("2d"), step / 3);
+          gd.ftex.needsUpdate = true;
+        }
+      }
+    }
     for (const g of this.byUid.values()) {
       const px = g.grp.position.x, py = g.grp.position.y, pz = g.grp.position.z;
       g.grp.position.x += (g.target.x - g.grp.position.x) * k;

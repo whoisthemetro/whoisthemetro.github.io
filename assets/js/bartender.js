@@ -245,6 +245,10 @@ export class Bartender {
     const lift = Math.sin(t * 1.8 + this.bob) * 0.03;
     this.body.position.y = 0.85 + lift;
     this.headGrp.position.y = 1.62 + lift;
+    // a little glow swell while he's talking (same idea as the mic-reactive
+    // player glow — his "voice" is the talk-flap timer)
+    const targetOp = 0.34 + (this.talkT > 0 ? 0.22 : 0);
+    this.mat.opacity += (targetOp - this.mat.opacity) * 0.2;
     // greeting nod: a quick dip of the head
     this.headGrp.rotation.x = this.nodT > 0 ? Math.sin((0.55 - this.nodT) / 0.55 * Math.PI) * 0.32 : 0;
     this.hitMesh.position.set(this.pos.x, 1.1, this.pos.z);

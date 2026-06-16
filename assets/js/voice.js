@@ -180,7 +180,12 @@ function makePlayer(ctx, master) {
   const wet = ctx.createGain(); wet.gain.value = 0.3;
   shaper.connect(d1); d1.connect(d2); d2.connect(damp).connect(fb).connect(d1);
   d1.connect(wet); d2.connect(wet); wet.connect(out);
-  return { out, dryIn, fxIn, playhead: 0 };
+  // a silent analyser tap on this voice so each speaker's blob can glow + flap
+  // its mouth to their own live level (an envelope follower, read per frame)
+  const ana = ctx.createAnalyser();
+  ana.fftSize = 256;
+  out.connect(ana);
+  return { out, dryIn, fxIn, playhead: 0, ana, buf: new Uint8Array(ana.fftSize), level: 0 };
 }
 
 export const voice = {
@@ -200,6 +205,21 @@ export const voice = {
     }
   },
   djLive: () => djLive,
+  // live voice level (0..1) for one speaker, smoothed as an envelope follower —
+  // ghosts.js reads this each frame to glow + open the mouth of their blob.
+  // 0 when they're not talking (no chunks playing → signal decays to silence).
+  level(uid) {
+    const pl = players.get(uid);
+    if (!pl || !pl.ana) return 0;
+    pl.ana.getByteTimeDomainData(pl.buf);
+    let sum = 0;
+    for (let i = 0; i < pl.buf.length; i++) { const v = (pl.buf[i] - 128) / 128; sum += v * v; }
+    const rms = Math.sqrt(sum / pl.buf.length);
+    const target = Math.min(1, rms * 3.4);          // speech sits low — scale it up
+    const k = target > pl.level ? 0.5 : 0.12;        // snappy attack, gentle release
+    pl.level += (target - pl.level) * k;
+    return pl.level;
+  },
   // main.js wants to know if a shared tab/screen was killed from the browser bar
   setOnDJEnded(fn) { onDJEnded = fn; },
   canShare: () => !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia),

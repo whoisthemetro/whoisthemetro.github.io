@@ -2783,7 +2783,7 @@ addEventListener("keydown", (e) => {
 })();
 
 /* ---------------- frame loop ---------------- */
-window.METRO_DEBUG = { renderer, camera, world, controls, THREE, cat, bartender, notesWall,
+window.METRO_DEBUG = { renderer, camera, world, controls, THREE, cat, bartender, ghosts, voice, notesWall,
   uid: identity.uid, pool: poolGame, sitAtPool, leavePool,
   darts: dartGame, sitAtDarts, leaveDarts,
   hoops: hoopGame,
@@ -2869,7 +2869,7 @@ renderer.setAnimationLoop(() => {
   } else if (vacuuming) {
     setVacuuming(false);   // you can't carry it out of the room
   }
-  ghosts.tick(dt, t);
+  ghosts.tick(dt, t, (uid) => voice.level(uid));
   cat.tick(dt, t, controls.pose());
   // the bartender reacts to you only when you're in the bedroom/arcade with him
   bartender.tick(dt, t, (!inBoat && !inArena && !inClub) ? controls.pose() : null);
