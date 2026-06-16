@@ -922,7 +922,10 @@ export function buildWorld() {
   }
 
   /* --- shell --- */
-  const floor = add(plane(W, D, new THREE.MeshLambertMaterial({ map: floorTexture() })));
+  // shell surfaces are DoubleSide so they can NEVER read as a see-through hole:
+  // even if the camera grazes a corner or a low-precision mobile depth buffer
+  // flickers, you see solid floor/wall from the back instead of the void.
+  const floor = add(plane(W, D, new THREE.MeshLambertMaterial({ map: floorTexture(), side: THREE.DoubleSide })));
   floor.rotation.x = -Math.PI / 2;
   floor.receiveShadow = true;
 
@@ -947,7 +950,7 @@ export function buildWorld() {
 
   postableWall("back", W,
     new THREE.MeshLambertMaterial({
-      map: wallTexture(W, H),
+      map: wallTexture(W, H), side: THREE.DoubleSide,
     }),
     m => { m.rotation.y = Math.PI; m.position.set(0, H / 2, ZB); },
     new THREE.Vector3(X, 0, ZB), new THREE.Vector3(-1, 0, 0), new THREE.Vector3(0, 0, -1));
@@ -972,7 +975,7 @@ export function buildWorld() {
   westMap.repeat.set(1 / D, 1 / H);     // ShapeGeometry uvs are in shape units
   westMap.offset.set(0.5, 0.5);
   postableWall("west", D,
-    new THREE.MeshLambertMaterial({ map: westMap }),
+    new THREE.MeshLambertMaterial({ map: westMap, side: THREE.DoubleSide }),
     m => { m.rotation.y = Math.PI / 2; m.position.set(-X, H / 2, 0); },
     new THREE.Vector3(-X, 0, ZB), new THREE.Vector3(0, 0, -1), new THREE.Vector3(1, 0, 0),
     {
@@ -986,7 +989,7 @@ export function buildWorld() {
 
   postableWall("east", D,
     new THREE.MeshLambertMaterial({
-      map: wallTexture(D, H),
+      map: wallTexture(D, H), side: THREE.DoubleSide,
     }),
     m => { m.rotation.y = -Math.PI / 2; m.position.set(X, H / 2, 0); },
     new THREE.Vector3(X, 0, ZF), new THREE.Vector3(0, 0, 1), new THREE.Vector3(-1, 0, 0),
@@ -1932,6 +1935,7 @@ export function buildWorld() {
         g.stroke();
       }
     }),
+    side: THREE.DoubleSide,
   }));
   arcFloor.rotation.x = -Math.PI / 2;
   arcFloor.position.set((AR.x0 + AR.x1) / 2, 0.002, (AR.z0 + AR.z1) / 2);
@@ -5421,7 +5425,7 @@ export function buildWorld() {
   });
   const clubWallMat = new THREE.MeshLambertMaterial({ color: 0x1a1722, side: THREE.DoubleSide });
   const clubFloor = addC(new THREE.Mesh(new THREE.PlaneGeometry(CLW, CLD),
-    new THREE.MeshLambertMaterial({ map: clubFloorTex })));
+    new THREE.MeshLambertMaterial({ map: clubFloorTex, side: THREE.DoubleSide })));
   clubFloor.rotation.x = -Math.PI / 2;
   clubFloor.position.set(CLUB.x, 0.001, CLUB.z);
   const clubCeil = addC(new THREE.Mesh(new THREE.PlaneGeometry(CLW, CLD),
