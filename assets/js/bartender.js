@@ -18,10 +18,10 @@
 
 import * as THREE from "three";
 import { rand } from "./util.js";
+import { makeFace } from "./face.js";
 
 const WALK = 0.55;             // m/s shuffle behind the bar
 const GLOW = 0xffb070;         // warm amber so he reads as "the barkeep"
-const FACE = "#16131d";        // face features, dark — reads over the amber glow
 
 export class Bartender {
   constructor(scene, bar, fx = {}) {
@@ -54,8 +54,6 @@ export class Bartender {
     this.blinkFor = 0;           // remaining blink duration
     this.talkT = 0;              // mouth-flap timer
     this.nodT = 0;               // greeting nod timer
-    this._faceKey = null;
-    this._setFace("smirk");
     this._apply(0);
   }
 
@@ -82,17 +80,10 @@ export class Bartender {
     const head = new THREE.Mesh(new THREE.SphereGeometry(0.15, 14, 12), glowMat);
     this.headGrp.add(head);
 
-    this.faceCanvas = document.createElement("canvas");
-    this.faceCanvas.width = this.faceCanvas.height = 128;
-    this.faceTex = new THREE.CanvasTexture(this.faceCanvas);
-    this.faceTex.colorSpace = THREE.SRGBColorSpace;
-    const faceMat = new THREE.MeshBasicMaterial({
-      map: this.faceTex, transparent: true, depthWrite: false,
-    });
-    this.faceMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.26, 0.26), faceMat);
-    this.faceMesh.position.set(0, 0.01, 0.14);   // just proud of the head front (+z)
-    this.faceMesh.renderOrder = 12;               // draw over the glow head
-    this.headGrp.add(this.faceMesh);
+    // 8-bit glowing face (warm, to fit the amber glow)
+    this.face = makeFace(0.27, "#ffe2b0");
+    this.face.mesh.position.set(0, 0.01, 0.14);
+    this.headGrp.add(this.face.mesh);
     this.grp.add(this.headGrp);
 
     // a bowtie at the throat — the cheap "I'm the bartender" signal
@@ -128,40 +119,6 @@ export class Bartender {
     sp.scale.set(1.0, 0.25, 1);
     sp.position.y = 2.05;
     return sp;
-  }
-
-  // draw a face. keys: smirk (idle/sarcastic), blink, talk
-  _setFace(key) {
-    if (key === this._faceKey) return;
-    this._faceKey = key;
-    const g = this.faceCanvas.getContext("2d");
-    g.clearRect(0, 0, 128, 128);
-    g.fillStyle = FACE; g.strokeStyle = FACE;
-    g.lineCap = "round"; g.lineJoin = "round";
-    const eyeY = 52, lx = 44, rx = 84;
-    if (key === "blink") {
-      g.lineWidth = 6;
-      g.beginPath(); g.moveTo(lx - 11, eyeY); g.lineTo(lx + 11, eyeY);
-      g.moveTo(rx - 11, eyeY); g.lineTo(rx + 11, eyeY); g.stroke();
-    } else {
-      // half-lidded "unimpressed" eyes: a lid line with a small pupil under it
-      g.lineWidth = 6;
-      g.beginPath(); g.moveTo(lx - 12, eyeY - 4); g.lineTo(lx + 12, eyeY - 4);
-      g.moveTo(rx - 12, eyeY - 4); g.lineTo(rx + 12, eyeY - 4); g.stroke();
-      g.beginPath();
-      g.arc(lx, eyeY + 4, 5, 0, Math.PI * 2);
-      g.arc(rx, eyeY + 4, 5, 0, Math.PI * 2);
-      g.fill();
-    }
-    // mouth
-    g.lineWidth = 6;
-    if (key === "talk") {
-      g.beginPath(); g.ellipse(64, 92, 11, 9, 0, 0, Math.PI * 2); g.fill();
-    } else {
-      // a flat smirk, tilted up on his right (screen-left)
-      g.beginPath(); g.moveTo(48, 96); g.quadraticCurveTo(64, 92, 82, 86); g.stroke();
-    }
-    this.faceTex.needsUpdate = true;
   }
 
   /* ---------- behaviour ---------- */
@@ -223,10 +180,8 @@ export class Bartender {
       this.blinkIn -= dt;
       if (this.blinkIn <= 0) { this.blinkFor = 0.12; this.blinkIn = rand(2.5, 6); }
     }
-    let face = "smirk";
-    if (this.blinkFor > 0) face = "blink";
-    else if (this.talkT > 0) face = (Math.floor(this.talkT * 9) % 2) ? "talk" : "smirk";
-    this._setFace(face);
+    const talking = this.talkT > 0 && (Math.floor(this.talkT * 9) % 2) === 0;
+    this.face.draw({ smirk: true, blink: this.blinkFor > 0, mouth: talking ? 1 : 0 });
 
     this._apply(t);
   }
