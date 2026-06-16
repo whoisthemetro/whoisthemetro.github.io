@@ -200,7 +200,8 @@ const cat = new Cat(world.scene, world.catSpots, {
 const bartender = new Bartender(world.scene, world.barInfo, {
   greet: bedroomSound(() => { try { beep(392, 0.09, "sine", 0.035); setTimeout(() => beep(523, 0.1, "sine", 0.035), 90); } catch (e) {} }),
   serve: bedroomSound(() => { try { beep(1180, 0.05, "sine", 0.04); setTimeout(() => beep(1560, 0.06, "sine", 0.03), 70); } catch (e) {} }),
-}, { avatarUrl: "assets/avatars/megan.glb", avatarHeight: 1.75 });   // Mixamo "Megan" (idle/walk/wave merged from FBX via Blender)
+  say: (line) => toast(`🍸 ${line}`),   // his dry greeting; ordering toasts serve()'s line
+});
 
 // shared cat needs — bowls and litter are the same for every visitor
 let catState = null;
