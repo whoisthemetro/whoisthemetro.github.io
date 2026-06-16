@@ -119,11 +119,15 @@ export function buildAvatarFigure(spec = {}) {
   buildHair(group, s, lam, track);
 
   // --- hood (only if a hoodie, hood up) ---
+  // OPEN-FRONT: a top/back shell pushed back + a cowl drape, so the face stays
+  // clear — the hood never comes down past the top of the eyes (~y 1.50).
   if (s.top === "hoodie" && s.hood) {
-    const hood = new THREE.Mesh(track(new THREE.SphereGeometry(0.185, 18, 14)), lam(shade(topC, -0.3)));
-    hood.position.set(0, 1.45, -0.03); hood.scale.set(1.05, 1.1, 1.05); group.add(hood);
-    const cowl = new THREE.Mesh(track(new THREE.CylinderGeometry(0.14, 0.27 * wide, 0.32, 14, 1, true)), lam(shade(topC, -0.2)));
-    cowl.position.set(0, 1.18, -0.01); group.add(cowl);
+    const shell = new THREE.Mesh(track(new THREE.SphereGeometry(0.2, 18, 14, 0, Math.PI * 2, 0, Math.PI * 0.5)),
+      lam(shade(topC, -0.3)));
+    shell.position.set(0, 1.5, -0.08); shell.scale.set(1.12, 1.18, 1.14); group.add(shell);
+    const cowl = new THREE.Mesh(track(new THREE.CylinderGeometry(0.15, 0.27 * wide, 0.34, 14, 1, true)),
+      lam(shade(topC, -0.2)));
+    cowl.position.set(0, 1.16, -0.02); group.add(cowl);
   }
 
   // --- beard ---
@@ -136,9 +140,9 @@ export function buildAvatarFigure(spec = {}) {
   // --- the glowing 8-bit face + a voice halo ---
   const halo = new THREE.Mesh(track(new THREE.PlaneGeometry(0.46, 0.46)),
     new THREE.MeshBasicMaterial({ map: track(softGlow()), transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, color: s.faceColor }));
-  halo.position.set(0, 1.47, 0.16); group.add(halo);
+  halo.position.set(0, 1.47, 0.175); group.add(halo);
   const face = makeFace(0.2, s.faceColor);
-  face.mesh.position.set(0, 1.47, 0.17); group.add(face.mesh);
+  face.mesh.position.set(0, 1.47, 0.185); group.add(face.mesh);   // proud of the head so hair/hood never cover it
 
   let op = 0.78;
   function setVoice(level, dt = 0.016) {
@@ -159,25 +163,36 @@ function buildHair(group, s, lam, track) {
   if (!s.hair || s.hair === "none") return;
   const c = lam(s.hairColor);
   const hy = 1.44;
+  // a crown cap whose FRONT edge stays above the eyes: a top-of-head shell
+  // (small thetaLength) nudged back so the hairline sits high. back/side volume
+  // comes from the offset + a back patch, not from draping over the face.
+  const crown = (thetaLen, dz) => {
+    const m = new THREE.Mesh(track(new THREE.SphereGeometry(0.16, 16, 12, 0, Math.PI * 2, 0, thetaLen)), c);
+    m.position.set(0, hy + 0.012, dz); group.add(m); return m;
+  };
+  // fills the back of the head below the crown without touching the face
+  const backPatch = (r, y, dz) => {
+    const m = new THREE.Mesh(track(new THREE.SphereGeometry(r, 14, 12, 0, Math.PI * 2, 0, Math.PI * 0.6)), c);
+    m.position.set(0, y, dz); m.rotation.x = 1.1; group.add(m); return m;   // tipped back to cover the nape
+  };
+
   if (s.hair === "buzz") {
-    const cap = new THREE.Mesh(track(new THREE.SphereGeometry(0.155, 14, 12, 0, Math.PI * 2, 0, Math.PI * 0.55)), c);
-    cap.position.y = hy; group.add(cap);
+    crown(Math.PI * 0.4, -0.012);
   } else if (s.hair === "short") {
-    const cap = new THREE.Mesh(track(new THREE.SphereGeometry(0.162, 14, 12, 0, Math.PI * 2, 0, Math.PI * 0.62)), c);
-    cap.position.y = hy + 0.005; group.add(cap);
+    crown(Math.PI * 0.42, -0.02);
+    backPatch(0.155, hy - 0.02, -0.06);
   } else if (s.hair === "afro") {
     const puff = new THREE.Mesh(track(new THREE.SphereGeometry(0.2, 14, 12)), c);
-    puff.position.set(0, hy + 0.05, -0.05); puff.scale.set(1.05, 0.95, 1); group.add(puff);   // sits back so the face shows
+    puff.position.set(0, hy + 0.08, -0.08); puff.scale.set(1.05, 0.95, 1); group.add(puff);  // high + back, frames the face
   } else if (s.hair === "bun") {
-    const cap = new THREE.Mesh(track(new THREE.SphereGeometry(0.162, 14, 12, 0, Math.PI * 2, 0, Math.PI * 0.6)), c);
-    cap.position.y = hy + 0.005; group.add(cap);
+    crown(Math.PI * 0.42, -0.02);
+    backPatch(0.155, hy - 0.02, -0.06);
     const bun = new THREE.Mesh(track(new THREE.SphereGeometry(0.07, 10, 8)), c);
-    bun.position.set(0, hy + 0.16, -0.02); group.add(bun);
+    bun.position.set(0, hy + 0.17, -0.05); group.add(bun);
   } else if (s.hair === "long") {
-    const cap = new THREE.Mesh(track(new THREE.SphereGeometry(0.163, 14, 12, 0, Math.PI * 2, 0, Math.PI * 0.62)), c);
-    cap.position.y = hy + 0.005; group.add(cap);
-    const drape = new THREE.Mesh(track(new THREE.CylinderGeometry(0.15, 0.12, 0.34, 12, 1, true)), c);
-    drape.position.set(0, hy - 0.16, -0.05); group.add(drape);   // hangs down the back
+    crown(Math.PI * 0.42, -0.02);
+    const drape = new THREE.Mesh(track(new THREE.CylinderGeometry(0.16, 0.13, 0.4, 12, 1, true)), c);
+    drape.position.set(0, hy - 0.18, -0.07); group.add(drape);   // hangs down the back only
   }
 }
 
