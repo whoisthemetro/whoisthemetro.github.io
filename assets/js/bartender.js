@@ -1,33 +1,29 @@
 /* ============================================================
    THE METRO — the bartender (the arcade bar)
-   He's the same ghostly glow-blob the visitors are, just with a
-   brain: he idles behind the bar, moseys up and down the counter,
-   turns to clock you when you walk up, and — being a bartender —
-   has something dry to say when he greets you or pours your drink.
+   The same ghostly glow-blob the visitors are, with a brain and a
+   face: he idles behind the bar, moseys the counter, clocks you when
+   you walk up, and — being a bartender — has a dry mouth on him.
 
-   Pure primitives (a glowing capsule + a head, additive-blended like
-   the player ghosts in ghosts.js) — no models, no loaders, nothing
-   to download. Cheap to draw, keeps the room smooth.
+   Pure primitives + a tiny canvas face (no models, nothing to
+   download), so the room stays smooth. The glow body/head are
+   additive-blended like the player ghosts; the FACE rides on a small
+   plane in front of the head with simple swappable expressions
+   (a sarcastic half-lidded smirk by default, blinks, a talk-flap when
+   he says something), and a bowtie marks him as the barkeep. He nods
+   when he greets you.
 
-   He faces LOCAL +z ("front"); barInfo says which world axis the
-   counter runs along, so the same brain works for a bar laid out E-W
-   or N-S.
+   He faces LOCAL +z; barInfo says which world axis the counter runs
+   along, so the same brain works for a bar laid out E-W or N-S.
    ============================================================ */
 
 import * as THREE from "three";
 import { rand } from "./util.js";
 
 const WALK = 0.55;             // m/s shuffle behind the bar
-const GLOW = 0xffb070;         // a warm amber so he reads as "the barkeep"
+const GLOW = 0xffb070;         // warm amber so he reads as "the barkeep"
+const FACE = "#16131d";        // face features, dark — reads over the amber glow
 
 export class Bartender {
-  /* bar: {
-       run:"x"|"z", min, max,   // patrol range along the counter
-       cross,                   // his fixed coord on the other axis (standing line)
-       faceYaw,                 // yaw that points his front at patrons
-       patronAxis, patronSign, patronLine   // you're a patron if
-                                //   (yourPos[patronAxis]-patronLine)*patronSign > 0
-     } */
   constructor(scene, bar, fx = {}) {
     this.bar = bar;
     this.fx = fx;
@@ -38,7 +34,6 @@ export class Bartender {
     this._build();
     scene.add(this.grp);
 
-    // roomy invisible hitbox over his glow (visible above the counter)
     this.hitMesh = new THREE.Mesh(
       new THREE.BoxGeometry(0.7, 1.2, 0.7),
       new THREE.MeshBasicMaterial({ visible: false }));
@@ -50,10 +45,17 @@ export class Bartender {
     this.yaw = this.faceYaw;
     this.state = "idle";
     this.timer = rand(1.5, 3);
-    this.target = null;        // run-axis value when walking
+    this.target = null;
     this.greeted = false;
     this.serveT = 0;
     this.bob = Math.random() * 10;
+    // expression clocks
+    this.blinkIn = rand(2, 5);   // time until next blink
+    this.blinkFor = 0;           // remaining blink duration
+    this.talkT = 0;              // mouth-flap timer
+    this.nodT = 0;               // greeting nod timer
+    this._faceKey = null;
+    this._setFace("smirk");
     this._apply(0);
   }
 
@@ -64,21 +66,50 @@ export class Bartender {
   _runOf(p) { return this.run === "x" ? p.x : p.z; }
 
   _build() {
-    // the player-ghost look (see ghosts.js makeFigure): a glowing capsule body
-    // + a head, additive-blended and semi-transparent
-    const mat = new THREE.MeshBasicMaterial({
+    // glow body (player-ghost look): additive, semi-transparent capsule + head
+    const glowMat = new THREE.MeshBasicMaterial({
       color: GLOW, transparent: true, opacity: 0.34,
       blending: THREE.AdditiveBlending, depthWrite: false,
     });
-    this.mat = mat;
-    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.21, 0.85, 6, 14), mat);
-    body.position.y = 0.85;
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.15, 14, 12), mat);
-    head.position.y = 1.62;
-    this.body = body; this.head = head;
-    this.grp.add(body, head);
+    this.mat = glowMat;
+    this.body = new THREE.Mesh(new THREE.CapsuleGeometry(0.21, 0.85, 6, 14), glowMat);
+    this.body.position.y = 0.85;
+    this.grp.add(this.body);
 
-    // a little floating tag so he reads as the barkeep, like visitors' names
+    // head group (so it can nod): the glow head + a face plane in front of it
+    this.headGrp = new THREE.Group();
+    this.headGrp.position.y = 1.62;
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.15, 14, 12), glowMat);
+    this.headGrp.add(head);
+
+    this.faceCanvas = document.createElement("canvas");
+    this.faceCanvas.width = this.faceCanvas.height = 128;
+    this.faceTex = new THREE.CanvasTexture(this.faceCanvas);
+    this.faceTex.colorSpace = THREE.SRGBColorSpace;
+    const faceMat = new THREE.MeshBasicMaterial({
+      map: this.faceTex, transparent: true, depthWrite: false,
+    });
+    this.faceMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.26, 0.26), faceMat);
+    this.faceMesh.position.set(0, 0.01, 0.14);   // just proud of the head front (+z)
+    this.faceMesh.renderOrder = 12;               // draw over the glow head
+    this.headGrp.add(this.faceMesh);
+    this.grp.add(this.headGrp);
+
+    // a bowtie at the throat — the cheap "I'm the bartender" signal
+    const tieMat = new THREE.MeshBasicMaterial({ color: 0x8a2a3a });
+    const tie = new THREE.Group();
+    for (const s of [-1, 1]) {
+      const wing = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.09, 3), tieMat);
+      wing.rotation.z = s * Math.PI / 2;          // point outward
+      wing.position.x = s * 0.05;
+      tie.add(wing);
+    }
+    const knot = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.04, 0.03), new THREE.MeshBasicMaterial({ color: 0x5a1a26 }));
+    tie.add(knot);
+    tie.position.set(0, 1.42, 0.16);
+    this.grp.add(tie);
+
+    // the floating tag, like the visitors' names
     this.grp.add(this._tag("barkeep"));
   }
 
@@ -95,22 +126,55 @@ export class Bartender {
     tex.colorSpace = THREE.SRGBColorSpace;
     const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
     sp.scale.set(1.0, 0.25, 1);
-    sp.position.y = 2.02;
+    sp.position.y = 2.05;
     return sp;
+  }
+
+  // draw a face. keys: smirk (idle/sarcastic), blink, talk
+  _setFace(key) {
+    if (key === this._faceKey) return;
+    this._faceKey = key;
+    const g = this.faceCanvas.getContext("2d");
+    g.clearRect(0, 0, 128, 128);
+    g.fillStyle = FACE; g.strokeStyle = FACE;
+    g.lineCap = "round"; g.lineJoin = "round";
+    const eyeY = 52, lx = 44, rx = 84;
+    if (key === "blink") {
+      g.lineWidth = 6;
+      g.beginPath(); g.moveTo(lx - 11, eyeY); g.lineTo(lx + 11, eyeY);
+      g.moveTo(rx - 11, eyeY); g.lineTo(rx + 11, eyeY); g.stroke();
+    } else {
+      // half-lidded "unimpressed" eyes: a lid line with a small pupil under it
+      g.lineWidth = 6;
+      g.beginPath(); g.moveTo(lx - 12, eyeY - 4); g.lineTo(lx + 12, eyeY - 4);
+      g.moveTo(rx - 12, eyeY - 4); g.lineTo(rx + 12, eyeY - 4); g.stroke();
+      g.beginPath();
+      g.arc(lx, eyeY + 4, 5, 0, Math.PI * 2);
+      g.arc(rx, eyeY + 4, 5, 0, Math.PI * 2);
+      g.fill();
+    }
+    // mouth
+    g.lineWidth = 6;
+    if (key === "talk") {
+      g.beginPath(); g.ellipse(64, 92, 11, 9, 0, 0, Math.PI * 2); g.fill();
+    } else {
+      // a flat smirk, tilted up on his right (screen-left)
+      g.beginPath(); g.moveTo(48, 96); g.quadraticCurveTo(64, 92, 82, 86); g.stroke();
+    }
+    this.faceTex.needsUpdate = true;
   }
 
   /* ---------- behaviour ---------- */
 
   _pick() {
-    // mostly stands there; now and then moseys to another spot on the bar
     if (Math.random() < 0.4) { this.state = "walk"; this.target = rand(this.bar.min, this.bar.max); this.timer = 6; }
     else { this.state = "idle"; this.timer = rand(2.5, 5); }
   }
 
-  // main.js calls this when you click him within reach → he pours + quips
   serve() {
     this.state = "serve";
     this.serveT = 1.4;
+    this.talkT = 1.3;            // mouth runs while he quips
     this.fx.serve?.();
     return SERVE_LINES[(Math.random() * SERVE_LINES.length) | 0];
   }
@@ -133,8 +197,9 @@ export class Bartender {
       if (this.state !== "attend") { this.state = "attend"; }
       if (!this.greeted) {
         this.greeted = true;
+        this.nodT = 0.55; this.talkT = 1.1;      // a nod + a few words
         this.fx.greet?.();
-        this.fx.say?.(GREET_LINES[(Math.random() * GREET_LINES.length) | 0]);   // a dry hello
+        this.fx.say?.(GREET_LINES[(Math.random() * GREET_LINES.length) | 0]);
       }
       this.yaw = this._turn(this.yaw, this._faceTowards(playerPose), dt * 6);
     } else {
@@ -150,6 +215,19 @@ export class Bartender {
       this.yaw = this._turn(this.yaw, this.faceYaw, dt * 4);
     }
 
+    // expressions: blink occasionally, flap the mouth while talking
+    this.nodT = Math.max(0, this.nodT - dt);
+    this.talkT = Math.max(0, this.talkT - dt);
+    this.blinkFor -= dt;
+    if (this.blinkFor <= 0) {
+      this.blinkIn -= dt;
+      if (this.blinkIn <= 0) { this.blinkFor = 0.12; this.blinkIn = rand(2.5, 6); }
+    }
+    let face = "smirk";
+    if (this.blinkFor > 0) face = "blink";
+    else if (this.talkT > 0) face = (Math.floor(this.talkT * 9) % 2) ? "talk" : "smirk";
+    this._setFace(face);
+
     this._apply(t);
   }
 
@@ -164,10 +242,11 @@ export class Bartender {
   _apply(t) {
     this.grp.position.set(this.pos.x, 0, this.pos.z);
     this.grp.rotation.y = this.yaw;
-    // gentle alive-bob, like the player ghosts
     const lift = Math.sin(t * 1.8 + this.bob) * 0.03;
     this.body.position.y = 0.85 + lift;
-    this.head.position.y = 1.62 + lift;
+    this.headGrp.position.y = 1.62 + lift;
+    // greeting nod: a quick dip of the head
+    this.headGrp.rotation.x = this.nodT > 0 ? Math.sin((0.55 - this.nodT) / 0.55 * Math.PI) * 0.32 : 0;
     this.hitMesh.position.set(this.pos.x, 1.1, this.pos.z);
   }
 }
@@ -181,7 +260,7 @@ const GREET_LINES = [
   "you again. the stools missed you.",
   "rough day at the arcade? riveting.",
 ];
-// what he says when you order — sarcastic, but he'll still pour it
+// sarcastic, but he'll still pour it
 const SERVE_LINES = [
   "one regrettable decision, coming up.",
   "made it weak — like your high score.",
