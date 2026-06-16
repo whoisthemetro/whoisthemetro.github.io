@@ -18,6 +18,8 @@ import { startPlanes } from "./planes.js";
 import { Cat } from "./cat.js";
 import { Bartender } from "./bartender.js";
 import { makeSelfieMirror } from "./mirror.js";
+import { DEFAULT_SPEC } from "./avatar-builder.js";
+import { openOutfitPicker } from "./picker.js";
 import { openArcade, closeArcade, arcadeIsOpen, arcadeWantsEsc, handleGameMessage, setScoreHook } from "./arcade.js";
 import { initPool } from "./pool.js";
 import { initDarts } from "./darts.js";
@@ -204,14 +206,33 @@ const bartender = new Bartender(world.scene, world.barInfo, {
   say: (line) => toast(`🍸 ${line}`),   // his dry greeting; ordering toasts serve()'s line
 });
 
-// the arcade mirror — a framed panel that renders a live "you" (your glow-blob
-// + face, driven by your own mic level) so you can see your own avatar
-const mirror = makeSelfieMirror(renderer, { color: identity.color });
+// your saved outfit spec (the picker writes it; defaults to the owner's look
+// with the face glowing in your identity color)
+function loadOutfit() {
+  try { const s = JSON.parse(localStorage.getItem("metro.outfit")); if (s) return s; } catch (e) {}
+  return { ...DEFAULT_SPEC, faceColor: identity.color || DEFAULT_SPEC.faceColor };
+}
+function saveOutfit(spec) { try { localStorage.setItem("metro.outfit", JSON.stringify(spec)); } catch (e) {} }
+let outfitSpec = loadOutfit();
+
+// the arcade mirror — a framed panel that renders a live "you" (your dressed
+// figure + 8-bit face, driven by your mic level). click it to open the picker.
+const mirror = makeSelfieMirror(renderer, outfitSpec);
 {
   const a = world.mirrorAnchor;
   mirror.group.position.set(a.x, a.y, a.z);
   mirror.group.rotation.y = a.ry;
   world.scene.add(mirror.group);
+}
+let pickerOpen = false;
+function openPicker() {
+  if (pickerOpen) return;
+  pickerOpen = true; modalOpen = true; controls.unlock();
+  openOutfitPicker(outfitSpec, {
+    onChange: (s) => mirror.setSpec(s),
+    onSave: (s) => { outfitSpec = s; saveOutfit(s); mirror.setSpec(s); toast("look saved"); },
+    onClose: () => { pickerOpen = false; modalOpen = false; mirror.setSpec(outfitSpec); if (entered) safeLock(); },
+  });
 }
 
 // shared cat needs — bowls and litter are the same for every visitor
@@ -345,7 +366,7 @@ canvas.addEventListener("click", () => {
 function castAt(ndcX, ndcY) {
   raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera);
   // doors are included as blockers so notes can't be pinned onto them
-  const targets = [cat.hitMesh, bartender.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, ...world.elevHits, ...world.elevCallHits, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.guitarVoiceHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, world.pool.hit, world.pool.resetHit, world.pool.joinHit, world.darts.hit, world.darts.joinHit, world.darts.resetHit, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.radioHits, ...world.laRadioHits, ...world.filterPedalHit, ...world.vacuumHits, ...notesWall.raycastTargets(), ...world.blockers];
+  const targets = [cat.hitMesh, bartender.hitMesh, mirror.glass, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, ...world.elevHits, ...world.elevCallHits, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.guitarVoiceHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, world.pool.hit, world.pool.resetHit, world.pool.joinHit, world.darts.hit, world.darts.joinHit, world.darts.resetHit, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.radioHits, ...world.laRadioHits, ...world.filterPedalHit, ...world.vacuumHits, ...notesWall.raycastTargets(), ...world.blockers];
   const hits = raycaster.intersectObjects(targets, false);
   return hits[0] || null;
 }
@@ -688,7 +709,9 @@ controls.onAction((ndcX, ndcY) => {
     if (!useful) { tryPunch(); return; }
   }
   if (!hit) return;
-  if (hit.object.userData.bartender && hit.distance < 3.2) {
+  if (hit.object.userData.mirror && hit.distance < 3.5) {
+    openPicker();
+  } else if (hit.object.userData.bartender && hit.distance < 3.2) {
     const line = bartender.serve();
     toast(`🍸 ${line}`);
   } else if (hit.object.userData.cat && hit.distance < 2.2) {
@@ -902,6 +925,9 @@ setInterval(() => {
   const hit = castAt(0, 0);
   if (hit && hit.object.userData.vacuum && hit.distance < 2.6) {
     aimTip.textContent = `${TAP} to grab the vacuum`;
+    aimTip.classList.add("show");
+  } else if (hit && hit.object.userData.mirror && hit.distance < 3.5) {
+    aimTip.textContent = `${TAP} — change your look`;
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.bartender && hit.distance < 3.2) {
     aimTip.textContent = `${TAP} — order a drink`;
@@ -2794,7 +2820,7 @@ addEventListener("keydown", (e) => {
 })();
 
 /* ---------------- frame loop ---------------- */
-window.METRO_DEBUG = { renderer, camera, world, controls, THREE, cat, bartender, ghosts, voice, notesWall,
+window.METRO_DEBUG = { renderer, camera, world, controls, THREE, cat, bartender, ghosts, voice, mirror, openPicker, notesWall,
   uid: identity.uid, pool: poolGame, sitAtPool, leavePool,
   darts: dartGame, sitAtDarts, leaveDarts,
   hoops: hoopGame,
@@ -2886,7 +2912,7 @@ renderer.setAnimationLoop(() => {
   bartender.tick(dt, t, (!inBoat && !inArena && !inClub) ? controls.pose() : null);
   // the arcade mirror renders a live "you" from your own mic level — only while
   // you're in the bedroom/arcade (skip the extra render when off in another room)
-  if (!inBoat && !inArena && !inClub) mirror.update(dt, voice.selfLevel(), identity.color);
+  if (!inBoat && !inArena && !inClub) mirror.update(dt, voice.selfLevel());
   discTick(dt);
   // the tunnel current: for 8 s after GO the tubes carry you at 10 m/s.
   // it only ever speeds you up — an early push keeps its extra speed,
