@@ -16,6 +16,7 @@ import { voice } from "./voice.js";
 import { weather } from "./weather.js";
 import { startPlanes } from "./planes.js";
 import { Cat } from "./cat.js";
+import { Bartender } from "./bartender.js";
 import { openArcade, closeArcade, arcadeIsOpen, arcadeWantsEsc, handleGameMessage, setScoreHook } from "./arcade.js";
 import { initPool } from "./pool.js";
 import { initDarts } from "./darts.js";
@@ -194,6 +195,13 @@ const cat = new Cat(world.scene, world.catSpots, {
   songPlaying: () => currentSongId() !== null || !!(radios.la && radios.la.radio.info().on),
 });
 
+// the arcade bartender — works the bar, clocks you when you walk up, fixes you a
+// drink on a click. sounds ride the bedroom/arcade scope (silent in other rooms).
+const bartender = new Bartender(world.scene, world.barInfo, {
+  greet: bedroomSound(() => { try { beep(392, 0.09, "sine", 0.035); setTimeout(() => beep(523, 0.1, "sine", 0.035), 90); } catch (e) {} }),
+  serve: bedroomSound(() => { try { beep(1180, 0.05, "sine", 0.04); setTimeout(() => beep(1560, 0.06, "sine", 0.03), 70); } catch (e) {} }),
+});
+
 // shared cat needs — bowls and litter are the same for every visitor
 let catState = null;
 function applyCatState(s) {
@@ -325,7 +333,7 @@ canvas.addEventListener("click", () => {
 function castAt(ndcX, ndcY) {
   raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera);
   // doors are included as blockers so notes can't be pinned onto them
-  const targets = [cat.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, ...world.elevHits, ...world.elevCallHits, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.guitarVoiceHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, world.pool.hit, world.pool.resetHit, world.pool.joinHit, world.darts.hit, world.darts.joinHit, world.darts.resetHit, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.radioHits, ...world.laRadioHits, ...world.filterPedalHit, ...world.vacuumHits, ...notesWall.raycastTargets(), ...world.blockers];
+  const targets = [cat.hitMesh, bartender.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, ...world.elevHits, ...world.elevCallHits, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.guitarVoiceHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, world.pool.hit, world.pool.resetHit, world.pool.joinHit, world.darts.hit, world.darts.joinHit, world.darts.resetHit, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.radioHits, ...world.laRadioHits, ...world.filterPedalHit, ...world.vacuumHits, ...notesWall.raycastTargets(), ...world.blockers];
   const hits = raycaster.intersectObjects(targets, false);
   return hits[0] || null;
 }
@@ -668,7 +676,10 @@ controls.onAction((ndcX, ndcY) => {
     if (!useful) { tryPunch(); return; }
   }
   if (!hit) return;
-  if (hit.object.userData.cat && hit.distance < 2.2) {
+  if (hit.object.userData.bartender && hit.distance < 3.2) {
+    const line = bartender.serve();
+    toast(`🍸 ${line}`);
+  } else if (hit.object.userData.cat && hit.distance < 2.2) {
     if (Date.now() - lastPetAt < 1200) return;
     lastPetAt = Date.now();
     const outcome = cat.petOutcome();
@@ -879,6 +890,9 @@ setInterval(() => {
   const hit = castAt(0, 0);
   if (hit && hit.object.userData.vacuum && hit.distance < 2.6) {
     aimTip.textContent = `${TAP} to grab the vacuum`;
+    aimTip.classList.add("show");
+  } else if (hit && hit.object.userData.bartender && hit.distance < 3.2) {
+    aimTip.textContent = `${TAP} — order a drink`;
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.cat && hit.distance < 2.2) {
     const d = store.decayCat(catState);
@@ -2768,7 +2782,7 @@ addEventListener("keydown", (e) => {
 })();
 
 /* ---------------- frame loop ---------------- */
-window.METRO_DEBUG = { renderer, camera, world, controls, THREE, cat, notesWall,
+window.METRO_DEBUG = { renderer, camera, world, controls, THREE, cat, bartender, notesWall,
   uid: identity.uid, pool: poolGame, sitAtPool, leavePool,
   darts: dartGame, sitAtDarts, leaveDarts,
   hoops: hoopGame,
@@ -2856,6 +2870,8 @@ renderer.setAnimationLoop(() => {
   }
   ghosts.tick(dt, t);
   cat.tick(dt, t, controls.pose());
+  // the bartender reacts to you only when you're in the bedroom/arcade with him
+  bartender.tick(dt, t, (!inBoat && !inArena && !inClub) ? controls.pose() : null);
   discTick(dt);
   // the tunnel current: for 8 s after GO the tubes carry you at 10 m/s.
   // it only ever speeds you up — an early push keeps its extra speed,

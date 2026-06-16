@@ -2474,7 +2474,78 @@ export function buildWorld() {
   // tucked into the south row, in the gap between foosball (west) and the
   // bar (east) — ~2 m clear of each
   zoneMarker("AIR HOCKEY", -10.1, -3.6, 2.2, 3.6, 0x22d4ff);
-  zoneMarker("BAR",        -6.0, -3.6, 2.0, 3.6, 0xff7a30);
+
+  /* ============================================================
+     THE ARCADE BAR — a real bar against the south wall, run E-W, with
+     a man behind it (bartender.js). The back-bar (bottle shelves) hugs
+     the wall; the counter stands well off it so the bartender has a real
+     walkway to work in — patrons lean in from the room (north) side.
+     ============================================================ */
+  {
+    const ABX = -6.0;                     // bar centre x
+    const WALLZ = AR.z0;                   // south wall (-5.9)
+    const backZ = WALLZ + 0.15;            // back-bar cabinet, against the wall
+    const counterZ = WALLZ + 1.10;         // counter, ~1 m off the wall (-4.80)
+    const topY = 1.05, LEN = 3.8;
+
+    // back-bar cabinet + two lit shelves of bottles
+    const backCab = box(LEN, 0.95, 0.3, lam(0x241d2c));
+    backCab.position.set(ABX, 0.475, backZ); add(backCab);
+    const barBottleCols = [0x4a7a5a, 0x7a4a5a, 0x4a5a7a, 0xa8853c, 0x5a7a4a, 0x7a5a4a, 0x4a6a7a, 0x8a4a6a];
+    let abi = 0;
+    for (const sy of [1.28, 1.66]) {
+      const shelf = box(LEN - 0.2, 0.03, 0.2, lam(0x191522));
+      shelf.position.set(ABX, sy, backZ + 0.02); add(shelf);
+      for (let k = 0; k < 9; k++) {
+        const col = barBottleCols[abi++ % barBottleCols.length];
+        const hgt = 0.20 + (abi % 3) * 0.03;
+        const b = new THREE.Mesh(new THREE.CylinderGeometry(0.030, 0.034, hgt, 8),
+          new THREE.MeshLambertMaterial({ color: col, transparent: true, opacity: 0.8 }));
+        b.position.set(ABX - 1.65 + k * 0.41, sy + 0.015 + hgt / 2, backZ + 0.02); add(b);
+      }
+      const strip = box(LEN - 0.2, 0.02, 0.04, new THREE.MeshBasicMaterial({ color: 0xffc88a }));
+      strip.position.set(ABX, sy - 0.05, backZ + 0.12); add(strip);
+    }
+
+    // the counter — a solid base + a proud top, its front toward the room
+    const barBase = box(LEN, 1.0, 0.5, lam(0x2a2233));
+    barBase.position.set(ABX, 0.5, counterZ); add(barBase);
+    const barTop = box(LEN + 0.16, 0.06, 0.64, lam(0x12101a));
+    barTop.position.set(ABX, topY, counterZ); add(barTop);
+    // a warm under-counter glow line on the patron side
+    const rail = box(LEN, 0.03, 0.03, new THREE.MeshBasicMaterial({ color: 0xff9a4a }));
+    rail.position.set(ABX, 0.86, counterZ + 0.27); add(rail);
+
+    // three stools on the room side, facing the bar
+    for (const sx of [-1.1, 0, 1.1]) {
+      const seat = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.05, 14), lam(0x3a2430));
+      seat.position.set(ABX + sx, 0.62, counterZ + 0.62); add(seat);
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.6, 8), lam(0x4a4550));
+      pole.position.set(ABX + sx, 0.31, counterZ + 0.62); add(pole);
+      const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.02, 12), lam(0x4a4550));
+      foot.position.set(ABX + sx, 0.012, counterZ + 0.62); add(foot);
+    }
+
+    // a bar lamp hung low over the counter — the FIXTURE and the light, modeled
+    // on the pool table's billiard lamp so it reads as part of the room. biased
+    // a touch toward the bartender's side so he's lit, not lurking in the dark.
+    const lampY = 2.15, lampZ = counterZ - 0.25;
+    const shade = box(2.6, 0.13, 0.42, lam(0x2a1f14));
+    shade.position.set(ABX, lampY, lampZ); add(shade);
+    const shadeLip = box(2.66, 0.045, 0.48, lam(0x6a5028));
+    shadeLip.position.set(ABX, lampY - 0.08, lampZ); add(shadeLip);
+    const glowPanel = box(2.42, 0.02, 0.34, new THREE.MeshBasicMaterial({ color: 0xffd9a0 }));
+    glowPanel.position.set(ABX, lampY - 0.095, lampZ); add(glowPanel);
+    for (const ru of [-1.0, 1.0]) {                  // hang rods up to the ceiling
+      const rodLen = ARC_H - (lampY + 0.06);
+      const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, rodLen, 6), lam(0x2a2228));
+      rod.position.set(ABX + ru, lampY + 0.06 + rodLen / 2, lampZ); add(rod);
+    }
+    for (const lu of [-0.78, 0.78]) {                // two warm bulbs down the bar
+      const bulb = new THREE.PointLight(0xffd6a0, 9, 3.7, 2);
+      bulb.position.set(ABX + lu, lampY - 0.18, lampZ); add(bulb);
+    }
+  }
 
   /* ============================================================
      POOL / 8-BALL — a real in-world table. world.js builds the
@@ -6531,9 +6602,14 @@ export function buildWorld() {
     arcadeZoneLevel: (x, z) => {
       if (x < -X - ALCOVE_D && x > AR.x0 && z > AR.z0 && z < AR.z1) return 1;
       if (x <= -X + 0.12 && x >= -X - ALCOVE_D && Math.abs(z - CZ) < OPEN_W) return 0.72;
-      const leak = closet.open ? 1 : 0.22;   // doors do their job
+      // from the bedroom the arcade is meant to be a faint, distant thing — a
+      // hint of cabinet hum, not the loudest thing in the room. it only swells
+      // to regular volume once you actually step through into the arcade. with
+      // the closet shut it drops below the attract-melody threshold (0.04) so
+      // the chiptune goes quiet entirely.
+      const leak = closet.open ? 1 : 0.2;    // doors do their job
       const d = Math.hypot(x + X, z - CZ);
-      return Math.max(0, 0.4 - d * 0.085) * leak;
+      return Math.max(0, 0.14 - d * 0.07) * leak;
     },
     // the dimmer + the boat
     setRoomLight,
@@ -6560,6 +6636,13 @@ export function buildWorld() {
     // THE CLUB (the dj bar — name pending)
     clubInfo: CLUB,
     clubSpawn: { x: CLUB.x + 2.6, z: CLUB.z + 3.6, yaw: 0.35 },
+    // the ARCADE bar (built up in the arcade section). counter runs E-W along x
+    // against the south wall; the bartender patrols x on his standing line
+    // (cross z), faces +z (the room) to greet patrons leaning in from the north.
+    barInfo: {
+      run: "x", min: -7.2, max: -4.8, cross: AR.z0 + 0.55, faceYaw: 0,
+      patronAxis: "z", patronSign: 1, patronLine: AR.z0 + 0.9,
+    },
     clubExitHit: clubDoor,
     deckHits, setOnAir, setBoothHeadcount, setClubEnergy,
     clubWindowHit: glassClick, clubFireworks, clubFog,

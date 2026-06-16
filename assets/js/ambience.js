@@ -204,7 +204,8 @@ export function startAmbience() {
   comp.release.value = 0.2;
   master.connect(comp).connect(ctx.destination);
 
-  // room tone: deep filtered rumble + faint electrical hum
+  // room tone: deep filtered rumble + faint electrical hum (the "AC" bed —
+  // kept faint so it sits under the room, not over it)
   const src = ctx.createBufferSource();
   src.buffer = noiseBuffer();
   src.loop = true;
@@ -212,7 +213,7 @@ export function startAmbience() {
   lp.type = "lowpass";
   lp.frequency.value = 90;
   const g = ctx.createGain();
-  g.gain.value = 0.05;
+  g.gain.value = ROOM_RUMBLE;
   src.connect(lp).connect(g).connect(master);
   src.start();
 
@@ -223,7 +224,7 @@ export function startAmbience() {
   humLp.type = "lowpass";
   humLp.frequency.value = 300;
   const humG = ctx.createGain();
-  humG.gain.value = 0.006;
+  humG.gain.value = ROOM_HUM;
   hum.connect(humLp).connect(humG).connect(master);
   hum.start();
   roomToneGains = [g, humG];
@@ -249,12 +250,14 @@ export function setBusLevel(id, pct) {
 }
 
 // The bedroom's hum and rumble — silenced while you're aboard the boat.
+// kept deliberately faint (the AC shouldn't be the loudest thing in the room).
+const ROOM_RUMBLE = 0.026, ROOM_HUM = 0.004;
 let roomToneGains = null;
 export function setRoomTone(on) {
   if (!ctx || !roomToneGains) return;
   const t = ctx.currentTime;
-  roomToneGains[0].gain.linearRampToValueAtTime(on ? 0.05 : 0.0001, t + 1.2);
-  roomToneGains[1].gain.linearRampToValueAtTime(on ? 0.006 : 0.0001, t + 1.2);
+  roomToneGains[0].gain.linearRampToValueAtTime(on ? ROOM_RUMBLE : 0.0001, t + 1.2);
+  roomToneGains[1].gain.linearRampToValueAtTime(on ? ROOM_HUM : 0.0001, t + 1.2);
 }
 
 // the vacuum motor — brown-ish noise through a lowpass for the air rush,
@@ -1138,6 +1141,10 @@ export function stunBuzz() {
    A bed of cabinet hum plus randomized attract-mode chiptune, behind
    one gain that main.js drives from the player's position: full inside
    the arcade, leaking through the closet doorway, gone on the boat. */
+// overall loudness of the arcade bed (fan + hum + attract chiptune). the room
+// was a touch shouty at full tilt, so the whole zone rides at this fraction —
+// scales the in-room volume AND the bedroom bleed together. tune to taste.
+const ARCADE_LEVEL = 0.5;
 let arcadeZone = null;
 export function setArcadeZone(level) {
   if (!ctx) return;
@@ -1163,9 +1170,12 @@ export function setArcadeZone(level) {
     // attract modes chirping away on their own clocks
     const PENTA = [330, 392, 440, 523, 587, 659, 784, 880];
     const burst = () => {
-      const delay = 700 + Math.random() * 2400;
+      // sparse: long, random gaps so the chiptune is an occasional far-off
+      // chirp, not a constant nagging loop
+      const delay = 4000 + Math.random() * 9000;   // 4–13 s between attract sounds
       setTimeout(burst, delay);
       if (!arcadeZone || arcadeZone.level < 0.04) return;
+      if (Math.random() < 0.35) return;            // and sometimes the cabinets just sit quiet
       const t0 = ctx.currentTime + 0.02;
       const pan = ctx.createStereoPanner();
       pan.pan.value = Math.random() * 1.4 - 0.7;
@@ -1177,7 +1187,7 @@ export function setArcadeZone(level) {
           const g = ctx.createGain();
           o.connect(g).connect(pan);
           g.gain.setValueAtTime(0, t0 + dt);
-          g.gain.linearRampToValueAtTime(0.045, t0 + dt + 0.008);
+          g.gain.linearRampToValueAtTime(0.018, t0 + dt + 0.008);
           g.gain.exponentialRampToValueAtTime(0.0008, t0 + dt + 0.5);
           g.gain.linearRampToValueAtTime(0, t0 + dt + 0.55);
           o.start(t0 + dt); o.stop(t0 + dt + 0.6);
@@ -1196,7 +1206,7 @@ export function setArcadeZone(level) {
         o.connect(g).connect(pan);
         const t = t0 + i * step;
         g.gain.setValueAtTime(0, t);
-        g.gain.linearRampToValueAtTime(0.035, t + 0.006);
+        g.gain.linearRampToValueAtTime(0.014, t + 0.006);
         g.gain.exponentialRampToValueAtTime(0.0008, t + step * 0.9);
         g.gain.linearRampToValueAtTime(0, t + step * 0.95);
         o.start(t); o.stop(t + step);
@@ -1205,7 +1215,7 @@ export function setArcadeZone(level) {
     burst();
   }
   arcadeZone.level = level;
-  arcadeZone.out.gain.linearRampToValueAtTime(level, ctx.currentTime + 0.35);
+  arcadeZone.out.gain.linearRampToValueAtTime(level * ARCADE_LEVEL, ctx.currentTime + 0.35);
 }
 
 // The city outside, heard through the walls: a far-off siren or a
