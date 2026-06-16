@@ -18,6 +18,7 @@
 import { audioGraph } from "./ambience.js";
 
 let micStream = null;
+let selfAna = null, selfSrc = null, selfBuf = null, selfLvl = 0;   // your own mic level (for the mirror)
 let recorder = null;
 let sendFn = null;
 let myUid = null;
@@ -55,6 +56,17 @@ async function ensureMic() {
     micStream = await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
     });
+    // a terminal analyser on our own mic so the mirror can show our glow (never
+    // connected to output → no echo)
+    try {
+      const { ctx } = audioGraph();
+      if (ctx && !selfAna) {
+        selfSrc = ctx.createMediaStreamSource(micStream);
+        selfAna = ctx.createAnalyser(); selfAna.fftSize = 256;
+        selfBuf = new Uint8Array(selfAna.fftSize);
+        selfSrc.connect(selfAna);
+      }
+    } catch (e) {}
     return true;
   } catch (e) {
     return false;
@@ -205,6 +217,20 @@ export const voice = {
     }
   },
   djLive: () => djLive,
+  // YOUR own mic level (0..1), envelope-followed — for the mirror, since you
+  // never hear yourself. only "hot" while actually talking (mode !== off), so
+  // the glow tracks what others would actually hear.
+  selfLevel() {
+    if (mode === "off" || !selfAna) { selfLvl += (0 - selfLvl) * 0.12; return selfLvl; }
+    selfAna.getByteTimeDomainData(selfBuf);
+    let sum = 0;
+    for (let i = 0; i < selfBuf.length; i++) { const v = (selfBuf[i] - 128) / 128; sum += v * v; }
+    const rms = Math.sqrt(sum / selfBuf.length);
+    const target = Math.min(1, rms * 3.4);
+    const k = target > selfLvl ? 0.5 : 0.12;
+    selfLvl += (target - selfLvl) * k;
+    return selfLvl;
+  },
   // live voice level (0..1) for one speaker, smoothed as an envelope follower —
   // ghosts.js reads this each frame to glow + open the mouth of their blob.
   // 0 when they're not talking (no chunks playing → signal decays to silence).

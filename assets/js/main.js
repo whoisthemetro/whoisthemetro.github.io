@@ -17,6 +17,7 @@ import { weather } from "./weather.js";
 import { startPlanes } from "./planes.js";
 import { Cat } from "./cat.js";
 import { Bartender } from "./bartender.js";
+import { makeSelfieMirror } from "./mirror.js";
 import { openArcade, closeArcade, arcadeIsOpen, arcadeWantsEsc, handleGameMessage, setScoreHook } from "./arcade.js";
 import { initPool } from "./pool.js";
 import { initDarts } from "./darts.js";
@@ -202,6 +203,16 @@ const bartender = new Bartender(world.scene, world.barInfo, {
   serve: bedroomSound(() => { try { beep(1180, 0.05, "sine", 0.04); setTimeout(() => beep(1560, 0.06, "sine", 0.03), 70); } catch (e) {} }),
   say: (line) => toast(`🍸 ${line}`),   // his dry greeting; ordering toasts serve()'s line
 });
+
+// the arcade mirror — a framed panel that renders a live "you" (your glow-blob
+// + face, driven by your own mic level) so you can see your own avatar
+const mirror = makeSelfieMirror(renderer, { color: identity.color });
+{
+  const a = world.mirrorAnchor;
+  mirror.group.position.set(a.x, a.y, a.z);
+  mirror.group.rotation.y = a.ry;
+  world.scene.add(mirror.group);
+}
 
 // shared cat needs — bowls and litter are the same for every visitor
 let catState = null;
@@ -2873,6 +2884,9 @@ renderer.setAnimationLoop(() => {
   cat.tick(dt, t, controls.pose());
   // the bartender reacts to you only when you're in the bedroom/arcade with him
   bartender.tick(dt, t, (!inBoat && !inArena && !inClub) ? controls.pose() : null);
+  // the arcade mirror renders a live "you" from your own mic level — only while
+  // you're in the bedroom/arcade (skip the extra render when off in another room)
+  if (!inBoat && !inArena && !inClub) mirror.update(dt, voice.selfLevel(), identity.color);
   discTick(dt);
   // the tunnel current: for 8 s after GO the tubes carry you at 10 m/s.
   // it only ever speeds you up — an early push keeps its extra speed,

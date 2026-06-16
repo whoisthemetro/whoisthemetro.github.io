@@ -6643,6 +6643,9 @@ export function buildWorld() {
       run: "x", min: -7.2, max: -4.8, cross: AR.z0 + 0.55, faceYaw: 0,
       patronAxis: "z", patronSign: 1, patronLine: AR.z0 + 0.9,
     },
+    // the arcade mirror: east wall, just south of the entrance doorway (a hard
+    // left as you walk in). sits proud of the wall (AR.x1), glass facing -x.
+    mirrorAnchor: { x: AR.x1 - 0.05, y: 1.45, z: -3.6, ry: -Math.PI / 2 },
     clubExitHit: clubDoor,
     deckHits, setOnAir, setBoothHeadcount, setClubEnergy,
     clubWindowHit: glassClick, clubFireworks, clubFog,
