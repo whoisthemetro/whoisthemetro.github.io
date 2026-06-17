@@ -20,4 +20,11 @@ window.METRO_CONFIG = {
   // US "https://us.i.posthog.com" / EU "https://eu.i.posthog.com". See docs/analytics.md.
   POSTHOG_KEY: "",
   POSTHOG_HOST: "https://us.i.posthog.com",
+
+  // Venue screen-share TURN servers. Normally left unset: the `turn` edge
+  // function mints short-lived Cloudflare credentials at boot (the secret stays
+  // server-side). Only set this to hard-code your own ICE servers, e.g.
+  //   ICE_SERVERS: [{ urls: "turn:your.turn:3478", username: "u", credential: "p" }],
+  // It overrides the edge function + the STUN/openrelay fallback.
+  // ICE_SERVERS: [],
 };

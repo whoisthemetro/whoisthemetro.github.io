@@ -430,6 +430,17 @@ async function saveScreen(s, pass) {
   }
   try { localStorage.setItem("metro.screen", JSON.stringify(s)); } catch (e) {}
 }
+// short-lived TURN credentials for the screen-share, minted by the `turn` edge
+// function (Cloudflare). null if not supabase / function not deployed → stream.js
+// falls back to its STUN + best-effort openrelay default.
+async function getIceServers() {
+  if (mode !== "supabase" || !sb) return null;
+  try {
+    const { data, error } = await sb.functions.invoke("turn");
+    if (error || !data || !Array.isArray(data.iceServers) || !data.iceServers.length) return null;
+    return data.iceServers;
+  } catch (e) { return null; }
+}
 
 /* ---- lightweight metrics: what the room gets up to ---- */
 function logEvent(type) {
@@ -510,7 +521,7 @@ export const store = {
   onRoomLight: fn => { roomLightListeners.add(fn); return () => roomLightListeners.delete(fn); },
   getDJ, saveDJ,
   onDJ: fn => { djListeners.add(fn); return () => djListeners.delete(fn); },
-  getScreen, saveScreen,
+  getScreen, saveScreen, getIceServers,
   onScreen: fn => { screenListeners.add(fn); return () => screenListeners.delete(fn); },
   submitScore, listScores,
   onNewScore: fn => { scoreListeners.add(fn); return () => scoreListeners.delete(fn); },

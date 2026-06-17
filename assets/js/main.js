@@ -2881,6 +2881,13 @@ addEventListener("keydown", (e) => {
 (async function boot() {
   const mode = await store.init();
 
+  // pull dedicated TURN credentials (Cloudflare, via the `turn` edge function)
+  // and hand them to the screen-share. fire-and-forget: the share starts well
+  // after boot, and if this fails stream.js keeps its STUN + openrelay default.
+  store.getIceServers().then((s) => {
+    if (s && s.length) { window.METRO_CONFIG = window.METRO_CONFIG || {}; window.METRO_CONFIG.ICE_SERVERS = s; }
+  }).catch(() => {});
+
   // erase deep-link from a Discord notification: site.com/#erase=<note id>
   const eraseMatch = location.hash.match(/^#erase=([0-9a-f-]{36})$/i);
   if (eraseMatch) {

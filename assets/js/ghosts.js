@@ -143,7 +143,10 @@ export class Ghosts {
       g.grp.position.x += (g.target.x - g.grp.position.x) * k;
       g.grp.position.z += (g.target.z - g.grp.position.z) * k;
       g.floatY = (g.floatY ?? 0) + ((g.target.y || 0) - (g.floatY ?? 0)) * k;
-      let dy = g.target.yaw - g.grp.rotation.y;
+      // avatars are modelled facing +Z (face/chest on +Z), but a player at yaw=0
+      // looks toward -Z — so a peer's figure has to be turned 180° from their raw
+      // yaw or you'd only ever see the back of their head while they face you.
+      let dy = (g.target.yaw + Math.PI) - g.grp.rotation.y;
       dy = Math.atan2(Math.sin(dy), Math.cos(dy));
       g.grp.rotation.y += dy * k;
       g.grp.position.y = (g.floatY || 0) + Math.sin(t * 1.8 + g.bobSeed) * 0.025;
