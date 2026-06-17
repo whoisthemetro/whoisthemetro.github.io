@@ -13,6 +13,7 @@ import { startAmbience, citySound, pianoNote, semitoneToKey, audioNow, purr, set
 import { SONGS, playSong, stopSong, currentSongId } from "./songs.js";
 import { progress } from "./progress.js";
 import { voice } from "./voice.js";
+import { screen } from "./screen.js";
 import { weather } from "./weather.js";
 import { startPlanes } from "./planes.js";
 import { Cat } from "./cat.js";
@@ -192,6 +193,21 @@ addEventListener("keydown", (e) => {
     const seed = (Math.random() * 1e6) | 0;
     world.clubFireworks(seed); presence.sendAct({ kind: "fireworks", seed }); toast("🎆 fireworks");
   }
+  // M = your own toggle for the big screen's sound. a keypress is a real user
+  // gesture, so this is what gets the stream past the browser's autoplay mute.
+  if (e.code === "KeyM" && !e.repeat && inClub && entered && !modalOpen && screen.has()) {
+    screenMuted = screen.toggleMuted();
+    toast(screenMuted ? "🔇 stream muted" : "🔊 stream sound on");
+  }
+  // admin quick-travel: 1 venue · 2 desi · 3 crew · 4 home — skip the elevator
+  if (adminMode && entered && !modalOpen && !chatOpen && !e.repeat) {
+    const ae = document.activeElement;
+    if (!ae || (ae.tagName !== "INPUT" && ae.tagName !== "TEXTAREA")) {
+      const to = { Digit1: "venue", Numpad1: "venue", Digit2: "desi", Numpad2: "desi",
+                   Digit3: "crew", Numpad3: "crew", Digit4: "home", Numpad4: "home" }[e.code];
+      if (to) { e.preventDefault(); adminJump(to); }
+    }
+  }
 });
 addEventListener("keyup", (e) => {
   if (e.code === "KeyV" && voice.mode() === "ptt") { voice.stopTalk(); updateMicUI(); }
@@ -339,6 +355,7 @@ addEventListener("resize", () => {
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
+  screen.resize();              // keep the venue big screen aligned to the canvas
 });
 
 /* ---------------- ui elements ---------------- */
@@ -1741,15 +1758,32 @@ function rideElevator(floor) {
     else if (floor === "venue") tryClub();
   }, 1100);                                 // let the ride-cam play out before the doors open
 }
-function goHome() {
+// admin quick-travel: number keys jump straight to a room, skipping the lift
+// and any password / team gate. 1 = venue · 2 = desi · 3 = crew · 4 = home.
+// one fade tears down whatever room you're in and sets up the target.
+function adminJump(target) {
+  if (!adminMode || !entered || elevBusy) return;
+  const cur = aRoomNow();
+  const curKey = (cur === "bedroom" || cur === "arcade") ? "home" : cur;
+  if (curKey === target) return;
   fadeTo(() => {
-    controls.pos.x = world.spawn.x;
-    controls.pos.z = world.spawn.z;
-    controls.yaw = world.spawn.yaw;
-    setRoomTone(true);
-    refreshNoteVisibility();
-    if (entered) safeLock();                // re-lock — the ride unlocked us
+    if (curKey === "desi") teardownBoat();
+    else if (curKey === "venue") teardownClub();
+    else if (curKey === "crew") teardownArena();
+    if (target === "home") setupHome();
+    else if (target === "desi") setupBoat();
+    else if (target === "venue") setupClub();
+    else if (target === "crew") setupArena(myTeam);
   });
+}
+function goHome() { fadeTo(setupHome); }
+function setupHome() {
+  controls.pos.x = world.spawn.x;
+  controls.pos.z = world.spawn.z;
+  controls.yaw = world.spawn.yaw;
+  setRoomTone(true);
+  refreshNoteVisibility();
+  if (entered) safeLock();                  // re-lock — the ride unlocked us
 }
 async function tryBoat() {
   modalOpen = true;                      // keep the pause screen away
@@ -1760,21 +1794,25 @@ async function tryBoat() {
     if (entered) safeLock();
     return toast("the door doesn't budge.");
   }
-  fadeTo(() => {
-    inBoat = true;
-    controls.pos.x = world.boatSpawn.x;
-    controls.pos.z = world.boatSpawn.z;
-    controls.yaw = world.boatSpawn.yaw;
-    setWater(true);
-    store.logEvent("boat");
-    progress.bump("trips");
-    setRoomTone(false);                  // the bedroom stays behind, fully
-    refreshNoteVisibility();
-    toast("welcome aboard THE DESI 🌊");
-    modalOpen = false;
-    hide(paused);
-    if (entered) safeLock();
-  });
+  fadeTo(() => { modalOpen = false; setupBoat(); });
+}
+function setupBoat() {
+  inBoat = true;
+  controls.pos.x = world.boatSpawn.x;
+  controls.pos.z = world.boatSpawn.z;
+  controls.yaw = world.boatSpawn.yaw;
+  setWater(true);
+  store.logEvent("boat");
+  progress.bump("trips");
+  setRoomTone(false);                    // the bedroom stays behind, fully
+  refreshNoteVisibility();
+  toast("welcome aboard THE DESI 🌊");
+  hide(paused);
+  if (entered) safeLock();
+}
+function teardownBoat() {
+  inBoat = false;
+  setWater(false);                       // the sea stays on the boat, fully
 }
 // each room shows only its own notes
 function refreshNoteVisibility() {
@@ -1786,9 +1824,8 @@ function refreshNoteVisibility() {
 
 function leaveBoat() {
   fadeTo(() => {
-    inBoat = false;
+    teardownBoat();
     returnToLift();
-    setWater(false);                     // the sea stays on the boat, fully
     setRoomTone(true);
     refreshNoteVisibility();
   });
@@ -1813,45 +1850,99 @@ async function tryClub() {
       return toast("the bouncer shakes his head.");
     }
   }
-  fadeTo(() => {
-    inClub = true;
-    controls.pos.x = world.clubSpawn.x;
-    controls.pos.z = world.clubSpawn.z;
-    controls.yaw = world.clubSpawn.yaw;
-    setRoomTone(false);                  // the bedroom stays behind, fully
-    setClubBed(clubBedFor());            // soothing bed matched to the theme
-    setClubTone(true);                   // the idle bed, until a set starts
-    voice.setInClub(true);               // now the set can reach your ears
-    // the venue is sealed: the mic goes quiet (chat only), the cat HUD and any
-    // flight strip that crept up at home are gone — only the set + chat get in
-    voice.stopTalk(); updateMicUI();
-    hideFlightStrip();
-    document.body.classList.add("in-club");
-    djHeardAt = 0;
-    wasGranted = djGrantedToMe();         // so a later grant toasts, but a standing one doesn't
-    world.setOnAir(false);               // dark until a chunk says otherwise
-    store.logEvent("boat");              // counts as a portal trip
-    progress.bump("trips");
-    refreshNoteVisibility();
-    toast("you're in 🪩 — the decks are dark until showtime");
-    modalOpen = false;
-    hide(paused);
-    if (entered) safeLock();
-  });
+  fadeTo(() => { modalOpen = false; setupClub(); });
 }
-function leaveClub() {
+function setupClub() {
+  inClub = true;
+  controls.pos.x = world.clubSpawn.x;
+  controls.pos.z = world.clubSpawn.z;
+  controls.yaw = world.clubSpawn.yaw;
+  setRoomTone(false);                    // the bedroom stays behind, fully
+  setClubBed(clubBedFor());              // soothing bed matched to the theme
+  setClubTone(true);                     // the idle bed, until a set starts
+  voice.setInClub(true);                 // now the set can reach your ears
+  // the venue is sealed: the mic goes quiet (chat only), the cat HUD and any
+  // flight strip that crept up at home are gone — only the set + chat get in
+  voice.stopTalk(); updateMicUI();
+  hideFlightStrip();
+  document.body.classList.add("in-club");
+  djHeardAt = 0;
+  wasGranted = djGrantedToMe();          // so a later grant toasts, but a standing one doesn't
+  if (screenState) { showScreen(); toast("🔊 a stream's on the big screen — press M for sound"); }
+  world.setOnAir(false);                 // dark until a chunk says otherwise
+  store.logEvent("boat");                // counts as a portal trip
+  progress.bump("trips");
+  refreshNoteVisibility();
+  toast("you're in 🪩 — the decks are dark until showtime");
+  hide(paused);
+  if (entered) safeLock();
+}
+function teardownClub() {
   if (voice.djLive()) voice.stopDJ();    // you can't broadcast from the street
   voice.setInClub(false);
+  screen.hide();                         // blanks the iframe → the stream's audio stops at the door
   world.setOnAir(false);
   setClubTone(false);                    // the street is quiet
   document.body.classList.remove("in-club");   // the mic + cat HUD come back home
+  inClub = false;
+}
+function leaveClub() {
+  teardownClub();
   fadeTo(() => {
-    inClub = false;
     // the lift was waiting — you step back out of it into the arcade
     returnToLift();
     setRoomTone(true);
     refreshNoteVisibility();
   });
+}
+
+/* ---------------- the big screen: a shared twitch/youtube stream ----------------
+   admin-only. the host pastes a link in the booth; everyone in THE VENUE sees
+   the same stream hang above the dj and hears it straight from the platform.
+   sync is just the URL, broadcast over presence + re-announced every few seconds
+   so people who walk in mid-event still catch it (it's ephemeral — a reload
+   clears it, same as the venue theme). */
+let screenState = null;       // { platform, kind, id, at } shared truth, or null
+let screenClock = 0;          // last-event-wins guard on the broadcast
+let screenMuted = true;       // each client decides its own sound (press M)
+let screenAnnounce = null;    // admin's re-announce timer
+
+function broadcastScreen() {
+  const at = Date.now();
+  screenClock = at;
+  if (screenState) {
+    screenState.at = at;
+    presence.sendAct({ kind: "screen", on: true, platform: screenState.platform, skind: screenState.kind, id: screenState.id, at });
+  } else {
+    presence.sendAct({ kind: "screen", on: false, at });
+  }
+}
+function startScreenAnnounce() {
+  if (screenAnnounce || !adminMode) return;
+  screenAnnounce = setInterval(() => { if (screenState) broadcastScreen(); else stopScreenAnnounce(); }, 5000);
+}
+function stopScreenAnnounce() { if (screenAnnounce) { clearInterval(screenAnnounce); screenAnnounce = null; } }
+
+// show whatever's in screenState (idempotent — safe to call repeatedly)
+function showScreen() { if (screenState) screen.show(screenState, screenMuted); }
+
+// admin sets / changes the stream
+function setScreen(input) {
+  const s = screen.parse(input);
+  if (!s) { toast("couldn't read that — paste a twitch or youtube link"); return; }
+  screenState = { ...s, at: Date.now() };
+  if (inClub) showScreen();
+  broadcastScreen();
+  startScreenAnnounce();
+  toast(`📺 ${s.platform}: ${s.id} — press M for sound`);
+}
+// admin clears it
+function clearScreen() {
+  screenState = null;
+  screen.clear();
+  stopScreenAnnounce();
+  broadcastScreen();
+  toast("📺 screen cleared");
 }
 
 /* ---------------- the booth: power, grant, go live ---------------- */
@@ -1978,8 +2069,24 @@ function renderBooth() {
       wrap.appendChild(b);
     }
   }
+  // the big screen: host-only, paste a stream link
+  const sc = $("#booth-screen");
+  sc.classList.toggle("hidden", !adminMode);
+  if (adminMode) {
+    const live = !!screenState;
+    $("#booth-screen-now").textContent = live ? `${screenState.platform}: ${screenState.id}` : "off";
+    $("#booth-screen-set").textContent = live ? "📺 change the stream" : "📺 put a stream on the big screen";
+    $("#booth-screen-clear").classList.toggle("hidden", !live);
+  }
   $("#booth-count").textContent = `${clubHeadcount()} in the room`;
 }
+$("#booth-screen-set").addEventListener("click", () => {
+  const link = prompt("twitch or youtube link (or a twitch channel name):", screenState ? screenState.id : "");
+  if (link == null) return;
+  setScreen(link);
+  renderBooth();
+});
+$("#booth-screen-clear").addEventListener("click", () => { clearScreen(); renderBooth(); });
 $("#booth-power").addEventListener("click", powerToggle);
 $("#booth-self").addEventListener("click", () => {
   if (voice.djLive()) { endSet(); return; }
@@ -2091,32 +2198,34 @@ function enterArena(team) {
   modalOpen = false;
   myTeam = team;
   try { localStorage.setItem("metro.team", team); } catch (e) {}
-  fadeTo(() => {
-    inArena = true;
-    controls.zerog = true;
-    controls.arena = A;
-    controls.clampFn = world.arenaClamp;
-    controls.nearWallFn = world.arenaNearWall;
-    controls.onGrabGhost = grabNearestGhost;
-    controls.vel = { x: 0, y: 0, z: 0 };
-    const sp = world.arenaSpawnFor(team);
-    controls.pos.x = sp.x;
-    controls.pos.z = sp.z;
-    controls.flyY = sp.y;
-    controls.yaw = sp.yaw;
-    controls.pitch = 0;
-    setRoomTone(false);
-    refreshNoteVisibility();
-    store.logEvent("boat");   // counts as a portal trip
-    progress.bump("trips");
-    voice.setArenaFx(true);    // voices arrive over the arena intercom
-    startArenaMusic();
-    toast(`your ${team === "o" ? "ORANGE" : "BLUE"} locker room · fly the tubes to MID · E grab/fling · click PUNCH · F shield · ready up at the kiosk`);
-    hide(paused);
-    if (entered) safeLock();
-  });
+  fadeTo(() => setupArena(team));
 }
-function leaveArena() {
+function setupArena(team) {
+  myTeam = team;
+  inArena = true;
+  controls.zerog = true;
+  controls.arena = A;
+  controls.clampFn = world.arenaClamp;
+  controls.nearWallFn = world.arenaNearWall;
+  controls.onGrabGhost = grabNearestGhost;
+  controls.vel = { x: 0, y: 0, z: 0 };
+  const sp = world.arenaSpawnFor(team);
+  controls.pos.x = sp.x;
+  controls.pos.z = sp.z;
+  controls.flyY = sp.y;
+  controls.yaw = sp.yaw;
+  controls.pitch = 0;
+  setRoomTone(false);
+  refreshNoteVisibility();
+  store.logEvent("boat");   // counts as a portal trip
+  progress.bump("trips");
+  voice.setArenaFx(true);    // voices arrive over the arena intercom
+  startArenaMusic();
+  toast(`your ${team === "o" ? "ORANGE" : "BLUE"} locker room · fly the tubes to MID · E grab/fling · click PUNCH · F shield · ready up at the kiosk`);
+  hide(paused);
+  if (entered) safeLock();
+}
+function teardownArena() {
   stopArenaMusic();
   // don't walk off with the disc
   if (disc.holder === identity.uid) {
@@ -2125,21 +2234,24 @@ function leaveArena() {
     disc.vel.set(0, 0, 0);
     presence.sendAct({ kind: "disc", sub: "throw", p: [A.x, A.y, A.z], v: [0, 0, 0] });
   }
+  inArena = false;
+  controls.zerog = false;
+  controls.anchored = false;
+  controls.stunT = 0;
+  controls.blocking = false;
+  controls.clampFn = null;
+  controls.nearWallFn = null;
+  controls.onGrabGhost = null;
+  controls.ghostHold = null;
+  controls._launchDir = null;
+  controls.pitch = 0;
+  voice.setArenaFx(false);
+  setThruster(false);
+}
+function leaveArena() {
   fadeTo(() => {
-    inArena = false;
-    controls.zerog = false;
-    controls.anchored = false;
-    controls.stunT = 0;
-    controls.blocking = false;
-    controls.clampFn = null;
-    controls.nearWallFn = null;
-    controls.onGrabGhost = null;
-    controls.ghostHold = null;
-    controls._launchDir = null;
-    voice.setArenaFx(false);
-    setThruster(false);
+    teardownArena();
     returnToLift();
-    controls.pitch = 0;
     setRoomTone(true);
     refreshNoteVisibility();
   });
@@ -2837,6 +2949,18 @@ addEventListener("keydown", (e) => {
     } else if (p.kind === "theme") {
       // the dj set the look — the whole room follows
       if (inClub) { world.setClubTheme(p.ix); setClubBed(clubBedFor()); }
+    } else if (p.kind === "screen") {
+      // the host put a stream up (or cleared it) — last-event-wins
+      if ((p.at || 0) < screenClock) return;
+      screenClock = p.at || 0;
+      if (p.on) {
+        const wasUp = screen.active();
+        screenState = { platform: p.platform, kind: p.skind, id: p.id, at: p.at };
+        if (inClub) { showScreen(); if (!wasUp) toast("🔊 a stream's on the big screen — press M for sound"); }
+      } else {
+        screenState = null;
+        screen.clear();
+      }
     } else if (p.kind === "radio") {
       // someone tuned the shared radio — follow it (last-event-wins)
       const desc = radios[p.which];
@@ -2902,7 +3026,7 @@ addEventListener("keydown", (e) => {
 })();
 
 /* ---------------- frame loop ---------------- */
-window.METRO_DEBUG = { renderer, camera, world, controls, THREE, cat, bartender, ghosts, voice, mirror, openPicker, analytics: analyticsBuffer, notesWall,
+window.METRO_DEBUG = { renderer, camera, world, controls, THREE, cat, bartender, ghosts, voice, screen, setScreen, clearScreen, room: () => aRoomNow(), jump: adminJump, mirror, openPicker, analytics: analyticsBuffer, notesWall,
   uid: identity.uid, pool: poolGame, sitAtPool, leavePool,
   darts: dartGame, sitAtDarts, leaveDarts,
   hoops: hoopGame,
@@ -3015,4 +3139,5 @@ renderer.setAnimationLoop(() => {
   if (inArena) setThruster(controls.thrusting);
   stepRideCam(dt);                         // nudge the camera while the car travels
   renderer.render(world.scene, camera);
+  screen.render(camera);                    // composite the venue big screen on top (no-op unless it's up)
 });
