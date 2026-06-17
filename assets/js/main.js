@@ -76,6 +76,22 @@ function aRoomNow() {
   if (inClub) return "venue";
   return controls.pos.x < -3.6 ? "arcade" : "bedroom";
 }
+// which big space a world position is in. the rooms sit far apart with no
+// walkable space between them, so position alone classifies cleanly; bedroom +
+// arcade are one contiguous space ("home"). used to room-scope ghosts so we only
+// build/animate avatars for people actually in the room with us.
+function roomScopeOfPos(x, y, z) {
+  if ((y || 0) > 40) return "crew";
+  if (x > 20) return "desi";
+  if (x < -20) return "venue";
+  return "home";
+}
+function myScope() {
+  if (inBoat) return "desi";
+  if (inArena) return "crew";
+  if (inClub) return "venue";
+  return "home";
+}
 let aRoom = null, aRoomAt = performance.now(), aRoomCount = 0, aEngaged = false;
 function aEngage() { if (aEngaged) return; aEngaged = true; track("session_engaged", { device: A_DEVICE }); }
 function aSetRoom(name) {
@@ -2033,6 +2049,22 @@ let djState = null;
 let wasGranted = false;
 let lastPeers = new Map();                 // uid -> {name,color,...}, cached for the booth list
 const peerX = new Map();                   // uid -> last x, for a room-scoped headcount
+const peerScope = new Map();               // uid -> which space they're in (from their pose)
+let lastMyScope = null;                    // my space last frame, to re-scope ghosts on a room change
+// render ghosts ONLY for peers in the same space as you. building + animating an
+// avatar for someone in another room (40m away, behind walls, invisible) is
+// wasted work that hitches the frame — and on iOS that hitch stalls the venue
+// video. peers with no live pose yet (just joined, or a dead/stale presence
+// entry) are left out until they actually pose, which also keeps phantoms out.
+function refreshGhostScope() {
+  if (!lastPeers) return;
+  const scope = myScope();
+  const here = new Map();
+  for (const [uid, meta] of lastPeers) {
+    if (peerScope.get(uid) === scope) here.set(uid, meta);
+  }
+  ghosts.syncPeers(here);
+}
 function clubHeadcount() {
   let n = inClub ? 1 : 0;
   for (const x of peerX.values()) if (x < -30) n++;   // club lives past x = -30
@@ -2939,10 +2971,11 @@ addEventListener("keydown", (e) => {
     // tab still on old cached code) never renders or counts toward the room
     const peers = new Map([...allPeers].filter(([, m]) => (m.name || "").trim()));
     const newcomer = [...peers.keys()].some(uid => !lastPeers.has(uid));   // someone just walked in
-    ghosts.syncPeers(peers);
     $("#online-count").textContent = String(peers.size + 1);
     lastPeers = peers;
     for (const uid of [...peerX.keys()]) if (!peers.has(uid)) peerX.delete(uid);
+    for (const uid of [...peerScope.keys()]) if (!peers.has(uid)) peerScope.delete(uid);
+    refreshGhostScope();                  // build/keep only the avatars of people in your room
     if ($("#booth").classList.contains("show")) renderBooth();
     // re-announce whatever's playing so the newcomer tunes straight in. we
     // resend the existing event (same clock) — peers already in sync see it as
@@ -2957,7 +2990,13 @@ addEventListener("keydown", (e) => {
       if (screenState) presence.sendAct({ kind: "screen", on: true, url: screenState.url, at: screenState.at });
     }
   });
-  presence.onPose((uid, pose) => { if (lastPeers && !lastPeers.has(uid)) return; ghosts.setPose(uid, pose); peerX.set(uid, pose.x); });
+  presence.onPose((uid, pose) => {
+    if (lastPeers && !lastPeers.has(uid)) return;
+    const sc = roomScopeOfPos(pose.x, pose.y, pose.z);
+    if (peerScope.get(uid) !== sc) { peerScope.set(uid, sc); refreshGhostScope(); }   // they crossed rooms
+    ghosts.setPose(uid, pose);
+    peerX.set(uid, pose.x);
+  });
   presence.onNote((uid, i, v) => {
     if (inBoat || inArena) return;   // the bedroom piano stays in the bedroom
     pianoNote(i, v ?? 0);
@@ -3229,6 +3268,10 @@ renderer.setAnimationLoop(() => {
   } else if (vacuuming) {
     setVacuuming(false);   // you can't carry it out of the room
   }
+  // when YOU change rooms, re-scope which avatars exist (catches every transition
+  // path — elevator, password gate, admin jump — without hooking each one)
+  const sc = myScope();
+  if (sc !== lastMyScope) { lastMyScope = sc; refreshGhostScope(); }
   ghosts.tick(dt, t, (uid) => voice.level(uid));
   cat.tick(dt, t, controls.pose());
   // the bartender reacts to you only when you're in the bedroom/arcade with him
