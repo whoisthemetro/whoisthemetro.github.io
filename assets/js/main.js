@@ -193,11 +193,11 @@ addEventListener("keydown", (e) => {
     const seed = (Math.random() * 1e6) | 0;
     world.clubFireworks(seed); presence.sendAct({ kind: "fireworks", seed }); toast("🎆 fireworks");
   }
-  // M = your own toggle for the big screen's sound. a keypress is a real user
-  // gesture, so this is what gets the stream past the browser's autoplay mute.
-  if (e.code === "KeyM" && !e.repeat && inClub && entered && !modalOpen && screen.has()) {
-    screenMuted = screen.toggleMuted();
-    toast(screenMuted ? "🔇 stream muted" : "🔊 stream sound on");
+  // M = focus the big screen: free the cursor so you can click the player's own
+  // play/unmute (desktop only — touch just taps the screen directly)
+  if (e.code === "KeyM" && !e.repeat && entered && !IS_TOUCH &&
+      (screenFocus || (inClub && !modalOpen && screen.has()))) {
+    if (screenFocus) exitScreenFocus(); else enterScreenFocus();
   }
   // admin quick-travel: 1 venue · 2 desi · 3 crew · 4 home — skip the elevator
   if (adminMode && entered && !modalOpen && !chatOpen && !e.repeat) {
@@ -442,6 +442,7 @@ $("#enter-btn").addEventListener("click", enterRoom);
 nameInput?.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); enterRoom(); } });
 $("#resume-btn").addEventListener("click", () => { hide(paused); safeLock(); });
 canvas.addEventListener("click", () => {
+  if (screenFocus) { exitScreenFocus(); return; }   // clicking the world leaves screen-focus + re-locks
   if (entered && !modalOpen && !controls.locked && !IS_TOUCH) safeLock();
 });
 
@@ -1868,7 +1869,7 @@ function setupClub() {
   document.body.classList.add("in-club");
   djHeardAt = 0;
   wasGranted = djGrantedToMe();          // so a later grant toasts, but a standing one doesn't
-  if (screenState) { showScreen(); toast(IS_TOUCH ? "📺 a stream's on the big screen — tap it for sound" : "🔊 a stream's on the big screen — press M for sound"); }
+  if (screenState) { showScreen(); toast(SCREEN_HINT); }
   world.setOnAir(false);                 // dark until a chunk says otherwise
   store.logEvent("boat");                // counts as a portal trip
   progress.bump("trips");
@@ -1904,8 +1905,13 @@ function leaveClub() {
    instant update to whoever's already standing there. last-event-wins on `at`. */
 let screenState = null;       // { platform, kind, id, at } shared truth, or null
 let screenClock = 0;          // last-event-wins guard across presence + db
-let screenMuted = true;       // each client decides its own sound (press M)
 let screenAnnounce = null;    // local-mode re-announce timer (supabase persists instead)
+let screenFocus = false;      // desktop: cursor freed so you can click the player
+// the screen plays muted; sound needs a DIRECT click on the player (browsers
+// won't take a keypress as a gesture inside a cross-origin iframe)
+const SCREEN_HINT = IS_TOUCH
+  ? "📺 tap the screen to play / unmute"
+  : "📺 press M, then click the screen to play / unmute";
 
 // broadcast the live edge over presence — instant for everyone present, and the
 // only sync channel in local mode (no realtime there)
@@ -1941,7 +1947,24 @@ function startScreenAnnounce() {
 function stopScreenAnnounce() { if (screenAnnounce) { clearInterval(screenAnnounce); screenAnnounce = null; } }
 
 // show whatever's in screenState (idempotent — safe to call repeatedly)
-function showScreen() { if (screenState) screen.show(screenState, screenMuted); }
+function showScreen() { if (screenState) screen.show(screenState); }
+
+// desktop: free the cursor so you can click the player's own play/unmute (a
+// keypress can't reach inside the iframe — only a real click on it can). we
+// hold modalOpen so the pause screen doesn't pop while we're unlocked.
+function enterScreenFocus() {
+  if (screenFocus || !inClub || !screen.has() || IS_TOUCH) return;
+  screenFocus = true;
+  modalOpen = true;
+  controls.unlock();
+  toast("👆 click the screen to play / unmute — click away (or M) to go back");
+}
+function exitScreenFocus() {
+  if (!screenFocus) return;
+  screenFocus = false;
+  modalOpen = false;
+  if (entered) safeLock();
+}
 
 // apply a stream that arrived from elsewhere (presence act, db load, or realtime)
 function applyRemoteScreen(s) {
@@ -1951,7 +1974,7 @@ function applyRemoteScreen(s) {
   if (s && s.id) {
     const wasUp = screen.active();
     screenState = { platform: s.platform, kind: s.kind, id: s.id, at };
-    if (inClub) { showScreen(); if (!wasUp) toast(IS_TOUCH ? "📺 a stream's on the big screen — tap it for sound" : "🔊 a stream's on the big screen — press M for sound"); }
+    if (inClub) { showScreen(); if (!wasUp) toast(SCREEN_HINT); }
     startScreenAnnounce();               // if we're the host (self-guards), keep relaying it
   } else {
     screenState = null;
@@ -1969,7 +1992,7 @@ function setScreen(input) {
   broadcastScreen();
   persistScreen();
   startScreenAnnounce();
-  toast(`📺 ${s.platform}: ${s.id}${IS_TOUCH ? " — tap it for sound" : " — press M for sound"}`);
+  toast(`📺 ${s.platform}: ${s.id}`);
 }
 // admin clears it
 function clearScreen() {
@@ -2120,7 +2143,10 @@ $("#booth-screen-set").addEventListener("click", () => {
   const link = prompt("twitch or youtube link (or a twitch channel name):", screenState ? screenState.id : "");
   if (link == null) return;
   setScreen(link);
-  renderBooth();
+  if (!screen.has()) { renderBooth(); return; }   // couldn't parse → stay in the booth
+  hide($("#booth"));
+  if (IS_TOUCH) modalOpen = false;                // touch: just tap the screen
+  else enterScreenFocus();                         // desktop: free the cursor to click play
 });
 $("#booth-screen-clear").addEventListener("click", () => { clearScreen(); renderBooth(); });
 $("#booth-power").addEventListener("click", powerToggle);
@@ -3056,7 +3082,7 @@ addEventListener("keydown", (e) => {
 })();
 
 /* ---------------- frame loop ---------------- */
-window.METRO_DEBUG = { renderer, camera, world, controls, THREE, cat, bartender, ghosts, voice, screen, setScreen, clearScreen, room: () => aRoomNow(), jump: adminJump, mirror, openPicker, analytics: analyticsBuffer, notesWall,
+window.METRO_DEBUG = { renderer, camera, world, controls, THREE, cat, bartender, ghosts, voice, screen, setScreen, clearScreen, screenFocus: () => screenFocus, room: () => aRoomNow(), jump: adminJump, mirror, openPicker, analytics: analyticsBuffer, notesWall,
   uid: identity.uid, pool: poolGame, sitAtPool, leavePool,
   darts: dartGame, sitAtDarts, leaveDarts,
   hoops: hoopGame,
