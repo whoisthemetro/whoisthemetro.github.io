@@ -335,6 +335,7 @@ async function readInbox(pass) {
 /* ---- the room light: persists for everyone, survives refresh ---- */
 const roomLightListeners = new Set();
 const djListeners = new Set();          // who's on the decks (rides room_state)
+const screenListeners = new Set();      // the venue big screen (rides room_state)
 async function getRoomLight() {
   if (mode === "supabase") {
     const { data, error } = await sb.from("room_state").select("*").eq("id", 1).single();
@@ -359,6 +360,7 @@ function subscribeRoomLight() {
           if (!payload.new) return;
           roomLightListeners.forEach(fn => { try { fn(payload.new); } catch (e) {} });
           djListeners.forEach(fn => { try { fn(payload.new.dj || null); } catch (e) {} });
+          screenListeners.forEach(fn => { try { fn(payload.new.screen || null); } catch (e) {} });
         })
       .subscribe();
   }
@@ -406,6 +408,27 @@ async function saveDJ(dj, pass) {
   }
   try { localStorage.setItem("metro.dj", JSON.stringify(dj)); } catch (e) {}
   bc?.postMessage({ type: "dj", dj });
+}
+
+/* ---- the venue big screen: the host's twitch/youtube stream (admin-gated,
+   persists). live sync still rides presence; this is the durability half so it
+   survives a reload + the host leaving. degrades quietly pre-migration. ---- */
+async function getScreen() {
+  if (mode === "supabase") {
+    const { data, error } = await sb.from("room_state").select("screen").eq("id", 1).single();
+    if (error) return null;               // column missing (pre-migration) → nothing persisted
+    return data?.screen || null;
+  }
+  try { return JSON.parse(localStorage.getItem("metro.screen") || "null"); } catch (e) { return null; }
+}
+async function saveScreen(s, pass) {
+  if (mode === "supabase") {
+    const { data, error } = await sb.rpc("set_screen", { p_screen: s, pass });
+    if (error) throw error;               // RPC missing (pre-migration) → caller .catch()es
+    if (!data) throw new Error("wrong passphrase");
+    return;
+  }
+  try { localStorage.setItem("metro.screen", JSON.stringify(s)); } catch (e) {}
 }
 
 /* ---- lightweight metrics: what the room gets up to ---- */
@@ -487,6 +510,8 @@ export const store = {
   onRoomLight: fn => { roomLightListeners.add(fn); return () => roomLightListeners.delete(fn); },
   getDJ, saveDJ,
   onDJ: fn => { djListeners.add(fn); return () => djListeners.delete(fn); },
+  getScreen, saveScreen,
+  onScreen: fn => { screenListeners.add(fn); return () => screenListeners.delete(fn); },
   submitScore, listScores,
   onNewScore: fn => { scoreListeners.add(fn); return () => scoreListeners.delete(fn); },
   _subscribeScores: subscribeScores,

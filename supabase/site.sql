@@ -80,6 +80,33 @@ begin
 end;
 $$;
 
+-- ---------- the venue big screen: a shared twitch/youtube stream ----------
+-- screen holds { platform, kind, id, at } | null. the host (admin) pastes a
+-- link in the booth and it hangs above the dj for everyone. it rides
+-- room_state so it survives a reload and persists even after the host leaves,
+-- and it broadcasts over realtime for free.
+alter table public.room_state add column if not exists screen jsonb;
+
+-- only the host may touch it — same passphrase as the booth.
+create or replace function public.set_screen(p_screen jsonb, pass text)
+returns boolean
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_ok boolean;
+begin
+  select (pass_hash = extensions.crypt(pass, pass_hash)) into v_ok
+    from private.admin where id = 1;
+  if not coalesce(v_ok, false) then
+    return false;
+  end if;
+  update public.room_state set screen = p_screen, updated_at = now() where id = 1;
+  return true;
+end;
+$$;
+
 -- ---------- the room's interactables, shared and persistent ----------
 -- a single jsonb bag of toggle states so the room comes back exactly as people
 -- left it: blinds, curtains, closet, the lava lamp, each radio ({on, idx}), and

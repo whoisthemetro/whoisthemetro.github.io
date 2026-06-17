@@ -1899,14 +1899,16 @@ function leaveClub() {
 /* ---------------- the big screen: a shared twitch/youtube stream ----------------
    admin-only. the host pastes a link in the booth; everyone in THE VENUE sees
    the same stream hang above the dj and hears it straight from the platform.
-   sync is just the URL, broadcast over presence + re-announced every few seconds
-   so people who walk in mid-event still catch it (it's ephemeral — a reload
-   clears it, same as the venue theme). */
+   it rides room_state (store.getScreen/saveScreen/onScreen, admin-gated), so it
+   persists across reloads and survives the host leaving; presence carries the
+   instant update to whoever's already standing there. last-event-wins on `at`. */
 let screenState = null;       // { platform, kind, id, at } shared truth, or null
-let screenClock = 0;          // last-event-wins guard on the broadcast
+let screenClock = 0;          // last-event-wins guard across presence + db
 let screenMuted = true;       // each client decides its own sound (press M)
-let screenAnnounce = null;    // admin's re-announce timer
+let screenAnnounce = null;    // local-mode re-announce timer (supabase persists instead)
 
+// broadcast the live edge over presence — instant for everyone present, and the
+// only sync channel in local mode (no realtime there)
 function broadcastScreen() {
   const at = Date.now();
   screenClock = at;
@@ -1917,14 +1919,43 @@ function broadcastScreen() {
     presence.sendAct({ kind: "screen", on: false, at });
   }
 }
+// persist to room_state so it outlives a reload + the host walking away
+async function persistScreen() {
+  if (store.mode !== "supabase") { store.saveScreen(screenState).catch(() => {}); return; }
+  const pass = adminPass();
+  if (!pass) return;
+  try { await store.saveScreen(screenState, pass); }
+  catch (e) {
+    // pre-migration or a bad passphrase — the live broadcast still landed, so
+    // don't blow up; just forget a wrong passphrase so the next try re-prompts
+    if (String(e.message).includes("passphrase")) sessionStorage.removeItem("metro.adminpass");
+  }
+}
+// supabase carries late joiners via getScreen-on-boot + realtime; local mode has
+// neither, so it re-announces over presence to cover a tab that walks in late
 function startScreenAnnounce() {
-  if (screenAnnounce || !adminMode) return;
+  if (screenAnnounce || !adminMode || store.mode === "supabase") return;
   screenAnnounce = setInterval(() => { if (screenState) broadcastScreen(); else stopScreenAnnounce(); }, 5000);
 }
 function stopScreenAnnounce() { if (screenAnnounce) { clearInterval(screenAnnounce); screenAnnounce = null; } }
 
 // show whatever's in screenState (idempotent — safe to call repeatedly)
 function showScreen() { if (screenState) screen.show(screenState, screenMuted); }
+
+// apply a stream that arrived from elsewhere (presence act, db load, or realtime)
+function applyRemoteScreen(s) {
+  const at = (s && s.at) ? s.at : Date.now();
+  if (at < screenClock) return;            // stale vs a newer event we already have
+  screenClock = at;
+  if (s && s.id) {
+    const wasUp = screen.active();
+    screenState = { platform: s.platform, kind: s.kind, id: s.id, at };
+    if (inClub) { showScreen(); if (!wasUp) toast("🔊 a stream's on the big screen — press M for sound"); }
+  } else {
+    screenState = null;
+    screen.clear();
+  }
+}
 
 // admin sets / changes the stream
 function setScreen(input) {
@@ -1933,6 +1964,7 @@ function setScreen(input) {
   screenState = { ...s, at: Date.now() };
   if (inClub) showScreen();
   broadcastScreen();
+  persistScreen();
   startScreenAnnounce();
   toast(`📺 ${s.platform}: ${s.id} — press M for sound`);
 }
@@ -1942,6 +1974,7 @@ function clearScreen() {
   screen.clear();
   stopScreenAnnounce();
   broadcastScreen();
+  persistScreen();
   toast("📺 screen cleared");
 }
 
@@ -2950,17 +2983,8 @@ addEventListener("keydown", (e) => {
       // the dj set the look — the whole room follows
       if (inClub) { world.setClubTheme(p.ix); setClubBed(clubBedFor()); }
     } else if (p.kind === "screen") {
-      // the host put a stream up (or cleared it) — last-event-wins
-      if ((p.at || 0) < screenClock) return;
-      screenClock = p.at || 0;
-      if (p.on) {
-        const wasUp = screen.active();
-        screenState = { platform: p.platform, kind: p.skind, id: p.id, at: p.at };
-        if (inClub) { showScreen(); if (!wasUp) toast("🔊 a stream's on the big screen — press M for sound"); }
-      } else {
-        screenState = null;
-        screen.clear();
-      }
+      // the host put a stream up (or cleared it) over presence — last-event-wins
+      applyRemoteScreen(p.on ? { platform: p.platform, kind: p.skind, id: p.id, at: p.at } : null);
     } else if (p.kind === "radio") {
       // someone tuned the shared radio — follow it (last-event-wins)
       const desc = radios[p.which];
@@ -3014,6 +3038,9 @@ addEventListener("keydown", (e) => {
   // the booth remembers who it was handed to
   store.getDJ().then(dj => { djState = dj; wasGranted = djGrantedToMe(); }).catch(() => {});
   store.onDJ(dj => { djState = dj; onDJChanged(); });
+  // and the big screen remembers what's on it — survives reload + the host leaving
+  store.getScreen().then(s => { if (s) applyRemoteScreen(s); }).catch(() => {});
+  store.onScreen(s => applyRemoteScreen(s));
   // keep the booth's headcount plate honest while anyone's in the club
   setInterval(() => { if (entered && inClub) world.setBoothHeadcount(clubHeadcount()); updateFxPanel(); }, 1500);
 
