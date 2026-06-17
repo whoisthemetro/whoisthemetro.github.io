@@ -7,3 +7,6 @@ assets/Pics for Website/
 
 # Local-only SQL with real secrets baked in — never commit
 supabase/*.local.sql
+
+# supabase CLI scratch
+supabase/.temp/

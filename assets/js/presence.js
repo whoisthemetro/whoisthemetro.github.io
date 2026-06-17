@@ -112,6 +112,16 @@ async function join(identity, poseFn) {
           await chan.track({ name: me.name, color: me.color, avatar: me.avatar || null, outfit: me.outfit || null });
         }
       });
+    // iOS (and any OS) suspends a backgrounded tab: its realtime heartbeat stops
+    // and the server drops it from the room until it wakes. When you come back to
+    // a device, re-announce ourselves right away so we reappear instantly instead
+    // of waiting on the socket's own reconnect/timeout. (Two ACTIVE devices/people
+    // are never suspended, so they coexist fine — this just smooths switching.)
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible" && chan && me) {
+        try { chan.track({ name: me.name, color: me.color, avatar: me.avatar || null, outfit: me.outfit || null }); } catch (e) {}
+      }
+    });
   } else if ("BroadcastChannel" in window) {
     // local mode: heartbeat every 2s, expire after 5s
     bc = new BroadcastChannel("metro-presence");
