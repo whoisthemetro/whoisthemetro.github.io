@@ -137,6 +137,13 @@ const screenMesh = screen.mountScreen(world.scene);
 stream.init(presence.clientId);        // per-tab id, so two tabs of one user still connect
 stream.onRemoteStream((s) => screen.setMediaStream(s, false));
 stream.onRemoteEnd(() => { if (!stream.isHosting()) screen.setMediaStream(null); });
+// let a viewer know how the screen-share connection is going (and why it isn't,
+// when the network won't allow a peer path)
+stream.onStatus((s) => {
+  if (!inClub || stream.isHosting()) return;
+  if (s === "connected") toast("📺 connected — the screen's coming through");
+  else if (s === "failed") toast("📺 couldn't reach the screen-share (network blocked the connection)");
+});
 stream.onHostEnded(() => { screen.setMediaStream(null); toast("📺 sharing ended"); renderBooth(); });
 // host wall self-heal: while we're the one sharing, the captured stream stays
 // live no matter who comes or goes — so the host's OWN wall should never go dark

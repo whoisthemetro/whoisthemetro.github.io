@@ -15,10 +15,24 @@
    ============================================================ */
 import { presence } from "./presence.js";
 
-const ICE = [
+// STUN finds your public address; TURN *relays* media when a direct peer path
+// can't be made. two devices on the SAME wifi often still can't connect P2P:
+// browsers hide local IPs behind mDNS .local candidates, and when those don't
+// resolve the only fallback is both devices' shared public IP via NAT hairpin,
+// which most home routers refuse — so the stream never arrives (classic "works
+// on one machine, dead across two devices"). a TURN relay is the cure. the
+// openrelay creds are a free best-effort default; for a real event drop a
+// dedicated TURN in config.js as METRO_CONFIG.ICE_SERVERS (overrides all of this).
+const DEFAULT_ICE = [
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
+  { urls: "turn:openrelay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" },
+  { urls: "turn:openrelay.metered.ca:80?transport=tcp", username: "openrelayproject", credential: "openrelayproject" },
 ];
+function iceServers() {
+  const cfg = (typeof window !== "undefined" && window.METRO_CONFIG && window.METRO_CONFIG.ICE_SERVERS);
+  return (Array.isArray(cfg) && cfg.length) ? cfg : DEFAULT_ICE;
+}
 
 let myUid = null;
 let mode = "off";                 // off | host | viewer
@@ -31,18 +45,23 @@ const pcs = new Map();            // uid -> RTCPeerConnection
 let onRemoteStream = null;        // viewer cb(stream)
 let onRemoteEnd = null;           // viewer cb()
 let onHostEnded = null;           // host cb() when the browser's "stop sharing" fires
+let onStatus = null;              // viewer cb(state) — connecting/connected/failed to the host
 
 function newPc(uid) {
-  const pc = new RTCPeerConnection({ iceServers: ICE });
+  const pc = new RTCPeerConnection({ iceServers: iceServers() });
   // signaling rides presence — which uses BroadcastChannel in local mode, and
   // BroadcastChannel's structured clone CANNOT clone live RTC* objects
   // (RTCSessionDescription / RTCIceCandidate throw "could not be cloned"). so we
   // only ever put PLAIN json on the wire. candidate.toJSON() gives a plain dict.
   pc.onicecandidate = (e) => { if (e.candidate) presence.sendSignal({ kind: "ice", to: uid, data: e.candidate.toJSON() }); };
   pc.onconnectionstatechange = () => {
+    const s = pc.connectionState;
+    // tell the viewer how the connection to the host is going (so they know it's
+    // working / why it isn't). only the viewer's host pc reports.
+    if (mode === "viewer" && uid === hostUid && onStatus) { try { onStatus(s); } catch (e) {} }
     // "disconnected" is transient (an ICE hiccup) and usually self-recovers — only
     // tear down on a terminal state, or we'd needlessly drop a live stream.
-    if (["failed", "closed"].includes(pc.connectionState)) closePc(uid);
+    if (["failed", "closed"].includes(s)) closePc(uid);
   };
   pcs.set(uid, pc);
   return pc;
@@ -113,6 +132,7 @@ export const stream = {
   onRemoteStream(fn) { onRemoteStream = fn; },
   onRemoteEnd(fn) { onRemoteEnd = fn; },
   onHostEnded(fn) { onHostEnded = fn; },
+  onStatus(fn) { onStatus = fn; },
   isHosting: () => mode === "host",
   hostLive: () => mode === "host" || !!lastLiveHost,
   localStream: () => localStream,
