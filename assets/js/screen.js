@@ -29,9 +29,10 @@ const W = 5.0, H = 2.81;           // 16:9, in metres
 
 let mesh = null, labelCv = null, labelTex = null, videoTex = null;
 let video = null, hls = null, Hls = null;
-let cur = null;                    // { url } currently on, or null
+let cur = null;                    // { url } | { live:true } currently on, or null
 let inRoom = false;                // in the venue → play + (armed) audio
 let unmuteArmed = false;
+let noAutoUnmute = false;          // the host's own wall: don't auto-unmute (they hear the tab)
 
 function isHls(u) { return /\.m3u8(\?|#|$)/i.test(u || ""); }
 function labelOf(u) { try { return new URL(u).hostname.replace(/^www\./, ""); } catch (e) { return "live"; } }
@@ -90,7 +91,7 @@ async function attach(url) {
 function play() {
   if (!video) return;
   video.play().catch(() => {});
-  if (!unmuteArmed && inRoom) armUnmute();
+  if (!noAutoUnmute && !unmuteArmed && inRoom) armUnmute();
 }
 
 // unmute on the first input the visitor makes (a gesture is required for sound,
@@ -120,10 +121,13 @@ export const screen = {
     return mesh;
   },
 
-  // the shared "what's on" — a media URL, or null for dark. called for everyone.
+  // the shared "what's on" — an HLS/.mp4 URL, or null for dark (host's screen-share
+  // uses setMediaStream instead). called for everyone.
   setStream(s) {
     const url = s && s.url ? s.url : null;
-    if (cur && url && cur.url === url) { setWall(); return; }   // unchanged → no reload
+    if (cur && cur.url && url && cur.url === url) { setWall(); return; }   // unchanged → no reload
+    if (video) video.srcObject = null;        // leaving any live screen-share
+    noAutoUnmute = false;
     cur = url ? { url } : null;
     if (url) { attach(url); }
     else {
@@ -133,10 +137,30 @@ export const screen = {
     setWall();
   },
 
+  // a live MediaStream on the wall (WebRTC screen-share). muteSelf=true for the
+  // host's own wall so they don't double-hear the tab they're sharing.
+  setMediaStream(s, muteSelf) {
+    ensureVideo();
+    if (hls) { try { hls.destroy(); } catch (e) {} hls = null; }
+    video.removeAttribute("src");
+    if (s) {
+      noAutoUnmute = !!muteSelf;
+      cur = { live: true };
+      video.muted = true;
+      video.srcObject = s;
+      if (inRoom) play();
+    } else {
+      if (cur && cur.live) cur = null;
+      noAutoUnmute = false;
+      video.srcObject = null; video.pause();
+    }
+    setWall();
+  },
+
   // entering the venue → start playing + arm the auto-unmute
   enter() {
     inRoom = true;
-    if (cur) { ensureVideo(); if (!video.src && !hls) attach(cur.url); else play(); }
+    if (cur) { ensureVideo(); if (cur.url && !video.src && !hls) attach(cur.url); else play(); }
     setWall();
   },
   // leaving → mute + pause so no audio bleeds out and we stop pulling bytes
@@ -155,6 +179,9 @@ export const screen = {
   isMuted: () => !video || video.muted,
 
   has: () => !!cur,
+  // true only when a live MediaStream (screen-share) is actually on the wall —
+  // lets the host self-heal its own wall without disturbing a URL stream
+  showingLive: () => !!(cur && cur.live && video && video.srcObject),
   current: () => cur,
   // smoke-test peek
   _state: () => ({ has: !!cur, url: cur && cur.url, inRoom, muted: !video || video.muted, paused: !video || video.paused, hls: !!hls }),

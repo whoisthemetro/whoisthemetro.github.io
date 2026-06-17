@@ -20,12 +20,20 @@ const gameListeners = new Set();
 const actListeners = new Set();
 const chatListeners = new Set();
 const voiceListeners = new Set();
+const signalListeners = new Set();   // webrtc offer/answer/ice for the venue screen-share
 
 let me = null;
 let getPose = null;
 let chan = null;            // supabase channel
 let bc = null;              // local channel
 let lastSent = "";
+
+// a PER-TAB id for webrtc signaling. the user's identity uid is shared across
+// tabs (localStorage), so two tabs of the same person collide — and the screen-
+// share self-filter (from !== me) would then drop every signal between them, so
+// they'd never connect. this id is unique per tab/load, so each tab is its own
+// webrtc peer. (only the screen-share uses it; presence identity stays the uid.)
+const clientId = "c" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 
 function emitPeers() {
   peerListeners.forEach(fn => { try { fn(peers); } catch (e) {} });
@@ -94,6 +102,11 @@ async function join(identity, poseFn) {
           voiceListeners.forEach(fn => { try { fn(payload); } catch (e) {} });
         }
       })
+      .on("broadcast", { event: "signal" }, ({ payload }) => {
+        if (payload.from !== clientId) {       // per-tab id, so two tabs of one user still connect
+          signalListeners.forEach(fn => { try { fn(payload); } catch (e) {} });
+        }
+      })
       .subscribe(async (status) => {
         if (status === "SUBSCRIBED") {
           await chan.track({ name: me.name, color: me.color, avatar: me.avatar || null, outfit: me.outfit || null });
@@ -121,6 +134,8 @@ async function join(identity, poseFn) {
         gameListeners.forEach(fn => { try { fn(m.payload); } catch (e) {} });
       } else if (m.type === "voice") {
         voiceListeners.forEach(fn => { try { fn(m.payload); } catch (e) {} });
+      } else if (m.type === "signal") {
+        if (m.payload.from !== clientId) signalListeners.forEach(fn => { try { fn(m.payload); } catch (e) {} });
       } else if (m.type === "bye") {
         if (peers.delete(m.uid)) emitPeers();
       }
@@ -187,6 +202,16 @@ export const presence = {
     if (chan) chan.send({ type: "broadcast", event: "voice", payload: msg });
     else bc?.postMessage({ type: "voice", payload: msg });
   },
+  // webrtc signaling for the venue screen-share (offer/answer/ice/hello/bye/live)
+  onSignal: fn => { signalListeners.add(fn); return () => signalListeners.delete(fn); },
+  sendSignal(payload) {
+    if (!me) return;
+    const msg = { ...payload, from: clientId };   // per-tab, not the shared uid
+    if (chan) chan.send({ type: "broadcast", event: "signal", payload: msg });
+    else bc?.postMessage({ type: "signal", payload: msg });
+  },
+  // the per-tab webrtc id (stream.js uses it as its peer identity)
+  clientId,
   // 2-player arcade traffic (sit / join / input / state / leave)
   onGame: fn => { gameListeners.add(fn); return () => gameListeners.delete(fn); },
   sendGame(payload) {

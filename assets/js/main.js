@@ -14,6 +14,7 @@ import { SONGS, playSong, stopSong, currentSongId } from "./songs.js";
 import { progress } from "./progress.js";
 import { voice } from "./voice.js";
 import { screen } from "./screen.js";
+import { stream } from "./stream.js";
 import { weather } from "./weather.js";
 import { startPlanes } from "./planes.js";
 import { Cat } from "./cat.js";
@@ -129,6 +130,23 @@ presence.onVoice((p) => {
 // the venue big screen: a clickable in-world panel on the booth wall that opens
 // the flat theater overlay. closing the overlay re-locks the room.
 const screenMesh = screen.mountScreen(world.scene);
+// venue screen-share (WebRTC): the host projects their tab to the room; each
+// viewer renders the received stream on the wall. fixes both the "iPad already
+// in the room didn't update" (host re-announces + dials present viewers) and
+// "one person leaving cuts everyone off" (each viewer has its own connection).
+stream.init(presence.clientId);        // per-tab id, so two tabs of one user still connect
+stream.onRemoteStream((s) => screen.setMediaStream(s, false));
+stream.onRemoteEnd(() => { if (!stream.isHosting()) screen.setMediaStream(null); });
+stream.onHostEnded(() => { screen.setMediaStream(null); toast("📺 sharing ended"); renderBooth(); });
+// host wall self-heal: while we're the one sharing, the captured stream stays
+// live no matter who comes or goes — so the host's OWN wall should never go dark
+// until they stop. if anything ever knocks the stream off the wall (a viewer
+// disconnecting, a stray clear), pin it back. cheap insurance, host-only.
+setInterval(() => {
+  if (stream.isHosting() && stream.localStream() && !screen.showingLive()) {
+    screen.setMediaStream(stream.localStream(), true);
+  }
+}, 1500);
 // is a set reaching the room right now? the broadcaster knows from djLive
 // (they never hear their own chunks); listeners know from the chunk clock.
 function djAudioPresent() {
@@ -1872,6 +1890,7 @@ function setupClub() {
   djHeardAt = 0;
   wasGranted = djGrantedToMe();          // so a later grant toasts, but a standing one doesn't
   screen.enter();                        // the wall starts playing whatever's on; audio arms on your first move
+  stream.enterVenue();                   // say hello to any live screen-share host so we get dialed in
   if (screenState) toast("📺 there's something on the big screen — click it to mute/unmute");
   world.setOnAir(false);                 // dark until a chunk says otherwise
   store.logEvent("boat");                // counts as a portal trip
@@ -1884,6 +1903,8 @@ function setupClub() {
 function teardownClub() {
   if (voice.djLive()) voice.stopDJ();    // you can't broadcast from the street
   voice.setInClub(false);
+  if (stream.isHosting()) stream.stopShare();   // you can't broadcast from the street
+  stream.leaveVenue();                          // drop just our own connection (others keep watching)
   screen.leave();                        // mute + pause the wall video → its audio stops at the door
   world.setOnAir(false);
   setClubTone(false);                    // the street is quiet
@@ -1982,6 +2003,11 @@ function setScreen(input) {
   persistScreen();
   startScreenAnnounce();
   toast("📺 stream set — it's on the big screen");
+}
+// stop a host screen-share + clear the wall
+function stopShareToRoom() {
+  stream.stopShare();
+  screen.setMediaStream(null);
 }
 // admin clears it
 function clearScreen() {
@@ -2121,21 +2147,44 @@ function renderBooth() {
   const sc = $("#booth-screen");
   sc.classList.toggle("hidden", !adminMode);
   if (adminMode) {
+    const hosting = stream.isHosting();
     const live = !!screenState;
     let host = "on"; try { host = new URL(screenState.url).hostname.replace(/^www\./, ""); } catch (e) {}
-    $("#booth-screen-now").textContent = live ? host : "off";
-    $("#booth-screen-set").textContent = live ? "📺 change the stream" : "📺 put a stream on the big screen";
-    $("#booth-screen-clear").classList.toggle("hidden", !live);
+    $("#booth-screen-now").textContent = hosting ? "sharing your screen" : live ? host : "off";
+    $("#booth-screen-share").textContent = hosting ? "■ stop sharing my screen" : "🖥️ share my screen / tab";
+    $("#booth-screen-set").textContent = live ? "🔗 change the stream URL" : "🔗 …or paste a stream URL";
+    $("#booth-screen-clear").classList.toggle("hidden", !(live || hosting));
   }
   $("#booth-count").textContent = `${clubHeadcount()} in the room`;
 }
+$("#booth-screen-share").addEventListener("click", async () => {
+  if (stream.isHosting()) { stopShareToRoom(); renderBooth(); return; }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+    return toast("screen sharing isn't supported on this device — use a desktop browser");
+  }
+  let disp;
+  try {
+    disp = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+  } catch (e) { return toast("sharing was cancelled"); }
+  if (!disp.getVideoTracks().length) { disp.getTracks().forEach(t => t.stop()); return toast("no screen came through"); }
+  if (screenState) clearScreen();              // a screen-share takes over from any URL stream
+  stream.startShare(disp);
+  screen.setMediaStream(disp, true);           // host sees it on the wall, muted (already hears the tab)
+  toast("🖥️ you're sharing to the venue — pick a tab with 'share tab audio' for sound");
+  renderBooth();
+});
 $("#booth-screen-set").addEventListener("click", () => {
   const link = prompt("stream URL — a CORS HLS (.m3u8) or .mp4.\n(Twitch/YouTube: have the streamer add an OBS output to Cloudflare Stream and paste its HLS link.)", screenState ? screenState.url : "");
   if (link == null) return;
+  if (stream.isHosting()) stopShareToRoom();   // a URL stream takes over from a screen-share
   setScreen(link);
   renderBooth();
 });
-$("#booth-screen-clear").addEventListener("click", () => { clearScreen(); renderBooth(); });
+$("#booth-screen-clear").addEventListener("click", () => {
+  if (stream.isHosting()) stopShareToRoom();
+  clearScreen();
+  renderBooth();
+});
 $("#booth-power").addEventListener("click", powerToggle);
 $("#booth-self").addEventListener("click", () => {
   if (voice.djLive()) { endSet(); return; }
@@ -2884,9 +2933,14 @@ addEventListener("keydown", (e) => {
     // re-announce whatever's playing so the newcomer tunes straight in. we
     // resend the existing event (same clock) — peers already in sync see it as
     // stale and ignore it; only the newcomer (clock 0) adopts it.
-    if (newcomer) for (const k in radios) {
-      const d = radios[k];
-      if (d.shared && d.shared.on) presence.sendAct({ kind: "radio", which: d.which, on: true, idx: d.shared.idx, at: d.shared.at });
+    if (newcomer) {
+      for (const k in radios) {
+        const d = radios[k];
+        if (d.shared && d.shared.on) presence.sendAct({ kind: "radio", which: d.which, on: true, idx: d.shared.idx, at: d.shared.at });
+      }
+      // and the big screen — same trick, so a walk-in sees the video at once
+      // instead of waiting up to 5s for the next re-announce tick
+      if (screenState) presence.sendAct({ kind: "screen", on: true, url: screenState.url, at: screenState.at });
     }
   });
   presence.onPose((uid, pose) => { if (lastPeers && !lastPeers.has(uid)) return; ghosts.setPose(uid, pose); peerX.set(uid, pose.x); });
@@ -2999,8 +3053,12 @@ addEventListener("keydown", (e) => {
       // the dj set the look — the whole room follows
       if (inClub) { world.setClubTheme(p.ix); setClubBed(clubBedFor()); }
     } else if (p.kind === "screen") {
-      // the host put a stream up (or cleared it) over presence — last-event-wins
-      applyRemoteScreen(p.on ? { platform: p.platform, kind: p.skind, id: p.id, at: p.at } : null);
+      // the host put a stream up (or cleared it) over presence — last-event-wins.
+      // the d49ccac rebuild moved the payload to {url}; this used to still read the
+      // old {platform,skind,id} shape, so url came through undefined and every
+      // receiver fell into applyRemoteScreen's clear branch — i.e. the 5s
+      // re-announce blanked the wall for everyone but the host. carry the url.
+      applyRemoteScreen(p.on ? { url: p.url, at: p.at } : null);
     } else if (p.kind === "radio") {
       // someone tuned the shared radio — follow it (last-event-wins)
       const desc = radios[p.which];
@@ -3069,7 +3127,7 @@ addEventListener("keydown", (e) => {
 })();
 
 /* ---------------- frame loop ---------------- */
-window.METRO_DEBUG = { renderer, camera, world, controls, THREE, cat, bartender, ghosts, voice, screen, setScreen, clearScreen, room: () => aRoomNow(), jump: adminJump, mirror, openPicker, analytics: analyticsBuffer, notesWall,
+window.METRO_DEBUG = { renderer, camera, world, controls, THREE, cat, bartender, ghosts, voice, screen, stream, setScreen, clearScreen, room: () => aRoomNow(), jump: adminJump, mirror, openPicker, analytics: analyticsBuffer, notesWall,
   uid: identity.uid, pool: poolGame, sitAtPool, leavePool,
   darts: dartGame, sitAtDarts, leaveDarts,
   hoops: hoopGame,
