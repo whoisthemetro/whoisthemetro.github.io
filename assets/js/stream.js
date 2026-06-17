@@ -74,6 +74,25 @@ function closePc(uid) {
   if (mode === "viewer" && uid === hostUid) { hostUid = null; if (onRemoteEnd) try { onRemoteEnd(); } catch (e) {} }
 }
 
+// we mesh: the host uploads + encodes the stream once PER viewer. uncapped, two
+// viewers can already saturate a home uplink (viewers freeze) and the CPU
+// (the host's own render/capture hitches → "goes in and out"). cap each sender
+// so several viewers stay viable — ~1.2 Mbps, 24fps, scale down if needed.
+function capSender(pc) {
+  for (const sender of pc.getSenders()) {
+    if (!sender.track || sender.track.kind !== "video") continue;
+    try {
+      const p = sender.getParameters();
+      if (!p.encodings || !p.encodings.length) p.encodings = [{}];
+      p.encodings[0].maxBitrate = 1_200_000;
+      p.encodings[0].maxFramerate = 24;
+      p.encodings[0].scaleResolutionDownBy = 1;
+      p.degradationPreference = "balanced";    // trade some res AND fps under pressure
+      sender.setParameters(p).catch(() => {});
+    } catch (e) {}
+  }
+}
+
 async function dialViewer(uid) {
   if (mode !== "host" || !localStream) return;
   if (pcs.has(uid)) closePc(uid);              // fresh connection if they reconnected
@@ -82,6 +101,7 @@ async function dialViewer(uid) {
   try {
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
+    capSender(pc);                             // hold the per-viewer bitrate/fps down
     presence.sendSignal({ kind: "offer", to: uid, data: { type: pc.localDescription.type, sdp: pc.localDescription.sdp } });
   } catch (e) { closePc(uid); }
 }
@@ -138,6 +158,7 @@ export const stream = {
   localStream: () => localStream,
   // smoke-test peek
   _state: () => ({ mode, inVenue, hostUid, lastLiveHost, pcs: [...pcs.entries()].map(([u, pc]) => ({ u, cs: pc.connectionState, ice: pc.iceConnectionState })) }),
+  _bitrates: () => [...pcs.values()].flatMap(pc => pc.getSenders().filter(s => s.track && s.track.kind === "video").map(s => { const e = s.getParameters().encodings; return e && e[0] ? e[0].maxBitrate : null; })),
 
   // HOST: start sharing a captured stream to the room
   startShare(captured) {

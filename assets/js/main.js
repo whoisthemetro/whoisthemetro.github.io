@@ -2203,9 +2203,17 @@ $("#booth-screen-share").addEventListener("click", async () => {
   }
   let disp;
   try {
-    disp = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+    // cap the CAPTURE up front — a home host meshes one encode per viewer, so
+    // 720p/24fps keeps the cpu + uplink sane with a few people watching
+    disp = await navigator.mediaDevices.getDisplayMedia({
+      video: { frameRate: { ideal: 24, max: 30 }, width: { max: 1280 }, height: { max: 720 } },
+      audio: true,
+    });
   } catch (e) { return toast("sharing was cancelled"); }
   if (!disp.getVideoTracks().length) { disp.getTracks().forEach(t => t.stop()); return toast("no screen came through"); }
+  const vt0 = disp.getVideoTracks()[0];
+  vt0.contentHint = "motion";                  // it's video — favour smooth fps over pin-sharp detail
+  try { await vt0.applyConstraints({ frameRate: 24, width: { max: 1280 }, height: { max: 720 } }); } catch (e) {}
   if (screenState) clearScreen();              // a screen-share takes over from any URL stream
   stream.startShare(disp);
   screen.setMediaStream(disp, true);           // host sees it on the wall, muted (already hears the tab)
