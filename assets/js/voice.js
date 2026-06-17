@@ -26,9 +26,11 @@ let mode = "off";           // off | ptt | open
 let arenaFx = false;
 const players = new Map();  // uid -> output chain + playhead
 
-// the DJ broadcast runs on the same chunk pipeline, but its own stream:
-// a loopback input (system audio) recorded full-range and loud, tagged
-// dj:true so the far side skips the squawk box and plays it as music.
+// the DJ broadcast is its own pipeline: a loopback input (system audio / shared
+// tab) recorded full-range by ONE continuous MediaRecorder. unlike the walkie
+// chunks, these are NOT self-contained — they're a single Opus stream sliced for
+// transport, so the encoder never re-primes (that per-chunk re-prime was the old
+// glitch). the far side reassembles them with MSE and plays them as music.
 let djStream = null;        // the audio we record + ship (device or shared tab)
 let djShareStream = null;   // the raw getDisplayMedia stream, kept so we can fully stop it
 let djRec = null;
@@ -36,8 +38,16 @@ let djLive = false;
 let onDJEnded = null;       // fires if a shared tab/screen is stopped from the browser bar
 let inClubFlag = false;     // set by main.js — dj audio is club-only
 let djBus = null;           // one shared gain → master (cat. E taps it for reactive light)
-const djHeads = new Map();  // uid -> playhead time, per broadcaster
-const djSources = new Map(); // uid -> [BufferSource,...] still queued, so a resync can kill the backlog
+// broadcaster: one continuous recorder, a generation tag, and the cached init
+// segment (the first blob — header + first cluster) so late arrivals bootstrap.
+let djGen = 0;
+let djInitB64 = null;
+let djInitTimer = null;
+const DJ_TIMESLICE = 400;   // ms per chunk — pace, not a re-encode boundary
+// listener: one Media Source Extensions pipeline per broadcaster. chunks from a
+// single continuous encode are NOT self-contained, so we feed them to a
+// SourceBuffer and play through a hidden <audio> routed into the web-audio graph.
+const djPipes = new Map();  // uid -> { ms, audioEl, sb, srcNode, queue, gen, ... }
 // one analyser watches whatever music reaches the club — the listener's
 // djBus, or the broadcaster's own stream — so the lights can dance to it
 let djAna = null, djAnaSrc = null, djAnaBuf = null;
@@ -105,9 +115,12 @@ function recordLoop() {
   setTimeout(() => { try { if (rec.state !== "inactive") rec.stop(); } catch (e) {} }, 600);
 }
 
-// the DJ chunk loop: same self-contained-blob trick, but full bitrate so
-// the music survives the round trip. bigger size cap to match.
-function djRecordLoop() {
+// go live: ONE recorder, started with a timeslice so it emits a chunk every
+// DJ_TIMESLICE ms WITHOUT stopping. the first chunk carries the WebM init
+// segment (header + tracks); the rest are bare media clusters. we cache the
+// init and re-broadcast it on a timer so anyone who walks in mid-set can
+// bootstrap their decoder.
+function startDJBroadcast() {
   if (!djLive || !djStream) return;
   const mime = pickMime();
   let rec;
@@ -115,20 +128,108 @@ function djRecordLoop() {
     rec = new MediaRecorder(djStream, mime ? { mimeType: mime, audioBitsPerSecond: 128000 } : undefined);
   } catch (e) { djLive = false; return; }
   djRec = rec;
-  const parts = [];
-  rec.ondataavailable = (e) => { if (e.data && e.data.size) parts.push(e.data); };
-  rec.onstop = async () => {
-    if (parts.length && djLive) {
-      const blob = new Blob(parts, { type: rec.mimeType });
-      if (blob.size > 200 && blob.size < 200000 && sendFn) {
-        const data = await blobToB64(blob);
-        try { sendFn({ uid: myUid, mime: rec.mimeType, data, dj: true }); } catch (e) {}
-      }
-    }
-    djRecordLoop();          // straight into the next chunk
+  djGen = Date.now();         // a fresh generation so listeners drop any old set
+  djInitB64 = null;
+  rec.ondataavailable = async (e) => {
+    if (!djLive || !e.data || !e.data.size || !sendFn) return;
+    if (e.data.size > 220000) return;            // safety: stay under the broadcast cap
+    const data = await blobToB64(e.data);
+    const isInit = djInitB64 === null;
+    if (isInit) djInitB64 = data;
+    try { sendFn({ uid: myUid, mime: rec.mimeType, dj: true, cont: true, gen: djGen, init: isInit, data }); } catch (e2) {}
   };
-  rec.start();
-  setTimeout(() => { try { if (rec.state !== "inactive") rec.stop(); } catch (e) {} }, 600);
+  try { rec.start(DJ_TIMESLICE); } catch (e) { djLive = false; djRec = null; return; }
+  // re-send the init segment ~once a second so late joiners can start decoding
+  djInitTimer = setInterval(() => {
+    if (djLive && djInitB64 && sendFn) {
+      try { sendFn({ uid: myUid, mime: rec.mimeType, dj: true, cont: true, gen: djGen, init: true, data: djInitB64 }); } catch (e) {}
+    }
+  }, 1200);
+}
+
+// ---- listener side: one MSE pipeline per broadcaster ----
+function b64ToBytes(b64) {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+// append the next queued chunk when the SourceBuffer is free
+function pumpPipe(pipe) {
+  if (!pipe.ready || !pipe.sb || pipe.sb.updating || !pipe.queue.length) return;
+  const data = pipe.queue.shift();
+  try { pipe.sb.appendBuffer(data); }
+  catch (e) {
+    if (e && e.name === "QuotaExceededError") {
+      // ran out of room — drop the oldest buffered second, retry this chunk next tick
+      try {
+        const b = pipe.audioEl.buffered;
+        if (b.length) pipe.sb.remove(b.start(0), Math.max(b.start(0) + 0.1, pipe.audioEl.currentTime - 1));
+      } catch (e2) {}
+      pipe.queue.unshift(data);
+    }
+    // any other append error: the stream desynced — rebuild on the next init
+    else resetPipe(pipe.uid);
+  }
+}
+
+// keep playback pinned to the live edge and free buffered audio behind it
+function chasePipe(pipe) {
+  const el = pipe.audioEl;
+  let b;
+  try { b = el.buffered; } catch (e) { return; }
+  if (!b.length) return;
+  const end = b.end(b.length - 1);
+  if (end - el.currentTime > 0.9 || el.currentTime < b.start(0)) {
+    try { el.currentTime = Math.max(b.start(0), end - 0.25); } catch (e) {}
+  }
+  if (el.paused) el.play().catch(() => {});
+  if (pipe.sb && !pipe.sb.updating) {
+    const cut = el.currentTime - 1.5;
+    if (cut > b.start(0) + 0.5) { try { pipe.sb.remove(b.start(0), cut); } catch (e) {} }
+  }
+}
+
+function ensureDJPipe(ctx, master, uid, mime) {
+  if (!window.MediaSource || !mime || !MediaSource.isTypeSupported(mime)) return null;
+  const ms = new MediaSource();
+  const audioEl = new Audio();
+  audioEl.src = URL.createObjectURL(ms);
+  audioEl.preload = "auto";
+  const pipe = { uid, ms, audioEl, sb: null, mime, queue: [], ready: false, srcNode: null, gen: null };
+  ms.addEventListener("sourceopen", () => {
+    if (djPipes.get(uid) !== pipe) return;          // superseded while opening
+    try {
+      const sb = ms.addSourceBuffer(mime);
+      sb.mode = "sequence";                          // ignore internal timecodes, lay clusters end-to-end
+      sb.addEventListener("updateend", () => { pumpPipe(pipe); chasePipe(pipe); });
+      sb.addEventListener("error", () => resetPipe(uid));
+      pipe.sb = sb;
+      pipe.ready = true;
+      pumpPipe(pipe);
+    } catch (e) { resetPipe(uid); }
+  }, { once: true });
+  // route the element into the web-audio graph: this pulls its output OFF the
+  // speakers and onto the dj bus (→ master + reactive-light analyser)
+  try {
+    pipe.srcNode = ctx.createMediaElementSource(audioEl);
+    pipe.srcNode.connect(ensureDJBus(ctx, master));
+  } catch (e) {}
+  audioEl.play().catch(() => {});
+  djPipes.set(uid, pipe);
+  return pipe;
+}
+
+function resetPipe(uid) {
+  const pipe = djPipes.get(uid);
+  if (!pipe) return;
+  djPipes.delete(uid);
+  try { pipe.audioEl.pause(); } catch (e) {}
+  try { if (pipe.srcNode) pipe.srcNode.disconnect(); } catch (e) {}
+  try { if (pipe.ms.readyState === "open") pipe.ms.endOfStream(); } catch (e) {}
+  try { URL.revokeObjectURL(pipe.audioEl.src); } catch (e) {}
+  try { pipe.audioEl.removeAttribute("src"); pipe.audioEl.load(); } catch (e) {}
 }
 
 function ensureDJBus(ctx, master) {
@@ -209,14 +310,18 @@ export const voice = {
   setInClub(on) {
     inClubFlag = !!on;
     if (!inClubFlag) {
-      // left the club — stop any queued music and forget every playhead, so a
-      // re-entry rejoins at the live edge instead of resuming a stale backlog
-      for (const arr of djSources.values()) for (const s of arr) { try { s.stop(); } catch (e) {} }
-      djSources.clear();
-      djHeads.clear();
+      // left the club — tear down every music pipeline so a re-entry rebuilds
+      // from a fresh init segment at the live edge, not a stale backlog
+      for (const uid of [...djPipes.keys()]) resetPipe(uid);
     }
   },
   djLive: () => djLive,
+  // smoke-test only: per-broadcaster pipeline health (buffered seconds, playhead)
+  _pipes: () => [...djPipes.values()].map(p => {
+    let buffered = -1;
+    try { const b = p.audioEl.buffered; buffered = b.length ? (b.end(b.length - 1) - b.start(0)) : 0; } catch (e) {}
+    return { gen: p.gen, ready: p.ready, queued: p.queue.length, buffered, t: p.audioEl.currentTime, paused: p.audioEl.paused };
+  }),
   // YOUR own mic level (0..1), envelope-followed — for the mirror, since you
   // never hear yourself. only "hot" while actually talking (mode !== off), so
   // the glow tracks what others would actually hear.
@@ -281,7 +386,7 @@ export const voice = {
     } catch (e) { return false; }
     djLive = true;
     tapForLights();
-    djRecordLoop();
+    startDJBroadcast();
     return true;
   },
 
@@ -306,11 +411,13 @@ export const voice = {
     aud[0].addEventListener("ended", () => { this.stopDJ(); if (onDJEnded) try { onDJEnded(); } catch (e) {} });
     djLive = true;
     tapForLights();
-    djRecordLoop();
+    startDJBroadcast();
     return true;
   },
   stopDJ() {
     djLive = false;
+    if (djInitTimer) { clearInterval(djInitTimer); djInitTimer = null; }
+    djInitB64 = null;
     try { if (djRec && djRec.state !== "inactive") djRec.stop(); } catch (e) {}
     djRec = null;
     try { if (djAnaSrc) djAnaSrc.disconnect(); } catch (e) {}
@@ -351,43 +458,32 @@ export const voice = {
     if (!p.dj && inClubFlag) return;       // and the venue is sealed: no walkie-talkie crosses the door, only the set + chat
     const { ctx, master } = audioGraph();
     if (!ctx) return;
+    if (p.dj) {
+      // music: a continuous Opus stream sliced for transport. feed each slice to
+      // this broadcaster's MSE pipeline; the chase logic keeps us at the live edge.
+      if (!p.cont) return;                 // legacy self-contained chunks no longer supported
+      let pipe = djPipes.get(p.uid);
+      if (pipe && pipe.gen !== p.gen) { resetPipe(p.uid); pipe = null; }   // DJ restarted → rebuild
+      if (!pipe) {
+        if (!p.init) return;               // wait for an init segment to bootstrap the decoder
+        pipe = ensureDJPipe(ctx, master, p.uid, p.mime);
+        if (!pipe) return;                 // MSE can't decode this here (e.g. Safari + webm)
+        pipe.gen = p.gen;
+      } else if (p.init) {
+        return;                            // already bootstrapped — ignore the re-broadcast init
+      }
+      let bytes;
+      try { bytes = b64ToBytes(p.data); } catch (e) { return; }
+      pipe.queue.push(bytes);
+      if (pipe.queue.length > 40) pipe.queue.splice(0, pipe.queue.length - 40);  // cap a runaway backlog
+      pumpPipe(pipe);
+      return;
+    }
     let audio;
     try {
       const buf = await fetch(`data:${p.mime || "audio/webm"};base64,${p.data}`).then(r => r.arrayBuffer());
       audio = await ctx.decodeAudioData(buf);
     } catch (e) { return; }
-    if (p.dj) {
-      // music: full-range bus. keep the listener pinned to the live edge.
-      // the old code only ever pushed the playhead forward — if the broadcaster
-      // ran a hair fast or a chunk hiccupped, the head outran currentTime and a
-      // backlog snowballed (minutes-late audio, song changes landing way late).
-      // so: if the head has drifted past now+MAX_LAG, or fallen behind now,
-      // dump whatever's still queued for this dj and jump back to live.
-      const bus = ensureDJBus(ctx, master);
-      const now = ctx.currentTime;
-      const PRE = 0.12, MAX_LAG = 0.6;
-      let head = djHeads.get(p.uid) || 0;
-      if (head < now || head > now + MAX_LAG) {
-        const stale = djSources.get(p.uid);
-        if (stale) for (const s of stale) { try { s.stop(); } catch (e) {} }
-        djSources.set(p.uid, []);
-        head = now + PRE;
-      }
-      const src = ctx.createBufferSource();
-      src.buffer = audio;
-      src.connect(bus);
-      src.start(head);
-      const list = djSources.get(p.uid) || [];
-      list.push(src);
-      djSources.set(p.uid, list);
-      // forget a source once it finishes so the list can't grow without bound
-      src.onended = () => {
-        const arr = djSources.get(p.uid);
-        if (arr) { const i = arr.indexOf(src); if (i >= 0) arr.splice(i, 1); }
-      };
-      djHeads.set(p.uid, head + audio.duration - 0.015);
-      return;
-    }
     let pl = players.get(p.uid);
     if (!pl) { pl = makePlayer(ctx, master); players.set(p.uid, pl); }
     const src = ctx.createBufferSource();
