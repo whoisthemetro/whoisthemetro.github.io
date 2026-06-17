@@ -1868,7 +1868,7 @@ function setupClub() {
   document.body.classList.add("in-club");
   djHeardAt = 0;
   wasGranted = djGrantedToMe();          // so a later grant toasts, but a standing one doesn't
-  if (screenState) { showScreen(); toast("🔊 a stream's on the big screen — press M for sound"); }
+  if (screenState) { showScreen(); toast(IS_TOUCH ? "📺 a stream's on the big screen — tap it for sound" : "🔊 a stream's on the big screen — press M for sound"); }
   world.setOnAir(false);                 // dark until a chunk says otherwise
   store.logEvent("boat");                // counts as a portal trip
   progress.bump("trips");
@@ -1931,10 +1931,11 @@ async function persistScreen() {
     if (String(e.message).includes("passphrase")) sessionStorage.removeItem("metro.adminpass");
   }
 }
-// supabase carries late joiners via getScreen-on-boot + realtime; local mode has
-// neither, so it re-announces over presence to cover a tab that walks in late
+// re-announce over presence every few seconds while the host is here, so anyone
+// who walks in mid-event catches the screen even if the db migration isn't run
+// yet (the durable path covers the case where the host has LEFT).
 function startScreenAnnounce() {
-  if (screenAnnounce || !adminMode || store.mode === "supabase") return;
+  if (screenAnnounce || !adminMode) return;
   screenAnnounce = setInterval(() => { if (screenState) broadcastScreen(); else stopScreenAnnounce(); }, 5000);
 }
 function stopScreenAnnounce() { if (screenAnnounce) { clearInterval(screenAnnounce); screenAnnounce = null; } }
@@ -1950,10 +1951,12 @@ function applyRemoteScreen(s) {
   if (s && s.id) {
     const wasUp = screen.active();
     screenState = { platform: s.platform, kind: s.kind, id: s.id, at };
-    if (inClub) { showScreen(); if (!wasUp) toast("🔊 a stream's on the big screen — press M for sound"); }
+    if (inClub) { showScreen(); if (!wasUp) toast(IS_TOUCH ? "📺 a stream's on the big screen — tap it for sound" : "🔊 a stream's on the big screen — press M for sound"); }
+    startScreenAnnounce();               // if we're the host (self-guards), keep relaying it
   } else {
     screenState = null;
     screen.clear();
+    stopScreenAnnounce();
   }
 }
 
@@ -1966,7 +1969,7 @@ function setScreen(input) {
   broadcastScreen();
   persistScreen();
   startScreenAnnounce();
-  toast(`📺 ${s.platform}: ${s.id} — press M for sound`);
+  toast(`📺 ${s.platform}: ${s.id}${IS_TOUCH ? " — tap it for sound" : " — press M for sound"}`);
 }
 // admin clears it
 function clearScreen() {
