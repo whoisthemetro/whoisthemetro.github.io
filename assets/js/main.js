@@ -128,8 +128,7 @@ presence.onVoice((p) => {
 });
 // the venue big screen: a clickable in-world panel on the booth wall that opens
 // the flat theater overlay. closing the overlay re-locks the room.
-const screenMarker = screen.mountMarker(world.scene);
-screen.setOnClose(() => { modalOpen = false; if (entered) safeLock(); });
+const screenMesh = screen.mountScreen(world.scene);
 // is a set reaching the room right now? the broadcaster knows from djLive
 // (they never hear their own chunks); listeners know from the chunk clock.
 function djAudioPresent() {
@@ -446,7 +445,7 @@ canvas.addEventListener("click", () => {
 function castAt(ndcX, ndcY) {
   raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera);
   // doors are included as blockers so notes can't be pinned onto them
-  const targets = [cat.hitMesh, bartender.hitMesh, mirror.glass, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, ...world.elevHits, ...world.elevCallHits, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.guitarVoiceHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, world.pool.hit, world.pool.resetHit, world.pool.joinHit, world.darts.hit, world.darts.joinHit, world.darts.resetHit, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.radioHits, ...world.laRadioHits, ...world.filterPedalHit, ...world.vacuumHits, ...notesWall.raycastTargets(), screenMarker, ...world.blockers];
+  const targets = [cat.hitMesh, bartender.hitMesh, mirror.glass, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, ...world.elevHits, ...world.elevCallHits, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.guitarVoiceHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, world.pool.hit, world.pool.resetHit, world.pool.joinHit, world.darts.hit, world.darts.joinHit, world.darts.resetHit, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.radioHits, ...world.laRadioHits, ...world.filterPedalHit, ...world.vacuumHits, ...notesWall.raycastTargets(), screenMesh, ...world.blockers];
   const hits = raycaster.intersectObjects(targets, false);
   return hits[0] || null;
 }
@@ -893,8 +892,9 @@ controls.onAction((ndcX, ndcY) => {
     leaveBoat();
   } else if (hit.object.userData.clubExit && hit.distance < 2.6) {
     leaveClub();
-  } else if (hit.object.userData.screenWatch && inClub && hit.distance < 12) {
-    openTheater();                         // open the stream in the flat theater overlay
+  } else if (hit.object.userData.screenTap && inClub && hit.distance < 12) {
+    const m = screen.toggleMuted();        // click the wall to mute/unmute the venue's sound
+    if (screen.has()) toast(m ? "🔇 screen muted" : "🔊 screen sound on");
   } else if (hit.object.userData.decks && hit.distance < 2.6) {
     toggleDeck();
   } else if (hit.object.userData.clubWindow && hit.distance < 12) {
@@ -1127,8 +1127,9 @@ setInterval(() => {
   } else if (hit && hit.object.userData.clubExit && hit.distance < 2.6) {
     aimTip.textContent = `${TAP} — out into the night, back home`;
     aimTip.classList.add("show");
-  } else if (hit && hit.object.userData.screenWatch && inClub && hit.distance < 12) {
-    aimTip.textContent = screen.has() ? `${TAP} — watch ${screen.current().id}` : "the big screen is dark";
+  } else if (hit && hit.object.userData.screenTap && inClub && hit.distance < 12) {
+    aimTip.textContent = !screen.has() ? "the big screen is dark"
+      : screen.isMuted() ? `${TAP} — turn the sound on` : `${TAP} — mute the screen`;
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.decks && hit.distance < 2.6) {
     aimTip.textContent = adminMode ? `${TAP} — booth controls`
@@ -1870,8 +1871,8 @@ function setupClub() {
   document.body.classList.add("in-club");
   djHeardAt = 0;
   wasGranted = djGrantedToMe();          // so a later grant toasts, but a standing one doesn't
-  showScreen();                          // light up the wall panel to match what's on
-  if (screenState) toast(`📺 ${screenState.id} is on the big screen — click it to watch`);
+  screen.enter();                        // the wall starts playing whatever's on; audio arms on your first move
+  if (screenState) toast("📺 there's something on the big screen — click it to mute/unmute");
   world.setOnAir(false);                 // dark until a chunk says otherwise
   store.logEvent("boat");                // counts as a portal trip
   progress.bump("trips");
@@ -1883,7 +1884,7 @@ function setupClub() {
 function teardownClub() {
   if (voice.djLive()) voice.stopDJ();    // you can't broadcast from the street
   voice.setInClub(false);
-  screen.close();                        // shut the theater overlay → its audio stops at the door
+  screen.leave();                        // mute + pause the wall video → its audio stops at the door
   world.setOnAir(false);
   setClubTone(false);                    // the street is quiet
   document.body.classList.remove("in-club");   // the mic + cat HUD come back home
@@ -1906,18 +1907,18 @@ function leaveClub() {
    to play a cross-origin stream with sound + clicks + no iOS auto-pause). the
    "what's on" rides room_state (admin-gated) so it persists across reloads and
    survives the host leaving; presence carries the instant update. last-wins on `at`. */
-let screenState = null;       // { platform, kind, id, at } shared truth, or null
+let screenState = null;       // { url, at } shared truth, or null
 let screenClock = 0;          // last-event-wins guard across presence + db
 let screenAnnounce = null;    // re-announce timer (covers late joiners pre-migration)
 
-// broadcast the live edge over presence — instant for everyone present, and the
+// broadcast what's on over presence — instant for everyone present, and the
 // only sync channel in local mode (no realtime there)
 function broadcastScreen() {
   const at = Date.now();
   screenClock = at;
   if (screenState) {
     screenState.at = at;
-    presence.sendAct({ kind: "screen", on: true, platform: screenState.platform, skind: screenState.kind, id: screenState.id, at });
+    presence.sendAct({ kind: "screen", on: true, url: screenState.url, at });
   } else {
     presence.sendAct({ kind: "screen", on: false, at });
   }
@@ -1943,53 +1944,49 @@ function startScreenAnnounce() {
 }
 function stopScreenAnnounce() { if (screenAnnounce) { clearInterval(screenAnnounce); screenAnnounce = null; } }
 
-// light up (or clear) the in-world wall panel to match screenState
+// push whatever's in screenState onto the wall (the renderer plays/clears it)
 function showScreen() { screen.setStream(screenState); }
-
-// open the flat theater overlay — called from a real click on the wall panel,
-// so the player's audio gesture is satisfied and its controls are clickable
-function openTheater() {
-  if (!screenState) { toast("the big screen is dark — nothing's on right now"); return; }
-  modalOpen = true;
-  controls.unlock();
-  if (!screen.open()) { modalOpen = false; if (entered) safeLock(); }
-}
 
 // apply a stream that arrived from elsewhere (presence act, db load, or realtime)
 function applyRemoteScreen(s) {
   const at = (s && s.at) ? s.at : Date.now();
   if (at < screenClock) return;            // stale vs a newer event we already have
   screenClock = at;
-  if (s && s.id) {
-    const changed = !screenState || screenState.id !== s.id || screenState.platform !== s.platform;
-    screenState = { platform: s.platform, kind: s.kind, id: s.id, at };
+  if (s && s.url) {
+    const changed = !screenState || screenState.url !== s.url;
+    screenState = { url: s.url, at };
     showScreen();
-    if (inClub && changed) toast(`📺 ${s.id} is on the big screen — click it to watch`);
+    if (inClub && changed) toast("📺 something's on the big screen now");
     startScreenAnnounce();               // if we're the host (self-guards), keep relaying it
   } else {
     screenState = null;
     screen.setStream(null);
-    screen.close();
     stopScreenAnnounce();
   }
 }
 
-// admin sets / changes the stream
+// admin sets / changes the stream — input is a CORS HLS (.m3u8) or .mp4 URL
 function setScreen(input) {
-  const s = screen.parse(input);
-  if (!s) { toast("couldn't read that — paste a twitch or youtube link"); return; }
-  screenState = { ...s, at: Date.now() };
+  const url = (input || "").trim();
+  if (!/^https?:\/\/.+/i.test(url)) {
+    toast("paste a stream URL — a CORS HLS (.m3u8) or .mp4 link");
+    return;
+  }
+  if (/twitch\.tv|youtube\.com|youtu\.be/i.test(url)) {
+    toast("that's a watch-page link — the screen needs the raw HLS (.m3u8). see the booth note.");
+    return;
+  }
+  screenState = { url, at: Date.now() };
   showScreen();
   broadcastScreen();
   persistScreen();
   startScreenAnnounce();
-  toast(`📺 ${s.platform}: ${s.id} — on the big screen`);
+  toast("📺 stream set — it's on the big screen");
 }
 // admin clears it
 function clearScreen() {
   screenState = null;
   screen.setStream(null);
-  screen.close();
   stopScreenAnnounce();
   broadcastScreen();
   persistScreen();
@@ -2125,20 +2122,18 @@ function renderBooth() {
   sc.classList.toggle("hidden", !adminMode);
   if (adminMode) {
     const live = !!screenState;
-    $("#booth-screen-now").textContent = live ? `${screenState.platform}: ${screenState.id}` : "off";
+    let host = "on"; try { host = new URL(screenState.url).hostname.replace(/^www\./, ""); } catch (e) {}
+    $("#booth-screen-now").textContent = live ? host : "off";
     $("#booth-screen-set").textContent = live ? "📺 change the stream" : "📺 put a stream on the big screen";
     $("#booth-screen-clear").classList.toggle("hidden", !live);
   }
   $("#booth-count").textContent = `${clubHeadcount()} in the room`;
 }
 $("#booth-screen-set").addEventListener("click", () => {
-  const link = prompt("twitch or youtube link (or a twitch channel name):", screenState ? screenState.id : "");
+  const link = prompt("stream URL — a CORS HLS (.m3u8) or .mp4.\n(Twitch/YouTube: have the streamer add an OBS output to Cloudflare Stream and paste its HLS link.)", screenState ? screenState.url : "");
   if (link == null) return;
   setScreen(link);
-  if (!screen.has()) { renderBooth(); return; }   // couldn't parse → stay in the booth
-  hide($("#booth"));
-  modalOpen = false;
-  openTheater();                                   // this click is a gesture → open + play it for the host
+  renderBooth();
 });
 $("#booth-screen-clear").addEventListener("click", () => { clearScreen(); renderBooth(); });
 $("#booth-power").addEventListener("click", powerToggle);
@@ -3074,7 +3069,7 @@ addEventListener("keydown", (e) => {
 })();
 
 /* ---------------- frame loop ---------------- */
-window.METRO_DEBUG = { renderer, camera, world, controls, THREE, cat, bartender, ghosts, voice, screen, setScreen, clearScreen, openTheater, room: () => aRoomNow(), jump: adminJump, mirror, openPicker, analytics: analyticsBuffer, notesWall,
+window.METRO_DEBUG = { renderer, camera, world, controls, THREE, cat, bartender, ghosts, voice, screen, setScreen, clearScreen, room: () => aRoomNow(), jump: adminJump, mirror, openPicker, analytics: analyticsBuffer, notesWall,
   uid: identity.uid, pool: poolGame, sitAtPool, leavePool,
   darts: dartGame, sitAtDarts, leaveDarts,
   hoops: hoopGame,
