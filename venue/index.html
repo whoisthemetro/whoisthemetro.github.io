@@ -77,7 +77,7 @@
     // join presence with NO name → invisible to the main 3D world (it filters
     // nameless peers), but still on the channel to receive the live announce.
     const uid = "venue-" + Math.random().toString(36).slice(2, 9);
-    await presence.join({ uid, name: "", color: "#7c6cff" }, () => ({ x: -40, y: 0, z: 0, yaw: 0 }));
+    await presence.join({ uid, name: "", color: "#7c6cff" }, () => ({ x: -40, y: 0, z: 0, yaw: 0 }), "venue");
     stream.init(presence.clientId);
 
     stream.onRemoteStream((s) => { if (!hosting) { showLive(s); sound.hidden = false; } });

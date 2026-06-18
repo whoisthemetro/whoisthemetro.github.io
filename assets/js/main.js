@@ -1904,6 +1904,7 @@ async function tryClub() {
 }
 function setupClub() {
   inClub = true;
+  presence.setSpace("venue");             // the venue is its own world — main-world traffic can't reach it
   controls.pos.x = world.clubSpawn.x;
   controls.pos.z = world.clubSpawn.z;
   controls.yaw = world.clubSpawn.yaw;
@@ -1930,6 +1931,7 @@ function setupClub() {
   if (entered) safeLock();
 }
 function teardownClub() {
+  presence.setSpace("world");             // back to the main world's channel
   if (voice.djLive()) voice.stopDJ();    // you can't broadcast from the street
   voice.setInClub(false);
   if (stream.isHosting()) stream.stopShare();   // you can't broadcast from the street

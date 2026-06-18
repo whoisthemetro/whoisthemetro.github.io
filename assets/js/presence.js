@@ -27,6 +27,8 @@ let getPose = null;
 let chan = null;            // supabase channel
 let bc = null;              // local channel
 let lastSent = "";
+let currentSpace = "world"; // which presence channel we're on (venue is separate)
+let localTimer = null;      // local-mode heartbeat/expiry interval
 
 // a PER-TAB id for webrtc signaling. the user's identity uid is shared across
 // tabs (localStorage), so two tabs of the same person collide — and the screen-
@@ -55,120 +57,112 @@ function sendPoseLoop() {
   }, 1000 / POSE_HZ);
 }
 
-async function join(identity, poseFn) {
+// the venue rides its OWN realtime channel, fully separate from the main world,
+// so a bedroom visitor's presence + 8Hz pose firehose is never even DELIVERED to
+// people watching the DJ screen (it was the cross-room traffic, parsed on the
+// main thread, that hitched the venue video). everything else shares one channel.
+function channelName(space) { return space === "venue" ? "metro-venue" : "metro-presence"; }
+
+function trackSelf(ch) {
+  try { ch.track({ name: me.name, color: me.color, avatar: me.avatar || null, outfit: me.outfit || null }); } catch (e) {}
+}
+
+function wireSupabase(name) {
+  const ch = store.client.channel(name, { config: { presence: { key: me.uid }, broadcast: { self: false } } });
+  ch.on("presence", { event: "sync" }, () => {
+      const state = ch.presenceState();
+      peers.clear();
+      for (const uid of Object.keys(state)) {
+        if (uid === me.uid) continue;
+        const meta = state[uid][0] || {};
+        peers.set(uid, { name: meta.name || "", color: meta.color || "#ffb347", avatar: meta.avatar || null, outfit: meta.outfit || null });
+      }
+      emitPeers();
+    })
+    .on("broadcast", { event: "pose" }, ({ payload }) => { if (payload.uid !== me.uid) emitPose(payload.uid, payload); })
+    .on("broadcast", { event: "note" }, ({ payload }) => { if (payload.uid !== me.uid) noteListeners.forEach(fn => { try { fn(payload.uid, payload.i, payload.v); } catch (e) {} }); })
+    .on("broadcast", { event: "act" }, ({ payload }) => { if (payload.uid !== me.uid) actListeners.forEach(fn => { try { fn(payload); } catch (e) {} }); })
+    .on("broadcast", { event: "chat" }, ({ payload }) => { if (payload.uid !== me.uid) chatListeners.forEach(fn => { try { fn(payload); } catch (e) {} }); })
+    .on("broadcast", { event: "arcade" }, ({ payload }) => { if (payload.uid !== me.uid) gameListeners.forEach(fn => { try { fn(payload); } catch (e) {} }); })
+    .on("broadcast", { event: "voice" }, ({ payload }) => { if (payload.uid !== me.uid) voiceListeners.forEach(fn => { try { fn(payload); } catch (e) {} }); })
+    .on("broadcast", { event: "signal" }, ({ payload }) => { if (payload.from !== clientId) signalListeners.forEach(fn => { try { fn(payload); } catch (e) {} }); })
+    .subscribe((status) => { if (status === "SUBSCRIBED") trackSelf(ch); });
+  return ch;
+}
+
+function wireLocal(name) {
+  const channel = new BroadcastChannel(name);
+  channel.onmessage = (ev) => {
+    const m = ev.data || {};
+    if (m.uid === me.uid) return;
+    if (m.type === "hb") {
+      const known = peers.has(m.uid);
+      peers.set(m.uid, { name: m.name, color: m.color, avatar: m.avatar || null, outfit: m.outfit || null, lastSeen: Date.now() });
+      if (!known) emitPeers();
+    } else if (m.type === "pose") { emitPose(m.uid, m); }
+    else if (m.type === "note") { noteListeners.forEach(fn => { try { fn(m.uid, m.i, m.v); } catch (e) {} }); }
+    else if (m.type === "act") { actListeners.forEach(fn => { try { fn(m.payload); } catch (e) {} }); }
+    else if (m.type === "chat") { chatListeners.forEach(fn => { try { fn(m.payload); } catch (e) {} }); }
+    else if (m.type === "arcade") { gameListeners.forEach(fn => { try { fn(m.payload); } catch (e) {} }); }
+    else if (m.type === "voice") { voiceListeners.forEach(fn => { try { fn(m.payload); } catch (e) {} }); }
+    else if (m.type === "signal") { if (m.payload.from !== clientId) signalListeners.forEach(fn => { try { fn(m.payload); } catch (e) {} }); }
+    else if (m.type === "bye") { if (peers.delete(m.uid)) emitPeers(); }
+  };
+  const hb = () => channel.postMessage({ type: "hb", uid: me.uid, name: me.name, color: me.color, avatar: me.avatar || null, outfit: me.outfit || null });
+  hb();
+  if (localTimer) clearInterval(localTimer);
+  localTimer = setInterval(() => {
+    hb();
+    const cutoff = Date.now() - 5000;
+    let changed = false;
+    for (const [uid, p] of peers) { if (p.lastSeen && p.lastSeen < cutoff) { peers.delete(uid); changed = true; } }
+    if (changed) emitPeers();
+  }, 2000);
+  return channel;
+}
+
+async function join(identity, poseFn, space) {
   me = identity;
   getPose = poseFn;
+  currentSpace = space === "venue" ? "venue" : "world";
 
   if (store.mode === "supabase" && store.client) {
-    chan = store.client.channel("metro-presence", {
-      config: { presence: { key: me.uid }, broadcast: { self: false } },
-    });
-    chan
-      .on("presence", { event: "sync" }, () => {
-        const state = chan.presenceState();
-        peers.clear();
-        for (const uid of Object.keys(state)) {
-          if (uid === me.uid) continue;
-          const meta = state[uid][0] || {};
-          peers.set(uid, { name: meta.name || "", color: meta.color || "#ffb347", avatar: meta.avatar || null, outfit: meta.outfit || null });
-        }
-        emitPeers();
-      })
-      .on("broadcast", { event: "pose" }, ({ payload }) => {
-        if (payload.uid !== me.uid) emitPose(payload.uid, payload);
-      })
-      .on("broadcast", { event: "note" }, ({ payload }) => {
-        if (payload.uid !== me.uid) {
-          noteListeners.forEach(fn => { try { fn(payload.uid, payload.i, payload.v); } catch (e) {} });
-        }
-      })
-      .on("broadcast", { event: "act" }, ({ payload }) => {
-        if (payload.uid !== me.uid) {
-          actListeners.forEach(fn => { try { fn(payload); } catch (e) {} });
-        }
-      })
-      .on("broadcast", { event: "chat" }, ({ payload }) => {
-        if (payload.uid !== me.uid) {
-          chatListeners.forEach(fn => { try { fn(payload); } catch (e) {} });
-        }
-      })
-      .on("broadcast", { event: "arcade" }, ({ payload }) => {
-        if (payload.uid !== me.uid) {
-          gameListeners.forEach(fn => { try { fn(payload); } catch (e) {} });
-        }
-      })
-      .on("broadcast", { event: "voice" }, ({ payload }) => {
-        if (payload.uid !== me.uid) {
-          voiceListeners.forEach(fn => { try { fn(payload); } catch (e) {} });
-        }
-      })
-      .on("broadcast", { event: "signal" }, ({ payload }) => {
-        if (payload.from !== clientId) {       // per-tab id, so two tabs of one user still connect
-          signalListeners.forEach(fn => { try { fn(payload); } catch (e) {} });
-        }
-      })
-      .subscribe(async (status) => {
-        if (status === "SUBSCRIBED") {
-          await chan.track({ name: me.name, color: me.color, avatar: me.avatar || null, outfit: me.outfit || null });
-        }
-      });
-    // iOS (and any OS) suspends a backgrounded tab: its realtime heartbeat stops
-    // and the server drops it from the room until it wakes. When you come back to
-    // a device, re-announce ourselves right away so we reappear instantly instead
-    // of waiting on the socket's own reconnect/timeout. (Two ACTIVE devices/people
-    // are never suspended, so they coexist fine — this just smooths switching.)
+    chan = wireSupabase(channelName(currentSpace));
+    // iOS suspends a backgrounded tab (its heartbeat stops, the server drops it);
+    // re-announce on focus so a resumed device reappears at once. (one listener,
+    // always re-tracks the CURRENT channel.)
     document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible" && chan && me) {
-        try { chan.track({ name: me.name, color: me.color, avatar: me.avatar || null, outfit: me.outfit || null }); } catch (e) {}
-      }
+      if (document.visibilityState === "visible" && chan && me) trackSelf(chan);
     });
   } else if ("BroadcastChannel" in window) {
-    // local mode: heartbeat every 2s, expire after 5s
-    bc = new BroadcastChannel("metro-presence");
-    bc.onmessage = (ev) => {
-      const m = ev.data || {};
-      if (m.uid === me.uid) return;
-      if (m.type === "hb") {
-        const known = peers.has(m.uid);
-        peers.set(m.uid, { name: m.name, color: m.color, avatar: m.avatar || null, outfit: m.outfit || null, lastSeen: Date.now() });
-        if (!known) emitPeers();
-      } else if (m.type === "pose") {
-        emitPose(m.uid, m);
-      } else if (m.type === "note") {
-        noteListeners.forEach(fn => { try { fn(m.uid, m.i, m.v); } catch (e) {} });
-      } else if (m.type === "act") {
-        actListeners.forEach(fn => { try { fn(m.payload); } catch (e) {} });
-      } else if (m.type === "chat") {
-        chatListeners.forEach(fn => { try { fn(m.payload); } catch (e) {} });
-      } else if (m.type === "arcade") {
-        gameListeners.forEach(fn => { try { fn(m.payload); } catch (e) {} });
-      } else if (m.type === "voice") {
-        voiceListeners.forEach(fn => { try { fn(m.payload); } catch (e) {} });
-      } else if (m.type === "signal") {
-        if (m.payload.from !== clientId) signalListeners.forEach(fn => { try { fn(m.payload); } catch (e) {} });
-      } else if (m.type === "bye") {
-        if (peers.delete(m.uid)) emitPeers();
-      }
-    };
-    const hb = () => bc.postMessage({ type: "hb", uid: me.uid, name: me.name, color: me.color, avatar: me.avatar || null, outfit: me.outfit || null });
-    hb();
-    setInterval(() => {
-      hb();
-      const cutoff = Date.now() - 5000;
-      let changed = false;
-      for (const [uid, p] of peers) {
-        if (p.lastSeen && p.lastSeen < cutoff) { peers.delete(uid); changed = true; }
-      }
-      if (changed) emitPeers();
-    }, 2000);
-    addEventListener("beforeunload", () => bc.postMessage({ type: "bye", uid: me.uid }));
+    bc = wireLocal(channelName(currentSpace));
+    addEventListener("beforeunload", () => { try { bc && bc.postMessage({ type: "bye", uid: me.uid }); } catch (e) {} });
   }
 
   sendPoseLoop();
 }
 
+// move to another presence space (e.g. into / out of the venue). tears down the
+// old channel and joins the new one; peers from the space you left clear out.
+async function setSpace(space) {
+  const next = space === "venue" ? "venue" : "world";
+  if (!me || next === currentSpace) return;
+  currentSpace = next;
+  if (store.mode === "supabase" && store.client) {
+    const old = chan;
+    chan = wireSupabase(channelName(next));
+    if (old) { try { old.untrack(); } catch (e) {} try { store.client.removeChannel(old); } catch (e) {} }
+  } else if ("BroadcastChannel" in window) {
+    if (bc) { try { bc.postMessage({ type: "bye", uid: me.uid }); bc.close(); } catch (e) {} }
+    bc = wireLocal(channelName(next));
+  }
+  peers.clear(); emitPeers();         // the space you left is no longer yours
+}
+
 export const presence = {
   join,
+  setSpace,
+  space: () => currentSpace,
   count: () => peers.size + 1,
   onPeers: fn => { peerListeners.add(fn); return () => peerListeners.delete(fn); },
   onPose:  fn => { poseListeners.add(fn); return () => poseListeners.delete(fn); },
