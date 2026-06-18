@@ -26,6 +26,7 @@ import { initAnalytics, track, analyticsBuffer } from "./analytics.js";
 import { openArcade, closeArcade, arcadeIsOpen, arcadeWantsEsc, handleGameMessage, setScoreHook } from "./arcade.js";
 import { initPool } from "./pool.js";
 import { initBasket } from "./basketball.js";
+import { initDebug } from "./debug.js";
 import { PIANO_VOICES, GUITAR_VOICES } from "./ambience.js";
 import { createRadio, SR_STATIONS, LA_STATIONS } from "./radio.js";
 import {
@@ -3209,6 +3210,14 @@ window.METRO_DEBUG = { renderer, camera, world, controls, THREE, cat, bartender,
   carry: { pick: pickUpNote, drop: dropCarried, state: () => carrying },
   booth: { dj: () => djState, canDJ: () => canDJ(), headcount: () => clubHeadcount(), live: () => voice.djLive() } };
 
+// on-device diagnostics panel — opt in with #debug (or ?debug) in the URL.
+// for chasing the "see through walls into other rooms" reports on phones.
+let dbg = null;
+if (/(\bdebug\b)/.test(location.hash + " " + location.search)) {
+  try { dbg = initDebug({ renderer, camera, controls, room: () => aRoomNow() }); window.METRO_DEBUG.dbg = dbg; }
+  catch (e) { console.error("debug panel failed", e); }
+}
+
 const clock = new THREE.Clock();
 let t = 0;
 let grimeSaveAt = 0;     // last time we pushed the carpet snapshot to room_state
@@ -3316,4 +3325,5 @@ renderer.setAnimationLoop(() => {
   stepRideCam(dt);                         // nudge the camera while the car travels
   renderer.render(world.scene, camera);
   screen.renderCSS(camera);                // the venue big screen (flat <video> on the wall via CSS3D)
+  if (dbg) dbg.tick(dt);                    // diagnostics overlay (only when #debug)
 });
