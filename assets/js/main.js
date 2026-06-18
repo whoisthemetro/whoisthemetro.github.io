@@ -2215,8 +2215,9 @@ $("#booth-screen-share").addEventListener("click", async () => {
   vt0.contentHint = "motion";                  // it's video — favour smooth fps over pin-sharp detail
   try { await vt0.applyConstraints({ frameRate: 24, width: { max: 1280 }, height: { max: 720 } }); } catch (e) {}
   if (screenState) clearScreen();              // a screen-share takes over from any URL stream
-  stream.startShare(disp);
   screen.setMediaStream(disp, true);           // host sees it on the wall, muted (already hears the tab)
+  const ok = await stream.startShare(disp);    // publish once to the SFU; it fans out to viewers
+  if (!ok) { screen.setMediaStream(null); disp.getTracks().forEach(t => t.stop()); toast("couldn't start the share — try again"); renderBooth(); return; }
   toast("🖥️ you're sharing to the venue — pick a tab with 'share tab audio' for sound");
   renderBooth();
 });

@@ -29,9 +29,11 @@ function emitNew(n)    { newListeners.forEach(fn => { try { fn(n); } catch (e) {
 function emitRemoved(id) { removedListeners.forEach(fn => { try { fn(id); } catch (e) {} }); }
 function emitMoved(m)  { movedListeners.forEach(fn => { try { fn(m); } catch (e) {} }); }
 
+let sfuUrl = null, sfuKey = null;   // for calling the `sfu` edge fn (Cloudflare SFU broker)
 async function init() {
   const cfg = window.METRO_CONFIG || {};
   bc = "BroadcastChannel" in window ? new BroadcastChannel("metro-room") : null;
+  if (cfg.SUPABASE_URL && cfg.SUPABASE_ANON_KEY) { sfuUrl = cfg.SUPABASE_URL + "/functions/v1/sfu"; sfuKey = cfg.SUPABASE_ANON_KEY; }
 
   if (cfg.SUPABASE_URL && cfg.SUPABASE_ANON_KEY) {
     try {
@@ -441,6 +443,18 @@ async function getIceServers() {
     return data.iceServers;
   } catch (e) { return null; }
 }
+// call the Cloudflare SFU through our broker (App Secret stays server-side).
+// returns { status, data } where data is Cloudflare's JSON. throws if unreachable.
+async function sfu(path, body, method) {
+  if (!sfuUrl) throw new Error("sfu unavailable (no supabase config)");
+  const res = await fetch(sfuUrl, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${sfuKey}`, apikey: sfuKey, "Content-Type": "application/json" },
+    body: JSON.stringify({ path, method: method || "POST", body }),
+  });
+  const data = await res.json().catch(() => ({}));
+  return { status: res.status, data };
+}
 
 /* ---- lightweight metrics: what the room gets up to ---- */
 function logEvent(type) {
@@ -521,7 +535,7 @@ export const store = {
   onRoomLight: fn => { roomLightListeners.add(fn); return () => roomLightListeners.delete(fn); },
   getDJ, saveDJ,
   onDJ: fn => { djListeners.add(fn); return () => djListeners.delete(fn); },
-  getScreen, saveScreen, getIceServers,
+  getScreen, saveScreen, getIceServers, sfu,
   onScreen: fn => { screenListeners.add(fn); return () => screenListeners.delete(fn); },
   submitScore, listScores,
   onNewScore: fn => { scoreListeners.add(fn); return () => scoreListeners.delete(fn); },
