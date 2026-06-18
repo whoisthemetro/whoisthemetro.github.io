@@ -322,8 +322,13 @@ function applyGuitarFilter() { setGuitarFilter(gtrFilterLevel); world.setGuitarP
 // the cat — its key-walking plays the same piano visitors can play.
 // All bedroom sounds are gated: aboard THE DESI you hear only the sea.
 const bedroomSound = (fn) => (...a) => { if (!inBoat && !inArena && !inClub) fn(...a); };
+// the arcade is effectively its own room (walled off, through the opening): its
+// zone reads ~1 inside, ~0.72 in the doorway, ≤0.14 from the bedroom. once you've
+// crossed in, the bedroom's INSTRUMENTS shouldn't carry over the wall (the cat's
+// voice and the bartender still do — they belong to the shared origin cluster).
+const inArcade = () => world.arcadeZoneLevel(controls.pos.x, controls.pos.z) >= 0.5;
 const cat = new Cat(world.scene, world.catSpots, {
-  plink: bedroomSound((i) => { pianoNote(i % 15, pianoVoice); world.pressPianoKey(i % 15); }),
+  plink: bedroomSound((i) => { if (inArcade()) return; pianoNote(i % 15, pianoVoice); world.pressPianoKey(i % 15); }),
   purr: bedroomSound(purr),
   meow: bedroomSound(meow),
   hiss: bedroomSound(hiss),
@@ -824,9 +829,16 @@ controls.onAction((ndcX, ndcY) => {
   } else if (hit.object.userData.cat && hit.distance < 2.2) {
     if (Date.now() - lastPetAt < 1200) return;
     lastPetAt = Date.now();
-    const outcome = cat.petOutcome();
-    if (outcome === "scratch") gotScratched();
-    else presence.sendAct({ kind: "pet" });
+    // belly-up? that's an invitation for a tummy rub, not an ordinary pet
+    if (cat.state === "belly") {
+      const r = cat.rubTummy();
+      aItem("cat");
+      if (r === "kick") gotScratched();   // hiss + shake — the overstimulated bunny-kick
+      else { presence.sendAct({ kind: "pet" }); toast("😻 belly rubs — pure bliss"); }
+      return;
+    }
+    const outcome = cat.petOutcome();   // 'love' | 'meh' — petting never scratches
+    presence.sendAct({ kind: "pet" });
     if (outcome === "love") { store.logEvent("pet"); progress.bump("pets"); }
     aItem("cat");
     wrapCare("pet").then(res => {
@@ -2785,8 +2797,8 @@ let songState = null;   // { id, at } or null when nothing's playing
 function applySong(id) {
   if (!id) { stopSong(); return; }   // stop calls ended → setDelayTempo(null) + UI
   // the song keeps rolling while you're in another room — you just don't
-  // hear the bedroom instruments from there
-  const here = () => !inBoat && !inArena && !inClub;
+  // hear the bedroom instruments from there (the arcade counts as away too)
+  const here = () => !inBoat && !inArena && !inClub && !inArcade();
   playSong(id, {
     now: audioNow,
     // each track to its own instrument — piano is chromatic (raw semitone,
@@ -3014,7 +3026,7 @@ addEventListener("keydown", (e) => {
     peerX.set(uid, pose.x);
   });
   presence.onNote((uid, i, v) => {
-    if (inBoat || inArena) return;   // the bedroom piano stays in the bedroom
+    if (inBoat || inArena || inArcade()) return;   // the bedroom piano stays in the bedroom
     pianoNote(i, v ?? 0);
     world.pressPianoKey(i);
   });
@@ -3094,9 +3106,9 @@ addEventListener("keydown", (e) => {
         toast("someone shot the plane out of the sky 🛩️💥");
       }
     } else if (p.kind === "edrum") {
-      if (!inBoat && !inArena && !inClub) { edrumHit(p.pad); world.pressEdrum(p.pad); }
+      if (!inBoat && !inArena && !inClub && !inArcade()) { edrumHit(p.pad); world.pressEdrum(p.pad); }
     } else if (p.kind === "guitar") {
-      if (!inBoat && !inArena && !inClub) { guitarPluck(p.n, p.voice || 0); world.strumTele(); }
+      if (!inBoat && !inArena && !inClub && !inArcade()) { guitarPluck(p.n, p.voice || 0); world.strumTele(); }
     } else if (p.kind === "ready") {
       applyReady(p.team, p.t);
     } else if (p.kind === "match") {

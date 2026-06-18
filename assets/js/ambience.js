@@ -16,6 +16,37 @@ const fxStages = {};        // id → {dry, wet, wet0} — a stompbox toggles th
 const fxDelays = {};        // id → DelayNode, for tempo-syncing the delay pedals to a song
 const fxDelayDefault = {};  // id → its free-play delayTime (reverted to when no song plays)
 
+// the cat's real voice — the only recorded audio in the whole place (everything
+// else here is synthesized). decoded once when the context comes up; meow() and
+// purr() fall back to their synth versions until/unless these land.
+let catMeowBuf = null, catPurrBuf = null;
+async function loadSample(url) {
+  try {
+    const res = await fetch(url);
+    const arr = await res.arrayBuffer();
+    return await new Promise((ok, no) => ctx.decodeAudioData(arr, ok, no));
+  } catch (e) { return null; }
+}
+// one-shot a decoded buffer through the master bus with a soft envelope.
+// returns { src, g } so a caller could stop it early; null if nothing to play.
+function playSample(buf, { rate = 1, gain = 0.5, attack = 0.01, release = 0.08, dur = null, offset = 0 } = {}) {
+  if (!ctx || !buf) return null;
+  const t = ctx.currentTime;
+  const src = ctx.createBufferSource();
+  src.buffer = buf; src.playbackRate.value = rate;
+  const g = ctx.createGain();
+  src.connect(g).connect(master);
+  const play = dur != null ? dur : buf.duration / rate - offset;
+  const rel = Math.min(release, play * 0.5);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.linearRampToValueAtTime(gain, t + attack);
+  g.gain.setValueAtTime(gain, t + Math.max(attack, play - rel));
+  g.gain.exponentialRampToValueAtTime(0.0001, t + play);
+  src.start(t, offset);
+  src.stop(t + play + 0.05);
+  return { src, g };
+}
+
 function noiseBuffer(seconds = 2) {
   const len = ctx.sampleRate * seconds;
   const buf = ctx.createBuffer(1, len, ctx.sampleRate);
@@ -203,6 +234,11 @@ export function startAmbience() {
   comp.attack.value = 0.003;
   comp.release.value = 0.2;
   master.connect(comp).connect(ctx.destination);
+
+  // pull in the cat's real meow + purr (non-blocking — the synth covers for
+  // them until they decode, and forever if the fetch fails)
+  loadSample("assets/audio/cat-meow.mp3").then(b => { catMeowBuf = b; });
+  loadSample("assets/audio/cat-purr.mp3").then(b => { catPurrBuf = b; });
 
   // room tone: deep filtered rumble + faint electrical hum (the "AC" bed —
   // kept faint so it sits under the room, not over it)
@@ -464,11 +500,43 @@ export function beep(freq, dur = 0.1, type = "square", gain = 0.04, slideTo = nu
 
 // A meow, synthesized from scratch with randomized pitch, contour,
 // vibrato and length — no two meows in the room's history are identical.
-export function meow(excited = false) {
+export function meow(mood = false) {
   if (!ctx) return;
+  // mood: false/undefined = everyday meow, true/"excited" = happy trill,
+  // "angry" = the agitated yowl (the bunny-kick)
+  const excited = mood === true || mood === "excited";
+  const angry = mood === "angry";
+  // real recorded meow when it's decoded — the single clip gets reshaped into
+  // distinct "voices" (rate = pitch + length together) so it's never the same twice
+  if (catMeowBuf) {
+    let prof;
+    if (angry) {
+      // low, loud, clipped — a pissed-off yowl
+      prof = { rate: 0.64 + Math.random() * 0.08, gain: 0.62, attack: 0.003, release: 0.05 };
+    } else if (excited) {
+      prof = { rate: 1.12 + Math.random() * 0.14, gain: 0.46 + Math.random() * 0.1, attack: 0.006, release: 0.06 };
+    } else {
+      // everyday: pick one of a few shapes at random so back-to-back meows differ
+      const shapes = [
+        { rate: 0.85, dur: null },    // low, drawn-out
+        { rate: 0.95, dur: null },    // soft
+        { rate: 1.0,  dur: null },    // plain
+        { rate: 1.08, dur: null },    // mid-bright
+        { rate: 1.2,  dur: 0.42 },    // short chirp
+      ];
+      const s = shapes[Math.floor(Math.random() * shapes.length)];
+      prof = { rate: s.rate * (0.96 + Math.random() * 0.08), dur: s.dur,
+               gain: 0.4 + Math.random() * 0.1, attack: 0.008, release: 0.07 };
+    }
+    playSample(catMeowBuf, prof);
+    // excited trills double up; an angry yowl sometimes barks a second time
+    if (excited && Math.random() < 0.7) setTimeout(() => meow(false), 200 + Math.random() * 220);
+    else if (angry && Math.random() < 0.5) setTimeout(() => meow("angry"), 150 + Math.random() * 130);
+    return;
+  }
   const t = ctx.currentTime;
-  const f0 = 340 + Math.random() * 280;
-  const dur = (excited ? 0.3 : 0.45) + Math.random() * 0.45;
+  const f0 = (angry ? 210 : 340) + Math.random() * (angry ? 120 : 280);
+  const dur = (excited ? 0.3 : angry ? 0.32 : 0.45) + Math.random() * 0.45;
   const osc = ctx.createOscillator();
   osc.type = "sawtooth";
   const vib = ctx.createOscillator();
@@ -566,6 +634,17 @@ export function careSound(kind) {
 // Purring: low rumble, amplitude fluttering at ~24 Hz.
 export function purr(seconds = 1.8) {
   if (!ctx) return;
+  // real recorded purr when it's decoded — start a little way past the clip's
+  // ramp-up and run for `seconds` (the clip is long enough to never run out)
+  if (catPurrBuf) {
+    // jitter the start point, speed (pitch of the rumble) and level so no two
+    // purrs sit at quite the same depth
+    const offset = 0.6 + Math.random() * 1.2;
+    const rate = 0.9 + Math.random() * 0.18;
+    const dur = Math.min(seconds, (catPurrBuf.duration - offset - 0.1) / rate);
+    playSample(catPurrBuf, { rate, gain: 0.5 + Math.random() * 0.12, attack: 0.14, release: 0.3, dur, offset });
+    return;
+  }
   const t = ctx.currentTime;
   const src = ctx.createBufferSource();
   src.buffer = noiseBuffer(seconds + 0.5);

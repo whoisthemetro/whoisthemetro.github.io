@@ -54,6 +54,10 @@ export class Cat {
   _build() {
     const lam = (c) => new THREE.MeshLambertMaterial({ color: c });
     const fur = lam(FUR);
+    // everything hangs off an inner rig so we can ROLL the whole cat onto its
+    // back (belly rubs) about its spine without disturbing grp's position/yaw
+    this.rig = new THREE.Group();
+    this.grp.add(this.rig);
     this.body = new THREE.Mesh(new THREE.CapsuleGeometry(0.062, 0.16, 6, 10), fur);
     this.body.rotation.z = Math.PI / 2;
     this.body.position.y = 0.115;
@@ -74,7 +78,7 @@ export class Cat {
     }
     this.head.position.set(0.135, 0.16, 0);
     this.tail = [];
-    let parent = this.grp;
+    let parent = this.rig;
     for (let i = 0; i < 3; i++) {
       const seg = new THREE.Mesh(new THREE.CylinderGeometry(0.011 - i * 0.002, 0.013 - i * 0.002, 0.09, 6), fur);
       seg.position.set(i ? 0 : -0.13, i ? 0.075 : 0.13, 0);
@@ -88,10 +92,12 @@ export class Cat {
     for (const [lx, lz] of [[0.07, 0.035], [0.07, -0.035], [-0.07, 0.035], [-0.07, -0.035]]) {
       const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.009, 0.075, 6), fur);
       leg.position.set(lx, 0.038, lz);
-      this.grp.add(leg);
+      this.rig.add(leg);
       this.legs.push(leg);
     }
-    this.grp.add(this.body, chest, this.head);
+    this.rig.add(this.body, chest, this.head);
+    this._roll = 0;             // current belly-roll about the spine (0 = upright)
+    this._kick = 0;             // decaying bunny-kick flail after an over-rub
   }
 
   /* ---------- state machine ---------- */
@@ -128,29 +134,62 @@ export class Cat {
     this.target = { x, z, thenState, thenY };
   }
 
-  // Petting is a gamble that depends on its mood. Returns
-  // 'love' | 'meh' | 'scratch' so the caller can react.
+  // Petting never scratches anymore — keep at it and a happy cat just gets
+  // happier until it rolls over for a belly rub. The ONLY scratch in the room
+  // is the overstimulated bunny-kick during a tummy rub (see rubTummy).
+  // Returns 'love' | 'meh' so the caller can react.
   petOutcome() {
-    this.mood -= 0.07;     // even a loving cat has limits
-    let out;
-    if (this.mood > 0.25) out = "love";
-    else if (this.mood > -0.25) out = Math.random() < 0.75 ? "love" : "meh";
-    else out = Math.random() < 0.45 ? "scratch" : "meh";
+    // a neglected, grumpy cat merely tolerates you; anyone else enjoys it
+    const out = this.mood > -0.4 ? "love" : "meh";
 
     if (out === "love") {
+      this.mood = Math.min(1, this.mood + 0.03);   // pets warm it up, never sour it
       this.fx.purr?.();
       if (Math.random() < 0.4) this.fx.meow?.();
       this._hearts();
-      if (this.state === "sleep") { this.state = "sit"; this.timer = rand(6, 14); this.baseY = this.baseY; }
-    } else if (out === "meh") {
-      // tolerates you, barely — a slow tail flick, nothing more
-      if (Math.random() < 0.3) this.fx.meow?.();
+      this.lovePets = (this.lovePets || 0) + 1;
+      // settle a sleeping / window-gazing cat so it can roll over
+      if (this.state === "sleep" || this.state === "window") {
+        this.state = "sit"; this.timer = rand(8, 16);
+      }
+      // keep petting a settled cat and it flops for belly rubs — only when it's
+      // idle enough to (sitting), never mid-walk / eat / keys
+      if (this.lovePets >= 3 && this.state === "sit") {
+        this._flop();
+      }
     } else {
-      this.fx.hiss?.();
-      this.mood += 0.18;   // it feels better after telling you off
-      if (this.state === "sleep") { this.state = "sit"; this.timer = rand(4, 8); }
+      // tolerates you, barely — a slow tail flick, nothing more
+      this.lovePets = 0;
+      if (Math.random() < 0.3) this.fx.meow?.();
     }
     return out;
+  }
+
+  // flop onto its back, paws up, inviting a tummy rub
+  _flop() {
+    this.state = "belly";
+    this.timer = rand(9, 15);     // how long it'll stay rolled over on its own
+    this.lovePets = 0;
+    this.target = null;
+    this.fx.meow?.();
+  }
+
+  // clicked while it's belly-up. mostly bliss (purr + meow + hearts), but rub
+  // too eagerly and you get the overstimulated bunny-kick. returns 'rub'|'kick'.
+  rubTummy() {
+    this._hearts();
+    if (Math.random() < 0.2) {
+      // too much — it grabs your hand, kicks, and rights itself
+      this.fx.meow?.("angry");
+      this.mood = Math.max(-0.3, this.mood - 0.04);
+      this.state = "sit"; this.timer = rand(3, 6); this._kick = 0.5;
+      return "kick";
+    }
+    this.fx.purr?.(2.6);
+    if (Math.random() < 0.6) this.fx.meow?.();
+    this.mood = Math.min(1, this.mood + 0.04);
+    this.timer = rand(9, 15);     // keep enjoying it — resets the roll-back clock
+    return "rub";
   }
 
   // Someone elsewhere on the internet petted it — show the love here too.
@@ -224,6 +263,12 @@ export class Cat {
         if (finished === "eat" && this.isTreat) this.isTreat = false;
         else this.onNeed?.(finished);   // 'eat' | 'drink' | 'litterbox'
       }
+    }
+
+    if (this.state === "belly") {
+      // rolled over on its back, paws up — stays put until the timer runs out,
+      // then rights itself and goes back to sitting (the roll eases away in _apply)
+      if (this.timer <= 0) { this.state = "sit"; this.timer = rand(4, 10); }
     }
 
     if (this.state === "walk" && this.target) {
@@ -317,6 +362,19 @@ export class Cat {
     this.grp.position.set(this.pos.x, this.baseY, this.pos.z);
     this.grp.rotation.y = this.yaw - Math.PI / 2;   // model faces +x locally
 
+    // belly roll: ease toward flopped-over (≈ onto its back) while belly-up,
+    // back upright otherwise — about the spine, so position/yaw are untouched.
+    // the bunny-kick flail (set in rubTummy) decays on its own.
+    const rollTarget = this.state === "belly" ? Math.PI * 0.92 : 0;
+    this._roll += (rollTarget - this._roll) * Math.min(1, dt * 6);
+    this.rig.rotation.x = this._roll;
+    // roll about the SPINE (body-center height), not the floor-level rig origin —
+    // otherwise flipping over swings the body straight down through the floor/chair.
+    // lifting the rig by h·(1-cosθ) moves the pivot up to y = SPINE.
+    const SPINE = 0.115;
+    this.rig.position.y = SPINE * (1 - Math.cos(this._roll));
+    if (this._kick > 0) this._kick = Math.max(0, this._kick - dt * 1.5);
+
     // breathing / trot bob
     const breathe = sleeping ? Math.sin(t * 1.6) * 0.006 : 0;
     const bob = walking ? Math.abs(Math.sin(t * 8)) * 0.012 : 0;
@@ -340,6 +398,12 @@ export class Cat {
       });
     } else {
       this.legs.forEach(leg => { leg.rotation.x = 0; });
+    }
+    // overstimulated bunny-kick — a quick alternating flail of all four paws
+    if (this._kick > 0) {
+      this.legs.forEach((leg, i) => {
+        leg.rotation.x = Math.sin(t * 28 + i * 1.7) * 0.7 * this._kick;
+      });
     }
 
     this.hitMesh.position.set(this.pos.x, this.baseY + 0.15, this.pos.z);
