@@ -2831,8 +2831,17 @@ function refreshSongUI() {
   const s = SONGS.find(x => x.id === playing);
   $("#pc-now").textContent = s ? `now playing — ${s.title}` : "";
 }
-function toggleSong(id) {
-  if (currentSongId() === id) { stopSong(); return; }   // stop calls ended → UI refresh
+// the self-playing songs are a SHARED room thing now: when someone starts (or
+// stops, or swaps) a track on the computer, the whole bedroom hears the same
+// one, and anyone can stop it or pick another. ordered by a logical clock so a
+// skewed connection can't get stuck on a stale start/stop. songState is what the
+// room is playing, kept so a walk-in can be told and tune straight in.
+let songClock = 0;
+let songState = null;   // { id, at } or null when nothing's playing
+// play (or stop) a song locally WITHOUT broadcasting — used both for your own
+// click and for following a peer's choice
+function applySong(id) {
+  if (!id) { stopSong(); return; }   // stop calls ended → setDelayTempo(null) + UI
   // the song keeps rolling while you're in another room — you just don't
   // hear the bedroom instruments from there
   const here = () => !inBoat && !inArena && !inClub;
@@ -2858,8 +2867,16 @@ function toggleSong(id) {
   // the delay pedals lock to this song's tempo (keys eighth, guitar dotted-eighth)
   const song = SONGS.find(x => x.id === id);
   if (song) setDelayTempo(song.bpm);
-  store.logEvent("piano");
   refreshSongUI();
+}
+// your click on the computer: toggle, then tell the room
+function toggleSong(id) {
+  const next = currentSongId() === id ? null : id;   // same one again = stop
+  applySong(next);
+  if (next) store.logEvent("piano");
+  songClock += 1;
+  songState = next ? { id: next, at: songClock } : null;
+  presence.sendAct({ kind: "song", id: next, at: songClock });
 }
 for (const s of SONGS) {
   const b = document.createElement("button");
@@ -3043,6 +3060,8 @@ addEventListener("keydown", (e) => {
       // and the big screen — same trick, so a walk-in sees the video at once
       // instead of waiting up to 5s for the next re-announce tick
       if (screenState) presence.sendAct({ kind: "screen", on: true, url: screenState.url, at: screenState.at });
+      // and whatever song the bedroom's playing, so a newcomer tunes in too
+      if (songState) presence.sendAct({ kind: "song", id: songState.id, at: songState.at });
     }
   });
   presence.onPose((uid, pose) => {
@@ -3176,6 +3195,15 @@ addEventListener("keydown", (e) => {
           desc.shared = { on: !!p.on, idx: p.idx | 0, at: p.at || 0 };
           desc.radio.applyRemote(!!p.on, p.idx | 0);
         }
+      }
+    } else if (p.kind === "song") {
+      // someone started/stopped/swapped the bedroom song — follow it
+      // (last-event-wins by logical clock, just like the radio)
+      const at = p.at || 0;
+      songClock = Math.max(songClock, at);                 // keep our clock ahead
+      if (at > (songState ? songState.at : 0)) {           // ignore anything stale
+        songState = p.id ? { id: p.id, at } : null;
+        if (currentSongId() !== (p.id || null)) applySong(p.id || null);
       }
     }
   });
