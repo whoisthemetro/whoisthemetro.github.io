@@ -169,10 +169,13 @@ setInterval(() => {
   if (stream.isHosting()) {
     if (stream.localStream() && !screen.showingLive()) screen.setMediaStream(stream.localStream(), true);
   } else if (inClub) {
-    // viewer self-heal: re-subscribe if our SFU connection died (network blip,
-    // another device joining, resuming from a backgrounded tab), and nudge the
-    // wall video if iOS paused it — so the picture comes back on its own.
+    // viewer self-heal, escalating: (1) re-subscribe if the SFU connection died
+    // (network blip / backgrounded tab); (2) if the picture has FROZEN while the
+    // connection still claims "connected" — the iOS decode stall you get when
+    // someone walks in and spawns an avatar — force a clean re-pull; (3) nudge a
+    // merely-paused video back. all so the stream comes back WITHOUT a refresh.
     stream.ensureWatching();
+    if (screen.stalled()) stream.resubscribe();
     screen.kick();
   }
 }, 1500);
@@ -181,13 +184,16 @@ setInterval(() => {
 function djAudioPresent() {
   return voice.djLive() || (!!djHeardAt && Date.now() - djHeardAt < 1600);
 }
-// the ON AIR sign and the idle sub both follow it: music on → sign lit, the
-// empty-room drone ducks away; music off → sign dark, the drone holds the room
+// the ON AIR sign follows the DJ set. the empty-room drone (the "environment
+// noise") ducks away for ANY media in the room — a DJ set OR anything rolling on
+// the big screen (a screen-share or a video) — because the ambient bed over a
+// show is just distracting. nothing on → the drone fades back in to hold the room.
 setInterval(() => {
   if (!entered || !inClub) return;
-  const live = djAudioPresent();
-  world.setOnAir(live);
-  setClubTone(!live);
+  const djLive = djAudioPresent();
+  const media = djLive || screen.isPlaying();   // a set, or a video/share on the wall
+  world.setOnAir(djLive);
+  setClubTone(!media);                           // setClubTone fades over ~1.2s, and no-ops if unchanged
 }, 400);
 const micBtn = $("#mic-btn");
 function updateMicUI() {

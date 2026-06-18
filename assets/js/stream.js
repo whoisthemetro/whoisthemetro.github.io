@@ -156,6 +156,14 @@ export const stream = {
     if (mode === "host" || !inVenue || !lastLive) return;
     if (subDead()) subscribe(lastLive);
   },
+  // harder recovery: the SFU connection still reports "connected" but the picture
+  // has frozen (an iOS decode stall, not a network drop — subDead() can't see it).
+  // force-drop the zombie sub and pull a clean copy. driven by screen.stalled().
+  resubscribe() {
+    if (mode === "host" || !inVenue || !lastLive) return;
+    teardownSub();                  // clears watchingSession so subscribe() won't dedup-skip
+    subscribe(lastLive);
+  },
   onRemoteStream(fn) { onRemoteStream = fn; },
   onRemoteEnd(fn) { onRemoteEnd = fn; },
   onHostEnded(fn) { onHostEnded = fn; },

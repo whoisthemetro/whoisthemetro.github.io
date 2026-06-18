@@ -29,6 +29,8 @@ let cur = null;                    // { url } | { live:true } currently on, or n
 let inRoom = false;                // in the venue → play + (armed) audio
 let unmuteArmed = false;
 let noAutoUnmute = false;          // the host's own wall: don't auto-unmute (they hear the tab)
+let lastAdvanceAt = 0;             // perf-clock of the last frame the wall video advanced (stall watchdog)
+const graceNow = () => { lastAdvanceAt = performance.now(); };   // give a fresh source time before we call it stalled
 
 function isHls(u) { return /\.m3u8(\?|#|$)/i.test(u || ""); }
 
@@ -51,6 +53,10 @@ function ensureVideo() {
   video.playsInline = true; video.setAttribute("playsinline", ""); video.setAttribute("webkit-playsinline", "");
   video.muted = true; video.autoplay = true; video.loop = false; video.preload = "auto";
   video.style.cssText = "width:100%;height:100%;object-fit:cover;display:block;background:#000;";
+  // stall watchdog feed: each advancing frame stamps the clock. when the picture
+  // freezes (an iOS decode stall on a frame hitch — e.g. someone walking in spawns
+  // an avatar), timeupdate stops firing and the gap grows → screen.stalled().
+  video.addEventListener("timeupdate", graceNow);
   holder = document.createElement("div");
   holder.style.cssText = `width:${VW}px;height:${VH}px;overflow:hidden;background:#000;border:0;box-shadow:0 0 60px rgba(0,0,0,.6);`;
   holder.appendChild(video);
@@ -95,6 +101,7 @@ async function attach(url) {
   } else {
     video.src = url;                              // a plain .mp4 / .webm
   }
+  graceNow();                                     // fresh source — don't flag it stalled before it can start
   if (inRoom) play();
 }
 
@@ -161,6 +168,7 @@ export const screen = {
       cur = { live: true };
       video.muted = true;
       video.srcObject = s;
+      graceNow();                          // fresh pull — give it a beat before the stall watchdog can fire
       if (inRoom) play();
     } else {
       if (cur && cur.live) cur = null;
@@ -175,6 +183,7 @@ export const screen = {
     inRoom = true;
     ensureCSS();
     cssRenderer.domElement.style.display = "";
+    graceNow();                            // entering — restart the stall clock
     if (cur) { ensureVideo(); if (cur.url && !video.src && !hls) attach(cur.url); else play(); }
     showVideo(!!cur);
   },
@@ -197,6 +206,15 @@ export const screen = {
   has: () => !!cur,
   // true only when a live MediaStream (screen-share) is actually on the wall
   showingLive: () => !!(cur && cur.live && video && video.srcObject),
+  // the live wall video has FROZEN: connected + not paused, but no new frames for
+  // a while. distinct from paused (kick() handles that). the viewer watchdog
+  // re-pulls the SFU on this — the recovery that used to need a manual refresh.
+  stalled: () => {
+    if (!inRoom || !cur || !cur.live || !video || !video.srcObject) return false;
+    return lastAdvanceAt > 0 && (performance.now() - lastAdvanceAt) > 4500;
+  },
+  // is something actually rolling on the wall right now (for ducking room sound)?
+  isPlaying: () => !!(cur && inRoom && video && !video.paused && (video.srcObject || video.src)),
   // nudge a stalled wall video back into playing (iOS pauses on a hitch/resume)
   kick: () => { if (cur && video && video.paused && inRoom) video.play().catch(() => {}); },
   current: () => cur,
