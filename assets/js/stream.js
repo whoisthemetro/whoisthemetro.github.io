@@ -84,7 +84,7 @@ function capUplink(pc) {
 
 async function subscribe(live) {
   if (subbing) return;
-  if (subSession && watchingSession === live.session) return;   // already on this stream
+  if (subSession && watchingSession === live.session && !subDead()) return;   // already watching this stream, healthily
   subbing = true;
   try {
     teardownSub();                  // drop any previous subscription first
@@ -136,8 +136,26 @@ async function handle(p) {
   } catch (e) {}
 }
 
+function subDead() { return !pcSub || ["failed", "closed"].includes(pcSub.connectionState); }
+
 export const stream = {
-  init(uid) { myUid = uid; presence.onSignal(handle); },
+  init(uid) {
+    myUid = uid;
+    presence.onSignal(handle);
+    // a backgrounded/locked tab (iOS especially) freezes the SFU connection; when
+    // you come back to a device, re-establish the watch right away.
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible" && mode !== "host" && inVenue && lastLive && subDead()) subscribe(lastLive);
+      });
+    }
+  },
+  // viewer self-heal: if our SFU connection died while we're still in the venue
+  // and a host is live, re-subscribe. (called from a watchdog in main.js.)
+  ensureWatching() {
+    if (mode === "host" || !inVenue || !lastLive) return;
+    if (subDead()) subscribe(lastLive);
+  },
   onRemoteStream(fn) { onRemoteStream = fn; },
   onRemoteEnd(fn) { onRemoteEnd = fn; },
   onHostEnded(fn) { onHostEnded = fn; },
@@ -148,6 +166,7 @@ export const stream = {
   // smoke-test peek
   _state: () => ({ mode, inVenue, hostSession, watchingSession, hasPub: !!pcPub, hasSub: !!pcSub,
     pub: pcPub ? pcPub.connectionState : null, sub: pcSub ? pcSub.connectionState : null, lastLive }),
+  _killSub: () => { if (pcSub) { try { pcSub.close(); } catch (e) {} } },   // smoke: simulate a dropped viewer connection
 
   // HOST: publish a captured stream to the SFU
   async startShare(captured) {

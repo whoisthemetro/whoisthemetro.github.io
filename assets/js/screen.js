@@ -182,6 +182,9 @@ export const screen = {
   // true only when a live MediaStream (screen-share) is actually on the wall —
   // lets the host self-heal its own wall without disturbing a URL stream
   showingLive: () => !!(cur && cur.live && video && video.srcObject),
+  // nudge a stalled wall video back into playing (iOS pauses it on a hitch / on
+  // resume from background). safe no-op when nothing's on or it's already playing.
+  kick: () => { if (cur && video && video.paused && inRoom) video.play().catch(() => {}); },
   current: () => cur,
   // smoke-test peek
   _state: () => ({ has: !!cur, url: cur && cur.url, inRoom, muted: !video || video.muted, paused: !video || video.paused, hls: !!hls }),

@@ -166,8 +166,14 @@ stream.onHostEnded(() => { screen.setMediaStream(null); toast("📺 sharing ende
 // until they stop. if anything ever knocks the stream off the wall (a viewer
 // disconnecting, a stray clear), pin it back. cheap insurance, host-only.
 setInterval(() => {
-  if (stream.isHosting() && stream.localStream() && !screen.showingLive()) {
-    screen.setMediaStream(stream.localStream(), true);
+  if (stream.isHosting()) {
+    if (stream.localStream() && !screen.showingLive()) screen.setMediaStream(stream.localStream(), true);
+  } else if (inClub) {
+    // viewer self-heal: re-subscribe if our SFU connection died (network blip,
+    // another device joining, resuming from a backgrounded tab), and nudge the
+    // wall video if iOS paused it — so the picture comes back on its own.
+    stream.ensureWatching();
+    screen.kick();
   }
 }, 1500);
 // is a set reaching the room right now? the broadcaster knows from djLive
