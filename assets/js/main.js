@@ -424,6 +424,9 @@ function setVacuuming(on) {
 let entered = false;
 let lastPostAt = 0;
 const adminMode = location.hash === "#admin";
+// /venue → /#venue : land in the 3D world but walk straight into THE VENUE
+// (the standalone flat watch page is gone). honoured once, on first entry.
+const venueDeepLink = /^#venue\b/i.test(location.hash);
 
 function show(el) { el.classList.add("show"); }
 function hide(el) { el.classList.remove("show"); }
@@ -481,6 +484,8 @@ function enterRoom() {
     world.addAccessory(acc.id);
     if (isNew) toast(`🔓 the room grew something: ${acc.title}`);
   });
+  // arrived via /venue — skip the bedroom and ride straight into the club
+  if (venueDeepLink) tryClub();
 }
 $("#enter-btn").addEventListener("click", enterRoom);
 nameInput?.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); enterRoom(); } });
