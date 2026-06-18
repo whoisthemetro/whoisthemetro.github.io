@@ -215,6 +215,9 @@ export const screen = {
   },
   // is something actually rolling on the wall right now (for ducking room sound)?
   isPlaying: () => !!(cur && inRoom && video && !video.paused && (video.srcObject || video.src)),
+  // ms since the wall video last advanced a frame (Infinity if it never started) —
+  // lets main.js tell a healthy, advancing picture from a gray/frozen one.
+  frameAge: () => lastAdvanceAt ? (performance.now() - lastAdvanceAt) : Infinity,
   // nudge a stalled wall video back into playing (iOS pauses on a hitch/resume)
   kick: () => { if (cur && video && video.paused && inRoom) video.play().catch(() => {}); },
   current: () => cur,

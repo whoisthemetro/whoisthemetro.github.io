@@ -177,8 +177,31 @@ setInterval(() => {
     stream.ensureWatching();
     if (screen.stalled()) stream.resubscribe();
     screen.kick();
+    checkVenueStreamHealth();              // if it's STILL gray after all that, nudge the user to reload
   }
 }, 1500);
+
+// last-resort safety net: the self-heal above fixes most hitches on its own, but
+// if a viewer SHOULD be seeing a picture (a host is live / a stream is set) and
+// the wall is still gray or frozen ~10s later, pop a friendly reload prompt in
+// front of them (a centred overlay, so it's there no matter where they look).
+const venueHelp = $("#venue-help");
+let venueGrayStart = 0;             // when the gray/frozen stretch began (0 = healthy)
+let venueHelpSnoozeUntil = 0;       // after a dismiss, hold off re-nagging for a bit
+function showVenueHelp(on) { venueHelp.classList.toggle("show", !!on); }
+function checkVenueStreamHealth() {
+  // only viewers, only when there's genuinely something we ought to be receiving
+  const expecting = inClub && !stream.isHosting() && (stream.hostLive() || screen.has());
+  const healthy = screen.isPlaying() && screen.frameAge() < 2500;   // a frame advanced recently
+  if (!expecting || healthy) { venueGrayStart = 0; showVenueHelp(false); return; }
+  if (Date.now() < venueHelpSnoozeUntil) return;                    // snoozed after a dismiss
+  if (!venueGrayStart) { venueGrayStart = Date.now(); return; }
+  if (Date.now() - venueGrayStart > 10000) showVenueHelp(true);
+}
+$("#venue-help-reload").addEventListener("click", () => location.reload());
+$("#venue-help-dismiss").addEventListener("click", () => {
+  showVenueHelp(false); venueGrayStart = 0; venueHelpSnoozeUntil = Date.now() + 30000;
+});
 // is a set reaching the room right now? the broadcaster knows from djLive
 // (they never hear their own chunks); listeners know from the chunk clock.
 function djAudioPresent() {
@@ -1954,6 +1977,7 @@ function teardownClub() {
   world.setOnAir(false);
   setClubTone(false);                    // the street is quiet
   document.body.classList.remove("in-club");   // the mic + cat HUD come back home
+  showVenueHelp(false); venueGrayStart = 0;    // drop the reload nudge at the door
   inClub = false;
 }
 function leaveClub() {
