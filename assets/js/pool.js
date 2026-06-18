@@ -256,6 +256,10 @@ export function initPool(h, opts = {}) {
     if (net && turn === "you") sendShot(angle, p);
   }
 
+  // whose-turn → which phase. with a real human peer the opponent's turn is a
+  // passive "watch" (the network drives it); only solo-vs-CPU runs "aimCPU".
+  function turnPhase(who) { return who === "you" ? "aim" : (peer ? "watch" : "aimCPU"); }
+
   /* ---------- end-of-shot rules (forgiving 8-ball) ---------- */
   function resolveShotEnd() {
     const info = shotInfo || { firstHit: null, pocketed: [] };
@@ -300,13 +304,13 @@ export function initPool(h, opts = {}) {
     if (continueTurn) {
       // same shooter goes again
       turn = shooter;
-      phase = shooter === "you" ? "aim" : "aimCPU";
-      if (shooter === "cpu") cpuWait = 0.7;
+      phase = turnPhase(shooter);
+      if (phase === "aimCPU") cpuWait = 0.7;
     } else {
       turn = opp;
       ballInHand = foul;                      // fouled -> opponent gets ball in hand
-      phase = opp === "you" ? "aim" : "aimCPU";
-      if (opp === "cpu") cpuWait = 0.7;
+      phase = turnPhase(opp);
+      if (phase === "aimCPU") cpuWait = 0.7;
     }
     if (foul && shooter === "you") snd.foul && snd.foul();
     if (ballInHand && turn === "cpu") { placeCueForCPU(); ballInHand = false; }
@@ -454,18 +458,49 @@ export function initPool(h, opts = {}) {
   function handleNet(p) {
     if (!net || p.game !== "pool") return;
     if (p.id != null && p.id <= packetId && p.sub !== "sit" && p.sub !== "host") return;
-    if (p.sub === "sit") { if (playing && !peer) { peer = { uid: p.uid }; oppName = (p.name || "P2").slice(0, 12); net.send({ game: "pool", sub: "host", to: p.uid, name: youName }); status(); } return; }
-    if (p.sub === "host") { if (p.to === net.myUid) { peer = { uid: p.uid }; oppName = (p.name || "P2").slice(0, 12); status(); } return; }
+    if (p.sub === "sit") {
+      // someone docked at the other end. we become the host (we go first) and
+      // hand them our authoritative table so both sides start from one truth.
+      if (playing && !peer) {
+        peer = { uid: p.uid };
+        oppName = (p.name || "P2").slice(0, 12);
+        if (phase === "aimCPU") { phase = "watch"; cpuWait = 0; }  // the human inherits the CPU's seat
+        net.send({ game: "pool", sub: "host", to: p.uid, name: youName, id: ++packetId,
+                   snap: snapshot(), group, open, turn, started, over: overMsg });
+        status();
+      }
+      return;
+    }
+    if (p.sub === "host") {
+      // we're the joiner — adopt the host's table verbatim. their 'you' is our
+      // opponent, so the host shoots first and we start in "watch".
+      if (p.to === net.myUid && !peer) {
+        peer = { uid: p.uid };
+        oppName = (p.name || "P2").slice(0, 12);
+        if (p.id != null) packetId = p.id;
+        if (p.snap) applySnapshot(p.snap);
+        if (p.group) group = p.group;
+        if (typeof p.open === "boolean") open = p.open;
+        if (p.started != null) started = p.started;
+        turn = p.turn === "you" ? "cpu" : "you";
+        charging = false; power = 0;
+        if (p.over) { overMsg = p.over; phase = "over"; }
+        else phase = turnPhase(turn);
+        status();
+      }
+      return;
+    }
     if (p.sub === "shot") {
       packetId = p.id; applySnapshot(p.snap);
       aimYaw = p.a; turn = p.turn === "you" ? "cpu" : "you"; // their 'you' is our opponent
       strike(p.a, p.p);
     } else if (p.sub === "settle") {
+      // the shooter's settle is the source of truth — hard-snap to it.
       packetId = p.id; applySnapshot(p.snap);
       group = p.group; open = p.open;
       turn = p.turn === "you" ? "cpu" : "you";
       if (p.over) { overMsg = p.over; phase = "over"; }
-      else phase = turn === "you" ? "aim" : "aimCPU";
+      else phase = turnPhase(turn);
       status();
     }
   }
@@ -487,15 +522,22 @@ export function initPool(h, opts = {}) {
     } else if (phase === "aimCPU") {
       cpuWait -= dt;
       placeCamera();
-      if (cpuWait <= 0) cpuShoot();
+      if (cpuWait <= 0 && !peer) cpuShoot();   // never auto-play when a real human is here
+    } else if (phase === "watch") {
+      // a real opponent owns this turn; just hold on the table until their
+      // shot/settle arrives over the wire. no local sim, no CPU.
+      placeCamera();
     } else if (phase === "rolling") {
       let acc = dt;
       while (acc >= DT_SUB) { step(DT_SUB); acc -= DT_SUB; }
       placeMeshes();
       placeCamera();
       if (allStopped()) {
-        if (peer && shotInfo && shotInfo.shooter !== turn) { /* guest waits for settle */ }
-        resolveShotEnd();
+        // shooter authority: only the player who took the shot resolves it and
+        // broadcasts the settle. a watcher just parks at rest and waits for that
+        // authoritative settle — no local resolve, no phantom turn flip.
+        if (peer && shotInfo && shotInfo.shooter !== "you") { phase = "watch"; status(); }
+        else resolveShotEnd();
       }
     } else if (phase === "over") {
       placeCamera();
@@ -518,7 +560,12 @@ export function initPool(h, opts = {}) {
     playing = false; charging = false; power = 0;
     hideGuide();
   }
-  function reset() { started = true; phase = "aim"; newGame(); }
+  function reset() {
+    started = true; phase = "aim"; newGame();
+    // in a 2-human game, hand the peer the fresh rack so they sync to "watch"
+    // (we racked it, so we shoot first) instead of both claiming the first turn.
+    if (net && peer) sendSettle();
+  }
 
   return {
     dock, undock, update, handleNet, reset,
