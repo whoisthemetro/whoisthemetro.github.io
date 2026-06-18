@@ -405,6 +405,17 @@ export class NotesWall {
   }
 
   // convert a raycast hit on a wall mesh into stored (wall, u, v)
+  // walls are DoubleSide, so the raycast happily hits the BACK of one — e.g.
+  // the bedroom's west wall seen from the arcade behind it. each wall's normal
+  // points into its own room, so you may only post from the front (room) side.
+  // true if `pos` (a {x,y,z}) is on that side of the wall this hit landed on.
+  postableFrom(hit, pos) {
+    const wall = this.walls.find(w => w.mesh === hit.object);
+    if (!wall || !pos) return false;
+    const n = wall.normal, o = wall.origin;
+    return (pos.x - o.x) * n.x + (pos.y - o.y) * n.y + (pos.z - o.z) * n.z > 0;
+  }
+
   placementFromHit(hit) {
     const wall = this.walls.find(w => w.mesh === hit.object);
     if (!wall) return null;

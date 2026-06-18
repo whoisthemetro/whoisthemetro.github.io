@@ -557,7 +557,8 @@ function pickUpNote(note) {
 function updateCarry() {
   if (!carrying) return;
   const hit = castWalls(0, 0);
-  const place = hit && hit.distance < 4.5 ? notesWall.placementFromHit(hit) : null;
+  const place = hit && hit.distance < 4.5 && notesWall.postableFrom(hit, controls.pos)
+    ? notesWall.placementFromHit(hit) : null;
   const mesh = notesWall.byId.get(carrying.id);
   if (!mesh) { carrying = null; return; }
   if (place) {
@@ -1016,7 +1017,7 @@ controls.onAction((ndcX, ndcY) => {
     handleCare(hit.object.userData.care);
   } else if (hit.object.userData.note) {
     openReader(hit.object.userData.note);
-  } else if (hit.object.userData.postable && hit.distance < 4.5) {
+  } else if (hit.object.userData.postable && hit.distance < 4.5 && notesWall.postableFrom(hit, controls.pos)) {
     const place = notesWall.placementFromHit(hit);
     if (place) openComposer(place);
   }
@@ -1181,7 +1182,7 @@ setInterval(() => {
   } else if (hit && hit.object.userData.note) {
     aimTip.textContent = `${TAP} to read`;
     aimTip.classList.add("show");
-  } else if (hit && hit.object.userData.postable && hit.distance < 4.5) {
+  } else if (hit && hit.object.userData.postable && hit.distance < 4.5 && notesWall.postableFrom(hit, controls.pos)) {
     aimTip.textContent = `${TAP} to leave something`;
     aimTip.classList.add("show");
   } else {
