@@ -399,6 +399,7 @@ addEventListener("resize", () => {
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
+  screen.resize();                         // keep the CSS3D big-screen layer sized to the window
 });
 
 /* ---------------- ui elements ---------------- */
@@ -3314,4 +3315,5 @@ renderer.setAnimationLoop(() => {
   if (inArena) setThruster(controls.thrusting);
   stepRideCam(dt);                         // nudge the camera while the car travels
   renderer.render(world.scene, camera);
+  screen.renderCSS(camera);                // the venue big screen (flat <video> on the wall via CSS3D)
 });
