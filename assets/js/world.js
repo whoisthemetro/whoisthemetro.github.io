@@ -1228,6 +1228,10 @@ export function buildWorld() {
   // and physically cannot reach the boat across the void (directionals
   // illuminate the whole scene regardless of light.layers)
   const beam = new THREE.SpotLight(0xfff0d8, 0, 80, 0.85, 0.35, 0);
+  // the sun moves: at noon beam.y climbs past 40 (the arena's y-band), so a
+  // position test would mis-file it. tag it home so per-room light culling
+  // (main.js) keeps the bedroom sun lit instead of treating it as arena.
+  beam.userData.cullRoom = "home";
   beam.castShadow = true;
   beam.shadow.mapSize.set(2048, 2048);
   beam.shadow.camera.near = 2; beam.shadow.camera.far = 50;
@@ -3954,6 +3958,9 @@ export function buildWorld() {
 
   // ---- the boat's own light: the Swedish sun/moon through the holes ----
   const boatSun = new THREE.SpotLight(0xfff0d8, 0, 60, 0.45, 0.35, 0);
+  // a moving sun like the bedroom's — tag it explicitly so room-culling files
+  // it with the boat (position alone would mis-bucket it when it rides high).
+  boatSun.userData.cullRoom = "desi";
   boatSun.castShadow = true;
   boatSun.shadow.mapSize.set(1024, 1024);
   boatSun.shadow.camera.near = 2; boatSun.shadow.camera.far = 35;

@@ -55,6 +55,45 @@ camera.layers.enable(1);   // boat layer
 camera.layers.enable(2);   // arena layer
 const world = buildWorld(renderer);
 
+/* --- per-room light culling: keep the mobile shader-uniform budget in check --
+   Some GPUs (notably Qualcomm Adreno) cap MAX_FRAGMENT_UNIFORM_VECTORS at 256.
+   three.js compiles EVERY material's fragment shader against the TOTAL scene
+   light count, so all ~55 of our lights overflowed that cap on those phones —
+   the wall (toon) shaders failed to link and the walls simply weren't drawn
+   (the friend's "see-through walls" bug). Fix: only ever keep the CURRENT
+   room's lights in the scene's light state. Hiding a light (visible=false)
+   DROPS it from the uniform budget; intensity=0 does NOT. Measured worst case
+   is "home" (bedroom+arcade) at 217 vec4s — safely under 256; every other room
+   is far lower. The hemisphere fill is global (always on). The two suns move
+   (their y climbs past the arena band at noon) so they carry an explicit
+   userData.cullRoom from world.js instead of being placed by position.
+   Toggling visibility recompiles materials on a room change — a brief hitch
+   hidden by the fade-to-black; bedroom<->arcade is one "home" group, so the
+   main space never re-compiles as you walk it. */
+const cullLights = { home: [], desi: [], crew: [], venue: [] };
+(function bucketRoomLights() {
+  world.scene.updateMatrixWorld(true);
+  const wp = new THREE.Vector3();
+  world.scene.traverse((o) => {
+    if (!o.isLight || o.isHemisphereLight || o.isAmbientLight) return; // fill stays global
+    o.getWorldPosition(wp);
+    const r = o.userData.cullRoom || roomScopeOfPos(wp.x, wp.y, wp.z);
+    (cullLights[r] || cullLights.home).push(o);
+  });
+})();
+let lightCullRoom = null;
+function applyLightCull(scope) {
+  if (scope === lightCullRoom) return;
+  lightCullRoom = scope;
+  for (const room in cullLights) {
+    const on = room === scope;
+    for (const lt of cullLights[room]) lt.visible = on;
+  }
+}
+// everyone spawns home — cull to it before the first render so a GPU that can't
+// fit all 55 lights never has to compile that doomed shader even once.
+applyLightCull("home");
+
 /* ---------------- analytics (PostHog, env-gated; see docs/analytics.md) ----
    Exploration/interaction events, all aggregated by the callers. No-op until a
    key is set in config.js. ------------------------------------------------- */
@@ -3311,7 +3350,7 @@ renderer.setAnimationLoop(() => {
   // when YOU change rooms, re-scope which avatars exist (catches every transition
   // path — elevator, password gate, admin jump — without hooking each one)
   const sc = myScope();
-  if (sc !== lastMyScope) { lastMyScope = sc; refreshGhostScope(); }
+  if (sc !== lastMyScope) { lastMyScope = sc; refreshGhostScope(); applyLightCull(sc); }
   ghosts.tick(dt, t, (uid) => voice.level(uid));
   cat.tick(dt, t, controls.pose());
   // the bartender reacts to you only when you're in the bedroom/arcade with him
