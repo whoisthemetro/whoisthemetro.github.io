@@ -29,6 +29,7 @@ export function initPool(h, opts = {}) {
   const cam = opts.camera;
   let youName = (opts.youName || "YOU").slice(0, 12);
   let oppName = (opts.oppName || "CPU").slice(0, 12);
+  const gameId = opts.gameId || "pool";   // distinct per table so two tables don't share a net channel
 
   const R = h.ballR, D = 2 * R;
   const HL = h.half.l, HW = h.half.w;
@@ -449,14 +450,14 @@ export function initPool(h, opts = {}) {
   }
   function sendShot(angle, p) {
     if (!net) return;
-    net.send({ game: "pool", sub: "shot", id: ++packetId, a: +angle.toFixed(4), p: +p.toFixed(3), snap: snapshot(), turn });
+    net.send({ game: gameId, sub: "shot", id: ++packetId, a: +angle.toFixed(4), p: +p.toFixed(3), snap: snapshot(), turn });
   }
   function sendSettle() {
     if (!net) return;
-    net.send({ game: "pool", sub: "settle", id: ++packetId, snap: snapshot(), turn, group, open, over: overMsg });
+    net.send({ game: gameId, sub: "settle", id: ++packetId, snap: snapshot(), turn, group, open, over: overMsg });
   }
   function handleNet(p) {
-    if (!net || p.game !== "pool") return;
+    if (!net || p.game !== gameId) return;
     if (p.id != null && p.id <= packetId && p.sub !== "sit" && p.sub !== "host") return;
     if (p.sub === "sit") {
       // someone docked at the other end. we become the host (we go first) and
@@ -465,7 +466,7 @@ export function initPool(h, opts = {}) {
         peer = { uid: p.uid };
         oppName = (p.name || "P2").slice(0, 12);
         if (phase === "aimCPU") { phase = "watch"; cpuWait = 0; }  // the human inherits the CPU's seat
-        net.send({ game: "pool", sub: "host", to: p.uid, name: youName, id: ++packetId,
+        net.send({ game: gameId, sub: "host", to: p.uid, name: youName, id: ++packetId,
                    snap: snapshot(), group, open, turn, started, over: overMsg });
         status();
       }
@@ -549,7 +550,7 @@ export function initPool(h, opts = {}) {
 
   function dock(end) {
     playing = true;
-    if (net) net.send({ game: "pool", sub: "sit", name: youName });
+    if (net) net.send({ game: gameId, sub: "sit", name: youName });
     if (!started) { started = true; newGame(); }   // fresh table
     else { if (phase === "aim") aimAtNearestTarget(); status(); }   // resume where we left off
     return h.dock[end];

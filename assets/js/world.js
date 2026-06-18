@@ -2555,8 +2555,10 @@ export function buildWorld() {
      controllable, on purpose. Long axis runs E-W. Table-local coords:
      u = x-centre (length), w = z-centre (width).
      ============================================================ */
-  const pool = (() => {
-    const PT = { x: -9.0, z: 2.9 };
+  // a factory, not a one-off — the arcade now has TWO identical tables in a row
+  // along the north wall (idKey namespaces each table's click targets + buttons
+  // so main.js can tell them apart; everything else is built relative to PT).
+  function buildPool(PT, idKey) {
     const surfaceY = 0.78;
     const hl = 1.2, hw = 0.6;             // playfield half-extents (length, width)
     const r = 0.03;                       // ball radius
@@ -2797,14 +2799,14 @@ export function buildWorld() {
       add(gb);
       return hm;
     }
-    const joinHit = wallBtn("JOIN", "#3ce47e", -0.36, "poolJoin");
-    const resetHit = wallBtn("RESET", "#ff5a5a", 0.36, "poolReset");
+    const joinHit = wallBtn("JOIN", "#3ce47e", -0.36, idKey + "Join");
+    const resetHit = wallBtn("RESET", "#ff5a5a", 0.36, idKey + "Reset");
 
     // click target over the whole table
     const hit = new THREE.Mesh(new THREE.BoxGeometry(2 * hl + 0.3, 0.4, 2 * hw + 0.3),
       new THREE.MeshBasicMaterial({ visible: false }));
     hit.position.set(PT.x, surfaceY + 0.1, PT.z);
-    hit.userData.pool = true;
+    hit.userData[idKey] = true;
     add(hit);
     add(grp);
 
@@ -2821,242 +2823,11 @@ export function buildWorld() {
         east: { x: PT.x + hl + stand, z: PT.z, eye, pitch },
       },
     };
-  })();
-
-  /* ============================================================
-     DARTS / 501 — a real board on the north wall, thrown with a
-     3D projectile that GRAVITY arcs down across the ~2.4 m flight,
-     so you aim above the bull to beat the drop. world.js owns the
-     board art + the dart meshes + the faint guide arc + reticle +
-     the scoreboard; darts.js runs the turn-based 501 game. View
-     space (vx,vy) = how the thrower sees the face: vx to their
-     right (= world -x), vy up. The printed board and scoreAt()
-     share that space so they always agree.
-     ============================================================ */
-  const darts = (() => {
-    const BX = -13.2, BY = 1.73;            // board centre (bull height, regulation)
-    const BZ = AR.z1 - 0.08;                // board face, proud of the north wall
-    const ocheZ = BZ - 2.37;                // throw line, regulation distance south
-    const eyeY = 1.62;
-
-    // standard board geometry as fractions of the 170 mm scoring radius
-    const RB = 0.34;                        // scoring radius (m) — ~2× real, hittable in-game
-    const rings = { boardR: RB, bull50: 0.037 * RB, bull25: 0.094 * RB,
-      tripIn: 0.582 * RB, tripOut: 0.629 * RB, dblIn: 0.953 * RB, dblOut: RB };
-    const SEG = [20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5];
-
-    function scoreAt(vx, vy) {
-      const r = Math.hypot(vx, vy);
-      if (r > rings.boardR) return { value: 0, mult: 0, label: "MISS", region: "miss", isDouble: false };
-      if (r <= rings.bull50) return { value: 50, mult: 1, label: "BULL", region: "bull50", isDouble: true };
-      if (r <= rings.bull25) return { value: 25, mult: 1, label: "25", region: "bull25", isDouble: false };
-      let deg = Math.atan2(vx, vy) * 180 / Math.PI; if (deg < 0) deg += 360;
-      const base = SEG[Math.round(deg / 18) % 20];
-      let mult = 1, region = "single";
-      if (r >= rings.tripIn && r <= rings.tripOut) { mult = 3; region = "triple"; }
-      else if (r >= rings.dblIn && r <= rings.dblOut) { mult = 2; region = "double"; }
-      return { value: base * mult, mult, label: (mult === 3 ? "T" : mult === 2 ? "D" : "") + base,
-        region, isDouble: region === "double" };
-    }
-
-    /* ---- board face: a procedural canvas, drawn in view space so it
-       matches scoreAt by construction ---- */
-    const CC = 300, MPP = CC / 0.40;        // canvas centre + px-per-metre (visual radius 0.40)
-    const px = (r) => r * MPP;
-    function wedge(g, degC, rIn, rOut, color) {
-      g.beginPath();
-      for (let k = 0; k <= 6; k++) { const d = (degC - 9 + 18 * k / 6) * Math.PI / 180;
-        const x = CC + Math.sin(d) * px(rOut), y = CC - Math.cos(d) * px(rOut); k ? g.lineTo(x, y) : g.moveTo(x, y); }
-      for (let k = 6; k >= 0; k--) { const d = (degC - 9 + 18 * k / 6) * Math.PI / 180;
-        g.lineTo(CC + Math.sin(d) * px(rIn), CC - Math.cos(d) * px(rIn)); }
-      g.closePath(); g.fillStyle = color; g.fill();
-    }
-    const boardTex = canvasTex(600, 600, (g) => {
-      g.clearRect(0, 0, 600, 600);
-      g.fillStyle = "#0a0a0d"; g.beginPath(); g.arc(CC, CC, 296, 0, 7); g.fill();
-      for (let i = 0; i < 20; i++) {
-        const deg = i * 18, dark = i % 2 === 0;
-        const single = dark ? "#1b1b21" : "#e7d6a2", ring = dark ? "#d8392a" : "#2faa4d";
-        wedge(g, deg, rings.bull25, rings.tripIn, single);
-        wedge(g, deg, rings.tripIn, rings.tripOut, ring);
-        wedge(g, deg, rings.tripOut, rings.dblIn, single);
-        wedge(g, deg, rings.dblIn, rings.dblOut, ring);
-      }
-      g.fillStyle = "#2faa4d"; g.beginPath(); g.arc(CC, CC, px(rings.bull25), 0, 7); g.fill();
-      g.fillStyle = "#d8392a"; g.beginPath(); g.arc(CC, CC, px(rings.bull50), 0, 7); g.fill();
-      g.strokeStyle = "rgba(16,16,20,0.85)"; g.lineWidth = 1.5;       // spider wires
-      for (let i = 0; i < 20; i++) { const d = (i * 18 + 9) * Math.PI / 180; g.beginPath();
-        g.moveTo(CC + Math.sin(d) * px(rings.bull25), CC - Math.cos(d) * px(rings.bull25));
-        g.lineTo(CC + Math.sin(d) * px(rings.dblOut), CC - Math.cos(d) * px(rings.dblOut)); g.stroke(); }
-      g.fillStyle = "#f3ead0"; g.font = "bold 30px Arial"; g.textAlign = "center"; g.textBaseline = "middle";
-      for (let i = 0; i < 20; i++) { const d = i * 18 * Math.PI / 180, rr = px(rings.dblOut) + 23;
-        g.fillText(String(SEG[i]), CC + Math.sin(d) * rr, CC - Math.cos(d) * rr); }
-    });
-
-    // cabinet behind, wooden surround, the printed face
-    const cab = box(0.94, 0.94, 0.07, lam(0x241712));
-    cab.position.set(BX, BY, AR.z1 - 0.035); add(cab);
-    const surround = new THREE.Mesh(new THREE.TorusGeometry(0.405, 0.03, 10, 40), lam(0x120c08));
-    surround.position.set(BX, BY, BZ); add(surround);
-    const face = new THREE.Mesh(new THREE.CircleGeometry(0.40, 48),
-      new THREE.MeshBasicMaterial({ map: boardTex }));
-    face.position.set(BX, BY, BZ); face.rotation.y = Math.PI; add(face);   // face the room (-z)
-
-    // a short-throw spot on the board so the darts read; kept tiny so the
-    // glow can't crawl out of the arcade (light.layers doesn't scope light)
-    const boardLamp = new THREE.PointLight(0xfff0d6, 5.5, 2.6, 2);
-    boardLamp.position.set(BX, BY + 0.55, BZ - 0.5); add(boardLamp);
-
-    // oche line on the floor — where you stand
-    const oche = box(1.3, 0.012, 0.05, new THREE.MeshBasicMaterial({ color: 0x9d4dff }));
-    oche.position.set(BX, 0.012, ocheZ); add(oche);
-
-    /* ---- darts: 3 that stick on the board + 1 in-flight ---- */
-    const ZAX = new THREE.Vector3(0, 0, 1);
-    function mkDart() {
-      const g = new THREE.Group();
-      const tip = new THREE.Mesh(new THREE.ConeGeometry(0.006, 0.05, 10), lam(0xd8dce4));
-      tip.rotation.x = Math.PI / 2; tip.position.z = 0.085; g.add(tip);   // tip points +z (into the board)
-      const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.0085, 0.0085, 0.10, 12), lam(0x33373f));
-      barrel.rotation.x = Math.PI / 2; barrel.position.z = 0.012; g.add(barrel);
-      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.005, 0.05, 8), lam(0x9aa0aa));
-      shaft.rotation.x = Math.PI / 2; shaft.position.z = -0.062; g.add(shaft);
-      const fmat = new THREE.MeshBasicMaterial({ color: 0xff3b6b, side: THREE.DoubleSide });
-      const f1 = new THREE.Mesh(new THREE.PlaneGeometry(0.04, 0.045), fmat);
-      f1.rotation.x = Math.PI / 2; f1.position.z = -0.1; g.add(f1);
-      const f2 = new THREE.Mesh(new THREE.PlaneGeometry(0.04, 0.045), fmat);
-      f2.rotation.x = Math.PI / 2; f2.rotation.y = Math.PI / 2; f2.position.z = -0.1; g.add(f2);
-      g.visible = false; add(g); return g;
-    }
-    const dartMeshes = [mkDart(), mkDart(), mkDart()];
-    const flyMesh = mkDart();
-    function orient(m, dir) {
-      const d = new THREE.Vector3(dir.x, dir.y, dir.z);
-      if (d.lengthSq() < 1e-6) d.set(0, 0, 1); else d.normalize();
-      m.quaternion.setFromUnitVectors(ZAX, d); return d;
-    }
-    function placeDart(idx, w, dir) {
-      const m = dartMeshes[idx]; if (!m) return;
-      const d = orient(m, dir);
-      m.position.set(w.x, w.y, w.z); m.position.addScaledVector(d, -0.07);  // bury tip, body toward you
-      m.visible = true;
-    }
-    function flyDart(x, y, z, dir) { orient(flyMesh, dir); flyMesh.position.set(x, y, z); flyMesh.visible = true; }
-    function hideFly() { flyMesh.visible = false; }
-    function clearDarts() { for (const m of dartMeshes) m.visible = false; }
-
-    /* ---- aim guide: a short faint arc + a landing reticle ---- */
-    const ARC_N = 48;
-    const arcGeo = new THREE.BufferGeometry();
-    arcGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(ARC_N * 3), 3));
-    const arcLine = new THREE.Line(arcGeo, new THREE.LineBasicMaterial({
-      color: 0x9fe8ff, transparent: true, opacity: 0.4, depthTest: false }));
-    arcLine.renderOrder = 998; arcLine.visible = false; add(arcLine);
-    const reticle = new THREE.Mesh(new THREE.RingGeometry(0.011, 0.019, 24),
-      new THREE.MeshBasicMaterial({ color: 0x9fe8ff, transparent: true, opacity: 0.92, side: THREE.DoubleSide, depthTest: false }));
-    reticle.renderOrder = 999; reticle.visible = false; add(reticle);
-    function setArc(pts, frac) {
-      const n = Math.max(2, Math.min(pts.length, Math.floor(pts.length * frac)));
-      const pos = arcGeo.attributes.position;
-      for (let i = 0; i < ARC_N; i++) {
-        const src = pts[Math.min(n - 1, Math.floor(i / (ARC_N - 1) * (n - 1)))];
-        pos.setXYZ(i, src.x, src.y, src.z);
-      }
-      pos.needsUpdate = true; arcLine.visible = true;
-    }
-    function setReticle(w) {
-      reticle.position.set(w.x, w.y, w.z - 0.012);
-      reticle.material.color.setHex(w.onBoard ? 0x9fe8ff : 0xff6b6b);
-      reticle.visible = true;
-    }
-    function hideGuide() { arcLine.visible = false; reticle.visible = false; }
-
-    /* ---- wall scoreboard (501) ---- */
-    const sbCanvas = document.createElement("canvas");
-    sbCanvas.width = 640; sbCanvas.height = 320;
-    const sbCtx = sbCanvas.getContext("2d");
-    const sbTex = new THREE.CanvasTexture(sbCanvas);
-    sbTex.colorSpace = THREE.SRGBColorSpace;
-    function setBoard(d) {
-      const g = sbCtx;
-      g.fillStyle = "#06080f"; g.fillRect(0, 0, 640, 320);
-      g.strokeStyle = "#9d4dff"; g.lineWidth = 8; g.strokeRect(5, 5, 630, 310);
-      g.textAlign = "center"; g.textBaseline = "middle";
-      g.fillStyle = "#ffd23c"; g.font = "700 26px monospace"; g.fillText("501 · DARTS", 320, 34);
-      if (!d) {
-        g.fillStyle = "#3ce47e"; g.font = "700 38px monospace"; g.fillText("▸ JOIN TO PLAY", 320, 150);
-        g.fillStyle = "#7f8a99"; g.font = "700 18px monospace";
-        g.fillText("solo vs the CPU — or a 2nd player", 320, 202);
-        g.fillText("can grab the open seat", 320, 228);
-        sbTex.needsUpdate = true; return;
-      }
-      g.strokeStyle = "rgba(157,77,255,0.4)"; g.lineWidth = 2;
-      g.beginPath(); g.moveTo(320, 60); g.lineTo(320, 300); g.stroke();
-      const cols = [{ x: 162, p: d.you, on: d.turn === "you" }, { x: 478, p: d.opp, on: d.turn === "cpu" }];
-      for (const c of cols) {
-        const p = c.p || {};
-        g.fillStyle = c.on ? "#caa9ff" : "#dfe7f0"; g.font = "700 26px monospace";
-        g.fillText((p.name || "—").slice(0, 12), c.x, 90);
-        g.fillStyle = "#ffffff"; g.font = "900 78px monospace";
-        g.fillText(String(p.score == null ? 501 : p.score), c.x, 166);
-        if (c.on) {
-          const labels = p.darts || [];
-          g.font = "700 19px monospace";
-          for (let i = 0; i < 3; i++) {
-            g.fillStyle = labels[i] ? "#7fffd0" : "#2a3550";
-            g.fillText(labels[i] || "·", c.x - 64 + i * 64, 230);
-          }
-          g.fillStyle = "#caa9ff"; g.font = "700 16px monospace";
-          g.fillText(`▼ ${d.dartsLeft} DART${d.dartsLeft === 1 ? "" : "S"} LEFT`, c.x, 270);
-        }
-      }
-      if (d.over) { g.fillStyle = "#3ce47e"; g.font = "700 22px monospace"; g.fillText(d.over.slice(0, 30), 320, 300); }
-      sbTex.needsUpdate = true;
-    }
-    setBoard(null);
-    const sbY = 2.78;
-    const sbFrame = box(2.2, 1.1, 0.05, lam(0x05060a));
-    sbFrame.position.set(BX, sbY, AR.z1 - 0.03); add(sbFrame);
-    const sbPanel = new THREE.Mesh(new THREE.PlaneGeometry(2.06, 0.96),
-      new THREE.MeshBasicMaterial({ map: sbTex }));
-    sbPanel.position.set(BX, sbY, AR.z1 - 0.06); sbPanel.rotation.y = Math.PI; add(sbPanel);
-
-    /* ---- JOIN / RESET wall buttons, to the side of the board ---- */
-    function wallBtn(label, col, dx, dy, key) {
-      const gb = new THREE.Group();
-      const bw = 0.58, bh = 0.26;
-      gb.add(box(bw, bh, 0.07, lam(0x0a0d14)));
-      const fc = new THREE.Mesh(new THREE.PlaneGeometry(bw * 0.9, bh * 0.74),
-        new THREE.MeshBasicMaterial({
-          map: canvasTex(256, 104, (g, cw, ch) => {
-            g.fillStyle = "#070a10"; g.fillRect(0, 0, cw, ch);
-            g.strokeStyle = col; g.lineWidth = 6; g.strokeRect(6, 6, cw - 12, ch - 12);
-            g.fillStyle = col; g.font = "700 52px monospace";
-            g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(label, cw / 2, ch / 2 + 2);
-          }),
-        }));
-      fc.position.z = -0.037; fc.rotation.y = Math.PI; gb.add(fc);
-      const hm = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, 0.26),
-        new THREE.MeshBasicMaterial({ visible: false }));
-      hm.userData[key] = true; gb.add(hm);
-      gb.position.set(BX + dx, BY + dy, AR.z1 - 0.06); add(gb);
-      return hm;
-    }
-    const joinHit = wallBtn("JOIN", "#3ce47e", 1.08, 0.26, "dartsJoin");
-    const resetHit = wallBtn("RESET", "#ff5a5a", 1.08, -0.16, "dartsReset");
-
-    // click target in front of the board (walk up + click to play)
-    const hit = new THREE.Mesh(new THREE.BoxGeometry(0.86, 0.86, 0.3),
-      new THREE.MeshBasicMaterial({ visible: false }));
-    hit.position.set(BX, BY, BZ - 0.15); hit.userData.darts = true; add(hit);
-
-    return {
-      center: { x: BX, y: BY, z: BZ }, oche: { x: BX, z: ocheZ, eyeY }, floorY: 0,
-      rings, seg: SEG, scoreAt,
-      placeDart, flyDart, hideFly, clearDarts, setArc, setReticle, hideGuide, setBoard,
-      hit, joinHit, resetHit,
-    };
-  })();
+  }
+  // two tables in a row down the north wall — the original at x=-9, a second
+  // where the darts board used to hang (x=-13.2). same z so they line up.
+  const pool = buildPool({ x: -9.0, z: 2.9 }, "pool");
+  const pool2 = buildPool({ x: -13.2, z: 2.9 }, "pool2");
 
   /* ============================================================
      ARCADE BASKETBALL (pop-a-shot) — a hoop on the north wall, a
@@ -6623,7 +6394,7 @@ export function buildWorld() {
     grabHandles, kiosks, arenaExits,
     arenaGoalX: GOAL_X, arenaBubbleR: BUBBLE_R,
     setTubeBarriers, inTube,
-    pool, darts, hoops,
+    pool, pool2, hoops,
     discGroup, discHit, setArenaScore,
     elevHits, elevCallHits, setElevatorDoors, elevatorOpen, inElevatorCab,
     // where you land when you leave any room — back inside the cab, facing out
