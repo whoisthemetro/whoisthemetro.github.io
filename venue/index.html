@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+<title>THE VENUE — whoisthemetro</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2307090b'/%3E%3Ctext x='16' y='23' font-family='Helvetica,Arial' font-size='20' font-weight='900' fill='%23ff4d2e' text-anchor='middle'%3EM%3C/text%3E%3C/svg%3E" />
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: #07060d; overflow: hidden; font-family: Archivo, system-ui, sans-serif; }
+  /* the stream, dead simple: a real <video> filling the screen (no WebGL, so
+     iOS never stalls it the way a 3D texture does) */
+  #screen { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; display: none; }
+  #screen.live { display: block; }
+  /* the "nothing on yet" curtain */
+  #curtain { position: fixed; inset: 0; display: grid; place-content: center; text-align: center; gap: 14px;
+             background: radial-gradient(120% 90% at 50% 18%, #1a1430 0%, #0a0814 60%, #07060d 100%); padding: 24px; }
+  #curtain.hidden { display: none; }
+  .mark { font-weight: 800; letter-spacing: .22em; font-size: clamp(26px, 7vw, 56px); color: #e7e0ff;
+          text-shadow: 0 0 26px rgba(150,120,255,.45); }
+  .sub { font-size: clamp(13px, 3.4vw, 17px); color: #9b93c7; letter-spacing: .04em; }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: #7c6cff; margin-right: 8px;
+         animation: pulse 1.3s ease-in-out infinite; vertical-align: middle; }
+  @keyframes pulse { 0%,100% { opacity: .25; transform: scale(.8);} 50% { opacity: 1; transform: scale(1.15);} }
+  /* floating controls */
+  .btn { position: fixed; z-index: 5; border: 0; border-radius: 999px; cursor: pointer; font: inherit; font-weight: 700;
+         padding: 12px 18px; color: #0a0814; background: #c8bcff; box-shadow: 0 6px 24px rgba(0,0,0,.5); }
+  .btn[hidden] { display: none; }
+  #sound { left: 50%; bottom: calc(22px + env(safe-area-inset-bottom)); transform: translateX(-50%); background: #ffd23c; }
+  #share { right: calc(16px + env(safe-area-inset-right)); top: calc(16px + env(safe-area-inset-top)); background: #7c6cff; color: #fff; }
+  #tag { position: fixed; left: calc(16px + env(safe-area-inset-left)); bottom: calc(16px + env(safe-area-inset-bottom));
+         z-index: 5; font-size: 12px; letter-spacing: .18em; color: #6a6390; font-weight: 700; }
+</style>
+</head>
+<body>
+  <video id="screen" autoplay muted playsinline webkit-playsinline></video>
+  <div id="curtain">
+    <div class="mark">THE&nbsp;VENUE</div>
+    <div class="sub"><span class="dot"></span><span id="status">waiting for the stream…</span></div>
+  </div>
+  <button id="sound" class="btn" hidden>🔊 tap for sound</button>
+  <button id="share" class="btn" hidden>🖥️ share my screen</button>
+  <div id="tag">whoisthemetro</div>
+
+  <script src="/assets/js/config.js"></script>
+  <script type="module">
+    // self-contained venue watch page: NO 3D world, NO ghosts — just the live
+    // screen-share pulled from the Cloudflare SFU and played in a flat <video>.
+    // it only touches presence to hear the host's "we're live" announcement.
+    import { presence } from "/assets/js/presence.js";
+    import { stream } from "/assets/js/stream.js";
+    import { store } from "/assets/js/store.js";
+
+    const video = document.getElementById("screen");
+    const curtain = document.getElementById("curtain");
+    const statusEl = document.getElementById("status");
+    const sound = document.getElementById("sound");
+    const share = document.getElementById("share");
+    const setStatus = (t) => { statusEl.textContent = t; };
+    let hosting = false;
+
+    function showLive(s) {
+      video.srcObject = s;
+      video.classList.add("live");
+      curtain.classList.add("hidden");
+      video.play().catch(() => {});
+    }
+    function showCurtain(msg) {
+      video.classList.remove("live");
+      curtain.classList.remove("hidden");
+      sound.hidden = true;
+      setStatus(msg);
+    }
+
+    await store.init();
+    // join presence with NO name → invisible to the main 3D world (it filters
+    // nameless peers), but still on the channel to receive the live announce.
+    const uid = "venue-" + Math.random().toString(36).slice(2, 9);
+    await presence.join({ uid, name: "", color: "#7c6cff" }, () => ({ x: -40, y: 0, z: 0, yaw: 0 }));
+    stream.init(presence.clientId);
+
+    stream.onRemoteStream((s) => { if (!hosting) { showLive(s); sound.hidden = false; } });
+    stream.onRemoteEnd(() => { if (!hosting) showCurtain("the stream paused — hang tight…"); });
+    stream.onStatus((s) => { if (s === "connecting" && !video.classList.contains("live")) setStatus("connecting…"); });
+
+    stream.enterVenue();                 // subscribe as soon as a host is live
+
+    // keep it alive: re-subscribe if the connection drops, re-play if iOS paused
+    setInterval(() => {
+      if (!hosting) stream.ensureWatching();
+      if (video.srcObject && video.paused) video.play().catch(() => {});
+    }, 1500);
+
+    // first tap: turn sound on (browsers block autoplay-with-audio)
+    sound.addEventListener("click", () => { video.muted = false; video.play().catch(() => {}); sound.hidden = true; });
+    window.addEventListener("pointerdown", () => { if (video.srcObject && video.muted && !sound.hidden) { /* leave the button */ } }, { once: false });
+
+    // admin can host straight from here: whoisthemetro.com/venue#admin
+    if (/admin/i.test(location.hash)) {
+      share.hidden = false;
+      share.addEventListener("click", async () => {
+        if (hosting) { stream.stopShare(); hosting = false; share.textContent = "🖥️ share my screen"; showCurtain("waiting for the stream…"); return; }
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) return alert("screen sharing needs a desktop browser");
+        let disp;
+        try {
+          disp = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { max: 30 }, width: { max: 1280 }, height: { max: 720 } }, audio: true });
+        } catch (e) { return; }
+        const vt = disp.getVideoTracks()[0];
+        if (!vt) { disp.getTracks().forEach(t => t.stop()); return; }
+        vt.contentHint = "motion";
+        try { await vt.applyConstraints({ frameRate: 24, width: { max: 1280 }, height: { max: 720 } }); } catch (e) {}
+        const ok = await stream.startShare(disp);
+        if (!ok) { disp.getTracks().forEach(t => t.stop()); return alert("couldn't start the share — try again"); }
+        hosting = true;
+        share.textContent = "■ stop sharing";
+        showLive(disp); video.muted = true;       // host sees their own share, muted
+        sound.hidden = true;
+        vt.addEventListener("ended", () => { hosting = false; share.textContent = "🖥️ share my screen"; showCurtain("waiting for the stream…"); });
+      });
+    }
+  </script>
+</body>
+</html>
