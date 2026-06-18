@@ -7,9 +7,13 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2307090b'/%3E%3Ctext x='16' y='23' font-family='Helvetica,Arial' font-size='20' font-weight='900' fill='%23ff4d2e' text-anchor='middle'%3EM%3C/text%3E%3C/svg%3E" />
 <!-- /venue is the 3D world now (not the old flat watch page). bounce everyone to
      the root world with the #venue hash, which main.js reads on entry to walk
-     you straight into THE VENUE instead of starting in the bedroom. -->
+     you straight into THE VENUE instead of starting in the bedroom. carry an
+     #admin through as #venue,admin so /venue#admin still hosts the booth. -->
 <meta http-equiv="refresh" content="0; url=/#venue" />
-<script>location.replace("/#venue");</script>
+<script>
+  var admin = /admin/i.test(location.hash);
+  location.replace("/#venue" + (admin ? ",admin" : ""));
+</script>
 <style>
   html, body { margin: 0; height: 100%; background: #07060d; color: #c8bcff;
     font-family: system-ui, sans-serif; display: grid; place-content: center; text-align: center; gap: 12px; }

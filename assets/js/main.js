@@ -423,10 +423,12 @@ function setVacuuming(on) {
 }
 let entered = false;
 let lastPostAt = 0;
-const adminMode = location.hash === "#admin";
+// admin is a hash token now, so it can ride alongside #venue (e.g. #venue,admin
+// — the booth host link). matched anywhere in the hash, in any order.
+const adminMode = /(^|[#,])admin\b/i.test(location.hash);
 // /venue → /#venue : land in the 3D world but walk straight into THE VENUE
 // (the standalone flat watch page is gone). honoured once, on first entry.
-const venueDeepLink = /^#venue\b/i.test(location.hash);
+const venueDeepLink = /(^|[#,])venue\b/i.test(location.hash);
 
 function show(el) { el.classList.add("show"); }
 function hide(el) { el.classList.remove("show"); }
