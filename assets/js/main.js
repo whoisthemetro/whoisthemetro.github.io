@@ -2941,11 +2941,12 @@ function buildGymBtns() {
     document.body.appendChild(b); gymBtns.push(b);
     return b;
   };
-  // SHOOT + JUMP in a row just above the right look-stick, PASS centered above
-  // them (all a touch smaller than the 120px sticks)
-  const shoot = mk("🏀", "right:40px;bottom:158px;width:96px;height:96px;font-size:34px", "rgba(212,99,31,.92)");
-  const jump  = mk("⤴<br>JUMP", "right:148px;bottom:158px;width:96px;height:96px;font-size:15px", "rgba(58,125,68,.92)");
-  const pass  = mk("➟<br>PASS", "right:100px;bottom:262px;width:84px;height:84px;font-size:14px", "rgba(154,90,42,.92)");
+  // the action buttons orbit the right look-stick (stick centre ≈ right:86,
+  // bottom:86): SHOOT at the top, JUMP close on the upper-left of the orbit,
+  // PASS just under it to the left of the stick. all smaller than the sticks.
+  const shoot = mk("🏀", "right:38px;bottom:150px;width:84px;height:84px;font-size:30px", "rgba(212,99,31,.92)");
+  const jump  = mk("⤴<br>JUMP", "right:150px;bottom:150px;width:76px;height:76px;font-size:13px", "rgba(58,125,68,.92)");
+  const pass  = mk("➟<br>PASS", "right:150px;bottom:62px;width:76px;height:76px;font-size:13px", "rgba(154,90,42,.92)");
   const pd = (el, on, off) => {
     el.addEventListener("pointerdown", (e) => { e.preventDefault(); e.stopPropagation(); on(); });
     el.addEventListener("pointerup", (e) => { e.preventDefault(); e.stopPropagation(); off && off(); });
