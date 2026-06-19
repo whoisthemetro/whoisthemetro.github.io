@@ -2802,6 +2802,23 @@ const gymBall = makeGymBall(GYM, {
   },
   team: () => myGymTeam,
   autoAim: () => IS_TOUCH,    // mobile: aim is solved at the hoop; power (hold time) is the skill
+  setAimLock: (pt) => { controls.aimLockTarget = pt; },   // ease camera onto the backboard while shooting
+  // the best teammate to pass to: same team, the one you're most facing, in range
+  passTarget: () => {
+    const cam = new THREE.Vector3(); camera.getWorldDirection(cam); cam.y = 0;
+    if (cam.lengthSq() < 1e-6) return null; cam.normalize();
+    let best = null, bestScore = -Infinity;
+    for (const [uid, g] of ghosts.byUid) {
+      if (gymTeams.get(uid) !== myGymTeam) continue;          // teammates only
+      const gp = g.grp.position;
+      const to = new THREE.Vector3(gp.x - controls.pos.x, 0, gp.z - controls.pos.z);
+      const dist = to.length();
+      if (dist < 0.8 || dist > 38) continue;
+      const score = to.normalize().dot(cam) * 2 - dist * 0.02; // in-front + nearer wins
+      if (score > bestScore) { bestScore = score; best = { x: gp.x, y: gp.y + 1.3, z: gp.z }; }
+    }
+    return best;
+  },
   send: (p) => presence.sendAct({ kind: "bball", ...p }),
   power: (c) => {
     if (!gymPowerWrap) return;
@@ -2981,6 +2998,7 @@ function teardownGym() {
   controls.gym = false;
   controls.gymY = 0; controls.vy = 0; controls.grounded = true;
   controls.touchJump = false; controls.touchSprint = false;
+  controls.aimLockTarget = null;
   showGymUI(false);
   try { setRain((world.getWeather() && world.getWeather().rain) || 0); } catch (e) {}   // weather back
 }
@@ -3640,7 +3658,7 @@ window.METRO_DEBUG = { renderer, camera, world, controls, THREE, cat, bartender,
   uid: identity.uid, pool: poolGame, pool2: poolGame2, sitAtPool, leavePool,
   toy: () => toy, grabToy, throwToy,
   hoops: hoopGame,
-  gym: { join: joinGym, leave: leaveGym, ball: gymBall, team: () => myGymTeam, inGym: () => inGym, debug: () => gymBall.debug() },
+  gym: { join: joinGym, leave: leaveGym, ball: gymBall, team: () => myGymTeam, teams: gymTeams, inGym: () => inGym, debug: () => gymBall.debug() },
   carry: { pick: pickUpNote, drop: dropCarried, state: () => carrying },
   booth: { dj: () => djState, canDJ: () => canDJ(), headcount: () => clubHeadcount(), live: () => voice.djLive() } };
 

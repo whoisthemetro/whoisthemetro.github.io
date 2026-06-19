@@ -69,6 +69,7 @@ export class Controls {
     this.lookJoy = { x: 0, y: 0, active: false, pid: null };
     this.lookStickOn = false;
     this.lookTapFns = [];
+    this.aimLockTarget = null;   // {x,y,z} the camera eases onto while winding up a shot
     this.actionFns = [];
     this.lockChangeFns = [];
     this._applyCamera();
@@ -126,6 +127,20 @@ export class Controls {
     const RATE = 2.7;   // rad/s at full deflection
     this.yaw -= this.lookJoy.x * RATE * dt;
     this.pitch = clamp(this.pitch - this.lookJoy.y * RATE * dt, -1.25, 1.25);
+  }
+  // lock-on: while winding up a shot, ease the camera (and crosshair) onto the
+  // target backboard so you can see exactly where the ball is going
+  _easeAim(dt) {
+    const t = this.aimLockTarget;
+    const camY = EYE + (this.gym ? this.gymY : 0);
+    const dx = t.x - this.pos.x, dy = t.y - camY, dz = t.z - this.pos.z;
+    const horiz = Math.hypot(dx, dz) || 1e-6;
+    let dyaw = Math.atan2(-dx, -dz) - this.yaw;   // forward = (-sin yaw, -, -cos yaw)
+    while (dyaw > Math.PI) dyaw -= 2 * Math.PI;
+    while (dyaw < -Math.PI) dyaw += 2 * Math.PI;
+    const k = Math.min(1, dt * 9);
+    this.yaw += dyaw * k;
+    this.pitch = clamp(this.pitch + (Math.atan2(dy, horiz) - this.pitch) * k, -1.25, 1.25);
   }
 
   /* ---------- desktop ---------- */
@@ -261,7 +276,8 @@ export class Controls {
   /* ---------- per-frame ---------- */
   update(dt) {
     if (!this.enabled) return;
-    this._applyLookStick(dt);                     // right look-stick turns the camera (mobile gym)
+    if (this.aimLockTarget) this._easeAim(dt);    // lock onto the backboard while shooting
+    else this._applyLookStick(dt);                // else the right look-stick turns the camera
     if (this.pooling || this.aiming) return;     // the table/board game drives the camera
     if (this.zerog) { this._updateZeroG(dt); return; }
     if (this.gym) { this._updateGym(dt); return; }

@@ -54,6 +54,7 @@ export function makeGymBall(rig, hooks) {
   let charging = false, charge = 0;
   let lastSteal = 0, suppressClickUntil = 0;
   let acc = 0;
+  let aimHoop = null;   // the basket latched when a wind-up begins (the one you're facing)
 
   const me = () => hooks.myUid();
   const dist3 = (ax, ay, az, bx, by, bz) => Math.hypot(ax - bx, ay - by, az - bz);
@@ -129,24 +130,33 @@ export function makeGymBall(rig, hooks) {
     return false;
   }
 
+  // the basket you're FACING (not the nearest): your gaze's x-sign picks the
+  // east (+x) or west (-x) hoop. turn around and it flips to the far one.
+  function facedHoop(c) {
+    const fwdX = -Math.sin(c.yaw);
+    const east = rig.hoops.find(h => h.side > 0), west = rig.hoops.find(h => h.side < 0);
+    return (fwdX >= 0 ? east : west) || rig.hoops[0];
+  }
+
   // dunk state for both the HUD meter and the shot itself: are you in the zone,
   // and is your jump at the top (the timing window)?
   function dunkInfo() {
     if (ball.holder !== me()) return { inZone: false, ready: false, phase: 0 };
     const c = hooks.ctx();
-    const rim = rig.hoopFor(hooks.team()).rim;
+    const rim = facedHoop(c).rim;
     const flat = Math.hypot(c.x - rim.x, c.z - rim.z);
     const inZone = flat < DUNK_ZONE_R;
     const phase = Math.max(0, Math.min(1, (c.gymY || 0) / MAX_JUMP));
     return { inZone, ready: inZone && phase >= DUNK_WINDOW, phase, rim };
   }
 
-  // which way a (non-dunk) shot flies. on mobile we AUTO-AIM horizontally at
-  // your hoop with a fixed high loft — so direction is solved and the ONLY skill
-  // is how long you hold (power). on desktop you free-aim with the camera.
+  // which way a (non-dunk) shot flies. on mobile we AUTO-AIM horizontally at the
+  // basket you latched when the wind-up began (the one you faced) with a fixed
+  // high loft — direction is solved and the ONLY skill is how long you hold
+  // (power). on desktop you free-aim with the camera.
   function aimDir(c, o) {
     if (hooks.autoAim && hooks.autoAim()) {
-      const rim = rig.hoopFor(hooks.team()).rim;
+      const rim = (aimHoop || facedHoop(c)).rim;
       let hx = rim.x - o.x, hz = rim.z - o.z;
       const hl = Math.hypot(hx, hz) || 1, loft = 0.92, cp = Math.cos(loft);
       return { x: hx / hl * cp, y: Math.sin(loft), z: hz / hl * cp };
@@ -175,19 +185,30 @@ export function makeGymBall(rig, hooks) {
     ball.vx = d.x * sp; ball.vy = d.y * sp; ball.vz = d.z * sp;
     ball.lastShotBy = me();
     ball.thrownFrom = { x: o.x, z: o.z };
-    charging = false; charge = 0; rig.hideGuide();
+    charging = false; charge = 0; aimHoop = null; rig.hideGuide(); hooks.setAimLock?.(null);
     suppressClickUntil = Date.now() + 350;
     hooks.send({ sub: "shot", p: [ball.x, ball.y, ball.z], v: [ball.vx, ball.vy, ball.vz], by: me(), t: Date.now() });
   }
 
-  // a flat, quick outlet — E. teammates catch by grabbing it loose.
+  // an outlet pass: locks onto the teammate you're facing and lobs it GENTLY so
+  // they have time to catch (grab it loose). no teammate in view → a soft throw
+  // along your aim.
   function pass() {
     if (ball.holder !== me()) return;
     const c = hooks.ctx();
     const o = myHand();
-    const yaw = c.yaw;
-    const d = { x: -Math.sin(yaw) * 0.97, y: 0.16, z: -Math.cos(yaw) * 0.97 };
-    const sp = 12;
+    const tgt = hooks.passTarget?.();      // {x,y,z} of the best teammate, or null
+    let d, sp;
+    if (tgt) {
+      const dx = tgt.x - o.x, dz = tgt.z - o.z, dist = Math.hypot(dx, dz) || 1;
+      const up = 0.2 + Math.min(0.4, dist * 0.03);              // lead with a soft arc
+      d = { x: dx / dist, y: up, z: dz / dist };
+      const dl = Math.hypot(d.x, d.y, d.z); d.x /= dl; d.y /= dl; d.z /= dl;
+      sp = Math.max(5.5, Math.min(8.5, dist * 1.4));            // gentle — catchable
+    } else {
+      d = { x: -Math.sin(c.yaw) * 0.97, y: 0.18, z: -Math.cos(c.yaw) * 0.97 };
+      sp = 8;                                                    // slower than the old 12
+    }
     ball.holder = null;
     ball.x = o.x; ball.y = o.y; ball.z = o.z;
     ball.vx = d.x * sp; ball.vy = d.y * sp; ball.vz = d.z * sp;
@@ -287,16 +308,24 @@ export function makeGymBall(rig, hooks) {
       // my shot: hold to wind up, release to fire
       if (ball.holder === me() && hooks.ctx().locked) {
         const pressed = hooks.ctx().pressed;
-        if (pressed) { charging = true; charge = Math.min(1, charge + dt / CHARGE_T); }
-        else if (charging && !pressed) { shoot(); }
+        if (pressed) {
+          if (!charging) aimHoop = facedHoop(hooks.ctx());   // latch the basket you're facing
+          charging = true; charge = Math.min(1, charge + dt / CHARGE_T);
+        } else if (charging && !pressed) { shoot(); }
         if (charging) {
-          // on mobile (auto-aim) we HIDE the arc — judging the power by feel is
-          // the whole skill. on desktop the free-aim arc helps you line it up.
-          if (hooks.autoAim && hooks.autoAim()) { rig.hideGuide(); }
-          else { const o = myHand(); rig.setArc(arcPts(o, aimDir(hooks.ctx(), o), speedFor(charge))); }
+          const auto = hooks.autoAim && hooks.autoAim();
+          if (auto) {
+            // mobile: hide the arc (power-by-feel is the skill) and lock the
+            // camera/crosshair onto the latched backboard so you see the target
+            rig.hideGuide();
+            const h = aimHoop || facedHoop(hooks.ctx());
+            hooks.setAimLock?.({ x: h.backboard.x, y: 3.4, z: h.rim.z });
+          } else {
+            const o = myHand(); rig.setArc(arcPts(o, aimDir(hooks.ctx(), o), speedFor(charge)));
+          }
           hooks.power?.(charge);
-        } else { rig.hideGuide(); hooks.power?.(0); }
-      } else { rig.hideGuide(); }
+        } else { rig.hideGuide(); hooks.power?.(0); hooks.setAimLock?.(null); }
+      } else { rig.hideGuide(); hooks.setAimLock?.(null); }
     } else {
       // loose: fixed-step the projectile
       rig.hideGuide();
@@ -306,6 +335,12 @@ export function makeGymBall(rig, hooks) {
     mesh.position.set(ball.x, ball.y, ball.z);
     ball.spin -= dt * (3 + Math.hypot(ball.vx, ball.vz) * 1.2);
     mesh.rotation.x = ball.spin;
+    // fade the ball while YOU hold it (it sits right in your face) so you can
+    // see the court in front of you; opaque for everyone else / when loose
+    const heldByMe = ball.holder === me();
+    mesh.material.transparent = true;
+    mesh.material.opacity = heldByMe ? 0.4 : 1;
+    if (mesh.children[0]) mesh.children[0].material.opacity = heldByMe ? 0.08 : 0.28;
   }
 
   /* ---- incoming presence ---- */
