@@ -117,7 +117,8 @@ in your Supabase URL and anon key in `assets/js/config.js`.
   teammates, **SHIFT** boost, **B** brake, **F** shield, click to punch.
 - In THE GYM: **WASD** move, **SPACE** jump, **SHIFT** dash (stamina), hold
   **click** to charge a shot, click to grab/steal, **E** to pass. On mobile,
-  on-screen DASH / JUMP / GRAB / PASS / SHOOT buttons.
+  twin thumbsticks — left moves (shove to the edge to boost), right looks
+  (tap it to grab).
 
 ## Moderation
 
