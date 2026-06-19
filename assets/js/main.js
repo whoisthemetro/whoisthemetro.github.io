@@ -2926,27 +2926,28 @@ function updateGymHud() {
 }
 
 /* --- mobile touch controls for the gym: twin sticks (left=move+edge-boost,
-   right=look+tap-grab) plus JUMP and SHOOT buttons sitting just above the right
-   stick. the buttons are a touch smaller than the 120px sticks. --- */
-let gymBtns = null;
+   right=look+tap-grab). the action buttons ORBIT the right stick's real
+   on-screen position (measured live), so they stay glued to it on any device /
+   safe-area, not at fixed pixels. SHOOT at the top, JUMP on the upper-left of
+   the orbit, PASS just under it to the left of the stick. --- */
+let gymBtns = null, gymBtnEls = null;
 function buildGymBtns() {
   if (gymBtns || !IS_TOUCH) return;
   gymBtns = [];
-  const mk = (label, css, bg) => {
+  const mk = (label, size, bg, font) => {
     const b = document.createElement("button");
     b.innerHTML = label;
     b.style.cssText = "position:fixed;z-index:60;display:none;border:2px solid rgba(255,255,255,.4);" +
-      "border-radius:50%;font:800 15px monospace;color:#fff;line-height:1.05;text-align:center;" +
-      "box-shadow:0 3px 16px rgba(0,0,0,.5);background:" + bg + ";touch-action:none;-webkit-user-select:none;user-select:none;" + css;
+      "border-radius:50%;color:#fff;line-height:1.05;text-align:center;box-shadow:0 3px 16px rgba(0,0,0,.5);" +
+      "touch-action:none;-webkit-user-select:none;user-select:none;" +
+      `width:${size}px;height:${size}px;font:800 ${font}px monospace;background:${bg};`;
     document.body.appendChild(b); gymBtns.push(b);
     return b;
   };
-  // the action buttons orbit the right look-stick (stick centre ≈ right:86,
-  // bottom:86): SHOOT at the top, JUMP close on the upper-left of the orbit,
-  // PASS just under it to the left of the stick. all smaller than the sticks.
-  const shoot = mk("🏀", "right:38px;bottom:150px;width:84px;height:84px;font-size:30px", "rgba(212,99,31,.92)");
-  const jump  = mk("⤴<br>JUMP", "right:150px;bottom:150px;width:76px;height:76px;font-size:13px", "rgba(58,125,68,.92)");
-  const pass  = mk("➟<br>PASS", "right:150px;bottom:62px;width:76px;height:76px;font-size:13px", "rgba(154,90,42,.92)");
+  const shoot = mk("🏀", 84, "rgba(212,99,31,.92)", 30);
+  const jump  = mk("⤴<br>JUMP", 76, "rgba(58,125,68,.92)", 13);
+  const pass  = mk("➟<br>PASS", 76, "rgba(154,90,42,.92)", 13);
+  gymBtnEls = { shoot, jump, pass };
   const pd = (el, on, off) => {
     el.addEventListener("pointerdown", (e) => { e.preventDefault(); e.stopPropagation(); on(); });
     el.addEventListener("pointerup", (e) => { e.preventDefault(); e.stopPropagation(); off && off(); });
@@ -2955,6 +2956,24 @@ function buildGymBtns() {
   pd(jump,  () => { controls.touchJump = true; }, () => { controls.touchJump = false; });
   pd(shoot, () => { controls.pointerDown = true; }, () => { controls.pointerDown = false; });   // hold = wind up, release = shoot
   pd(pass,  () => { gymBall.pass(); });
+  addEventListener("resize", () => { if (inGym) layoutGymBtns(); });
+}
+// place the buttons on an arc around the right stick's MEASURED centre
+function layoutGymBtns() {
+  if (!gymBtnEls) return;
+  const stick = document.getElementById("joystick-r");
+  if (!stick) return;
+  const r = stick.getBoundingClientRect();
+  const sx = r.left + r.width / 2, sy = r.top + r.height / 2, R = r.width / 2 + 50;
+  // angle measured from straight-up, increasing toward the LEFT
+  const place = (el, ang, sz) => {
+    const cx = sx - Math.sin(ang) * R, cy = sy - Math.cos(ang) * R;
+    el.style.left = (cx - sz / 2) + "px"; el.style.top = (cy - sz / 2) + "px";
+    el.style.right = "auto"; el.style.bottom = "auto";
+  };
+  place(gymBtnEls.shoot, 0,    84);    // straight up
+  place(gymBtnEls.jump,  0.9,  76);    // upper-left (~51°)
+  place(gymBtnEls.pass,  1.75, 76);    // left + a touch low (~100°) → under JUMP
 }
 function showGymUI(on) {
   buildGymHud();
@@ -2962,8 +2981,11 @@ function showGymUI(on) {
   gymHud.style.display = on ? "block" : "none";
   if (gymPowerWrap && !on) gymPowerWrap.style.display = "none";
   if (gymDunkWrap && !on) gymDunkWrap.style.display = "none";
-  if (gymBtns) for (const b of gymBtns) b.style.display = on ? "block" : "none";
-  if (IS_TOUCH) controls.setLookStick(on);     // right look-stick, gym only
+  if (IS_TOUCH) controls.setLookStick(on);     // show the right stick first…
+  if (gymBtns) {
+    if (on) layoutGymBtns();                    // …so the buttons can orbit its measured spot
+    for (const b of gymBtns) b.style.display = on ? "block" : "none";
+  }
   if (on) updateGymHud();
 }
 
