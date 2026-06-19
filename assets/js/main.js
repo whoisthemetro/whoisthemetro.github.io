@@ -2879,7 +2879,6 @@ function buildGymHud() {
 }
 function updateDunkMeter() {
   if (!gymDunkWrap) return;
-  if (IS_TOUCH) { gymDunkWrap.style.display = "none"; return; }   // shooting is hidden on mobile for now
   const di = gymBall.dunk();
   if (!di.inZone) { gymDunkWrap.style.display = "none"; return; }
   gymDunkWrap.style.display = "block";
@@ -2908,9 +2907,9 @@ function updateGymHud() {
   gymStamEl.style.background = controls.holdingBall ? "#566" : (controls.stamina > 0.3 ? "#2ff0ff" : "#ff3df0");
 }
 
-/* --- mobile touch controls for the gym: a full thumb-pad. left thumb works
-   the joystick (move) + DASH; right thumb gets SHOOT / GRAB / PASS / JUMP. each
-   button is big, glowing and labelled — no skimping on mobile. --- */
+/* --- mobile touch controls for the gym: twin sticks (left=move+edge-boost,
+   right=look+tap-grab) plus JUMP and SHOOT buttons sitting just above the right
+   stick. the buttons are a touch smaller than the 120px sticks. --- */
 let gymBtns = null;
 function buildGymBtns() {
   if (gymBtns || !IS_TOUCH) return;
@@ -2918,40 +2917,30 @@ function buildGymBtns() {
   const mk = (label, css, bg) => {
     const b = document.createElement("button");
     b.innerHTML = label;
-    b.style.cssText = "position:fixed;z-index:60;display:none;border:2px solid rgba(255,255,255,.35);" +
+    b.style.cssText = "position:fixed;z-index:60;display:none;border:2px solid rgba(255,255,255,.4);" +
       "border-radius:50%;font:800 15px monospace;color:#fff;line-height:1.05;text-align:center;" +
       "box-shadow:0 3px 16px rgba(0,0,0,.5);background:" + bg + ";touch-action:none;-webkit-user-select:none;user-select:none;" + css;
     document.body.appendChild(b); gymBtns.push(b);
     return b;
   };
-  // left thumb (joystick lives bottom-left): DASH sits just above it
-  const dash  = mk("⚡<br>DASH", "left:140px;bottom:160px;width:72px;height:72px", "rgba(74,93,160,.85)");
-  // right-thumb action cluster
-  const shoot = mk("🏀", "right:22px;bottom:92px;width:104px;height:104px;font-size:38px", "rgba(212,99,31,.9)");
-  const grab  = mk("✋<br>GRAB", "right:138px;bottom:110px;width:78px;height:78px", "rgba(58,160,120,.88)");
-  const pass  = mk("➟<br>PASS", "right:96px;bottom:206px;width:74px;height:74px", "rgba(154,90,42,.88)");
-  const jump  = mk("⤴<br>JUMP", "right:210px;bottom:150px;width:84px;height:84px;font-size:16px", "rgba(58,125,68,.9)");
+  // JUMP + SHOOT sit in a row just above the right look-stick (96px < 120px sticks)
+  const shoot = mk("🏀", "right:40px;bottom:158px;width:96px;height:96px;font-size:34px", "rgba(212,99,31,.92)");
+  const jump  = mk("⤴<br>JUMP", "right:148px;bottom:158px;width:96px;height:96px;font-size:15px", "rgba(58,125,68,.92)");
   const pd = (el, on, off) => {
     el.addEventListener("pointerdown", (e) => { e.preventDefault(); e.stopPropagation(); on(); });
     el.addEventListener("pointerup", (e) => { e.preventDefault(); e.stopPropagation(); off && off(); });
     el.addEventListener("pointercancel", (e) => { e.preventDefault(); off && off(); });
   };
-  pd(dash,  () => { controls.touchSprint = true; }, () => { controls.touchSprint = false; });
-  pd(jump,  () => { controls.touchJump = true; },   () => { controls.touchJump = false; });
-  pd(pass,  () => { gymBall.pass(); });
-  pd(grab,  () => { gymBall.click(); });               // grab a loose ball / strip the holder
-  pd(shoot, () => { controls.pointerDown = true; },    () => { controls.pointerDown = false; });  // hold = wind up, release = shoot
+  pd(jump,  () => { controls.touchJump = true; }, () => { controls.touchJump = false; });
+  pd(shoot, () => { controls.pointerDown = true; }, () => { controls.pointerDown = false; });   // hold = wind up, release = shoot
 }
-// the action buttons (grab/jump/shoot/pass) are hidden for now — mobile runs on
-// the two thumbsticks (left=move+boost, right=look+grab). flip back on later.
-const GYM_BUTTONS = false;
 function showGymUI(on) {
   buildGymHud();
-  if (GYM_BUTTONS && IS_TOUCH) buildGymBtns();
+  if (IS_TOUCH) buildGymBtns();
   gymHud.style.display = on ? "block" : "none";
   if (gymPowerWrap && !on) gymPowerWrap.style.display = "none";
   if (gymDunkWrap && !on) gymDunkWrap.style.display = "none";
-  if (gymBtns) for (const b of gymBtns) b.style.display = (on && GYM_BUTTONS) ? "block" : "none";
+  if (gymBtns) for (const b of gymBtns) b.style.display = on ? "block" : "none";
   if (IS_TOUCH) controls.setLookStick(on);     // right look-stick, gym only
   if (on) updateGymHud();
 }
