@@ -2801,6 +2801,7 @@ const gymBall = makeGymBall(GYM, {
     return { x: g.grp.position.x, y: g.grp.position.y, z: g.grp.position.z, yaw: g.target.yaw };
   },
   team: () => myGymTeam,
+  autoAim: () => IS_TOUCH,    // mobile: aim is solved at the hoop; power (hold time) is the skill
   send: (p) => presence.sendAct({ kind: "bball", ...p }),
   power: (c) => {
     if (!gymPowerWrap) return;

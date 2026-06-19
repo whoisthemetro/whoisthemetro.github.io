@@ -141,6 +141,19 @@ export function makeGymBall(rig, hooks) {
     return { inZone, ready: inZone && phase >= DUNK_WINDOW, phase, rim };
   }
 
+  // which way a (non-dunk) shot flies. on mobile we AUTO-AIM horizontally at
+  // your hoop with a fixed high loft — so direction is solved and the ONLY skill
+  // is how long you hold (power). on desktop you free-aim with the camera.
+  function aimDir(c, o) {
+    if (hooks.autoAim && hooks.autoAim()) {
+      const rim = rig.hoopFor(hooks.team()).rim;
+      let hx = rim.x - o.x, hz = rim.z - o.z;
+      const hl = Math.hypot(hx, hz) || 1, loft = 0.92, cp = Math.cos(loft);
+      return { x: hx / hl * cp, y: Math.sin(loft), z: hz / hl * cp };
+    }
+    return launchDir(c.yaw, c.pitch);
+  }
+
   function shoot() {
     if (ball.holder !== me()) return;
     const c = hooks.ctx();
@@ -154,7 +167,7 @@ export function makeGymBall(rig, hooks) {
       d = { x: 0, y: -0.8, z: 0 }; sp = 6;
       hooks.sound?.dunk?.();
     } else {
-      d = launchDir(c.yaw, c.pitch); sp = speedFor(charge);
+      d = aimDir(c, o); sp = speedFor(charge);
       ball.x = o.x; ball.y = o.y; ball.z = o.z;
       hooks.sound?.shoot?.(charge);
     }
@@ -277,7 +290,10 @@ export function makeGymBall(rig, hooks) {
         if (pressed) { charging = true; charge = Math.min(1, charge + dt / CHARGE_T); }
         else if (charging && !pressed) { shoot(); }
         if (charging) {
-          rig.setArc(arcPts(myHand(), launchDir(hooks.ctx().yaw, hooks.ctx().pitch), speedFor(charge)));
+          // on mobile (auto-aim) we HIDE the arc — judging the power by feel is
+          // the whole skill. on desktop the free-aim arc helps you line it up.
+          if (hooks.autoAim && hooks.autoAim()) { rig.hideGuide(); }
+          else { const o = myHand(); rig.setArc(arcPts(o, aimDir(hooks.ctx(), o), speedFor(charge))); }
           hooks.power?.(charge);
         } else { rig.hideGuide(); hooks.power?.(0); }
       } else { rig.hideGuide(); }
