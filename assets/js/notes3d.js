@@ -413,7 +413,13 @@ export class NotesWall {
     const wall = this.walls.find(w => w.mesh === hit.object);
     if (!wall || !pos) return false;
     const n = wall.normal, o = wall.origin;
-    return (pos.x - o.x) * n.x + (pos.y - o.y) * n.y + (pos.z - o.z) * n.z > 0;
+    // controls.pos carries no y — and these walls are all vertical (n.y = 0), so
+    // height is irrelevant. but an undefined pos.y makes (pos.y - o.y) * n.y NaN
+    // (NaN * 0 is still NaN), which poisoned the whole dot product to false and
+    // silently blocked posting on EVERY wall. default y to 0 so the side test
+    // is the pure horizontal "which side of the wall am I on".
+    const py = pos.y || 0;
+    return (pos.x - o.x) * n.x + (py - o.y) * n.y + (pos.z - o.z) * n.z > 0;
   }
 
   placementFromHit(hit) {
