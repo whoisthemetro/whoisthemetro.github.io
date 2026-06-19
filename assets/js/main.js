@@ -26,6 +26,7 @@ import { initAnalytics, track, analyticsBuffer } from "./analytics.js";
 import { openArcade, closeArcade, arcadeIsOpen, arcadeWantsEsc, handleGameMessage, setScoreHook } from "./arcade.js";
 import { initPool } from "./pool.js";
 import { initBasket } from "./basketball.js";
+import { makeGymBall } from "./gymball.js";
 import { initDebug } from "./debug.js";
 import { PIANO_VOICES, GUITAR_VOICES } from "./ambience.js";
 import { createRadio, SR_STATIONS, LA_STATIONS } from "./radio.js";
@@ -70,7 +71,7 @@ const world = buildWorld(renderer);
    Toggling visibility recompiles materials on a room change — a brief hitch
    hidden by the fade-to-black; bedroom<->arcade is one "home" group, so the
    main space never re-compiles as you walk it. */
-const cullLights = { home: [], desi: [], crew: [], venue: [] };
+const cullLights = { home: [], desi: [], crew: [], venue: [], gym: [] };
 (function bucketRoomLights() {
   world.scene.updateMatrixWorld(true);
   const wp = new THREE.Vector3();
@@ -113,6 +114,7 @@ function aRoomNow() {
   if (inBoat) return "desi";
   if (inArena) return "crew";
   if (inClub) return "venue";
+  if (inGym) return "gym";
   return controls.pos.x < -3.6 ? "arcade" : "bedroom";
 }
 // which big space a world position is in. the rooms sit far apart with no
@@ -121,6 +123,7 @@ function aRoomNow() {
 // build/animate avatars for people actually in the room with us.
 function roomScopeOfPos(x, y, z) {
   if ((y || 0) > 40) return "crew";
+  if (z > 40) return "gym";                  // the gym sits far out in +z
   if (x > 20) return "desi";
   if (x < -20) return "venue";
   return "home";
@@ -129,6 +132,7 @@ function myScope() {
   if (inBoat) return "desi";
   if (inArena) return "crew";
   if (inClub) return "venue";
+  if (inGym) return "gym";
   return "home";
 }
 let aRoom = null, aRoomAt = performance.now(), aRoomCount = 0, aEngaged = false;
@@ -165,7 +169,7 @@ controls.pos.x = world.spawn.x;
 controls.pos.z = world.spawn.z;
 controls.yaw = world.spawn.yaw;
 
-world.setCityListener((type) => { if (!inBoat && !inArena && !inClub) citySound(type); });
+world.setCityListener((type) => { if (!inBoat && !inArena && !inClub && !inGym) citySound(type); });
 
 // the arcade hums and chirps when you're near it — spatial by position
 setInterval(() => {
@@ -293,6 +297,14 @@ addEventListener("keydown", (e) => {
   if (e.code === "KeyV" && !e.repeat && controls.locked && !modalOpen && entered && !inClub && !voice.isOn()) {
     voice.startTalk(false).then(ok => { if (!ok) toast("the mic said no — check browser permissions"); updateMicUI(); });
   }
+  // in THE GYM: SPACE jumps (routed here so it fires reliably), E throws a pass
+  if (e.code === "Space" && !e.repeat && inGym && entered && !modalOpen) {
+    e.preventDefault();
+    controls.gymJump();
+  }
+  if (e.code === "KeyE" && !e.repeat && inGym && entered && !modalOpen && controls.locked) {
+    gymBall.pass();
+  }
   // press G in the venue to re-skin the loft (backdrop + neon + the soothing
   // bed). local + instant — resets to the default on reload. a dj broadcasts
   // the look so the whole room follows.
@@ -360,7 +372,7 @@ function applyGuitarFilter() { setGuitarFilter(gtrFilterLevel); world.setGuitarP
 
 // the cat — its key-walking plays the same piano visitors can play.
 // All bedroom sounds are gated: aboard THE DESI you hear only the sea.
-const bedroomSound = (fn) => (...a) => { if (!inBoat && !inArena && !inClub) fn(...a); };
+const bedroomSound = (fn) => (...a) => { if (!inBoat && !inArena && !inClub && !inGym) fn(...a); };
 // the arcade is effectively its own room (walled off, through the opening): its
 // zone reads ~1 inside, ~0.72 in the doorway, ≤0.14 from the bedroom. once you've
 // crossed in, the bedroom's INSTRUMENTS shouldn't carry over the wall (the cat's
@@ -655,7 +667,7 @@ canvas.addEventListener("click", () => {
 function castAt(ndcX, ndcY) {
   raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera);
   // doors are included as blockers so notes can't be pinned onto them
-  const targets = [cat.hitMesh, toyHit, bartender.hitMesh, mirror.glass, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, ...world.elevHits, ...world.elevCallHits, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.guitarVoiceHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, world.pool.hit, world.pool.resetHit, world.pool.joinHit, world.pool2.hit, world.pool2.resetHit, world.pool2.joinHit, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.radioHits, ...world.laRadioHits, ...world.filterPedalHit, ...world.vacuumHits, ...notesWall.raycastTargets(), screenMesh, ...world.blockers];
+  const targets = [cat.hitMesh, toyHit, bartender.hitMesh, mirror.glass, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, ...world.elevHits, ...world.elevCallHits, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.guitarVoiceHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, world.pool.hit, world.pool.resetHit, world.pool.joinHit, world.pool2.hit, world.pool2.resetHit, world.pool2.joinHit, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.radioHits, ...world.laRadioHits, ...world.filterPedalHit, ...world.vacuumHits, ...notesWall.raycastTargets(), screenMesh, world.gym.joinHit, world.gym.exitHit, ...world.blockers];
   const hits = raycaster.intersectObjects(targets, false);
   return hits[0] || null;
 }
@@ -923,6 +935,14 @@ controls.onAction((ndcX, ndcY) => {
   if (carrying) { dropCarried(); return; }   // a click while carrying sets it down
   if (vacuuming) { setVacuuming(false); return; }   // a click while vacuuming puts it away
   if (toy && toy.phase === "held") { throwToy(); return; }   // a click while holding the toy throws it
+  if (inGym) {
+    // on the court a click grabs a loose ball / strips the holder; the only
+    // other thing worth clicking is the EXIT panel
+    const h = castAt(ndcX, ndcY);
+    if (h && h.object.userData.gymExit && h.distance < 4) { leaveGym(); return; }
+    gymBall.click();
+    return;
+  }
   const hit = castAt(ndcX, ndcY);
   // in the arena, a click is a swing — unless you're on a catapult
   // handle (then the punch IS the launch) or aiming at something useful
@@ -1052,6 +1072,8 @@ controls.onAction((ndcX, ndcY) => {
     world.setGuitarVoiceSwitch(guitarVoice, GUITAR_VOICES.length);
     // flick the switch — no preview note (the blade shouldn't sound a fret)
     toast(`guitar voice: ${GUITAR_VOICES[guitarVoice].name}`);
+  } else if (hit.object.userData.gymJoin && hit.distance < 4) {
+    joinGym();
   } else if (hit.object.userData.boatExit && hit.distance < 2.6) {
     leaveBoat();
   } else if (hit.object.userData.clubExit && hit.distance < 2.6) {
@@ -1945,6 +1967,7 @@ function adminJump(target) {
     if (curKey === "desi") teardownBoat();
     else if (curKey === "venue") teardownClub();
     else if (curKey === "crew") teardownArena();
+    else if (curKey === "gym") teardownGym();
     if (target === "home") setupHome();
     else if (target === "desi") setupBoat();
     else if (target === "venue") setupClub();
@@ -1993,7 +2016,7 @@ function teardownBoat() {
 function refreshNoteVisibility() {
   for (const mesh of world.noteGroup.children) {
     const onBoat = String(mesh.userData.note?.wall || "").startsWith("boat");
-    mesh.visible = inArena || inClub ? false : inBoat ? onBoat : !onBoat;
+    mesh.visible = inArena || inClub || inGym ? false : inBoat ? onBoat : !onBoat;
   }
 }
 
@@ -2725,6 +2748,241 @@ function throwDisc() {
   });
 }
 
+/* ---------------- THE GYM: full-court basketball ----------------
+   On foot, slow legs, a real jump, one shared ball. JOIN on the arcade
+   court rides you out; the ball + rules live in gymball.js. Two teams
+   (red attacks the east hoop, blue the west); scoring is by which hoop
+   the ball drops through, so own-goals credit the other side. */
+let inGym = false;
+const GYM = world.gym;
+const gymTeams = new Map();          // uid -> "red" | "blue" (for balance + display)
+let myGymTeam = "red";
+let gymBucketAt = 0;
+
+// silent unless you're actually in the gym — recv() still runs everywhere to
+// keep ball state synced, but the bedroom shouldn't hear distant dribbles
+const gb = (fn) => (...a) => { if (inGym) { try { fn(...a); } catch (e) {} } };
+const gymSound = {
+  bounce: gb(() => beep(160 + Math.random() * 30, 0.05, "sine", 0.05)),
+  rim:    gb(() => beep(820, 0.03, "square", 0.02)),
+  bank:   gb(() => beep(300, 0.05, "sine", 0.035)),
+  shoot:  gb(() => beep(520, 0.06, "sine", 0.03)),
+  pass:   gb(() => beep(420, 0.05, "triangle", 0.04)),
+  catch:  gb(() => beep(680, 0.04, "sine", 0.05)),
+  steal:  gb(() => beep(900, 0.05, "sawtooth", 0.03)),
+  dunk:   gb(() => { beep(220, 0.07, "square", 0.05); setTimeout(() => beep(120, 0.12, "sine", 0.05), 60); }),
+  swish:  gb(() => { beep(880, 0.08, "sine", 0.05); setTimeout(() => beep(1320, 0.12, "sine", 0.04), 70); }),
+};
+
+function assignGymTeam() {
+  let r = 0, b = 0;
+  for (const [uid, t] of gymTeams) {
+    if (uid !== identity.uid && ghosts.byUid.has(uid)) (t === "red" ? r++ : b++);
+  }
+  return r <= b ? "red" : "blue";
+}
+
+const gymBall = makeGymBall(GYM, {
+  myUid: () => identity.uid,
+  ctx: () => ({
+    x: controls.pos.x, z: controls.pos.z, yaw: controls.yaw, pitch: controls.pitch,
+    eyeY: 1.62 + (controls.gymY || 0), gymY: controls.gymY || 0,
+    pressed: controls.pointerDown, locked: controls.locked,
+  }),
+  ghost: (uid) => {
+    const g = ghosts.byUid.get(uid);
+    if (!g) return null;
+    return { x: g.grp.position.x, y: g.grp.position.y, z: g.grp.position.z, yaw: g.target.yaw };
+  },
+  team: () => myGymTeam,
+  send: (p) => presence.sendAct({ kind: "bball", ...p }),
+  power: (c) => {
+    if (!gymPowerWrap) return;
+    if (c > 0) { gymPowerWrap.style.display = "block"; gymPowerEl.style.width = Math.round(c * 100) + "%"; }
+    else gymPowerWrap.style.display = "none";
+  },
+  sound: gymSound,
+  toast,
+  onScore: (team, pts, red, blue) => {
+    gymBucketAt = Date.now();
+    gymSound.swish();
+    if (inGym) toast(`${team === "red" ? "🔴 RED" : "🔵 BLUE"} ${pts === 3 ? "for THREE 💥" : "bucket"} — ${red}-${blue}`);
+    updateGymHud();
+  },
+  onSteal: (from, target) => {
+    if (target === identity.uid && inGym) { gotScratched(); toast("🤚 someone stripped you!"); }
+  },
+});
+
+/* --- gym HUD: score + stamina + a one-line hint (built lazily) --- */
+let gymHud = null, gymScoreEl = null, gymStamEl = null;
+// the throw meter: same slim green→yellow→red bar as the arcade pop-a-shot,
+// shown only while you wind up a shot
+let gymPowerWrap = null, gymPowerEl = null;
+let gymDunkWrap = null, gymDunkFill = null, gymDunkLabel = null;
+function buildGymHud() {
+  if (gymHud) return;
+  gymHud = document.createElement("div");
+  gymHud.style.cssText =
+    "position:fixed;left:0;right:0;top:0;z-index:55;pointer-events:none;display:none;" +
+    "font:800 16px monospace;text-align:center;color:#eaf2ff;text-shadow:0 2px 6px rgba(0,0,0,.7)";
+  gymHud.innerHTML =
+    "<div id='gym-score' style='margin-top:10px;font-size:22px'>🔴 0 — 0 🔵</div>" +
+    "<div style='margin:8px auto 0;font:700 11px monospace;letter-spacing:2px;opacity:.85'>⚡ BOOST</div>" +
+    "<div style='margin:3px auto 0;width:200px;height:9px;border:1px solid rgba(120,200,255,.5);border-radius:5px;background:rgba(0,0,0,.55);overflow:hidden'>" +
+    "<div id='gym-stam' style='height:100%;width:100%;background:#2ff0ff'></div></div>" +
+    "<div id='gym-hint' style='margin-top:6px;font-size:12px;opacity:.85'></div>";
+  document.body.appendChild(gymHud);
+  gymScoreEl = gymHud.querySelector("#gym-score");
+  gymStamEl = gymHud.querySelector("#gym-stam");
+  gymHud.querySelector("#gym-hint").textContent = IS_TOUCH
+    ? "stick = move · DASH · JUMP · GRAB · hold 🏀 to wind up a shot · PASS · drag to look"
+    : "WASD move · SPACE jump · SHIFT dash · hold CLICK to shoot · click to grab/steal · E pass";
+  // the arcade-style power meter, centered low on screen
+  gymPowerWrap = document.createElement("div");
+  gymPowerWrap.style.cssText =
+    "position:fixed;left:50%;bottom:120px;transform:translateX(-50%);z-index:55;display:none;" +
+    "width:200px;height:11px;border:1px solid #8a5a3a;border-radius:7px;overflow:hidden;background:rgba(0,0,0,.45)";
+  gymPowerWrap.innerHTML = '<div id="gym-power" style="height:100%;width:0;background:linear-gradient(90deg,#3bd17a,#ffd23c,#e23a52)"></div>';
+  document.body.appendChild(gymPowerWrap);
+  gymPowerEl = gymPowerWrap.querySelector("#gym-power");
+  // the DUNK meter: appears in the paint near your hoop. jump to fill it; the
+  // green window at the top is the moment to release for an automatic slam.
+  gymDunkWrap = document.createElement("div");
+  gymDunkWrap.style.cssText =
+    "position:fixed;left:50%;bottom:158px;transform:translateX(-50%);z-index:56;display:none;" +
+    "text-align:center;font:800 13px monospace;color:#fff;text-shadow:0 2px 6px rgba(0,0,0,.8)";
+  gymDunkWrap.innerHTML =
+    "<div id='gym-dunk-label' style='margin-bottom:3px'>JUMP TO DUNK</div>" +
+    "<div style='position:relative;width:170px;height:14px;border:1px solid #ffb454;border-radius:8px;overflow:hidden;background:rgba(0,0,0,.55)'>" +
+    "<div style='position:absolute;right:0;top:0;width:34%;height:100%;background:rgba(59,209,122,.25)'></div>" +   // the green target band
+    "<div id='gym-dunk-fill' style='height:100%;width:0;background:#ffb454'></div></div>";
+  document.body.appendChild(gymDunkWrap);
+  gymDunkFill = gymDunkWrap.querySelector("#gym-dunk-fill");
+  gymDunkLabel = gymDunkWrap.querySelector("#gym-dunk-label");
+}
+function updateDunkMeter() {
+  if (!gymDunkWrap) return;
+  const di = gymBall.dunk();
+  if (!di.inZone) { gymDunkWrap.style.display = "none"; return; }
+  gymDunkWrap.style.display = "block";
+  gymDunkFill.style.width = Math.round(di.phase * 100) + "%";
+  if (di.ready) {
+    gymDunkFill.style.background = "#3bd17a";
+    gymDunkLabel.textContent = "🔥 DUNK! — shoot NOW";
+    gymDunkLabel.style.color = "#7ee06a";
+  } else {
+    gymDunkFill.style.background = "#ffb454";
+    gymDunkLabel.textContent = "in the paint — JUMP, then SHOOT at the top";
+    gymDunkLabel.style.color = "#fff";
+  }
+}
+function updateGymHud() {
+  if (!gymHud) return;
+  const s = gymBall.score;
+  const meRed = myGymTeam === "red";
+  gymScoreEl.innerHTML =
+    `<span style='color:${meRed ? "#ff7a6a" : "#ff5a4d"}'>🔴 ${s.red}${meRed ? " ◄" : ""}</span>` +
+    " — " +
+    `<span style='color:${!meRed ? "#7ab0ff" : "#5a9bff"}'>${!meRed ? "► " : ""}${s.blue} 🔵</span>`;
+  gymStamEl.style.width = Math.round((controls.stamina || 0) * 100) + "%";
+  // grey while you carry (boost locked — Echo VR rule), cyan when ready,
+  // magenta while recharging
+  gymStamEl.style.background = controls.holdingBall ? "#566" : (controls.stamina > 0.3 ? "#2ff0ff" : "#ff3df0");
+}
+
+/* --- mobile touch controls for the gym: a full thumb-pad. left thumb works
+   the joystick (move) + DASH; right thumb gets SHOOT / GRAB / PASS / JUMP. each
+   button is big, glowing and labelled — no skimping on mobile. --- */
+let gymBtns = null;
+function buildGymBtns() {
+  if (gymBtns || !IS_TOUCH) return;
+  gymBtns = [];
+  const mk = (label, css, bg) => {
+    const b = document.createElement("button");
+    b.innerHTML = label;
+    b.style.cssText = "position:fixed;z-index:60;display:none;border:2px solid rgba(255,255,255,.35);" +
+      "border-radius:50%;font:800 15px monospace;color:#fff;line-height:1.05;text-align:center;" +
+      "box-shadow:0 3px 16px rgba(0,0,0,.5);background:" + bg + ";touch-action:none;-webkit-user-select:none;user-select:none;" + css;
+    document.body.appendChild(b); gymBtns.push(b);
+    return b;
+  };
+  // left thumb (joystick lives bottom-left): DASH sits just above it
+  const dash  = mk("⚡<br>DASH", "left:140px;bottom:160px;width:72px;height:72px", "rgba(74,93,160,.85)");
+  // right-thumb action cluster
+  const shoot = mk("🏀", "right:22px;bottom:92px;width:104px;height:104px;font-size:38px", "rgba(212,99,31,.9)");
+  const grab  = mk("✋<br>GRAB", "right:138px;bottom:110px;width:78px;height:78px", "rgba(58,160,120,.88)");
+  const pass  = mk("➟<br>PASS", "right:96px;bottom:206px;width:74px;height:74px", "rgba(154,90,42,.88)");
+  const jump  = mk("⤴<br>JUMP", "right:210px;bottom:150px;width:84px;height:84px;font-size:16px", "rgba(58,125,68,.9)");
+  const pd = (el, on, off) => {
+    el.addEventListener("pointerdown", (e) => { e.preventDefault(); e.stopPropagation(); on(); });
+    el.addEventListener("pointerup", (e) => { e.preventDefault(); e.stopPropagation(); off && off(); });
+    el.addEventListener("pointercancel", (e) => { e.preventDefault(); off && off(); });
+  };
+  pd(dash,  () => { controls.touchSprint = true; }, () => { controls.touchSprint = false; });
+  pd(jump,  () => { controls.touchJump = true; },   () => { controls.touchJump = false; });
+  pd(pass,  () => { gymBall.pass(); });
+  pd(grab,  () => { gymBall.click(); });               // grab a loose ball / strip the holder
+  pd(shoot, () => { controls.pointerDown = true; },    () => { controls.pointerDown = false; });  // hold = wind up, release = shoot
+}
+function showGymUI(on) {
+  buildGymHud(); if (IS_TOUCH) buildGymBtns();
+  gymHud.style.display = on ? "block" : "none";
+  if (gymPowerWrap && !on) gymPowerWrap.style.display = "none";
+  if (gymDunkWrap && !on) gymDunkWrap.style.display = "none";
+  if (gymBtns) for (const b of gymBtns) b.style.display = on ? "block" : "none";
+  if (on) updateGymHud();
+}
+
+// JOIN sign on the arcade court → ride out to the gym (auto-balanced team)
+function joinGym() {
+  if (modalOpen || elevBusy) return;
+  myGymTeam = assignGymTeam();
+  fadeTo(setupGym);
+}
+function setupGym() {
+  inGym = true;
+  controls.gym = true;
+  controls.gymY = 0; controls.vy = 0; controls.grounded = true; controls.stamina = 1;
+  controls.pitch = 0;
+  const sp = world.gymSpawnFor(myGymTeam);
+  controls.pos.x = sp.x; controls.pos.z = sp.z; controls.yaw = sp.yaw;
+  gymTeams.set(identity.uid, myGymTeam);
+  gymBall.reset();
+  setRoomTone(false);
+  setRain(0);                      // the court is indoors — kill weather noise
+  hideFlightStrip();               // no LAX window out here
+  refreshNoteVisibility();
+  store.logEvent("boat");          // counts as a portal trip
+  progress.bump("trips");
+  showGymUI(true);
+  // announce my team + ask everyone else's, so the count balances + displays
+  presence.sendAct({ kind: "bball", sub: "team", uid: identity.uid, team: myGymTeam, t: Date.now() });
+  presence.sendAct({ kind: "bball", sub: "teamq", uid: identity.uid, t: Date.now() });
+  toast(`🏀 you're on ${myGymTeam === "red" ? "🔴 RED" : "🔵 BLUE"} — attack the ${myGymTeam === "red" ? "EAST" : "WEST"} hoop`);
+  hide(paused);
+  if (entered) safeLock();
+}
+function teardownGym() {
+  gymBall.leave();
+  inGym = false;
+  controls.gym = false;
+  controls.gymY = 0; controls.vy = 0; controls.grounded = true;
+  controls.touchJump = false; controls.touchSprint = false;
+  showGymUI(false);
+  try { setRain((world.getWeather() && world.getWeather().rain) || 0); } catch (e) {}   // weather back
+}
+function leaveGym() {
+  fadeTo(() => {
+    teardownGym();
+    // step back out onto the arcade court, right where the JOIN sign is
+    controls.pos.x = -13.6; controls.pos.z = -3.0; controls.yaw = Math.PI;
+    setRoomTone(true);
+    refreshNoteVisibility();
+    if (entered) safeLock();
+  });
+}
+
 /* ---------------- arena lobby music (Echo VR lobby theme) ---------------- */
 const ARENA_TRACK = "XAd1fq-cPzA";
 let ytPlayer = null, ytLoading = false;
@@ -2806,7 +3064,10 @@ let stripTimer = null;
 // the LAX strip stays off while you're in a game or a menu — no plane
 // banners over the pool table, a cabinet, or any modal
 function stripBlocked() {
+  // the LAX window is the bedroom's — no flight strips in the far rooms
+  // (boat / arena / venue / gym), behind a game, or over a modal
   return controls.pooling || controls.aiming || modalOpen ||
+    inBoat || inArena || inClub || inGym ||
     (typeof arcadeIsOpen === "function" && arcadeIsOpen());
 }
 function showFlightStrip(info) {
@@ -2932,7 +3193,7 @@ function applySong(id) {
   if (!id) { stopSong(); return; }   // stop calls ended → setDelayTempo(null) + UI
   // the song keeps rolling while you're in another room — you just don't
   // hear the bedroom instruments from there (the arcade counts as away too)
-  const here = () => !inBoat && !inArena && !inClub && !inArcade();
+  const here = () => !inBoat && !inArena && !inClub && !inGym && !inArcade();
   playSong(id, {
     now: audioNow,
     // each track to its own instrument — piano is chromatic (raw semitone,
@@ -3183,7 +3444,7 @@ addEventListener("keydown", (e) => {
     } else if (p.kind === "lava") {
       world.setLava(p.on);
     } else if (p.kind === "pet") {
-      if (!inBoat) cat.remoteHearts();
+      if (!inBoat && !inArena && !inClub && !inGym) cat.remoteHearts();
     } else if (p.kind === "dimmer") {
       dimLevel = p.level;
       world.setRoomLight(p.level, p.color);
@@ -3206,6 +3467,18 @@ addEventListener("keydown", (e) => {
       disc.pos.set(A.x, A.y, A.z);
       disc.vel.set(0, 0, 0);
       if (inArena) { goalHorn(); toast(p.pts === 3 ? "💥 THREE from downtown" : "GOAL — 2 points"); }
+    } else if (p.kind === "bball") {
+      // THE GYM ball: hold/shot/score/steal all flow through gymball.recv;
+      // team/teamq keep the roster balanced + the HUD honest
+      if (p.sub === "team") {
+        gymTeams.set(p.uid, p.team);
+        if (inGym) updateGymHud();
+      } else if (p.sub === "teamq") {
+        if (inGym && p.uid !== identity.uid) presence.sendAct({ kind: "bball", sub: "team", uid: identity.uid, team: myGymTeam, t: Date.now() });
+      } else {
+        gymBall.recv(p);
+        if (inGym && (p.sub === "score")) updateGymHud();
+      }
     } else if (p.kind === "volca") {
       if (!inBoat) return;       // and the boat's sampler stays on the boat
       drumHit(p.pad);
@@ -3229,20 +3502,20 @@ addEventListener("keydown", (e) => {
     } else if (p.kind === "smoke") {
       // a remote puff: the corner bubbles and smokes, but only the
       // one who pulled gets the soft ten seconds
-      if (!inBoat && !inArena && !inClub) {
+      if (!inBoat && !inArena && !inClub && !inGym) {
         world.puffSmoke(p.what);
         smokeSound(p.what);
       }
     } else if (p.kind === "planeshot") {
       // someone else took the shot — if our jet is still up, down it
-      if (world.downPlane() && !inBoat && !inArena && !inClub) {
+      if (world.downPlane() && !inBoat && !inArena && !inClub && !inGym) {
         citySound("boom");
         toast("someone shot the plane out of the sky 🛩️💥");
       }
     } else if (p.kind === "edrum") {
-      if (!inBoat && !inArena && !inClub && !inArcade()) { edrumHit(p.pad); world.pressEdrum(p.pad); }
+      if (!inBoat && !inArena && !inClub && !inGym && !inArcade()) { edrumHit(p.pad); world.pressEdrum(p.pad); }
     } else if (p.kind === "guitar") {
-      if (!inBoat && !inArena && !inClub && !inArcade()) { guitarPluck(p.n, p.voice || 0); world.strumTele(); }
+      if (!inBoat && !inArena && !inClub && !inGym && !inArcade()) { guitarPluck(p.n, p.voice || 0); world.strumTele(); }
     } else if (p.kind === "ready") {
       applyReady(p.team, p.t);
     } else if (p.kind === "match") {
@@ -3355,6 +3628,7 @@ window.METRO_DEBUG = { renderer, camera, world, controls, THREE, cat, bartender,
   uid: identity.uid, pool: poolGame, pool2: poolGame2, sitAtPool, leavePool,
   toy: () => toy, grabToy, throwToy,
   hoops: hoopGame,
+  gym: { join: joinGym, leave: leaveGym, ball: gymBall, team: () => myGymTeam, inGym: () => inGym, debug: () => gymBall.debug() },
   carry: { pick: pickUpNote, drop: dropCarried, state: () => carrying },
   booth: { dj: () => djState, canDJ: () => canDJ(), headcount: () => clubHeadcount(), live: () => voice.djLive() } };
 
@@ -3387,9 +3661,20 @@ renderer.setAnimationLoop(() => {
     activePool.update(dt, { rotate: controls.poolRotate, charging: controls.poolCharging });
     controls.poolRotate = 0;
   }
+  // THE GYM: the full-court game runs on foot — tick the ball + refresh the HUD.
+  // self-heal: gym movement physics (jump/sprint) must be on whenever you're in
+  // the gym, no matter how you got here — otherwise you'd fall back to the plain
+  // walk path (no jump, no stamina).
+  if (inGym) {
+    if (!controls.gym) { controls.gym = true; controls.grounded = true; }
+    controls.holdingBall = gymBall.haveBall();   // no boosting while you carry (Echo VR rule)
+    gymBall.tick(dt);
+    updateGymHud();
+    updateDunkMeter();
+  }
   // basketball is free-roam — tick it every frame with your live pose; it only
   // does anything once you're standing on the court
-  if (!inBoat && !inArena && !inClub) {
+  if (!inBoat && !inArena && !inClub && !inGym) {
     hoopGame.tick(dt, {
       x: controls.pos.x, z: controls.pos.z, yaw: controls.yaw, pitch: controls.pitch,
       eyeY: 1.62, pressed: controls.pointerDown, locked: controls.locked,
@@ -3429,7 +3714,7 @@ renderer.setAnimationLoop(() => {
   // the carpet grimes with traffic, and the vacuum lifts it — bedroom only.
   // while you're vacuuming you DON'T track your own dirt (otherwise you'd
   // leave a fresh trail behind you and the job would never finish)
-  if (!inBoat && !inArena && !inClub) {
+  if (!inBoat && !inArena && !inClub && !inGym) {
     if (!vacuuming) world.floorTraffic(controls.pos.x, controls.pos.z, dt, 1);
     world.floorTraffic(cat.pos.x, cat.pos.z, dt, 0.6);
     if (vacuuming) world.vacuumStep(controls.pos.x, controls.pos.z, controls.yaw);
@@ -3451,10 +3736,10 @@ renderer.setAnimationLoop(() => {
   cat.tick(dt, t, controls.pose());
   toyTick(dt, t);
   // the bartender reacts to you only when you're in the bedroom/arcade with him
-  bartender.tick(dt, t, (!inBoat && !inArena && !inClub) ? controls.pose() : null);
+  bartender.tick(dt, t, (!inBoat && !inArena && !inClub && !inGym) ? controls.pose() : null);
   // the arcade mirror renders a live "you" from your own mic level — only while
   // you're in the bedroom/arcade (skip the extra render when off in another room)
-  if (!inBoat && !inArena && !inClub) mirror.update(dt, voice.selfLevel());
+  if (!inBoat && !inArena && !inClub && !inGym) mirror.update(dt, voice.selfLevel());
   discTick(dt);
   // the tunnel current: for 8 s after GO the tubes carry you at 10 m/s.
   // it only ever speeds you up — an early push keeps its extra speed,

@@ -9,6 +9,15 @@ import { clamp, IS_TOUCH } from "./util.js";
 
 const EYE = 1.62;
 const SPEED = 3.1;
+// THE GYM — basketball is on foot but deliberately heavy: a slow base jog so you
+// can't just stroll up and dunk, a sprint that burns a stamina meter (bursts,
+// not a free run), and a real jump with gravity so peers see you leave the floor.
+const GYM_SPEED = 1.7;        // base jog (≈0.55× normal walk)
+const GYM_SPRINT = 1.95;      // sprint multiplier (≈ a touch over normal walk)
+const GYM_G = 16;             // gravity (snappier than real for game-feel)
+const GYM_JUMP_V = 5.9;       // launch speed → apex ≈1.1 m
+const GYM_STAM_DRAIN = 1.6;   // seconds of full-sprint to empty the meter (a real burst, then it's gone)
+const GYM_STAM_REGEN = 4.2;   // seconds to refill from empty
 
 export class Controls {
   constructor(camera, canvas, bounds, walkable = null) {
@@ -31,6 +40,17 @@ export class Controls {
     // primary button held (free-roam basketball reads this to wind up a shot);
     // on desktop it's the mouse button, on touch a dedicated SHOOT button sets it
     this.pointerDown = false;
+    // on-foot basketball (THE GYM): jump + sprint stamina layered over the walk
+    this.gym = false;
+    this.gymY = 0;            // height above the floor (0 = grounded)
+    this.vy = 0;              // vertical velocity while airborne
+    this.grounded = true;
+    this.stamina = 1;         // 0..1 sprint meter (HUD reads it)
+    this.touchJump = false;   // mobile buttons set these; desktop uses keys
+    this.touchSprint = false;
+    this.holdingBall = false; // true while you carry the gym ball (blocks boost)
+    this._jumpHeld = false;
+    this._sprinting = false;
     // zero-g flight (THE CREW arena)
     this.zerog = false;
     this.arena = null;            // {x,y,z,hx,hy,hz} when flying
@@ -75,13 +95,17 @@ export class Controls {
     return IS_TOUCH ? this.enabled : document.pointerLockElement === this.canvas;
   }
 
-  pose() { return { x: this.pos.x, y: this.zerog ? this.flyY : 0, z: this.pos.z, yaw: this.yaw }; }
+  pose() { return { x: this.pos.x, y: this.zerog ? this.flyY : (this.gym ? this.gymY : 0), z: this.pos.z, yaw: this.yaw }; }
 
   enterPool() { this.pooling = true; this.poolRotate = 0; this.poolCharging = false; this.keys.clear(); }
   exitPool() { this.pooling = false; this.poolCharging = false; this._applyCamera(); }
 
   enterAim() { this.aiming = true; this.aimDX = 0; this.aimDY = 0; this.aimCharge = false; this.keys.clear(); }
   exitAim() { this.aiming = false; this.aimCharge = false; this._applyCamera(); }
+
+  // gym jump — called from main.js's keydown (fires reliably, pointer-lock or
+  // not) and from the mobile JUMP button. only leaves the floor when grounded.
+  gymJump() { if (this.gym && this.grounded) { this.vy = GYM_JUMP_V; this.grounded = false; this.onJump?.(); } }
 
   /* ---------- desktop ---------- */
   _bindDesktop() {
@@ -186,6 +210,7 @@ export class Controls {
     if (!this.enabled) return;
     if (this.pooling || this.aiming) return;     // the table/board game drives the camera
     if (this.zerog) { this._updateZeroG(dt); return; }
+    if (this.gym) { this._updateGym(dt); return; }
     let fwd = 0, strafe = 0;
     if (this.keys.has("KeyW") || this.keys.has("ArrowUp")) fwd += 1;
     if (this.keys.has("KeyS") || this.keys.has("ArrowDown")) fwd -= 1;
@@ -210,6 +235,62 @@ export class Controls {
         this.pos.z = clamp(this.pos.z + dz, this.bounds.minZ, this.bounds.maxZ);
       }
     }
+    this._applyCamera();
+  }
+
+  // on-foot basketball: a heavy jog (sprint burns stamina) with a real jump.
+  // horizontal is the same axis-slide walk as update(), just slower; vertical is
+  // gravity + a one-shot jump impulse. pose().y carries gymY so peers see hops.
+  _updateGym(dt) {
+    let fwd = 0, strafe = 0;
+    if (this.keys.has("KeyW") || this.keys.has("ArrowUp")) fwd += 1;
+    if (this.keys.has("KeyS") || this.keys.has("ArrowDown")) fwd -= 1;
+    if (this.keys.has("KeyA") || this.keys.has("ArrowLeft")) strafe -= 1;
+    if (this.keys.has("KeyD") || this.keys.has("ArrowRight")) strafe += 1;
+    fwd += -this.joy.y; strafe += this.joy.x;
+    const len = Math.hypot(fwd, strafe);
+
+    // sprint: hold SHIFT (or the touch button) WHILE MOVING to burn the meter
+    // for a burst. once empty you can't re-engage until it recovers past a
+    // quarter — the cooldown feel, no infinite running.
+    // no boosting with the rock in your hands (the Echo VR rule — you can't
+    // sprint while you carry; pass or shoot it first)
+    const wantSprint = (this.keys.has("ShiftLeft") || this.keys.has("ShiftRight") || this.touchSprint) && !this.holdingBall;
+    if (wantSprint && len > 0.01 && this.stamina > 0.02 && (this._sprinting || this.stamina > 0.3)) {
+      this._sprinting = true;
+      this.stamina = Math.max(0, this.stamina - dt / GYM_STAM_DRAIN);
+      if (this.stamina <= 0) this._sprinting = false;
+    } else {
+      this._sprinting = false;
+      this.stamina = Math.min(1, this.stamina + dt / GYM_STAM_REGEN);
+    }
+    const sprintMul = this._sprinting ? GYM_SPRINT : 1;
+
+    if (len > 0.01) {
+      const sp = (GYM_SPEED * sprintMul * dt) / Math.max(1, len);
+      const sin = Math.sin(this.yaw), cos = Math.cos(this.yaw);
+      const dx = (sin * -fwd + cos * strafe) * sp;
+      const dz = (cos * -fwd - sin * strafe) * sp;
+      if (this.walkable) {
+        if (this.walkable(this.pos.x + dx, this.pos.z)) this.pos.x += dx;
+        if (this.walkable(this.pos.x, this.pos.z + dz)) this.pos.z += dz;
+      } else {
+        this.pos.x += dx; this.pos.z += dz;
+      }
+    }
+
+    // jump — two independent paths so it can't silently break: keyboard SPACE
+    // also comes through main.js → gymJump(); here we cover the keys set + the
+    // mobile JUMP button. edge-triggered, grounded-only (no double-jump).
+    const jump = this.keys.has("Space") || this.touchJump;
+    if (jump && !this._jumpHeld && this.grounded) {
+      this.vy = GYM_JUMP_V; this.grounded = false; this.onJump?.();
+    }
+    this._jumpHeld = jump;
+    this.vy -= GYM_G * dt;
+    this.gymY += this.vy * dt;
+    if (this.gymY <= 0) { this.gymY = 0; this.vy = 0; this.grounded = true; }
+
     this._applyCamera();
   }
 
@@ -351,7 +432,7 @@ export class Controls {
       this.camera.rotation.x = this.pitch;
       return;
     }
-    this.camera.position.set(this.pos.x, EYE, this.pos.z);
+    this.camera.position.set(this.pos.x, EYE + (this.gym ? this.gymY : 0), this.pos.z);
     this.camera.rotation.order = "YXZ";
     this.camera.rotation.y = this.yaw;
     this.camera.rotation.x = this.pitch;

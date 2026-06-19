@@ -6261,9 +6261,331 @@ export function buildWorld() {
     tickFog(dt);
   }
 
+  /* --- the gym --- THE COURT: a full-court gymnasium far out at z=+80, its own
+     sealed box (like the boat / club / arena). You reach it by the JOIN sign on
+     the arcade court, not on foot — nothing walkable connects it. Hoops stand at
+     each baseline (rims along x); the ball + the game logic live in gymball.js,
+     driven from main.js. Lit by downward SPOTLIGHTS only (cones can't reach the
+     other rooms — the cross-room light rule), tagged cullRoom:"gym" so the
+     phone light-budget cull (see main.js) drops them everywhere else. */
+  const gym = (() => {
+    const GX = 0, GZ = 80;                 // court centre, way out in +z
+    const HALFL = 12.5, HALFW = 6.8;       // court half-length (along x), half-width (along z)
+    const WX = 15, WZ0 = GZ - 9, WZ1 = GZ + 9, CEIL = 8;   // room shell + ceiling
+    const rimY = 3.05, rimR = 0.23, ballR = 0.122;
+    const BBx = HALFL - 0.55;              // backboard plane distance from centre
+    const rimX = BBx - 0.42;               // rim reaches out into the court
+
+    // --- floor: hardwood + a full-court line set, painted on one canvas. width
+    // of the canvas = x (length, baseline→baseline), height = z (sideline width).
+    const courtTex = canvasTex(1100, 600, (g, cw, ch) => {
+      // a dark night-court: near-black resin floor, glowing neon line work
+      g.fillStyle = "#15111f"; g.fillRect(0, 0, cw, ch);
+      g.strokeStyle = "rgba(120,90,200,0.10)"; g.lineWidth = 2;          // faint board seams
+      for (let x = 0; x < cw; x += 28) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, ch); g.stroke(); }
+      const cyan = "#3df0ff", magenta = "#ff3df0", cx = cw / 2, cy = ch / 2;
+      // neon line work, drawn with a glow (shadowBlur) so it reads as lit
+      g.shadowBlur = 18;
+      g.strokeStyle = cyan; g.shadowColor = cyan; g.lineWidth = 6;
+      g.strokeRect(20, 20, cw - 40, ch - 40);                            // boundary
+      g.beginPath(); g.moveTo(cx, 20); g.lineTo(cx, ch - 20); g.stroke();// half-court line
+      g.beginPath(); g.arc(cx, cy, 78, 0, Math.PI * 2); g.stroke();      // centre circle
+      for (const s of [-1, 1]) {
+        const base = s < 0 ? 20 : cw - 20, keyD = 200, keyW = 150, dir = s < 0 ? 1 : -1;
+        g.strokeStyle = magenta; g.shadowColor = magenta; g.lineWidth = 6;
+        g.strokeRect(Math.min(base, base + dir * keyD), cy - keyW / 2, keyD, keyW);   // the key
+        g.beginPath(); g.arc(base + dir * keyD, cy, keyW / 2, 0, Math.PI * 2); g.stroke();
+        g.strokeStyle = cyan; g.shadowColor = cyan;
+        // 3-pt arc must bulge INTO the court: west opens right (-90°→90°),
+        // east opens left (90°→270°). the old formula sent the east arc off-court.
+        const a0 = s < 0 ? -0.5 * Math.PI : 0.5 * Math.PI;
+        const a1 = s < 0 ? 0.5 * Math.PI : 1.5 * Math.PI;
+        g.beginPath(); g.arc(base + dir * 34, cy, 320, a0, a1); g.stroke();
+        g.fillStyle = magenta; g.beginPath(); g.arc(base + dir * 34, cy, 9, 0, Math.PI * 2); g.fill();
+      }
+      g.fillStyle = "#3df0ff"; g.shadowColor = "#3df0ff"; g.shadowBlur = 26;
+      g.font = "900 84px monospace"; g.textAlign = "center"; g.textBaseline = "middle";
+      g.fillText("METRO", cx, cy);
+      g.shadowBlur = 0;
+    });
+    // the court is MeshBasic so the neon lines self-glow (a flat Tron floor),
+    // independent of how moody the lighting gets
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(HALFL * 2, HALFW * 2),
+      new THREE.MeshBasicMaterial({ map: courtTex }));
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.set(GX, 0.02, GZ); add(floor);
+    // a dark apron under the rest of the room (lit, so the coloured spots pool)
+    const apron = new THREE.Mesh(new THREE.PlaneGeometry(WX * 2, (WZ1 - WZ0)),
+      new THREE.MeshLambertMaterial({ color: 0x14111e }));
+    apron.rotation.x = -Math.PI / 2; apron.position.set(GX, 0.0, GZ); add(apron);
+
+    // --- shell: dark indigo walls + near-black ceiling (cyberpunk night gym) ---
+    const wallMat = lam(0x18142a), ceilMat = lam(0x0b0913);
+    const mkWall = (w, h, x, z, ry) => {
+      const m = box(w, h, 0.2, wallMat); m.position.set(x, h / 2, z); m.rotation.y = ry; add(m); return m;
+    };
+    mkWall(WX * 2, CEIL, GX, WZ0, 0);                 // far sideline wall (-z)
+    mkWall(WX * 2, CEIL, GX, WZ1, 0);                 // near sideline wall (+z)
+    mkWall((WZ1 - WZ0), CEIL, GX - WX, GZ, Math.PI / 2);  // west baseline wall
+    mkWall((WZ1 - WZ0), CEIL, GX + WX, GZ, Math.PI / 2);  // east baseline wall
+    const ceil = box(WX * 2, 0.2, (WZ1 - WZ0), ceilMat);
+    ceil.position.set(GX, CEIL, GZ); add(ceil);
+    // --- neon: glowing strips run the walls (cyan low, magenta high) + a few
+    // vertical accents on the baselines. all MeshBasic so they always glow. ---
+    const neonCyan = new THREE.MeshBasicMaterial({ color: 0x3df0ff });
+    const neonMag = new THREE.MeshBasicMaterial({ color: 0xff3df0 });
+    for (const z of [WZ0 + 0.12, WZ1 - 0.12]) {
+      const lo = box(WX * 2 - 0.6, 0.07, 0.05, neonCyan); lo.position.set(GX, 1.1, z); add(lo);
+      const hi = box(WX * 2 - 0.6, 0.07, 0.05, neonMag); hi.position.set(GX, CEIL - 1.2, z); add(hi);
+    }
+    for (const x of [GX - WX + 0.12, GX + WX - 0.12]) {
+      const lo = box(0.05, 0.07, (WZ1 - WZ0) - 0.6, neonCyan); lo.position.set(x, 1.1, GZ); add(lo);
+      const hi = box(0.05, 0.07, (WZ1 - WZ0) - 0.6, neonMag); hi.position.set(x, CEIL - 1.2, GZ); add(hi);
+    }
+    // vertical neon pillars up the corners-ish of the long wall
+    for (let i = -2; i <= 2; i++) {
+      const v = box(0.06, CEIL - 1.6, 0.05, i % 2 ? neonMag : neonCyan);
+      v.position.set(GX + i * 5.2, (CEIL - 1.6) / 2 + 0.2, WZ0 + 0.14); add(v);
+    }
+    // low dark bleachers down each sideline, each with a thin neon nose-strip
+    for (const s of [-1, 1]) {
+      for (let r = 0; r < 3; r++) {
+        const zc = GZ + s * (HALFW + 0.7 + r * 0.7);
+        const bl = box(HALFL * 2 - 1, 0.4, 0.7, lam(0x1a1730));
+        bl.position.set(GX, 0.2 + r * 0.4, zc); add(bl);
+        const trim = box(HALFL * 2 - 1, 0.04, 0.04, r % 2 ? neonMag : neonCyan);
+        trim.position.set(GX, 0.4 + r * 0.4, zc - s * 0.35); add(trim);
+      }
+    }
+
+    // --- a regulation hoop at a baseline. side -1 = west, +1 = east. The rim
+    // reaches toward centre; the backboard sits just outside it. ---
+    // a SQUARE backboard: light board, black edge, a red border frame and the
+    // red shooter's square in the lower-centre — sitting just ABOVE the rim
+    const bbTex = canvasTex(360, 280, (g, cw, ch) => {
+      g.fillStyle = "#ecebe7"; g.fillRect(0, 0, cw, ch);                  // light board
+      g.lineWidth = 8; g.strokeStyle = "#1a1a1a"; g.strokeRect(5, 5, cw - 10, ch - 10);   // black edge
+      g.lineWidth = 15; g.strokeStyle = "#e23b30"; g.strokeRect(26, 26, cw - 52, ch - 52); // red border frame
+      g.lineWidth = 13; g.strokeStyle = "#e23b30";                        // red shooter's square, low-centre
+      const sqW = cw * 0.30, sqH = ch * 0.30;
+      g.strokeRect(cw / 2 - sqW / 2, ch * 0.50, sqW, sqH);
+    });
+    const poleMat = lam(0x9aa0a8);          // round galvanized pole
+    const rimMat = lam(0xe2622a);           // orange rim
+    const chainMat = new THREE.MeshBasicMaterial({ color: 0xc6cad2, wireframe: true, transparent: true, opacity: 0.8 });
+    const hoops = [];
+    for (const side of [-1, 1]) {
+      const bx = GX + side * BBx, rx = GX + side * rimX;
+      const poleX = GX + side * 13.6;       // the standard stands behind the baseline (out of bounds)
+      const boardY = 3.45;                  // board centre — bottom sits just below the rim (3.05)
+      // round pole + a curved arm cantilevering the board out over the court
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.11, boardY + 0.45, 16), poleMat);
+      pole.position.set(poleX, (boardY + 0.45) / 2, GZ); add(pole);
+      const armLen = Math.abs(poleX - bx) + 0.1;
+      const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, armLen, 12), poleMat);
+      arm.rotation.z = Math.PI / 2;
+      arm.position.set((poleX + bx) / 2, boardY + 0.18, GZ); add(arm);
+      // a thin board with thickness: dark backing box + a bright textured face
+      // (MeshBasic so the board stays readable, not cel-shaded into the dark)
+      const bbBack = box(0.08, 1.32, 1.72, lam(0xd7d4cc));
+      bbBack.position.set(bx + side * 0.05, boardY, GZ); add(bbBack);
+      const bbFace = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 1.3),
+        new THREE.MeshBasicMaterial({ map: bbTex }));
+      bbFace.position.set(bx, boardY, GZ); bbFace.rotation.y = side < 0 ? Math.PI / 2 : -Math.PI / 2;
+      add(bbFace);
+      // rim + a little mount bracket back to the board
+      const rim = new THREE.Mesh(new THREE.TorusGeometry(rimR, 0.025, 12, 30), rimMat);
+      rim.rotation.x = Math.PI / 2; rim.position.set(rx, rimY, GZ); add(rim);
+      const bracket = box(Math.abs(bx - rx) + 0.05, 0.05, 0.07, rimMat);
+      bracket.position.set((bx + rx) / 2, rimY, GZ); add(bracket);
+      // a silver CHAIN net: a dense wireframe cone reads as hanging links
+      const net = new THREE.Mesh(
+        new THREE.CylinderGeometry(rimR * 0.97, rimR * 0.46, 0.42, 12, 5, true), chainMat);
+      net.position.set(rx, rimY - 0.21, GZ); add(net);
+      const swish = (() => { let iv = null; return () => {
+        let tt = 0; clearInterval(iv); iv = setInterval(() => {
+          tt += 0.05; const sg = Math.sin(Math.min(tt, 0.3) / 0.3 * Math.PI) * 0.35;
+          net.scale.set(1, 1 + sg * 0.6, 1); net.position.y = rimY - 0.2 - sg * 0.12;
+          if (tt >= 0.32) { clearInterval(iv); net.scale.set(1, 1, 1); net.position.y = rimY - 0.2; }
+        }, 25);
+      }; })();
+      hoops.push({
+        side, rim: { x: rx, y: rimY, z: GZ }, rimR,
+        // board faces toward centre; its normal points to -side·x
+        backboard: { x: bx, faceSign: -side, z0: GZ - 0.85, z1: GZ + 0.85, y0: 2.85, y1: 4.05 },
+        swish,
+      });
+    }
+
+    // --- the ball: a glowing NEON rock (self-lit so it streaks through the
+    // dark court) with seams + an additive halo. MeshBasic = always bright. ---
+    const ballTex = canvasTex(64, 64, (g, cw, ch) => {
+      g.fillStyle = "#ff7a18"; g.fillRect(0, 0, cw, ch);              // hot neon orange
+      g.strokeStyle = "#3df0ff"; g.lineWidth = 3;                     // cyan seams
+      g.beginPath(); g.moveTo(cw / 2, 0); g.lineTo(cw / 2, ch);
+      g.moveTo(0, ch / 2); g.lineTo(cw, ch / 2); g.stroke();
+      g.beginPath(); g.arc(-cw * 0.15, ch / 2, cw * 0.62, -1, 1); g.stroke();
+      g.beginPath(); g.arc(cw * 1.15, ch / 2, cw * 0.62, Math.PI - 1, Math.PI + 1); g.stroke();
+    });
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(ballR, 18, 14),
+      new THREE.MeshBasicMaterial({ map: ballTex }));
+    ball.position.set(GX, ballR, GZ); add(ball);
+    const ballHalo = new THREE.Mesh(new THREE.SphereGeometry(ballR * 1.55, 14, 10),
+      new THREE.MeshBasicMaterial({ color: 0xff8a3a, transparent: true, opacity: 0.28,
+        blending: THREE.AdditiveBlending, depthWrite: false }));
+    ball.add(ballHalo);
+
+    // --- neon particle burst (shot / pass / dunk sparks). one cheap Points
+    // cloud, mobile-friendly: a fixed pool that fades, no per-frame allocation. ---
+    const P_N = 80;
+    const pPos = new Float32Array(P_N * 3).fill(-999);
+    const pVel = Array.from({ length: P_N }, () => ({ x: 0, y: 0, z: 0 }));
+    const pLife = new Float32Array(P_N);
+    const pGeo = new THREE.BufferGeometry();
+    pGeo.setAttribute("position", new THREE.BufferAttribute(pPos, 3));
+    const pMat = new THREE.PointsMaterial({ color: 0x3df0ff, size: 0.16, transparent: true,
+      opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false });
+    const points = new THREE.Points(pGeo, pMat); points.frustumCulled = false; add(points);
+    let pCursor = 0;
+    const burst = (x, y, z, color = 0x3df0ff, n = 18, spread = 3) => {
+      pMat.color.setHex(color);
+      for (let i = 0; i < n; i++) {
+        const k = (pCursor++) % P_N;
+        pPos[k * 3] = x; pPos[k * 3 + 1] = y; pPos[k * 3 + 2] = z;
+        pVel[k] = { x: (Math.random() - 0.5) * spread, y: Math.random() * spread * 0.8 + 0.5, z: (Math.random() - 0.5) * spread };
+        pLife[k] = 0.55 + Math.random() * 0.25;
+      }
+      pGeo.attributes.position.needsUpdate = true;
+    };
+    const updateParticles = (dt) => {
+      let any = false;
+      for (let k = 0; k < P_N; k++) {
+        if (pLife[k] <= 0) continue;
+        any = true; pLife[k] -= dt;
+        const v = pVel[k]; v.y -= 7 * dt;
+        pPos[k * 3] += v.x * dt; pPos[k * 3 + 1] += v.y * dt; pPos[k * 3 + 2] += v.z * dt;
+        if (pLife[k] <= 0) pPos[k * 3 + 1] = -999;
+      }
+      if (any) pGeo.attributes.position.needsUpdate = true;
+    };
+
+    // --- scoreboard hung over centre court (canvas, redrawn by setScore) ---
+    const sbCv = document.createElement("canvas"); sbCv.width = 512; sbCv.height = 200;
+    const sbTex = new THREE.CanvasTexture(sbCv); sbTex.colorSpace = THREE.SRGBColorSpace;
+    const drawSB = (red, blue) => {
+      const g = sbCv.getContext("2d");
+      g.fillStyle = "#070a10"; g.fillRect(0, 0, 512, 200);
+      g.strokeStyle = "#1c2230"; g.lineWidth = 8; g.strokeRect(6, 6, 500, 188);
+      g.textAlign = "center"; g.textBaseline = "middle";
+      g.font = "900 34px monospace";
+      g.fillStyle = "#ff5a4d"; g.fillText("RED", 128, 44);
+      g.fillStyle = "#5a9bff"; g.fillText("BLUE", 384, 44);
+      g.font = "900 96px monospace";
+      g.fillStyle = "#ff5a4d"; g.shadowColor = "#ff5a4d"; g.shadowBlur = 16; g.fillText(String(red), 128, 130);
+      g.fillStyle = "#5a9bff"; g.shadowColor = "#5a9bff"; g.fillText(String(blue), 384, 130);
+      g.shadowBlur = 0; g.fillStyle = "#3a4254"; g.font = "900 30px monospace"; g.fillText("·", 256, 120);
+      sbTex.needsUpdate = true;
+    };
+    drawSB(0, 0);
+    for (const sz of [-1, 1]) {
+      const sb = new THREE.Mesh(new THREE.PlaneGeometry(3.0, 1.17),
+        new THREE.MeshBasicMaterial({ map: sbTex }));
+      sb.position.set(GX, CEIL - 1.4, GZ + sz * 0.3);
+      sb.rotation.y = sz < 0 ? Math.PI : 0; add(sb);
+    }
+
+    // --- aim guide: a faint parabola while you wind up a shot ---
+    const ARC_N = 64;
+    const arcGeo = new THREE.BufferGeometry();
+    arcGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(ARC_N * 3), 3));
+    const arcLine = new THREE.Line(arcGeo, new THREE.LineBasicMaterial({
+      color: 0xffd23c, transparent: true, opacity: 0.4, depthTest: false }));
+    arcLine.renderOrder = 998; arcLine.visible = false; add(arcLine);
+    const setArc = (pts) => {
+      const pos = arcGeo.attributes.position, n = pts.length;
+      for (let i = 0; i < ARC_N; i++) { const src = pts[Math.min(n - 1, Math.floor(i / (ARC_N - 1) * (n - 1)))]; pos.setXYZ(i, src.x, src.y, src.z); }
+      pos.needsUpdate = true; arcLine.visible = true;
+    };
+    const hideGuide = () => { arcLine.visible = false; };
+
+    // --- moody cyberpunk lighting: dim, SATURATED neon downlights (cyan one
+    // side, magenta the other) pool coloured light on the court; the cones stay
+    // in the room (cross-room rule). emissive tubes glow overhead. ---
+    let li = 0;
+    for (const lx of [-9, -3, 3, 9]) for (const lz of [GZ - 4.5, GZ + 4.5]) {
+      const cool = (li++) % 2 === 0;
+      const col = cool ? 0x2fb6ff : 0xff3ad0;            // cyan / magenta
+      const sp = new THREE.SpotLight(col, 60, 26, Math.PI / 3.0, 0.6, 1.3);
+      sp.position.set(lx, CEIL - 0.3, lz);
+      sp.target.position.set(lx, 0, lz);
+      sp.userData.cullRoom = "gym"; sp.target.userData.cullRoom = "gym";
+      add(sp); add(sp.target);
+      // the glowing neon tube you see overhead
+      const fix = box(2.2, 0.1, 0.4, new THREE.MeshBasicMaterial({ color: cool ? 0x6fe6ff : 0xff7ae0 }));
+      fix.position.set(lx, CEIL - 0.16, lz); add(fix);
+    }
+    // a low, cool fill so the room is moody but never pitch-black
+    const gymFill = new THREE.PointLight(0x5a6cff, 9, 30, 1.4);
+    gymFill.position.set(GX, CEIL - 1.2, GZ);
+    gymFill.userData.cullRoom = "gym"; add(gymFill);
+
+    // --- the JOIN sign, mounted on the ARCADE south wall beside the pop-a-shot
+    // hoop (BX≈-14.5, wall at AR.z0): tap it to ride out to the gym. ---
+    const joinTex = canvasTex(256, 320, (g) => {
+      g.fillStyle = "#0a0c12"; g.fillRect(0, 0, 256, 320);
+      g.strokeStyle = "#ff7a1f"; g.lineWidth = 6; g.strokeRect(8, 8, 240, 304);
+      g.fillStyle = "#ff7a1f"; g.shadowColor = "#ff7a1f"; g.shadowBlur = 14;
+      g.font = "70px serif"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText("🏀", 128, 78);
+      g.font = "900 40px monospace"; g.fillStyle = "#ffd9b0"; g.fillText("JOIN", 128, 150);
+      g.fillText("5-ON-5", 128, 196);
+      g.font = "900 26px monospace"; g.fillStyle = "#9adcff"; g.shadowColor = "#9adcff";
+      g.fillText("THE GYM", 128, 250); g.fillText("▶", 128, 290);
+    });
+    const joinSign = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.88),
+      new THREE.MeshBasicMaterial({ map: joinTex, transparent: true }));
+    joinSign.position.set(-12.0, 1.45, AR.z0 + 0.06);
+    joinSign.userData.gymJoin = true; add(joinSign);
+
+    // --- the EXIT panel inside the gym, on a baseline wall: tap to ride back ---
+    const exitTex = canvasTex(256, 96, (g) => {
+      g.fillStyle = "#0a0c12"; g.fillRect(0, 0, 256, 96);
+      g.strokeStyle = "#3bff9d"; g.lineWidth = 5; g.strokeRect(6, 6, 244, 84);
+      g.fillStyle = "#3bff9d"; g.shadowColor = "#3bff9d"; g.shadowBlur = 12;
+      g.font = "900 34px monospace"; g.textAlign = "center"; g.textBaseline = "middle";
+      g.fillText("◀ EXIT", 128, 50);
+    });
+    const exitSign = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 0.38),
+      new THREE.MeshBasicMaterial({ map: exitTex, transparent: true }));
+    exitSign.position.set(GX - WX + 0.12, 2.0, GZ - 3.2);
+    exitSign.rotation.y = Math.PI / 2;
+    exitSign.userData.gymExit = true; add(exitSign);
+
+    return {
+      info: { x: GX, z: GZ }, ceilY: CEIL, floorY: 0, ballR,
+      // where the ball may roam: full length to the baseline walls, but the
+      // sidelines stop at the FRONT of the bleachers (the ball bounces off the
+      // stands instead of passing through them)
+      bounds: { x0: GX - WX + 0.3, x1: GX + WX - 0.3,
+                z0: GZ - (HALFW + 0.35), z1: GZ + (HALFW + 0.35) },
+      // two spawn points (one per team baseline), facing the far hoop
+      spawnFor: (team) => team === "blue"
+        ? { x: GX + HALFL - 3.5, z: GZ, yaw: Math.PI / 2 }    // blue defends east, faces -x
+        : { x: GX - HALFL + 3.5, z: GZ, yaw: -Math.PI / 2 },  // red defends west, faces +x
+      // which hoop a team attacks (red → east/+ , blue → west/-)
+      hoopFor: (team) => team === "blue" ? hoops[0] : hoops[1],
+      hoops, ball, mesh: ball, setArc, hideGuide,
+      setScore: drawSB, burst, updateParticles,
+      joinHit: joinSign, exitHit: exitSign,
+    };
+  })();
+
   // where feet may go: bedroom + closet passage + arcade room
   // (cabinet walls get ~1.1 m clearance so you can stand at any machine)
   const WALK_RECTS = [
+    // the gym court — open floor inside the bleachers/poles (you can't walk
+    // through them): stops short of the sideline bleachers (±7.5) and the
+    // baseline hoop standards (±13.6)
+    { x0: gym.info.x - 13.1, x1: gym.info.x + 13.1, z0: gym.info.z - 7.0, z1: gym.info.z + 7.0 },
     { x0: -2.3, x1: 2.3, z0: -2.35, z1: 3.0 },
     // passage reaches well into the arcade rect — overlapping rects,
     // so there's no dead strip at the threshold
@@ -6411,6 +6733,10 @@ export function buildWorld() {
     arenaGoalX: GOAL_X, arenaBubbleR: BUBBLE_R,
     setTubeBarriers, inTube,
     pool, pool2, hoops,
+    // THE GYM — full-court basketball, far out at z=+80 (gymball.js drives it)
+    gym,
+    inGym: (x, z) => z > 40,
+    gymSpawnFor: gym.spawnFor,
     discGroup, discHit, setArenaScore,
     elevHits, elevCallHits, setElevatorDoors, elevatorOpen, inElevatorCab,
     // where you land when you leave any room — back inside the cab, facing out
