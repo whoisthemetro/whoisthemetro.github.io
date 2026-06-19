@@ -64,6 +64,11 @@ export class Controls {
     this.pos = { x: 0, z: 2.6 };
     this.keys = new Set();
     this.joy = { x: 0, y: 0, active: false, pid: null };
+    // right look-stick (mobile, gym only): deflection drives the camera, a quick
+    // tap fires onLookTap (grab). pressure-touch isn't a thing on modern phones.
+    this.lookJoy = { x: 0, y: 0, active: false, pid: null };
+    this.lookStickOn = false;
+    this.lookTapFns = [];
     this.actionFns = [];
     this.lockChangeFns = [];
     this._applyCamera();
@@ -106,6 +111,22 @@ export class Controls {
   // gym jump — called from main.js's keydown (fires reliably, pointer-lock or
   // not) and from the mobile JUMP button. only leaves the floor when grounded.
   gymJump() { if (this.gym && this.grounded) { this.vy = GYM_JUMP_V; this.grounded = false; this.onJump?.(); } }
+
+  // right look-stick wiring (mobile gym)
+  onLookTap(fn) { this.lookTapFns.push(fn); }
+  setLookStick(on) {
+    this.lookStickOn = on;
+    const el = document.getElementById("joystick-r");
+    if (el) el.classList.toggle("show", !!on);
+    if (!on) { this.lookJoy.x = 0; this.lookJoy.y = 0; this.lookJoy.active = false; this.lookJoy.pid = null; }
+  }
+  // turn the camera from the look-stick deflection (called each frame)
+  _applyLookStick(dt) {
+    if (!this.lookJoy.active) return;
+    const RATE = 2.7;   // rad/s at full deflection
+    this.yaw -= this.lookJoy.x * RATE * dt;
+    this.pitch = clamp(this.pitch - this.lookJoy.y * RATE * dt, -1.25, 1.25);
+  }
 
   /* ---------- desktop ---------- */
   _bindDesktop() {
@@ -178,6 +199,37 @@ export class Controls {
     joyEl.addEventListener("pointerup", joyEnd);
     joyEl.addEventListener("pointercancel", joyEnd);
 
+    // right look-stick (shown only in the gym): deflection turns the camera,
+    // a quick tap fires onLookTap (grab/steal — our stand-in for "pressure")
+    const rEl = document.getElementById("joystick-r");
+    const rNub = document.getElementById("joystick-r-nub");
+    if (rEl) {
+      let rStart = 0, rMoved = 0;
+      rEl.addEventListener("pointerdown", (e) => {
+        this.lookJoy.active = true; this.lookJoy.pid = e.pointerId;
+        rEl.setPointerCapture(e.pointerId); rStart = performance.now(); rMoved = 0;
+        e.preventDefault();
+      });
+      rEl.addEventListener("pointermove", (e) => {
+        if (!this.lookJoy.active || e.pointerId !== this.lookJoy.pid) return;
+        const r = rEl.getBoundingClientRect();
+        const dx = (e.clientX - (r.left + r.width / 2)) / (r.width / 2);
+        const dy = (e.clientY - (r.top + r.height / 2)) / (r.height / 2);
+        const len = Math.hypot(dx, dy) || 1, s = len > 1 ? 1 / len : 1;
+        this.lookJoy.x = dx * s; this.lookJoy.y = dy * s;
+        rMoved += Math.abs(this.lookJoy.x) + Math.abs(this.lookJoy.y);
+        rNub.style.transform = `translate(calc(-50% + ${this.lookJoy.x * 33}px), calc(-50% + ${this.lookJoy.y * 33}px))`;
+      });
+      const rEnd = (e) => {
+        if (e.pointerId !== this.lookJoy.pid) return;
+        if (performance.now() - rStart < 300 && rMoved < 0.6) this.lookTapFns.forEach(f => f());  // tap = grab
+        this.lookJoy.active = false; this.lookJoy.x = this.lookJoy.y = 0; this.lookJoy.pid = null;
+        rNub.style.transform = "translate(-50%,-50%)";
+      };
+      rEl.addEventListener("pointerup", rEnd);
+      rEl.addEventListener("pointercancel", rEnd);
+    }
+
     // look + tap on the scene itself
     let look = null;
     this.canvas.addEventListener("pointerdown", (e) => {
@@ -190,6 +242,7 @@ export class Controls {
       look.x = e.clientX; look.y = e.clientY;
       if (this.pooling) { this.poolRotate -= dx * 0.006; return; }   // drag to aim
       if (this.aiming) { this.aimDX -= dx * 0.005; this.aimDY -= dy * 0.005; return; }
+      if (this.lookStickOn) return;   // in the gym the right stick owns looking
       this.yaw -= dx * 0.005;
       this.pitch = clamp(this.pitch - dy * 0.005, -1.25, 1.25);
     });
@@ -208,6 +261,7 @@ export class Controls {
   /* ---------- per-frame ---------- */
   update(dt) {
     if (!this.enabled) return;
+    this._applyLookStick(dt);                     // right look-stick turns the camera (mobile gym)
     if (this.pooling || this.aiming) return;     // the table/board game drives the camera
     if (this.zerog) { this._updateZeroG(dt); return; }
     if (this.gym) { this._updateGym(dt); return; }
@@ -253,9 +307,10 @@ export class Controls {
     // sprint: hold SHIFT (or the touch button) WHILE MOVING to burn the meter
     // for a burst. once empty you can't re-engage until it recovers past a
     // quarter — the cooldown feel, no infinite running.
-    // no boosting with the rock in your hands (the Echo VR rule — you can't
-    // sprint while you carry; pass or shoot it first)
-    const wantSprint = (this.keys.has("ShiftLeft") || this.keys.has("ShiftRight") || this.touchSprint) && !this.holdingBall;
+    // boost: SHIFT, the touch button, OR shoving the move-stick to its outer
+    // edge (mobile stand-in for "press harder"). never while you carry the ball.
+    const stickBoost = Math.hypot(this.joy.x, this.joy.y) > 0.92;
+    const wantSprint = (this.keys.has("ShiftLeft") || this.keys.has("ShiftRight") || this.touchSprint || stickBoost) && !this.holdingBall;
     if (wantSprint && len > 0.01 && this.stamina > 0.02 && (this._sprinting || this.stamina > 0.3)) {
       this._sprinting = true;
       this.stamina = Math.max(0, this.stamina - dt / GYM_STAM_DRAIN);

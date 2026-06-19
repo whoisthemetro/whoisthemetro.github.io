@@ -124,15 +124,30 @@ body {
 /* ---------- joystick (mobile) ---------- */
 #joystick {
   position: fixed; left: 26px; bottom: 26px; z-index: 20;
-  width: 110px; height: 110px; border-radius: 50%;
-  border: 1px solid rgba(232,228,218,0.18);
-  background: rgba(10,14,17,0.35); display: none;
+  width: 120px; height: 120px; border-radius: 50%;
+  border: 2px solid rgba(232,228,218,0.5);
+  background: rgba(10,14,17,0.5); display: none;
+  box-shadow: 0 4px 18px rgba(0,0,0,0.5);
 }
 #joystick.show { display: block; }
 #joystick-nub {
   position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
-  width: 44px; height: 44px; border-radius: 50%;
-  background: rgba(232,228,218,0.25);
+  width: 52px; height: 52px; border-radius: 50%;
+  background: rgba(232,228,218,0.7);
+}
+/* right look-stick — mirror of the move stick, gym only (cyan-tinted) */
+#joystick-r {
+  position: fixed; right: 26px; bottom: 26px; z-index: 20;
+  width: 120px; height: 120px; border-radius: 50%;
+  border: 2px solid rgba(120,200,255,0.65);
+  background: rgba(10,14,17,0.5); display: none;
+  box-shadow: 0 4px 18px rgba(0,0,0,0.5);
+}
+#joystick-r.show { display: block; }
+#joystick-r-nub {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
+  width: 52px; height: 52px; border-radius: 50%;
+  background: rgba(120,200,255,0.7);
 }
 
 /* ---------- panels ---------- */

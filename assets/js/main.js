@@ -2819,6 +2819,9 @@ const gymBall = makeGymBall(GYM, {
     if (target === identity.uid && inGym) { gotScratched(); toast("🤚 someone stripped you!"); }
   },
 });
+// a tap on the right look-stick grabs a loose ball / strips the holder
+// (our mobile stand-in for the "pressure" idea, since phones have no force touch)
+controls.onLookTap(() => { if (inGym) gymBall.click(); });
 
 /* --- gym HUD: score + stamina + a one-line hint (built lazily) --- */
 let gymHud = null, gymScoreEl = null, gymStamEl = null;
@@ -2834,7 +2837,7 @@ function buildGymHud() {
     "font:800 16px monospace;text-align:center;color:#eaf2ff;text-shadow:0 2px 6px rgba(0,0,0,.7)";
   gymHud.innerHTML =
     "<div id='gym-score' style='margin-top:10px;font-size:22px'>🔴 0 — 0 🔵</div>" +
-    "<div style='margin:8px auto 0;font:700 11px monospace;letter-spacing:2px;opacity:.85'>⚡ BOOST</div>" +
+    "<div id='gym-boost-label' style='margin:8px auto 0;font:700 11px monospace;letter-spacing:2px;opacity:.85'>⚡ BOOST</div>" +
     "<div style='margin:3px auto 0;width:200px;height:9px;border:1px solid rgba(120,200,255,.5);border-radius:5px;background:rgba(0,0,0,.55);overflow:hidden'>" +
     "<div id='gym-stam' style='height:100%;width:100%;background:#2ff0ff'></div></div>" +
     "<div id='gym-hint' style='margin-top:6px;font-size:12px;opacity:.85'></div>";
@@ -2842,8 +2845,15 @@ function buildGymHud() {
   gymScoreEl = gymHud.querySelector("#gym-score");
   gymStamEl = gymHud.querySelector("#gym-stam");
   gymHud.querySelector("#gym-hint").textContent = IS_TOUCH
-    ? "stick = move · DASH · JUMP · GRAB · hold 🏀 to wind up a shot · PASS · drag to look"
+    ? ""
     : "WASD move · SPACE jump · SHIFT dash · hold CLICK to shoot · click to grab/steal · E pass";
+  // mobile: a clean screen — no score or text clutter, just the boost bar.
+  // the two thumbsticks carry move/look + boost (left edge) + grab (right tap).
+  if (IS_TOUCH) {
+    gymScoreEl.style.display = "none";
+    gymHud.querySelector("#gym-hint").style.display = "none";
+    gymHud.querySelector("#gym-boost-label").style.display = "none";
+  }
   // the arcade-style power meter, centered low on screen
   gymPowerWrap = document.createElement("div");
   gymPowerWrap.style.cssText =
@@ -2869,6 +2879,7 @@ function buildGymHud() {
 }
 function updateDunkMeter() {
   if (!gymDunkWrap) return;
+  if (IS_TOUCH) { gymDunkWrap.style.display = "none"; return; }   // shooting is hidden on mobile for now
   const di = gymBall.dunk();
   if (!di.inZone) { gymDunkWrap.style.display = "none"; return; }
   gymDunkWrap.style.display = "block";
@@ -2931,12 +2942,17 @@ function buildGymBtns() {
   pd(grab,  () => { gymBall.click(); });               // grab a loose ball / strip the holder
   pd(shoot, () => { controls.pointerDown = true; },    () => { controls.pointerDown = false; });  // hold = wind up, release = shoot
 }
+// the action buttons (grab/jump/shoot/pass) are hidden for now — mobile runs on
+// the two thumbsticks (left=move+boost, right=look+grab). flip back on later.
+const GYM_BUTTONS = false;
 function showGymUI(on) {
-  buildGymHud(); if (IS_TOUCH) buildGymBtns();
+  buildGymHud();
+  if (GYM_BUTTONS && IS_TOUCH) buildGymBtns();
   gymHud.style.display = on ? "block" : "none";
   if (gymPowerWrap && !on) gymPowerWrap.style.display = "none";
   if (gymDunkWrap && !on) gymDunkWrap.style.display = "none";
-  if (gymBtns) for (const b of gymBtns) b.style.display = on ? "block" : "none";
+  if (gymBtns) for (const b of gymBtns) b.style.display = (on && GYM_BUTTONS) ? "block" : "none";
+  if (IS_TOUCH) controls.setLookStick(on);     // right look-stick, gym only
   if (on) updateGymHud();
 }
 
