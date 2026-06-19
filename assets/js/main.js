@@ -1885,7 +1885,13 @@ async function sha256(s) {
 function fadeTo(fn) {
   const f = $("#fade");
   f.classList.add("dark");
-  setTimeout(() => { fn(); setTimeout(() => f.classList.remove("dark"), 150); }, 480);
+  setTimeout(() => {
+    // never strand anyone on a black screen: if the room setup throws, still
+    // lift the fade (and surface it) instead of leaving the overlay dark
+    try { fn(); }
+    catch (e) { console.error("room transition failed:", e); toast("hmm, that glitched — try again"); }
+    finally { setTimeout(() => f.classList.remove("dark"), 150); }
+  }, 480);
 }
 // the arcade elevator — a car you ride. CALL parts the doors with a chime;
 // step inside and the back-wall buttons are the rooms. each floor reuses the

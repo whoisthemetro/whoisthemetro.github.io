@@ -6279,8 +6279,8 @@ export function buildWorld() {
     // --- floor: hardwood + a full-court line set, painted on one canvas. width
     // of the canvas = x (length, baseline→baseline), height = z (sideline width).
     const courtTex = canvasTex(1100, 600, (g, cw, ch) => {
-      // a dark night-court: near-black resin floor, glowing neon line work
-      g.fillStyle = "#15111f"; g.fillRect(0, 0, cw, ch);
+      // a night-court: deep resin floor (readable, not pure black), glowing neon lines
+      g.fillStyle = "#231b38"; g.fillRect(0, 0, cw, ch);
       g.strokeStyle = "rgba(120,90,200,0.10)"; g.lineWidth = 2;          // faint board seams
       for (let x = 0; x < cw; x += 28) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, ch); g.stroke(); }
       const cyan = "#3df0ff", magenta = "#ff3df0", cx = cw / 2, cy = ch / 2;
@@ -6316,11 +6316,12 @@ export function buildWorld() {
     floor.position.set(GX, 0.02, GZ); add(floor);
     // a dark apron under the rest of the room (lit, so the coloured spots pool)
     const apron = new THREE.Mesh(new THREE.PlaneGeometry(WX * 2, (WZ1 - WZ0)),
-      new THREE.MeshLambertMaterial({ color: 0x14111e }));
+      new THREE.MeshLambertMaterial({ color: 0x251f38 }));
     apron.rotation.x = -Math.PI / 2; apron.position.set(GX, 0.0, GZ); add(apron);
 
-    // --- shell: dark indigo walls + near-black ceiling (cyberpunk night gym) ---
-    const wallMat = lam(0x18142a), ceilMat = lam(0x0b0913);
+    // --- shell: indigo walls + dark ceiling (cyberpunk, but light enough to
+    // read on a phone — pure near-black went invisible on mobile) ---
+    const wallMat = lam(0x322c52), ceilMat = lam(0x171326);
     const mkWall = (w, h, x, z, ry) => {
       const m = box(w, h, 0.2, wallMat); m.position.set(x, h / 2, z); m.rotation.y = ry; add(m); return m;
     };
@@ -6508,26 +6509,29 @@ export function buildWorld() {
     };
     const hideGuide = () => { arcLine.visible = false; };
 
-    // --- moody cyberpunk lighting: dim, SATURATED neon downlights (cyan one
-    // side, magenta the other) pool coloured light on the court; the cones stay
-    // in the room (cross-room rule). emissive tubes glow overhead. ---
+    // --- cyberpunk lighting that's actually BRIGHT enough on a phone: a few
+    // strong SATURATED neon downlights (cyan / magenta) pool colour on the
+    // court, plus two cool fills so the whole hall reads. fewer lights than
+    // before (kinder to mobile GPUs — the see-through-walls uniform cap). the
+    // cones stay in the room (cross-room rule); emissive tubes glow overhead. ---
     let li = 0;
-    for (const lx of [-9, -3, 3, 9]) for (const lz of [GZ - 4.5, GZ + 4.5]) {
+    for (const lx of [-7, 7]) for (const lz of [GZ - 4, GZ + 4]) {
       const cool = (li++) % 2 === 0;
-      const col = cool ? 0x2fb6ff : 0xff3ad0;            // cyan / magenta
-      const sp = new THREE.SpotLight(col, 60, 26, Math.PI / 3.0, 0.6, 1.3);
+      const col = cool ? 0x49c6ff : 0xff5ad8;            // cyan / magenta
+      const sp = new THREE.SpotLight(col, 230, 32, Math.PI / 2.5, 0.5, 1.0);
       sp.position.set(lx, CEIL - 0.3, lz);
       sp.target.position.set(lx, 0, lz);
       sp.userData.cullRoom = "gym"; sp.target.userData.cullRoom = "gym";
       add(sp); add(sp.target);
       // the glowing neon tube you see overhead
-      const fix = box(2.2, 0.1, 0.4, new THREE.MeshBasicMaterial({ color: cool ? 0x6fe6ff : 0xff7ae0 }));
+      const fix = box(2.6, 0.12, 0.5, new THREE.MeshBasicMaterial({ color: cool ? 0x8ff2ff : 0xff9ae8 }));
       fix.position.set(lx, CEIL - 0.16, lz); add(fix);
     }
-    // a low, cool fill so the room is moody but never pitch-black
-    const gymFill = new THREE.PointLight(0x5a6cff, 9, 30, 1.4);
-    gymFill.position.set(GX, CEIL - 1.2, GZ);
-    gymFill.userData.cullRoom = "gym"; add(gymFill);
+    // bright cool fills top + mid so the room reads clearly on any screen
+    for (const fy of [CEIL - 1.0, 3.2]) {
+      const f = new THREE.PointLight(0xcdd8ff, fy > 4 ? 55 : 38, 42, 1.0);
+      f.position.set(GX, fy, GZ); f.userData.cullRoom = "gym"; add(f);
+    }
 
     // --- the JOIN sign, mounted on the ARCADE south wall beside the pop-a-shot
     // hoop (BX≈-14.5, wall at AR.z0): tap it to ride out to the gym. ---
