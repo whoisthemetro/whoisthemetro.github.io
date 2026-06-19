@@ -3495,6 +3495,8 @@ export function buildWorld() {
         g.fillRect(Math.random() * 128, Math.random() * 128, 1.5, 1.5);
       }
     }),
+    // faint sandy self-glow so the box is findable on the dark night floor
+    emissive: new THREE.Color(0x6b6048), emissiveIntensity: 0.3,
   }));
   sand.rotation.x = -Math.PI / 2;
   sand.position.y = 0.045;
@@ -3521,6 +3523,11 @@ export function buildWorld() {
   function bowl(kind, color, x, z) {
     const grp = new THREE.Group();
     const outer = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.06, 0.045, 16), lam(color));
+    // a soft self-glow (carried through the toon swap) so the bowls read on a
+    // dark floor at night without adding a light — the room's pitch-black after
+    // dusk and these sit flat on the ground where the spotlights don't reach
+    outer.material.emissive = new THREE.Color(color);
+    outer.material.emissiveIntensity = 0.35;
     outer.position.y = 0.0225;
     grp.add(outer);
     const fillMat = kind === "food"
@@ -3534,6 +3541,8 @@ export function buildWorld() {
           }),
         })
       : new THREE.MeshStandardMaterial({ color: 0x3a7ab8, roughness: 0.1, metalness: 0.1, transparent: true, opacity: 0.85 });
+    fillMat.emissive = new THREE.Color(kind === "food" ? 0x6a4a26 : 0x2f6f9c);
+    fillMat.emissiveIntensity = 0.3;   // the contents glow a touch too, so you can tell food from water
     const fill = new THREE.Mesh(new THREE.CylinderGeometry(0.058, 0.05, 0.03, 16), fillMat);
     fill.position.y = 0.025;
     grp.add(fill);

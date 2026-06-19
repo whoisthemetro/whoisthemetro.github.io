@@ -38,6 +38,7 @@ export class Cat {
     this.yaw = Math.PI;
     this.target = null;
     this.lastPlinkX = null;
+    this.carrying = false;       // true while it's trotting the toy back to you
 
     // inner life
     this.mood = 0.35;                       // -1 grumpy .. 1 loving
@@ -207,6 +208,30 @@ export class Cat {
     this.timer = 5;
   }
 
+  // Someone threw the toy mouse. Scamper after it, pick it up, and trot it
+  // back to whoever's nearest. Returns true if the cat's actually coming — a
+  // cat mid-meal or mid-tummy-rub, or a neglected grumpy one, just can't be
+  // bothered (the caller leaves the toy lying there).
+  goFetch(x, z) {
+    if (this.state === "eat" || this.state === "drink" ||
+        this.state === "litterbox" || this.state === "belly") return false;
+    if (this.mood < -0.25) { this.fx.meow?.(); return false; }   // not in the mood
+    this.carrying = false;
+    this._goto(x, z, "pounce", 0);
+    this.target.speed = 1.1;     // a playful scamper, faster than its amble
+    this.fx.meow?.(true);        // an excited chirp as it springs after it
+    return true;
+  }
+
+  // world position of the mouth, so the toy can ride there while it's carried
+  mouthPos(out) {
+    this.head.updateWorldMatrix(true, false);
+    this.head.getWorldPosition(out);
+    out.x += Math.sin(this.yaw) * 0.06;   // nudge to the front of the muzzle
+    out.z += Math.cos(this.yaw) * 0.06;
+    return out;
+  }
+
   _hearts() {
     for (let i = 0; i < 3; i++) {
       const c = document.createElement("canvas");
@@ -271,6 +296,53 @@ export class Cat {
       if (this.timer <= 0) { this.state = "sit"; this.timer = rand(4, 10); }
     }
 
+    // --- toy fetch: chase -> pounce -> carry -> drop at your feet ---------
+    // the chase itself is an ordinary "walk" (state set by goFetch) that lands
+    // on "pounce"; from there these three states carry the loop home.
+    if (this.state === "pounce") {
+      // a beat crouched over the toy, then it's got it
+      if (this.timer <= 0) {
+        this.carrying = true;
+        this.fx.onToyGrabbed?.();
+        this.state = "carry";
+        this.timer = 12;          // bail out if it somehow can't reach you
+      }
+    } else if (this.state === "carry") {
+      // bring it to a spot a step IN FRONT of your gaze (not to its own belly),
+      // so it lands in your sightline and is easy to grab. forward is the way
+      // you're looking; clamp to the room so it never follows you out the door.
+      const b = this.spots.bounds, D = 1.0;
+      let tx = this.pos.x, tz = this.pos.z;
+      if (playerPose) {
+        tx = playerPose.x - Math.sin(playerPose.yaw) * D;
+        tz = playerPose.z - Math.cos(playerPose.yaw) * D;
+      }
+      tx = Math.max(b.minX + 0.3, Math.min(b.maxX - 0.3, tx));
+      tz = Math.max(b.minZ + 0.3, Math.min(b.maxZ - 0.3, tz));
+      this.dropAt = { x: tx, z: tz };   // set the toy down HERE (in your sightline), not at the cat's feet
+      const dx = tx - this.pos.x, dz = tz - this.pos.z;
+      const dist = Math.hypot(dx, dz);
+      if (dist < 0.35 || this.timer <= 0) {
+        this.state = "dropToy"; this.timer = 0.45;
+      } else {
+        const want = Math.atan2(dx, dz);
+        let dy = want - this.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+        this.yaw += dy * Math.min(1, dt * 6);
+        this.pos.x += (dx / dist) * 0.75 * dt;
+        this.pos.z += (dz / dist) * 0.75 * dt;
+      }
+    } else if (this.state === "dropToy") {
+      // sets it down, gives it a proud little meow, sits and looks up at you
+      if (this.timer <= 0) {
+        this.carrying = false;
+        const da = this.dropAt || this.pos;   // a step ahead in your gaze, not under its belly
+        this.fx.onToyDropped?.(da.x, da.z);
+        this.dropAt = null;
+        this.fx.meow?.();
+        this.state = "sit"; this.timer = rand(3, 7);
+      }
+    }
+
     if (this.state === "walk" && this.target) {
       const dx = this.target.x - this.pos.x, dz = this.target.z - this.pos.z;
       const dist = Math.hypot(dx, dz);
@@ -283,6 +355,7 @@ export class Cat {
                    : this.state === "eat" ? rand(5, 8)
                    : this.state === "drink" ? rand(4, 6)
                    : this.state === "litterbox" ? rand(5, 7)
+                   : this.state === "pounce" ? rand(0.35, 0.6)
                    : rand(15, 45);
         if (this.state === "keys") this.target = { x: this.spots.keys.x2, z: this.spots.keys.z };
         else this.target = null;
@@ -293,8 +366,9 @@ export class Cat {
         let dy = want - this.yaw;
         dy = Math.atan2(Math.sin(dy), Math.cos(dy));
         this.yaw += dy * Math.min(1, dt * 6);
-        this.pos.x += (dx / dist) * WALK * dt;
-        this.pos.z += (dz / dist) * WALK * dt;
+        const spd = this.target.speed || WALK;
+        this.pos.x += (dx / dist) * spd * dt;
+        this.pos.z += (dz / dist) * spd * dt;
         this.baseY += ((this.target.thenY && dist < 0.5 ? this.target.thenY : 0) - this.baseY) * dt * 5;
       }
     } else if (this.state === "keys") {
@@ -356,8 +430,9 @@ export class Cat {
 
   _apply(t, dt = 0) {
     const sleeping = this.state === "sleep";
-    const walking = this.state === "walk" || this.state === "keys";
-    const headDown = this.state === "eat" || this.state === "drink" || this.state === "litterbox";
+    const walking = this.state === "walk" || this.state === "keys" || this.state === "carry";
+    const headDown = this.state === "eat" || this.state === "drink" || this.state === "litterbox"
+      || this.state === "pounce" || this.state === "dropToy";
 
     this.grp.position.set(this.pos.x, this.baseY, this.pos.z);
     this.grp.rotation.y = this.yaw - Math.PI / 2;   // model faces +x locally

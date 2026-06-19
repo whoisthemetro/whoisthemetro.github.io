@@ -366,6 +366,7 @@ const bedroomSound = (fn) => (...a) => { if (!inBoat && !inArena && !inClub) fn(
 // crossed in, the bedroom's INSTRUMENTS shouldn't carry over the wall (the cat's
 // voice and the bartender still do — they belong to the shared origin cluster).
 const inArcade = () => world.arcadeZoneLevel(controls.pos.x, controls.pos.z) >= 0.5;
+let toy = null;   // the fetch toy (built just below the cat); hooks reference it
 const cat = new Cat(world.scene, world.catSpots, {
   plink: bedroomSound((i) => { if (inArcade()) return; pianoNote(i % 15, pianoVoice); world.pressPianoKey(i % 15); }),
   purr: bedroomSound(purr),
@@ -375,6 +376,9 @@ const cat = new Cat(world.scene, world.catSpots, {
   // the music owns the keys — the cat keeps off while a MIDI song plays OR the
   // bedroom radio is on (radios is built further down; only ever read at tick)
   songPlaying: () => currentSongId() !== null || !!(radios.la && radios.la.radio.info().on),
+  // the cat's grabbed the mouse — it now rides the cat's mouth until it's set down
+  onToyGrabbed: () => { if (toy) toy.phase = "carried"; },
+  onToyDropped: (x, z) => { if (toy) { toy.phase = "rest"; toy.claimed = false; toy.x = x; toy.z = z; toy.y = TOY_REST_Y; toy.spin = 0; } },
 });
 
 // the arcade bartender — works the bar, clocks you when you walk up, fixes you a
@@ -384,6 +388,85 @@ const bartender = new Bartender(world.scene, world.barInfo, {
   serve: bedroomSound(() => { try { beep(1180, 0.05, "sine", 0.04); setTimeout(() => beep(1560, 0.06, "sine", 0.03), 70); } catch (e) {} }),
   say: (line) => toast(`🍸 ${line}`),   // his dry greeting; ordering toasts serve()'s line
 });
+
+/* --- the toy mouse: throw it, the cat fetches it back ----------------------
+   A felt mouse you pick up and toss; the cat scampers after it, carries it
+   home in its mouth, and drops it at your feet so you can throw again.
+   Local-first like treats and petting — the cat sim runs per-client, so
+   there's no coherent shared toy to network (a follow-up if the cat ever goes
+   shared). Bedroom only; that's where the cat lives. */
+const TOY_REST_Y = 0.035;                 // mouse body half-height: sits ON the carpet
+const TOY_BB = world.catSpots.bounds;     // keep throws inside the bedroom
+const toyMouse = (() => {
+  const g = new THREE.Group();
+  // a soft self-glow so the mouse is visible (and obviously grabbable) on a
+  // dark floor at night — a touch brighter than the bowls since it's the thing
+  // a newcomer needs to notice. no light added: just emissive (free on mobile).
+  const grey = new THREE.MeshLambertMaterial({ color: 0x9aa0a8, emissive: 0x6a7079, emissiveIntensity: 0.55 });
+  const pink = new THREE.MeshLambertMaterial({ color: 0xe79bab, emissive: 0xc06a82, emissiveIntensity: 0.5 });
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.04, 12, 9), grey);
+  body.scale.set(1.6, 0.9, 0.95); body.castShadow = true; g.add(body);
+  for (const s of [-1, 1]) {              // round felt ears
+    const ear = new THREE.Mesh(new THREE.SphereGeometry(0.02, 8, 6), pink);
+    ear.scale.set(0.4, 1, 1); ear.position.set(0.028, 0.03, s * 0.026); g.add(ear);
+  }
+  const nose = new THREE.Mesh(new THREE.SphereGeometry(0.009, 6, 6), pink);
+  nose.position.set(0.066, -0.002, 0); g.add(nose);
+  const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.001, 0.13, 5), pink);
+  tail.position.set(-0.085, 0.004, 0); tail.rotation.z = Math.PI / 2 - 0.3; g.add(tail);
+  world.scene.add(g);
+  return g;
+})();
+// a generous invisible hit sphere so picking it up doesn't need pixel aim
+const toyHit = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 8),
+  new THREE.MeshBasicMaterial({ visible: false }));
+toyHit.userData.toy = true; world.scene.add(toyHit);
+toy = { mesh: toyMouse, phase: "rest", claimed: false,
+        x: 0.6, z: 1.6, y: TOY_REST_Y, vx: 0, vy: 0, vz: 0, spin: 0, faceYaw: 0 };
+
+const toyAtHome = () => !inBoat && !inArena && !inClub;   // the cat's room only
+const _toyMouth = new THREE.Vector3();
+function grabToy() { toy.phase = "held"; }
+function throwToy() {
+  const p = controls.pose();
+  const fwx = -Math.sin(p.yaw), fwz = -Math.cos(p.yaw);   // "forward" — matches treatAt
+  toy.vx = fwx * 3.0; toy.vz = fwz * 3.0; toy.vy = 2.7;    // a gentle underarm arc
+  toy.phase = "fly"; toy.claimed = false; toy.spin = 0; toy.faceYaw = p.yaw;
+}
+function toyTick(dt, t) {
+  if (!toy) return;
+  const home = toyAtHome();
+  toyMouse.visible = home;
+  toyHit.visible = home && toy.phase === "rest" && !toy.claimed;   // grabbable only at rest
+  if (!home) { if (toy.phase === "held") toy.phase = "rest"; return; }
+  const m = toyMouse;
+  if (toy.phase === "held") {
+    const p = controls.pose();
+    toy.faceYaw = p.yaw;
+    toy.x = p.x - Math.sin(p.yaw) * 0.5; toy.z = p.z - Math.cos(p.yaw) * 0.5;
+    toy.y = 1.02 + Math.sin(t * 3) * 0.02;
+  } else if (toy.phase === "fly") {
+    toy.vy -= 9.0 * dt;
+    toy.x += toy.vx * dt; toy.y += toy.vy * dt; toy.z += toy.vz * dt;
+    // stop at the walls so it never sails into the next room
+    if (toy.x < TOY_BB.minX + 0.2) { toy.x = TOY_BB.minX + 0.2; toy.vx = 0; }
+    if (toy.x > TOY_BB.maxX - 0.2) { toy.x = TOY_BB.maxX - 0.2; toy.vx = 0; }
+    if (toy.z < TOY_BB.minZ + 0.2) { toy.z = TOY_BB.minZ + 0.2; toy.vz = 0; }
+    if (toy.z > TOY_BB.maxZ - 0.2) { toy.z = TOY_BB.maxZ - 0.2; toy.vz = 0; }
+    toy.spin += dt * 12;
+    if (toy.y <= TOY_REST_Y) {                 // landed
+      toy.y = TOY_REST_Y; toy.phase = "rest"; toy.vx = toy.vy = toy.vz = 0;
+      if (cat.goFetch(toy.x, toy.z)) toy.claimed = true;   // grumpy/busy cat just leaves it
+    }
+  } else if (toy.phase === "carried") {
+    cat.mouthPos(_toyMouth);
+    toy.x = _toyMouth.x; toy.y = _toyMouth.y; toy.z = _toyMouth.z;
+    toy.faceYaw = cat.yaw;
+  }
+  m.position.set(toy.x, toy.y, toy.z);
+  m.rotation.set(toy.phase === "fly" ? toy.spin : 0, toy.faceYaw + Math.PI / 2, 0);
+  toyHit.position.set(toy.x, toy.y + 0.05, toy.z);
+}
 
 // your saved outfit spec (the picker writes it; defaults to the owner's look
 // with the face glowing in your identity color)
@@ -572,7 +655,7 @@ canvas.addEventListener("click", () => {
 function castAt(ndcX, ndcY) {
   raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera);
   // doors are included as blockers so notes can't be pinned onto them
-  const targets = [cat.hitMesh, bartender.hitMesh, mirror.glass, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, ...world.elevHits, ...world.elevCallHits, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.guitarVoiceHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, world.pool.hit, world.pool.resetHit, world.pool.joinHit, world.pool2.hit, world.pool2.resetHit, world.pool2.joinHit, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.radioHits, ...world.laRadioHits, ...world.filterPedalHit, ...world.vacuumHits, ...notesWall.raycastTargets(), screenMesh, ...world.blockers];
+  const targets = [cat.hitMesh, toyHit, bartender.hitMesh, mirror.glass, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, ...world.elevHits, ...world.elevCallHits, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.guitarVoiceHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, world.pool.hit, world.pool.resetHit, world.pool.joinHit, world.pool2.hit, world.pool2.resetHit, world.pool2.joinHit, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.radioHits, ...world.laRadioHits, ...world.filterPedalHit, ...world.vacuumHits, ...notesWall.raycastTargets(), screenMesh, ...world.blockers];
   const hits = raycaster.intersectObjects(targets, false);
   return hits[0] || null;
 }
@@ -839,6 +922,7 @@ controls.onAction((ndcX, ndcY) => {
   if (modalOpen) return;
   if (carrying) { dropCarried(); return; }   // a click while carrying sets it down
   if (vacuuming) { setVacuuming(false); return; }   // a click while vacuuming puts it away
+  if (toy && toy.phase === "held") { throwToy(); return; }   // a click while holding the toy throws it
   const hit = castAt(ndcX, ndcY);
   // in the arena, a click is a swing — unless you're on a catapult
   // handle (then the punch IS the launch) or aiming at something useful
@@ -886,6 +970,9 @@ controls.onAction((ndcX, ndcY) => {
         applyCatState(res);
       }
     }).catch(() => {});
+  } else if (hit.object.userData.toy && toy.phase === "rest" && !toy.claimed && hit.distance < 2.6) {
+    grabToy();
+    aItem("toy");
   } else if (hit.object.userData.closet && hit.distance < 3) {
     const open = world.toggleCloset();
     presence.sendAct({ kind: "closet", open });
@@ -1090,6 +1177,11 @@ setInterval(() => {
     aimTip.classList.add("show");
     return;
   }
+  if (toy && toy.phase === "held") {
+    aimTip.textContent = `${TAP} to throw the toy for the cat`;
+    aimTip.classList.add("show");
+    return;
+  }
   const hit = castAt(0, 0);
   if (hit && hit.object.userData.vacuum && hit.distance < 2.6) {
     aimTip.textContent = `${TAP} to grab the vacuum`;
@@ -1103,6 +1195,9 @@ setInterval(() => {
   } else if (hit && hit.object.userData.cat && hit.distance < 2.2) {
     const d = store.decayCat(catState);
     aimTip.textContent = `${TAP} to pet the cat · fed ${Math.round(d.fed * 100)}%`;
+    aimTip.classList.add("show");
+  } else if (hit && hit.object.userData.toy && toy.phase === "rest" && !toy.claimed && hit.distance < 2.6) {
+    aimTip.textContent = `${TAP} to pick up the toy`;
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.closet && hit.distance < 3) {
     aimTip.textContent = world.closetOpen() ? `${TAP} to close the closet` : `${TAP} to open the closet`;
@@ -3258,6 +3353,7 @@ addEventListener("keydown", (e) => {
 /* ---------------- frame loop ---------------- */
 window.METRO_DEBUG = { renderer, camera, world, controls, THREE, cat, bartender, ghosts, voice, screen, stream, setScreen, clearScreen, room: () => aRoomNow(), jump: adminJump, mirror, openPicker, analytics: analyticsBuffer, notesWall,
   uid: identity.uid, pool: poolGame, pool2: poolGame2, sitAtPool, leavePool,
+  toy: () => toy, grabToy, throwToy,
   hoops: hoopGame,
   carry: { pick: pickUpNote, drop: dropCarried, state: () => carrying },
   booth: { dj: () => djState, canDJ: () => canDJ(), headcount: () => clubHeadcount(), live: () => voice.djLive() } };
@@ -3353,6 +3449,7 @@ renderer.setAnimationLoop(() => {
   if (sc !== lastMyScope) { lastMyScope = sc; refreshGhostScope(); applyLightCull(sc); }
   ghosts.tick(dt, t, (uid) => voice.level(uid));
   cat.tick(dt, t, controls.pose());
+  toyTick(dt, t);
   // the bartender reacts to you only when you're in the bedroom/arcade with him
   bartender.tick(dt, t, (!inBoat && !inArena && !inClub) ? controls.pose() : null);
   // the arcade mirror renders a live "you" from your own mic level — only while
