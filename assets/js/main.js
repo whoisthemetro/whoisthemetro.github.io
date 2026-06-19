@@ -2941,9 +2941,11 @@ function buildGymBtns() {
     document.body.appendChild(b); gymBtns.push(b);
     return b;
   };
-  // JUMP + SHOOT sit in a row just above the right look-stick (96px < 120px sticks)
+  // SHOOT + JUMP in a row just above the right look-stick, PASS centered above
+  // them (all a touch smaller than the 120px sticks)
   const shoot = mk("🏀", "right:40px;bottom:158px;width:96px;height:96px;font-size:34px", "rgba(212,99,31,.92)");
   const jump  = mk("⤴<br>JUMP", "right:148px;bottom:158px;width:96px;height:96px;font-size:15px", "rgba(58,125,68,.92)");
+  const pass  = mk("➟<br>PASS", "right:100px;bottom:262px;width:84px;height:84px;font-size:14px", "rgba(154,90,42,.92)");
   const pd = (el, on, off) => {
     el.addEventListener("pointerdown", (e) => { e.preventDefault(); e.stopPropagation(); on(); });
     el.addEventListener("pointerup", (e) => { e.preventDefault(); e.stopPropagation(); off && off(); });
@@ -2951,6 +2953,7 @@ function buildGymBtns() {
   };
   pd(jump,  () => { controls.touchJump = true; }, () => { controls.touchJump = false; });
   pd(shoot, () => { controls.pointerDown = true; }, () => { controls.pointerDown = false; });   // hold = wind up, release = shoot
+  pd(pass,  () => { gymBall.pass(); });
 }
 function showGymUI(on) {
   buildGymHud();
