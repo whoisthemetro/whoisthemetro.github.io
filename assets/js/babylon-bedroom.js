@@ -119,8 +119,8 @@ function wallTex(name, wm, hm) {
   const ppm = 96, w = Math.round(wm * ppm), h = Math.round(hm * ppm);
   return dyn(name, w, h, (c) => {
     c.fillStyle = "#e4dccb"; c.fillRect(0, 0, w, h);
-    for (let i = 0; i < (w * h / 300); i++) { c.fillStyle = `rgba(120,108,88,${Math.random() * 0.03})`; c.fillRect(Math.random() * w, Math.random() * h, 2, 2); }
-    for (let i = 0; i < wm * 2; i++) { c.save(); c.translate(Math.random() * w, h - (0.14 + Math.random() * 0.3) * ppm); c.rotate(Math.random()); c.fillStyle = `rgba(90,78,58,${0.04 + Math.random() * 0.05})`; c.beginPath(); c.ellipse(0, 0, 18 + Math.random() * 26, 6 + Math.random() * 8, 0, 0, 7); c.fill(); c.restore(); }
+    // clean drywall — just a whisper of paint-roller texture, no scuffs/handprints
+    for (let i = 0; i < (w * h / 1400); i++) { c.fillStyle = `rgba(120,108,88,${Math.random() * 0.015})`; c.fillRect(Math.random() * w, Math.random() * h, 2, 2); }
     c.fillStyle = "#cfc6b2"; c.fillRect(0, h - 0.1 * ppm, w, 0.1 * ppm);
     c.fillStyle = "rgba(0,0,0,.18)"; c.fillRect(0, h - 0.1 * ppm, w, 3);
   });
@@ -264,8 +264,9 @@ function panelSlab(name, w, h, x, y, z, ry) {
 [0.56, 1.72, 2.88, 4.04].forEach((u, i) => panelSlab("pB" + i, 0.6, 1.2, 2.6 - (u + 0.3), 1.6, ZB - 0.038, Math.PI));
 // east wall panels (x=+2.6, face -x)
 [0.58, 1.71, 2.85, 3.98].forEach((u, i) => panelSlab("pE" + i, 0.55, 1.2, X - 0.038, 1.6, -3.3 + (u + 0.275), -Math.PI / 2));
-// front wall slabs flanking the window
-[-2.32, 2.2].forEach((fx, i) => panelSlab("pF" + i, 0.55, 1.2, fx, 1.6, ZF + 0.038, 0));
+// west wall panels (x=-2.6, face +x) — the wall with the closet/arcade door
+[[0.31, 0.55], [1.17, 0.55], [2.03, 0.55], [4.565, 0.28], [5.13, 0.55]].forEach(([u, pw], i) => panelSlab("pW" + i, pw, 1.2, -X + 0.038, 1.6, ZB - (u + pw / 2), Math.PI / 2));
+// (the window wall is kept clean — no panels)
 
 // =====================================================================
 // CLOSET opening (frame + open leaves) and the passage mouth
@@ -486,13 +487,7 @@ for (let i = 0; i < 5; i++) { const a = i / 5 * 2 * Math.PI; box("carm" + i, 0.3
 // =====================================================================
 // ACCESSORIES — gold record (east wall), plant (sill), yarn (cat area)
 // =====================================================================
-const gold = node("gold", X - 0.05, 1.55, 1.49);
-box("goldFrame", 0.04, 0.5, 0.5, 0, 0, 0, matte("goldFrame", 0x1a1c20), gold);
-cyl("goldDisc", 0.17, 0.17, 0.01, -0.03, 0, 0, metal("goldDisc", 0xd8b04a, 0.8, 0.3), gold, 22, false).rotation.z = Math.PI / 2;
-cyl("goldLabel", 0.05, 0.05, 0.012, -0.032, 0, 0, matte("goldLabel", 0x000822), gold, 14, false).rotation.z = Math.PI / 2;
-const plant = node("plant", 1.35, 0.83, ZF + 0.07);
-cyl("pot", 0.05, 0.038, 0.07, 0, 0.035, 0, matte("pot", 0xb06a42), plant, 9, false);
-for (let i = 0; i < 5; i++) { const a = i / 5 * 2 * Math.PI; const leaf = B.MeshBuilder.CreateCylinder("leaf" + i, { diameterTop: 0, diameterBottom: 0.032, height: 0.16 + (i % 3) * 0.05, tessellation: 5 }, scene); leaf.material = matte("leafM", 0x3f7a4a); leaf.parent = plant; leaf.position.set(Math.cos(a) * 0.02, 0.13 + (i % 3) * 0.02, Math.sin(a) * 0.02); leaf.rotation.z = Math.cos(a) * 0.22; leaf.rotation.x = Math.sin(a) * 0.22; casters.push(leaf); }
+// (gold record + plant removed per request)
 const yarn = node("yarn", -1.85, 0.05, 2.6);
 sph("yarnBall", 0.1, 0, 0, 0, matte("yarn", 0xc23b4e), yarn);
 
@@ -574,13 +569,17 @@ try {
 // =====================================================================
 // CAMERA — first-person, eye height 1.62, gravity + ellipsoid collision
 // =====================================================================
-const camera = new B.UniversalCamera("cam", new V3(0.2, 1.62, 1.4), scene);
-camera.setTarget(new V3(0, 1.5, ZF));
+const EYE_H = 1.62; // 5'8" eye height — desk (0.74) lands at mid-thigh, same as three.js controls.js
+const camera = new B.UniversalCamera("cam", new V3(0.2, EYE_H, 1.4), scene);
+camera.setTarget(new V3(0, EYE_H, ZF));
 camera.attachControl(canvas, true);
 camera.minZ = 0.05; camera.fov = 1.18; camera.speed = 0.16; camera.inertia = 0.8; camera.angularSensibility = 2400;
 camera.keysUp = [87, 38]; camera.keysDown = [83, 40]; camera.keysLeft = [65, 37]; camera.keysRight = [68, 39];
-camera.checkCollisions = true; camera.applyGravity = true;
-camera.ellipsoid = new V3(0.4, 0.9, 0.4); camera.ellipsoidOffset = new V3(0, -0.72, 0);
+// FIXED eye height — no gravity. the flat floor doesn't need it, and gravity+ellipsoid
+// was making the camera CLIMB while walking (1.50 → 1.79). collisions stay on for walls/furniture.
+camera.checkCollisions = true; camera.applyGravity = false;
+// slimmer 0.3 bubble so you can step right up to the desk instead of being held back.
+camera.ellipsoid = new V3(0.3, 0.9, 0.3); camera.ellipsoidOffset = new V3(0, -0.72, 0);
 // post pipeline, now that the camera exists
 pipeline = new B.DefaultRenderingPipeline("pipeline", true, scene, [camera]);
 pipeline.fxaaEnabled = true; pipeline.samples = 4; pipeline.bloomEnabled = true; pipeline.bloomThreshold = 0.85; pipeline.bloomWeight = 0.4; pipeline.bloomKernel = 64; pipeline.bloomScale = 0.6;
@@ -628,6 +627,8 @@ scene.onBeforeRenderObservable.add(() => {
   updateCat(dt);
   // hearts
   for (let i = hearts.length - 1; i >= 0; i--) { const h = hearts[i]; h._life -= dt; if (h._life <= 0) { h.dispose(); hearts.splice(i, 1); continue; } h.position.y += dt * 0.35; h.position.x += h._vx * dt; h.material.alpha = Math.min(1, h._life / 0.8); }
+  // pin the eye height — collisions can only push horizontally, never lift you
+  if (scene.activeCamera) scene.activeCamera.position.y = EYE_H;
 });
 
 function updateCat(dt) {
