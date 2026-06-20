@@ -39,7 +39,7 @@ scene.fogMode = B.Scene.FOGMODE_LINEAR; scene.fogColor = B.Color3.FromHexString(
 
 const ip = scene.imageProcessingConfiguration;
 ip.toneMappingEnabled = true; ip.toneMappingType = B.ImageProcessingConfiguration.TONEMAPPING_ACES;
-ip.exposure = 1.05; ip.contrast = 1.22;
+ip.exposure = 0.9; ip.contrast = 1.18;
 
 const envTex = B.CubeTexture.CreateFromPrefilteredData("https://assets.babylonjs.com/environments/environmentSpecular.env", scene);
 scene.environmentTexture = envTex;
@@ -194,7 +194,7 @@ const rainTex = dyn("rain", 256, 256, (c, w, h) => {
 // SHELL — floor, ceiling, four walls (window + closet openings framed)
 // =====================================================================
 const floor = B.MeshBuilder.CreateGround("floor", { width: W, height: D }, scene);
-const floorMat = new B.StandardMaterial("floorMat", scene); floorMat.diffuseTexture = carpetTex; floorMat.specularColor = new B.Color3(0.02, 0.02, 0.02); floor.material = floorMat; floor.receiveShadows = true; floor.checkCollisions = true;
+const floorMat = new B.StandardMaterial("floorMat", scene); floorMat.diffuseTexture = carpetTex; floorMat.specularColor = new B.Color3(0.02, 0.02, 0.02); floor.material = floorMat; floor.receiveShadows = true; floor.checkCollisions = false; // eye height is pinned; colliding with the floor only dragged movement
 
 const ceil = B.MeshBuilder.CreateGround("ceil", { width: W, height: D }, scene);
 ceil.material = matte("ceilMat", 0xd6cfc0); ceil.position.y = H; ceil.rotation.x = Math.PI; ceil.receiveShadows = true;
@@ -264,8 +264,10 @@ function panelSlab(name, w, h, x, y, z, ry) {
 [0.56, 1.72, 2.88, 4.04].forEach((u, i) => panelSlab("pB" + i, 0.6, 1.2, 2.6 - (u + 0.3), 1.6, ZB - 0.038, Math.PI));
 // east wall panels (x=+2.6, face -x)
 [0.58, 1.71, 2.85, 3.98].forEach((u, i) => panelSlab("pE" + i, 0.55, 1.2, X - 0.038, 1.6, -3.3 + (u + 0.275), -Math.PI / 2));
-// west wall panels (x=-2.6, face +x) — the wall with the closet/arcade door
-[[0.31, 0.55], [1.17, 0.55], [2.03, 0.55], [4.565, 0.28], [5.13, 0.55]].forEach(([u, pw], i) => panelSlab("pW" + i, pw, 1.2, -X + 0.038, 1.6, ZB - (u + pw / 2), Math.PI / 2));
+// west wall panels (x=-2.6, face +x) — the wall with the closet/arcade door.
+// z given directly: a trio on the back side of the closet, an EVEN matched pair on
+// the front side (both 0.55, evenly spaced — was an uneven 0.28 + 0.55).
+[[2.715, 0.55], [1.855, 0.55], [0.995, 0.55], [-1.7, 0.55], [-2.7, 0.55]].forEach(([z, pw], i) => panelSlab("pW" + i, pw, 1.2, -X + 0.038, 1.6, z, Math.PI / 2));
 // (the window wall is kept clean — no panels)
 
 // =====================================================================
@@ -528,10 +530,10 @@ hemi.intensity = 0.32; hemi.diffuse = C(0x8a96a8); hemi.groundColor = C(0x2a241c
 // golden-hour sun: az ~0.3 west, alt ~0.26 — position per world.js beam aiming
 const az = 0.3, alt = 0.26;
 const sun = new B.SpotLight("sun", new V3(Math.sin(az) * 10, WIN.cy + Math.tan(alt) * 10, ZF - 10), new V3(-Math.sin(az), -0.5, 1).normalize(), 1.3, 6, scene);
-sun.intensity = 4.6; sun.diffuse = C(0xfff0d8); sun.range = 80;
+sun.intensity = 3.4; sun.diffuse = C(0xfff0d8); sun.range = 80;
 const shadow = new B.ShadowGenerator(2048, sun);
 shadow.usePercentageCloserFiltering = true; shadow.filteringQuality = B.ShadowGenerator.QUALITY_HIGH; shadow.bias = 0.0011; shadow.normalBias = 0.02; shadow.darkness = 0.4;
-const windowLight = new B.PointLight("winLight", new V3(0, 1.6, ZF + 0.6), scene); windowLight.diffuse = C(0xffe9c0); windowLight.intensity = 3.4; windowLight.range = 5.5;
+const windowLight = new B.PointLight("winLight", new V3(0, 1.6, ZF + 0.6), scene); windowLight.diffuse = C(0xffe9c0); windowLight.intensity = 2.4; windowLight.range = 5.5;
 const lavaLight = new B.PointLight("lavaLight", new V3(0, 0, 0), scene); lavaLight.parent = lava; lavaLight.position.set(0, 0.15, 0); lavaLight.diffuse = C(0xff8040); lavaLight.intensity = 0.85; lavaLight.range = 0.95;
 const neonLight = new B.PointLight("neonLight", new V3(0, 1.62, 0.4), scene); neonLight.parent = entry; neonLight.diffuse = C(0xff4d2e); neonLight.intensity = 1.3; neonLight.range = 1.7;
 const screenGlow = new B.PointLight("screenGlow", new V3(0, 1.19, 0.1), scene); screenGlow.parent = desk; screenGlow.position.set(0, 0.45, 0.1); screenGlow.diffuse = C(0x8fb6ff); screenGlow.intensity = 2.4; screenGlow.range = 2.6;
@@ -548,7 +550,7 @@ for (const m of casters) { try { shadow.addShadowCaster(m, true); } catch {} }
 // =====================================================================
 // POST — glow, default pipeline, SSAO, god-rays
 // =====================================================================
-const glow = new B.GlowLayer("glow", scene, { mainTextureSamples: 4 }); glow.intensity = 0.9;
+const glow = new B.GlowLayer("glow", scene, { mainTextureSamples: 4 }); glow.intensity = 0.4;
 let pipeline; // built after the camera exists, below
 
 // =====================================================================
@@ -573,7 +575,7 @@ const EYE_H = 1.62; // 5'8" eye height — desk (0.74) lands at mid-thigh, same 
 const camera = new B.UniversalCamera("cam", new V3(0.2, EYE_H, 1.4), scene);
 camera.setTarget(new V3(0, EYE_H, ZF));
 camera.attachControl(canvas, true);
-camera.minZ = 0.05; camera.fov = 1.18; camera.speed = 0.16; camera.inertia = 0.8; camera.angularSensibility = 2400;
+camera.minZ = 0.05; camera.fov = 1.18; camera.speed = 0.5; camera.inertia = 0.72; camera.angularSensibility = 2400;
 camera.keysUp = [87, 38]; camera.keysDown = [83, 40]; camera.keysLeft = [65, 37]; camera.keysRight = [68, 39];
 // FIXED eye height — no gravity. the flat floor doesn't need it, and gravity+ellipsoid
 // was making the camera CLIMB while walking (1.50 → 1.79). collisions stay on for walls/furniture.
@@ -583,11 +585,11 @@ camera.ellipsoid = new V3(0.3, 0.9, 0.3); camera.ellipsoidOffset = new V3(0, -0.
 // post pipeline, now that the camera exists
 pipeline = new B.DefaultRenderingPipeline("pipeline", true, scene, [camera]);
 pipeline.fxaaEnabled = true; pipeline.samples = 4; pipeline.bloomEnabled = true; pipeline.bloomThreshold = 0.85; pipeline.bloomWeight = 0.4; pipeline.bloomKernel = 64; pipeline.bloomScale = 0.6;
-pipeline.bloomThreshold = 0.9; pipeline.bloomWeight = 0.34;
+pipeline.bloomThreshold = 0.92; pipeline.bloomWeight = 0.15;
 pipeline.imageProcessingEnabled = true; pipeline.imageProcessing.vignetteEnabled = true; pipeline.imageProcessing.vignetteWeight = 2.4; pipeline.imageProcessing.vignetteColor = new B.Color4(0, 0, 0, 0);
 pipeline.grainEnabled = true; pipeline.grain.intensity = 6; pipeline.grain.animated = true; pipeline.sharpenEnabled = true; pipeline.sharpen.edgeAmount = 0.16;
 try { if (B.SSAO2RenderingPipeline.IsSupported) { const ssao = new B.SSAO2RenderingPipeline("ssao", scene, { ssaoRatio: 0.75, blurRatio: 1 }, [camera]); ssao.radius = 0.5; ssao.totalStrength = 1.0; ssao.base = 0.12; ssao.samples = 16; ssao.expensiveBlur = true; } } catch (e) { console.warn("ssao", e); }
-try { const vls = new B.VolumetricLightScatteringPostProcess("godrays", 1.0, camera, sunDisc, 90, B.Texture.BILINEAR_SAMPLINGMODE, engine, false, scene); vls.exposure = 0.2; vls.decay = 0.96815; vls.weight = 0.42; vls.density = 0.92; } catch (e) { console.warn("godrays", e); }
+try { const vls = new B.VolumetricLightScatteringPostProcess("godrays", 1.0, camera, sunDisc, 90, B.Texture.BILINEAR_SAMPLINGMODE, engine, false, scene); vls.exposure = 0.13; vls.decay = 0.96815; vls.weight = 0.28; vls.density = 0.9; } catch (e) { console.warn("godrays", e); }
 
 // =====================================================================
 // animated screens + clock
