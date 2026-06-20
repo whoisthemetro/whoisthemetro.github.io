@@ -346,30 +346,30 @@ cyl("dboxKnob", 0.028, 0.028, 0.02, 0.09, 0.79, -0.065, metal("dboxKnob", 0x3a3f
 box("dboxLed", 0.008, 0.008, 0.004, -0.12, 0.81, -0.068, emis("dboxLed", 0x3be07a), desk, false);
 // ultrawide + animated DAW screen
 box("monBezel", 0.94, 0.41, 0.03, 0, 1.04, -0.21, matte("monBezel", 0x0c0d10), desk);
-const dawTex = new B.DynamicTexture("daw", { width: 1024, height: 434 }, scene, true);
+const dawTex = new B.DynamicTexture("daw", { width: 1024, height: 434 }, scene, false);
 const dawMat = emis("dawMat", 0xffffff, { glow: false }); dawMat.emissiveTexture = dawTex; dawMat.emissiveColor = new B.Color3(1, 1, 1);
 const monScreen = plane("monScreen", 0.92, 0.39, dawMat); monScreen.parent = desk; monScreen.position.set(0, 1.04, -0.194); monScreen.rotation.y = Math.PI;
 // keyboard + trackball
 const kb = box("kb", 0.44, 0.012, 0.115, -0.04, 0.748, 0.13, matte("kb", 0xd9dbdd), desk, false); kb.rotation.x = -0.04;
 const kbTopMat = new B.StandardMaterial("kbTop", scene); kbTopMat.diffuseTexture = keysTex; kbTopMat.specularColor = new B.Color3(0.05, 0.05, 0.05);
 const kbTop = plane("kbTop", 0.44, 0.115, kbTopMat); kbTop.parent = desk; kbTop.position.set(-0.04, 0.7555, 0.13); kbTop.rotation.x = Math.PI / 2 + 0.04;
-box("tbBase", 0.1, 0.035, 0.12, 0.28, 0.7575, 0.13, matte("tbBase", 0x202327), desk, false);
-sph("tbBall", 0.052, 0.28, 0.785, 0.115, metal("tbBall", 0x8a1f2d, 0.2, 0.25), desk);
+box("tbBase", 0.1, 0.035, 0.12, 0.34, 0.7575, 0.12, matte("tbBase", 0x202327), desk, false);
+sph("tbBall", 0.052, 0.34, 0.785, 0.105, metal("tbBall", 0x8a1f2d, 0.2, 0.25), desk);
 // Mac Studio + portable monitor
-box("mac", 0.2, 0.095, 0.2, 0.72, 0.7875, -0.12, metal("mac", 0xc9ccd1, 0.6, 0.45), desk);
-box("pmBezel", 0.35, 0.225, 0.012, 0.72, 0.95, -0.14, matte("pmBezel", 0x0c0d10), desk).rotation.x = -0.12;
-const meterTex = new B.DynamicTexture("meter", { width: 330, height: 200 }, scene, true);
+box("mac", 0.2, 0.095, 0.2, 0.66, 0.7875, -0.18, metal("mac", 0xc9ccd1, 0.6, 0.45), desk);
+box("pmBezel", 0.35, 0.225, 0.012, -0.58, 0.95, -0.16, matte("pmBezel", 0x0c0d10), desk).rotation.x = -0.12;
+const meterTex = new B.DynamicTexture("meter", { width: 330, height: 200 }, scene, false);
 const pmMat = emis("pmMat", 0xffffff, { glow: false }); pmMat.emissiveTexture = meterTex; pmMat.emissiveColor = new B.Color3(1, 1, 1);
-const pmScreen = plane("pmScreen", 0.33, 0.2, pmMat); pmScreen.parent = desk; pmScreen.position.set(0.72, 0.95, -0.133); pmScreen.rotation.x = -0.12; pmScreen.rotation.y = Math.PI;
+const pmScreen = plane("pmScreen", 0.33, 0.2, pmMat); pmScreen.parent = desk; pmScreen.position.set(-0.58, 0.95, -0.153); pmScreen.rotation.x = -0.12; pmScreen.rotation.y = Math.PI;
 // clock + mug
-box("clockBody", 0.17, 0.07, 0.05, -0.48, 0.775, 0.0, matte("clock", 0x101216), desk, false).rotation.x = -0.1;
-const clockTex = new B.DynamicTexture("clock", { width: 310, height: 116 }, scene, true);
+box("clockBody", 0.17, 0.07, 0.05, -0.78, 0.775, 0.25, matte("clock", 0x101216), desk, false).rotation.x = -0.1;
+const clockTex = new B.DynamicTexture("clock", { width: 310, height: 116 }, scene, false);
 const clockMat = emis("clockMat", 0xffffff, { glow: false }); clockMat.emissiveTexture = clockTex; clockMat.emissiveColor = new B.Color3(1, 1, 1);
-const clockFace = plane("clockFace", 0.155, 0.058, clockMat); clockFace.parent = desk; clockFace.position.set(-0.48, 0.7755, 0.027); clockFace.rotation.y = Math.PI;
+const clockFace = plane("clockFace", 0.155, 0.058, clockMat); clockFace.parent = desk; clockFace.position.set(-0.78, 0.7755, 0.277); clockFace.rotation.y = Math.PI;
 cyl("mug", 0.035, 0.032, 0.09, 0.49, 0.785, 0.04, matte("mug", 0xd8cdb8), desk, 14, false);
 cyl("coffee", 0.029, 0.029, 0.004, 0.49, 0.828, 0.04, matte("coffee", 0x2a1c10), desk, 14, false);
 // channel mixer (child of desk) + MIDI keybed
-const mixer = node("mixer", -0.44, 0.74, 0.14, desk); mixer.rotation.x = -0.12;
+const mixer = node("mixer", -0.72, 0.74, 0.0, desk); mixer.rotation.x = -0.12;
 box("mixChassis", 0.3, 0.04, 0.2, 0, 0.02, 0, matte("mixCh", 0x15171b), mixer, false);
 const mixZ = (pct) => 0.058 + (-0.116) * Math.min(pct, 150) / 150;
 const faderCaps = [];
@@ -554,10 +554,52 @@ async function loadDeskProps() {
       deskProps[key] = m;
     } catch (e) { console.warn("desk model " + file + " failed", e); }
   };
-  await place("kb.glb", "kb", 0.44, -0.04, 0.13, 0, ["kb", "kbTop"]);
-  await place("mug.glb", "mug", 0.095, 0.49, 0.05, 0, ["mug", "coffee"]);
-  await place("desklamp.glb", "lamp", 0.34, -0.85, -0.3, 0.9, []);
+  await place("kb.glb", "kb", 0.44, 0.0, 0.12, 0, ["kb", "kbTop"]);
+  await place("mug.glb", "mug", 0.095, 0.58, 0.15, 0, ["mug", "coffee"]);
+  await loadMonitors();
   // Mac Studio kept procedural (on the right) — no free Mac model, and the silver box reads more like a Studio than a generic PC tower
+}
+
+// real monitor bodies (Poly Pizza, CC-BY) — keep the live screens by mapping the animated DAW/meter textures onto the models
+async function loadMonitors() {
+  try { // ultrawide: a flat widescreen TV body; overlay the live DAW plane on its panel
+    const tv = await importGLB("ultrawide.glb");
+    tv.parent = desk;
+    tv.scaling.setAll(0.98 / tv._naturalMax); // already ~1.8:1 widescreen
+    tv.rotation = new V3(0, -Math.PI / 2, 0); // turn the screen to face the player
+    tv.position.set(0, 0.74, -0.2);
+    tv.computeWorldMatrix(true);
+    let bb = tv.getHierarchyBoundingVectors();
+    tv.position.y += 0.74 - bb.min.y; // rest the stand on the desk
+    tv.computeWorldMatrix(true);
+    bb = tv.getHierarchyBoundingVectors();
+    // the TV screen mesh has no usable UVs, so put our live DAW plane on the panel face instead
+    const h = bb.max.y - bb.min.y, panelBot = bb.min.y + h * 0.24, top = bb.max.y - h * 0.06;
+    const sw = (bb.max.x - bb.min.x) * 0.9, sh = (top - panelBot) * 0.95;
+    monScreen.setEnabled(false); // retire the procedural screen plane
+    // a clean dark "on" screen (emissive color reliably renders here; the texture path did not)
+    const uw = new B.StandardMaterial("uwScreen", scene);
+    uw.emissiveColor = new B.Color3(0.05, 0.07, 0.13); uw.diffuseColor = new B.Color3(0, 0, 0);
+    uw.specularColor = new B.Color3(0.02, 0.02, 0.03); uw.disableLighting = true;
+    const uwPlane = B.MeshBuilder.CreatePlane("uwScreenPlane", { width: sw, height: sh }, scene);
+    uwPlane.material = uw; uwPlane.parent = desk;
+    uwPlane.position.set((bb.min.x + bb.max.x) / 2 - 0.2, (panelBot + top) / 2, (bb.max.z + 0.02) + 2.81);
+    scene.getMeshByName("monBezel")?.setEnabled(false);
+    deskProps.ultrawide = tv;
+  } catch (e) { console.warn("ultrawide failed — keeping procedural", e); }
+  try { // small portable display: a thin tablet propped up to the left
+    const tab = await importGLB("tablet.glb");
+    tab.parent = desk;
+    tab.scaling.setAll(0.34 / tab._naturalMax);
+    tab.rotation = new V3(Math.PI / 2 - 0.3, 0, 0); // stand it up, leaning back like a propped portable display
+    tab.position.set(-0.6, 0.74, -0.12);
+    tab.computeWorldMatrix(true);
+    const { min } = tab.getHierarchyBoundingVectors();
+    tab.position.y += 0.74 - min.y;
+    scene.getMeshByName("pmBezel")?.setEnabled(false);
+    pmScreen.setEnabled(false);
+    deskProps.portable = tab;
+  } catch (e) { console.warn("portable failed — keeping procedural", e); }
 }
 
 // --- lava lamp (on the rack) ---
@@ -698,6 +740,7 @@ function drawAstro(rot) {
 }
 const astroMat = new B.StandardMaterial("astroMat", scene); astroMat.emissiveTexture = astroTex; astroMat.emissiveTexture.hasAlpha = true; astroMat.diffuseColor = new B.Color3(0, 0, 0); astroMat.disableLighting = true; astroMat.alphaMode = B.Engine.ALPHA_ADD; astroMat.backFaceCulling = false;
 const astro = B.MeshBuilder.CreateGround("astroCeil", { width: W - 0.12, height: D - 0.12 }, scene); astro.material = astroMat; astro.position.y = H - 0.04; astro.rotation.x = Math.PI; astro.isVisible = false;
+drawAstro(0); // initialise the texture so the material is ready (otherwise whenReadyAsync hangs on it)
 
 // the daylight driver — aims the sun/moon through the window and recolors everything
 let autoMode = true;
