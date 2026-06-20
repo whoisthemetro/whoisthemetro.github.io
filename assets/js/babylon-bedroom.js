@@ -483,7 +483,7 @@ function placeBoombox(x, y, z, ry, target) {
   const { min } = boombox.getHierarchyBoundingVectors(); // auto-rest the bottom on the rack top (world y 0.68)
   boombox.position.y += 0.68 - min.y;
 }
-let pbRef = null;
+let pbRef = null, apolloGLB = null;
 async function importGLB(file) {
   const res = await B.SceneLoader.ImportMeshAsync("", "/assets/models/", file, scene);
   const root = res.meshes[0];
@@ -499,6 +499,15 @@ function fitOn(root, target, x, y, z, ry, restY = 0) {
   root.computeWorldMatrix(true);
   const { min } = root.getHierarchyBoundingVectors();
   root.position.y += restY - min.y; // rest the model's bottom on restY
+}
+function tuneApollo(rx, ry, rz, t, x, z) {
+  if (!apolloGLB) return;
+  apolloGLB.scaling.setAll(t / apolloGLB._naturalMax);
+  apolloGLB.rotation = new V3(rx, ry, rz);
+  apolloGLB.position.set(x, 0.68, z);
+  apolloGLB.computeWorldMatrix(true);
+  const { min } = apolloGLB.getHierarchyBoundingVectors();
+  apolloGLB.position.y += 0.68 - min.y; // rest on the rack top
 }
 async function loadHeroProps() {
   try { // realistic PBR boombox (Khronos BoomBox, CC0) replaces the box radio
@@ -521,6 +530,13 @@ async function loadHeroProps() {
     pedalboard.setEnabled(false);
     pbRef = pbNode;
   } catch (e) { console.warn("pedals load failed — keeping procedural", e); }
+  try { // realistic rackmount audio unit (Poly Pizza, CC-BY) stands in for the UA Apollo
+    apolloGLB = await importGLB("rackunit.glb");
+    apolloGLB.parent = rack;
+    tuneApollo(0, 0, Math.PI / 2, 0.28, 0, 0.12); // lay it flat & wide on the rack top
+    scene.getMeshByName("apollo")?.setEnabled(false);
+    scene.getMeshByName("apKnob")?.setEnabled(false);
+  } catch (e) { console.warn("apollo substitute load failed — keeping procedural", e); }
 }
 
 // --- lava lamp (on the rack) ---
@@ -889,4 +905,6 @@ window.METRO_BJS = {
   get pedalboard() { return pbRef; },
   placeBoombox: (x, y, z, ry, t) => placeBoombox(x, y, z, ry, t),
   fitPedal: (t, x, y, z, ry) => { if (pbRef) fitOn(pbRef, t, x, y, z, ry, 0); },
+  get apolloGLB() { return apolloGLB; },
+  tuneApollo: (rx, ry, rz, t, x, z) => tuneApollo(rx, ry, rz, t, x, z),
 };
