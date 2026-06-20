@@ -356,16 +356,16 @@ const kbTop = plane("kbTop", 0.44, 0.115, kbTopMat); kbTop.parent = desk; kbTop.
 box("tbBase", 0.1, 0.035, 0.12, 0.28, 0.7575, 0.13, matte("tbBase", 0x202327), desk, false);
 sph("tbBall", 0.052, 0.28, 0.785, 0.115, metal("tbBall", 0x8a1f2d, 0.2, 0.25), desk);
 // Mac Studio + portable monitor
-box("mac", 0.2, 0.095, 0.2, -0.7, 0.7875, -0.12, metal("mac", 0xc9ccd1, 0.6, 0.45), desk);
-box("pmBezel", 0.35, 0.225, 0.012, -0.7, 0.95, -0.14, matte("pmBezel", 0x0c0d10), desk).rotation.x = -0.12;
+box("mac", 0.2, 0.095, 0.2, 0.72, 0.7875, -0.12, metal("mac", 0xc9ccd1, 0.6, 0.45), desk);
+box("pmBezel", 0.35, 0.225, 0.012, 0.72, 0.95, -0.14, matte("pmBezel", 0x0c0d10), desk).rotation.x = -0.12;
 const meterTex = new B.DynamicTexture("meter", { width: 330, height: 200 }, scene, true);
 const pmMat = emis("pmMat", 0xffffff, { glow: false }); pmMat.emissiveTexture = meterTex; pmMat.emissiveColor = new B.Color3(1, 1, 1);
-const pmScreen = plane("pmScreen", 0.33, 0.2, pmMat); pmScreen.parent = desk; pmScreen.position.set(-0.7, 0.95, -0.133); pmScreen.rotation.x = -0.12; pmScreen.rotation.y = Math.PI;
+const pmScreen = plane("pmScreen", 0.33, 0.2, pmMat); pmScreen.parent = desk; pmScreen.position.set(0.72, 0.95, -0.133); pmScreen.rotation.x = -0.12; pmScreen.rotation.y = Math.PI;
 // clock + mug
-box("clockBody", 0.17, 0.07, 0.05, 0.62, 0.775, -0.1, matte("clock", 0x101216), desk, false).rotation.x = -0.1;
+box("clockBody", 0.17, 0.07, 0.05, -0.48, 0.775, 0.0, matte("clock", 0x101216), desk, false).rotation.x = -0.1;
 const clockTex = new B.DynamicTexture("clock", { width: 310, height: 116 }, scene, true);
 const clockMat = emis("clockMat", 0xffffff, { glow: false }); clockMat.emissiveTexture = clockTex; clockMat.emissiveColor = new B.Color3(1, 1, 1);
-const clockFace = plane("clockFace", 0.155, 0.058, clockMat); clockFace.parent = desk; clockFace.position.set(0.62, 0.7755, -0.073); clockFace.rotation.y = Math.PI;
+const clockFace = plane("clockFace", 0.155, 0.058, clockMat); clockFace.parent = desk; clockFace.position.set(-0.48, 0.7755, 0.027); clockFace.rotation.y = Math.PI;
 cyl("mug", 0.035, 0.032, 0.09, 0.49, 0.785, 0.04, matte("mug", 0xd8cdb8), desk, 14, false);
 cyl("coffee", 0.029, 0.029, 0.004, 0.49, 0.828, 0.04, matte("coffee", 0x2a1c10), desk, 14, false);
 // channel mixer (child of desk) + MIDI keybed
@@ -472,7 +472,7 @@ cyl("rant", 0.0022, 0.0035, 0.2, 0.085, 0.13, -0.045, metal("rant", 0xb8bcc2, 0.
 
 // ---- realistic hero prop: a real PBR boombox (Khronos "BoomBox", CC0) replaces the box radio ----
 // placed LEFT of the Apollo on the rack top, facing the rack front (+z local), not touching anything
-let heroFit = { ry: 0, x: 0, y: 0.74, z: -0.24, target: 0.17 };
+let heroFit = { ry: 0, x: 0, y: 0.74, z: 0.10, target: 0.22 }; // front-center of the rack top, where the Apollo was
 let boombox = null;
 function placeBoombox(x, y, z, ry, target) {
   if (!boombox) return;
@@ -530,13 +530,34 @@ async function loadHeroProps() {
     pedalboard.setEnabled(false);
     pbRef = pbNode;
   } catch (e) { console.warn("pedals load failed — keeping procedural", e); }
-  try { // realistic rackmount audio unit (Poly Pizza, CC-BY) stands in for the UA Apollo
-    apolloGLB = await importGLB("rackunit.glb");
-    apolloGLB.parent = rack;
-    tuneApollo(0, 0, Math.PI / 2, 0.28, 0, 0.12); // lay it flat & wide on the rack top
-    scene.getMeshByName("apollo")?.setEnabled(false);
-    scene.getMeshByName("apKnob")?.setEnabled(false);
-  } catch (e) { console.warn("apollo substitute load failed — keeping procedural", e); }
+  // the radio (boombox) now sits where the Apollo was — drop the rackmount EQ, hide the procedural Apollo
+  scene.getMeshByName("apollo")?.setEnabled(false);
+  scene.getMeshByName("apKnob")?.setEnabled(false);
+  await loadDeskProps();
+}
+
+// realistic desk props (Poly Pizza CC-BY / Kenney CC0) — keyboard, computer, mug, lamp.
+// the ultrawide monitor stays procedural so it keeps its animated DAW screen.
+const deskProps = {};
+async function loadDeskProps() {
+  const place = async (file, key, target, x, z, ry, hide = [], rx = 0) => {
+    try {
+      const m = await importGLB(file);
+      m.parent = desk;
+      m.scaling.setAll(target / m._naturalMax);
+      m.rotation = new V3(rx, ry, 0);
+      m.position.set(x, 0.74, z);
+      m.computeWorldMatrix(true);
+      const { min } = m.getHierarchyBoundingVectors();
+      m.position.y += 0.74 - min.y; // rest on the desk top
+      hide.forEach(n => scene.getMeshByName(n)?.setEnabled(false));
+      deskProps[key] = m;
+    } catch (e) { console.warn("desk model " + file + " failed", e); }
+  };
+  await place("kb.glb", "kb", 0.44, -0.04, 0.13, 0, ["kb", "kbTop"]);
+  await place("mug.glb", "mug", 0.095, 0.49, 0.05, 0, ["mug", "coffee"]);
+  await place("desklamp.glb", "lamp", 0.34, -0.85, -0.3, 0.9, []);
+  // Mac Studio kept procedural (on the right) — no free Mac model, and the silver box reads more like a Studio than a generic PC tower
 }
 
 // --- lava lamp (on the rack) ---
@@ -907,4 +928,6 @@ window.METRO_BJS = {
   fitPedal: (t, x, y, z, ry) => { if (pbRef) fitOn(pbRef, t, x, y, z, ry, 0); },
   get apolloGLB() { return apolloGLB; },
   tuneApollo: (rx, ry, rz, t, x, z) => tuneApollo(rx, ry, rz, t, x, z),
+  get deskProps() { return deskProps; },
+  deskTune: (key, t, x, z, ry, rx = 0) => { const m = deskProps[key]; if (!m) return; m.scaling.setAll(t / m._naturalMax); m.rotation = new V3(rx, ry, 0); m.position.set(x, 0.74, z); m.computeWorldMatrix(true); const { min } = m.getHierarchyBoundingVectors(); m.position.y += 0.74 - min.y; },
 };
