@@ -40,6 +40,13 @@ scene.fogMode = B.Scene.FOGMODE_LINEAR; scene.fogColor = B.Color3.FromHexString(
 const ip = scene.imageProcessingConfiguration;
 ip.toneMappingEnabled = true; ip.toneMappingType = B.ImageProcessingConfiguration.TONEMAPPING_ACES;
 ip.exposure = 0.9; ip.contrast = 1.18;
+// cinematic color grade — warm highlights, cool shadows (subtle teal/orange depth)
+ip.colorCurvesEnabled = true;
+const grade = new B.ColorCurves();
+grade.globalSaturation = 6;
+grade.highlightsHue = 32; grade.highlightsDensity = 22; grade.highlightsSaturation = 12;
+grade.shadowsHue = 220; grade.shadowsDensity = 16; grade.shadowsSaturation = 14;
+ip.colorCurves = grade;
 
 const envTex = B.CubeTexture.CreateFromPrefilteredData("https://assets.babylonjs.com/environments/environmentSpecular.env", scene);
 scene.environmentTexture = envTex;
@@ -305,6 +312,8 @@ const neon = plane("neon", 0.62, 0.155, neonMat); neon.parent = entry; neon.posi
 box("dimPlate", 0.025, 0.14, 0.09, X - 0.035, 1.3, 1.78, matte("dim", 0xe8e2d4), null, false);
 cyl("dimKnob", 0.018, 0.02, 0.02, X - 0.055, 1.3, 1.78, matte("dimk", 0xb8b2a4), null, 12, false).rotation.z = Math.PI / 2;
 cyl("fixture", 0.16, 0.19, 0.05, 0, H - 0.03, 0.4, matte("fix", 0xd8d2c4), null, 16, false);
+const fixtureGlow = cyl("fixtureGlow", 0.13, 0.13, 0.012, 0, H - 0.058, 0.4, emis("fixGlow", 0x222222, { glow: false }), null, 16, false);
+const roomLamp = new B.PointLight("roomLamp", new V3(0, H - 0.35, 0.4), scene); roomLamp.diffuse = C(0xffe2b8); roomLamp.intensity = 0; roomLamp.range = 9;
 
 // =====================================================================
 // DESK RIG — desk(0.2,0,-2.81), D-Box, ultrawide+DAW, keyboard, trackball, Mac
@@ -542,6 +551,25 @@ const screenGlow = new B.PointLight("screenGlow", new V3(0, 1.19, 0.1), scene); 
 const sunDisc = B.MeshBuilder.CreatePlane("sunDisc", { size: 1.25 }, scene); sunDisc.position.set(Math.sin(az) * 3.2, 2.2, ZF - 2.4);
 const sunDiscMat = emis("sunDiscMat", 0xffffff, { glow: false }); sunDiscMat.emissiveColor = new B.Color3(1.35, 1.05, 0.72); sunDisc.material = sunDiscMat;
 
+// ---- switchable lighting moods (press L to cycle) ----
+const MOODS = [
+  { id: "golden", label: "golden hour", sun: 3.4, sunCol: 0xfff0d8, hemi: 0.32, hSky: 0x8a96a8, hGnd: 0x2a241c, win: 2.4, sky: [0.50, 0.49, 0.48], exp: 0.90, lamp: 0, disc: [1.35, 1.05, 0.72] },
+  { id: "midday", label: "midday sun", sun: 5.6, sunCol: 0xfff6e8, hemi: 0.60, hSky: 0xbcd0ec, hGnd: 0x6a5e4c, win: 3.0, sky: [0.92, 0.93, 0.98], exp: 0.95, lamp: 0, disc: [1.90, 1.80, 1.60] },
+  { id: "studio", label: "clean studio", sun: 2.4, sunCol: 0xffffff, hemi: 0.90, hSky: 0xc8ccd4, hGnd: 0x8a8680, win: 2.0, sky: [0.70, 0.70, 0.72], exp: 0.96, lamp: 3, disc: [1.00, 1.00, 1.00] },
+  { id: "night", label: "night · neon", sun: 0.12, sunCol: 0x9fb6e8, hemi: 0.10, hSky: 0x3a4660, hGnd: 0x1a1610, win: 0.4, sky: [0.12, 0.13, 0.22], exp: 1.06, lamp: 7, disc: [0.18, 0.22, 0.40] },
+];
+function applyMood(m) {
+  sun.intensity = m.sun; sun.diffuse = C(m.sunCol);
+  hemi.intensity = m.hemi; hemi.diffuse = C(m.hSky); hemi.groundColor = C(m.hGnd);
+  windowLight.intensity = m.win;
+  skyMat.emissiveColor.set(m.sky[0], m.sky[1], m.sky[2]);
+  sunDiscMat.emissiveColor.set(m.disc[0], m.disc[1], m.disc[2]);
+  ip.exposure = m.exp;
+  roomLamp.intensity = m.lamp;
+  fixtureGlow.material.emissiveColor = m.lamp > 0.5 ? C(0xffe2b8) : C(0x222222);
+}
+let moodIdx = 0; applyMood(MOODS[moodIdx]);
+
 // =====================================================================
 // SHADOWS — register casters, big surfaces receive
 // =====================================================================
@@ -575,7 +603,7 @@ const EYE_H = 1.62; // 5'8" eye height — desk (0.74) lands at mid-thigh, same 
 const camera = new B.UniversalCamera("cam", new V3(0.2, EYE_H, 1.4), scene);
 camera.setTarget(new V3(0, EYE_H, ZF));
 camera.attachControl(canvas, true);
-camera.minZ = 0.05; camera.fov = 1.18; camera.speed = 0.5; camera.inertia = 0.72; camera.angularSensibility = 2400;
+camera.minZ = 0.05; camera.fov = 1.18; camera.speed = 0.34; camera.inertia = 0.72; camera.angularSensibility = 2400;
 camera.keysUp = [87, 38]; camera.keysDown = [83, 40]; camera.keysLeft = [65, 37]; camera.keysRight = [68, 39];
 // FIXED eye height — no gravity. the flat floor doesn't need it, and gravity+ellipsoid
 // was making the camera CLIMB while walking (1.50 → 1.79). collisions stay on for walls/furniture.
@@ -694,10 +722,16 @@ let entered = false;
 function enter() {
   if (entered) return; entered = true;
   gate.classList.add("gone"); badge.classList.add("show");
-  hint.textContent = "WASD move · mouse look · click to throw · click the cat for ♥ · Esc frees cursor";
+  hint.textContent = "WASD move · mouse look · L = lighting mood · click to throw · click the cat for ♥ · Esc frees cursor";
   hint.classList.add("show"); setTimeout(() => hint.classList.remove("show"), 7000);
   canvas.focus(); engine.enterPointerlock();
 }
 enterBtn.addEventListener("click", enter);
 
-window.METRO_BJS = { engine, scene, camera, throwBall, popHearts, B };
+// press L to cycle the lighting mood (golden hour → midday → studio → night/neon)
+function flashHint(t) { hint.textContent = t; hint.classList.add("show"); clearTimeout(flashHint._t); flashHint._t = setTimeout(() => hint.classList.remove("show"), 2400); }
+window.addEventListener("keydown", (e) => {
+  if (e.code === "KeyL") { moodIdx = (moodIdx + 1) % MOODS.length; applyMood(MOODS[moodIdx]); flashHint("lighting: " + MOODS[moodIdx].label); }
+});
+
+window.METRO_BJS = { engine, scene, camera, throwBall, popHearts, B, applyMood, MOODS, setMood: (i) => { moodIdx = i % MOODS.length; applyMood(MOODS[moodIdx]); } };
