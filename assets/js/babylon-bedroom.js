@@ -483,20 +483,44 @@ function placeBoombox(x, y, z, ry, target) {
   const { min } = boombox.getHierarchyBoundingVectors(); // auto-rest the bottom on the rack top (world y 0.68)
   boombox.position.y += 0.68 - min.y;
 }
+let pbRef = null;
+async function importGLB(file) {
+  const res = await B.SceneLoader.ImportMeshAsync("", "/assets/models/", file, scene);
+  const root = res.meshes[0];
+  const { min, max } = root.getHierarchyBoundingVectors();
+  root._naturalMax = Math.max(max.x - min.x, max.y - min.y, max.z - min.z) / root.scaling.x;
+  for (const m of res.meshes) if (m.getTotalVertices && m.getTotalVertices() > 0) { m.receiveShadows = true; try { shadow.addShadowCaster(m); } catch {} }
+  return root;
+}
+function fitOn(root, target, x, y, z, ry, restY = 0) {
+  root.scaling.setAll(target / root._naturalMax);
+  root.rotation = new V3(0, ry, 0);
+  root.position.set(x, y, z);
+  root.computeWorldMatrix(true);
+  const { min } = root.getHierarchyBoundingVectors();
+  root.position.y += restY - min.y; // rest the model's bottom on restY
+}
 async function loadHeroProps() {
-  try {
-    const res = await B.SceneLoader.ImportMeshAsync("", "/assets/models/", "BoomBox.glb", scene);
-    const root = res.meshes[0];
-    const { min, max } = root.getHierarchyBoundingVectors();
-    root._naturalMax = Math.max(max.x - min.x, max.y - min.y, max.z - min.z) / root.scaling.x; // longest side at scale 1
-    root.parent = rack;
-    boombox = root;
+  try { // realistic PBR boombox (Khronos BoomBox, CC0) replaces the box radio
+    boombox = await importGLB("BoomBox.glb");
+    boombox.parent = rack;
     placeBoombox(heroFit.x, heroFit.y, heroFit.z, heroFit.ry, heroFit.target);
-    for (const m of res.meshes) { if (m.getTotalVertices && m.getTotalVertices() > 0) { m.receiveShadows = true; try { shadow.addShadowCaster(m); } catch {} } }
-    radio.setEnabled(false); // hide the procedural radio (kept as fallback)
-    boombox = root;
-    return root;
-  } catch (e) { console.warn("hero prop load failed — keeping procedural radio", e); }
+    radio.setEnabled(false);
+  } catch (e) { console.warn("boombox load failed — keeping procedural radio", e); }
+  try { // realistic guitar pedals (Poly Pizza, CC-BY) on a board, replacing the procedural pedalboard
+    const base = await importGLB("pedal.glb");
+    const nm = base._naturalMax;
+    const c2 = base.clone("pedalB"), c3 = base.clone("pedalC");
+    [c2, c3].forEach(c => c.getChildMeshes().forEach(m => { m.receiveShadows = true; try { shadow.addShadowCaster(m); } catch { } }));
+    const pbNode = node("pedalsGLB", 1.52, 0, ZF + 1.02); pbNode.rotation.y = 0.3;
+    box("pbBoard", 0.5, 0.02, 0.22, 0, 0.01, 0, matte("pbBoard", 0x18191d), pbNode, false);
+    [[base, -0.15, 0.0], [c2, 0.0, 0.12], [c3, 0.15, -0.1]].forEach(([r, dx, ry]) => {
+      r.parent = pbNode; r.scaling.setAll(0.13 / nm); r.rotation = new V3(0, ry, 0); r.position.set(dx, 0.02, 0);
+      r.computeWorldMatrix(true); const { min } = r.getHierarchyBoundingVectors(); r.position.y += 0.02 - min.y;
+    });
+    pedalboard.setEnabled(false);
+    pbRef = pbNode;
+  } catch (e) { console.warn("pedals load failed — keeping procedural", e); }
 }
 
 // --- lava lamp (on the rack) ---
@@ -838,7 +862,7 @@ scene.whenReadyAsync().then(async () => { setProg(82, "loading models…"); awai
 let entered = false;
 function enter() {
   if (entered) return; entered = true;
-  gate.classList.add("gone"); badge.classList.add("show");
+  gate.classList.add("gone"); badge.classList.add("show"); document.getElementById("credits")?.classList.add("show");
   hint.textContent = "WASD move · mouse look · L = lighting mood · click to throw · click the cat for ♥ · Esc frees cursor";
   hint.classList.add("show"); setTimeout(() => hint.classList.remove("show"), 7000);
   canvas.focus(); engine.enterPointerlock();
@@ -862,5 +886,7 @@ window.METRO_BJS = {
   goAuto: () => { autoMode = true; updateEnv(new Date()); },
   get weather() { return weather; },
   get boombox() { return boombox; },
+  get pedalboard() { return pbRef; },
   placeBoombox: (x, y, z, ry, t) => placeBoombox(x, y, z, ry, t),
+  fitPedal: (t, x, y, z, ry) => { if (pbRef) fitOn(pbRef, t, x, y, z, ry, 0); },
 };

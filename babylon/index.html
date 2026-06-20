@@ -35,12 +35,16 @@
   #badge { position: fixed; left: 1rem; top: 1rem; z-index: 6; font-size: .58rem; letter-spacing: .2em;
     color: #6a6772; opacity: 0; transition: opacity .5s; }
   #badge.show { opacity: 1; }
+  #credits { position: fixed; right: 1rem; bottom: .6rem; z-index: 6; font-size: .5rem; letter-spacing: .08em;
+    color: #56535c; opacity: 0; transition: opacity .5s; max-width: 60vw; text-align: right; }
+  #credits.show { opacity: 1; }
 </style>
 </head>
 <body>
   <canvas id="stage" tabindex="0"></canvas>
 
   <div id="badge">BABYLON · PHASE 1 · BEDROOM</div>
+  <div id="credits">3D models: BoomBox — Khronos (CC0) · guitar pedal — Peter Simcoe / Poly Pizza (CC-BY)</div>
   <div id="hint"></div>
 
   <div id="gate">
