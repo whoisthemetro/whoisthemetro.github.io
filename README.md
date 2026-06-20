@@ -57,12 +57,16 @@ portals:
   Supabase edge function.
 - **THE GYM** — a full-court basketball game behind the JOIN sign on the
   arcade court. A cyberpunk night-court (neon line work, dim cyan/magenta
-  lights, a glowing ball). On foot with a real jump and a stamina-limited
-  dash (no boosting while you carry the ball). One shared ball: grab it,
-  strip the holder, charge a shot, throw outlet passes, or jump into the
-  paint and time the **dunk meter** for an automatic slam. Two auto-balanced
-  teams, 2s and 3s, a live scoreboard — all networked, with a full on-screen
-  control pad on mobile.
+  lights, a glowing ball, a scoreboard above each hoop). On foot with a real
+  jump and a stamina-limited dash (no boosting while you carry the ball). One
+  shared ball: grab it, strip the holder, throw guided outlet passes, or jump
+  into the paint and time the **dunk meter** for an automatic slam. Shooting is
+  **auto-aimed for everyone** (the arc is solved at the hoop you face) so the
+  skill is **power**: a ping-ponging meter with an **active-reload marker** —
+  release in the green zone for a guaranteed swish, miss it for a brick. You
+  spawn into a **warm-up** (unlimited boost, free roam, makes don't count) and
+  tap the wall **READY board** to tip off into the real game. Two auto-balanced
+  teams, 2s and 3s — all networked, with a full on-screen control pad on mobile.
 
 The room also furnishes itself for regulars: time spent, piano notes,
 arcade games and portal trips quietly add up and earn small objects that
@@ -116,9 +120,10 @@ in your Supabase URL and anon key in `assets/js/config.js`.
 - In ECHO ARENA: gaze + WASD to thrust, **E** to grab/fling walls and
   teammates, **SHIFT** boost, **B** brake, **F** shield, click to punch.
 - In THE GYM: **WASD** move, **SPACE** jump, **SHIFT** dash (stamina), hold
-  **click** to charge a shot, click to grab/steal, **E** to pass. On mobile,
-  twin thumbsticks — left moves (shove to the edge to boost), right looks
-  (tap it to grab) — with JUMP and SHOOT buttons above the right stick.
+  **click** to wind up the power meter and release in the green zone to shoot,
+  click to grab/steal, **E** to pass, **R** to ready up. On mobile, twin
+  thumbsticks — left moves (shove to the edge to boost), right looks (tap it to
+  grab) — with JUMP, SHOOT and PASS buttons orbiting the right stick.
 
 ## Moderation
 
