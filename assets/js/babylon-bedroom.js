@@ -471,21 +471,30 @@ box("rneedle", 0.0035, 0.036, 0.004, 0.05, 0.075, 0.0625, emis("rneedle", 0xff40
 cyl("rant", 0.0022, 0.0035, 0.2, 0.085, 0.13, -0.045, metal("rant", 0xb8bcc2, 0.8, 0.3), radio, 6, false).rotation.z = -0.5;
 
 // ---- realistic hero prop: a real PBR boombox (Khronos "BoomBox", CC0) replaces the box radio ----
-let heroFit = { s: 1, ry: 2.4, x: 0.13, y: 0.80, z: -0.05 }; // tuned live below
+// placed LEFT of the Apollo on the rack top, facing the rack front (+z local), not touching anything
+let heroFit = { ry: 0, x: 0, y: 0.74, z: -0.24, target: 0.17 };
+let boombox = null;
+function placeBoombox(x, y, z, ry, target) {
+  if (!boombox) return;
+  boombox.scaling.setAll(target / boombox._naturalMax);
+  boombox.rotation = new V3(0, ry, 0);
+  boombox.position.set(x, y, z);
+  boombox.computeWorldMatrix(true);
+  const { min } = boombox.getHierarchyBoundingVectors(); // auto-rest the bottom on the rack top (world y 0.68)
+  boombox.position.y += 0.68 - min.y;
+}
 async function loadHeroProps() {
   try {
     const res = await B.SceneLoader.ImportMeshAsync("", "/assets/models/", "BoomBox.glb", scene);
     const root = res.meshes[0];
     const { min, max } = root.getHierarchyBoundingVectors();
-    const size = max.subtract(min);
-    const s = 0.30 / Math.max(size.x, size.y, size.z); // fit to ~0.30 m on its longest side
-    root.scaling.scaleInPlace(s);
+    root._naturalMax = Math.max(max.x - min.x, max.y - min.y, max.z - min.z) / root.scaling.x; // longest side at scale 1
     root.parent = rack;
-    root.position.set(heroFit.x, heroFit.y, heroFit.z);
-    root.rotation = new V3(0, heroFit.ry, 0);
+    boombox = root;
+    placeBoombox(heroFit.x, heroFit.y, heroFit.z, heroFit.ry, heroFit.target);
     for (const m of res.meshes) { if (m.getTotalVertices && m.getTotalVertices() > 0) { m.receiveShadows = true; try { shadow.addShadowCaster(m); } catch {} } }
     radio.setEnabled(false); // hide the procedural radio (kept as fallback)
-    window.METRO_BJS && (window.METRO_BJS.boombox = root);
+    boombox = root;
     return root;
   } catch (e) { console.warn("hero prop load failed — keeping procedural radio", e); }
 }
@@ -852,4 +861,6 @@ window.METRO_BJS = {
   previewTime: (h, m = 30) => { autoMode = false; const d = new Date(); d.setHours(h, m, 0, 0); updateEnv(d); },
   goAuto: () => { autoMode = true; updateEnv(new Date()); },
   get weather() { return weather; },
+  get boombox() { return boombox; },
+  placeBoombox: (x, y, z, ry, t) => placeBoombox(x, y, z, ry, t),
 };
