@@ -1,590 +1,700 @@
-// THE METRO — bedroom, rebuilt in Babylon.js 9.
+// THE METRO — bedroom, rebuilt in Babylon.js 9 (faithful port of the three.js room).
 //
-// phase 1 of the engine migration. the three.js world is one scene of toon-shaded
-// canvas textures; here we get the things three.js made us fake: real PBR + image-based
-// lighting (true reflections), cascaded sun shadows, volumetric god-rays through the
-// window, a glow/bloom pipeline for the neon, SSAO contact shadows, GPU-particle dust,
-// and Havok rigid bodies you can throw. everything is still procedural — no asset files.
+// phase 1 of the engine migration. this is a 1:1 reconstruction of the real studio:
+// same ROOM box (X 2.6, ZF -3.3, ZB 3.3, H 2.7), same objects in the same places —
+// the desk rig, the music rig (drums, Tele, pedals, mixer, Kali monitors, rack, radio),
+// the LA window, the cat + its corner, the lava lamp, the neon, the closet, the lot.
 //
-// the room has rules, same as the boat's sea: light comes from outside, the neon is the
-// only thing allowed to be brighter than the sun.
+// we keep the three.js coordinates VERBATIM by running Babylon right-handed, then add the
+// things three.js made us fake: real PBR + IBL reflections, a shadow-casting sun, god-rays
+// through the glass, GlowLayer+bloom on every emissive, GPU-particle dust, and Havok you
+// can throw things with. still 100% procedural — no asset files.
 
-const BABYLON = window.BABYLON;
+const B = window.BABYLON;
+const V3 = B.Vector3;
 const canvas = document.getElementById("stage");
 const gate = document.getElementById("gate");
 const enterBtn = document.getElementById("enter-btn");
 const loadbar = document.querySelector("#loadbar > i");
 const hint = document.getElementById("hint");
 const badge = document.getElementById("badge");
+const setProg = (p, l) => { loadbar.style.width = Math.round(p) + "%"; if (l) enterBtn.textContent = l; };
 
-function progress(pct, label) {
-  loadbar.style.width = Math.round(pct) + "%";
-  if (label) enterBtn.textContent = label;
-}
+// ---- the room, exactly as world.js defines it ----
+const ROOM = { X: 2.6, ZF: -3.3, ZB: 3.3, H: 2.7 };
+const W = ROOM.X * 2, D = ROOM.ZB - ROOM.ZF, H = ROOM.H, X = ROOM.X, ZF = ROOM.ZF, ZB = ROOM.ZB;
+const WIN = { w: 3.6, h: 1.4, cx: 0, cy: 1.6 };
 
-// ---- engine ----
-const engine = new BABYLON.Engine(canvas, true, {
-  preserveDrawingBuffer: true,
-  stencil: true,
-  antialias: true,
-  powerPreference: "high-performance",
-  adaptToDeviceRatio: true,
-});
+// =====================================================================
+// engine + scene (right-handed so three.js coords/rotations port literally)
+// =====================================================================
+const engine = new B.Engine(canvas, true, { preserveDrawingBuffer: true, stencil: true, antialias: true, powerPreference: "high-performance" });
 engine.setHardwareScalingLevel(1 / Math.min(window.devicePixelRatio || 1, 2));
-
-const scene = new BABYLON.Scene(engine);
-scene.clearColor = new BABYLON.Color3(0.02, 0.02, 0.03);
+const scene = new B.Scene(engine);
+scene.useRightHandedSystem = true;
+scene.clearColor = B.Color3.FromHexString("#07080b").toColor4(1);
 scene.collisionsEnabled = true;
-scene.gravity = new BABYLON.Vector3(0, -0.5, 0);
+scene.gravity = new V3(0, -0.5, 0);
+scene.fogMode = B.Scene.FOGMODE_LINEAR; scene.fogColor = B.Color3.FromHexString("#07080b"); scene.fogStart = 14; scene.fogEnd = 44;
 
-// ACES film tonemap so the bright window + neon don't clip ugly
 const ip = scene.imageProcessingConfiguration;
-ip.toneMappingEnabled = true;
-ip.toneMappingType = BABYLON.ImageProcessingConfiguration.TONEMAPPING_ACES;
-ip.exposure = 1.02;
-ip.contrast = 1.28;
+ip.toneMappingEnabled = true; ip.toneMappingType = B.ImageProcessingConfiguration.TONEMAPPING_ACES;
+ip.exposure = 1.05; ip.contrast = 1.22;
 
-// ---- image-based lighting: a prefiltered studio env drives every PBR reflection ----
-const envTex = BABYLON.CubeTexture.CreateFromPrefilteredData(
-  "https://assets.babylonjs.com/environments/environmentSpecular.env", scene);
-envTex.gammaSpace = false;
+const envTex = B.CubeTexture.CreateFromPrefilteredData("https://assets.babylonjs.com/environments/environmentSpecular.env", scene);
 scene.environmentTexture = envTex;
-scene.environmentIntensity = 0.55; // indoors — keep the IBL subtle, let the sun lead
+scene.environmentIntensity = 0.4;
 
 // =====================================================================
-// small procedural-texture helpers (the canvas-texture habit, ported)
+// helpers
 // =====================================================================
-function dyn(name, w, h, draw, frame = false) {
-  const t = new BABYLON.DynamicTexture(name, { width: w, height: h }, scene, true);
-  const ctx = t.getContext();
-  draw(ctx, w, h);
-  t.update(false);
-  if (!frame) t.optimize?.();
+const C = (hex) => new B.Color3(((hex >> 16) & 255) / 255, ((hex >> 8) & 255) / 255, (hex & 255) / 255);
+const casters = [];
+const glowMats = [];
+
+function matte(name, hex, { rough = 0.9 } = {}) {
+  const m = new B.StandardMaterial(name, scene);
+  m.diffuseColor = C(hex); m.specularColor = new B.Color3(0.04, 0.04, 0.04); m.specularPower = 24;
+  return m;
+}
+function metal(name, hex, metallic = 0.8, roughness = 0.35) {
+  const m = new B.PBRMetallicRoughnessMaterial(name, scene);
+  m.baseColor = C(hex); m.metallic = metallic; m.roughness = roughness;
+  return m;
+}
+function emis(name, hex, { glow = true, add = false, alpha = 1 } = {}) {
+  const m = new B.StandardMaterial(name, scene);
+  m.emissiveColor = C(hex); m.diffuseColor = new B.Color3(0, 0, 0); m.disableLighting = true;
+  if (alpha < 1) { m.alpha = alpha; }
+  if (add) m.alphaMode = B.Engine.ALPHA_ADD;
+  if (glow) glowMats.push(m);
+  return m;
+}
+function glassMat(name, hex, alpha = 0.2, rough = 0.05) {
+  const m = new B.PBRMetallicRoughnessMaterial(name, scene);
+  m.baseColor = C(hex); m.metallic = 0; m.roughness = rough; m.alpha = alpha;
+  m.transparencyMode = B.Material.MATERIAL_ALPHABLEND; m.environmentIntensity = 1.0;
+  return m;
+}
+function dyn(name, w, h, draw, { flip = false } = {}) {
+  const t = new B.DynamicTexture(name, { width: w, height: h }, scene, true);
+  draw(t.getContext(), w, h); t.update(false);
+  if (flip) { t.vScale = -1; t.vOffset = 1; }
   return t;
 }
+function node(name, x = 0, y = 0, z = 0, parent = null) {
+  const n = new B.TransformNode(name, scene);
+  n.position.set(x, y, z); if (parent) n.parent = parent; return n;
+}
+function box(name, w, h, d, x, y, z, m, parent = null, cast = true) {
+  const me = B.MeshBuilder.CreateBox(name, { width: w, height: h, depth: d }, scene);
+  me.position.set(x, y, z); me.material = m; me.receiveShadows = true;
+  if (parent) me.parent = parent; if (cast) casters.push(me); return me;
+}
+function plane(name, w, h, m, parent = null) {
+  const me = B.MeshBuilder.CreatePlane(name, { width: w, height: h, sideOrientation: B.Mesh.DOUBLESIDE }, scene);
+  me.material = m; me.receiveShadows = true; if (parent) me.parent = parent; return me;
+}
+function cyl(name, dTop, dBot, height, x, y, z, m, parent = null, tess = 16, cast = true) {
+  const me = B.MeshBuilder.CreateCylinder(name, { diameterTop: dTop * 2, diameterBottom: dBot * 2, height, tessellation: tess }, scene);
+  me.position.set(x, y, z); me.material = m; me.receiveShadows = true;
+  if (parent) me.parent = parent; if (cast) casters.push(me); return me;
+}
+function sph(name, dia, x, y, z, m, parent = null, cast = true) {
+  const me = B.MeshBuilder.CreateSphere(name, { diameter: dia, segments: 12 }, scene);
+  me.position.set(x, y, z); me.material = m; me.receiveShadows = true;
+  if (parent) me.parent = parent; if (cast) casters.push(me); return me;
+}
 
-function carpetTexture() {
-  return dyn("carpet", 1024, 1024, (c, w, h) => {
-    c.fillStyle = "#3b3a40"; c.fillRect(0, 0, w, h);
-    // fiber speckle
-    for (let i = 0; i < 90000; i++) {
-      const x = Math.random() * w, y = Math.random() * h;
-      const v = 0.5 + Math.random() * 0.5;
-      c.fillStyle = `rgba(${Math.round(70 * v)},${Math.round(68 * v)},${Math.round(76 * v)},.5)`;
-      c.fillRect(x, y, 2, 2);
-    }
-    // a couple of old stains, because the carpet remembers
-    for (const [sx, sy, r] of [[300, 720, 120], [760, 240, 80]]) {
-      const g = c.createRadialGradient(sx, sy, 4, sx, sy, r);
-      g.addColorStop(0, "rgba(30,24,20,.5)"); g.addColorStop(1, "rgba(30,24,20,0)");
-      c.fillStyle = g; c.beginPath(); c.arc(sx, sy, r, 0, 7); c.fill();
-    }
+// =====================================================================
+// procedural textures (the canvas-texture habit, ported)
+// =====================================================================
+const carpetTex = dyn("carpet", 800, 1024, (c, w, h) => {
+  c.fillStyle = "#6e6557"; c.fillRect(0, 0, w, h);
+  for (let i = 0; i < 42000; i++) { const v = 84 + Math.random() * 44; c.fillStyle = `rgba(${v},${v - 8},${v - 18},${0.2 + Math.random() * 0.3})`; c.fillRect(Math.random() * w, Math.random() * h, 1.4, 1.4); }
+  for (let i = 0; i < 5000; i++) { const v = 70 + Math.random() * 26; c.fillStyle = `rgba(${v},${v - 6},${v - 14},.35)`; c.fillRect(Math.random() * w, Math.random() * h, 2.6, 1.2); }
+  for (let i = 0; i < 6; i++) { c.fillStyle = i % 2 ? "rgba(0,0,0,.03)" : "rgba(255,250,240,.025)"; c.fillRect((i * 140 + 30) % w, 0, 60, h); }
+});
+function wallTex(name, wm, hm) {
+  const ppm = 96, w = Math.round(wm * ppm), h = Math.round(hm * ppm);
+  return dyn(name, w, h, (c) => {
+    c.fillStyle = "#e4dccb"; c.fillRect(0, 0, w, h);
+    for (let i = 0; i < (w * h / 300); i++) { c.fillStyle = `rgba(120,108,88,${Math.random() * 0.03})`; c.fillRect(Math.random() * w, Math.random() * h, 2, 2); }
+    for (let i = 0; i < wm * 2; i++) { c.save(); c.translate(Math.random() * w, h - (0.14 + Math.random() * 0.3) * ppm); c.rotate(Math.random()); c.fillStyle = `rgba(90,78,58,${0.04 + Math.random() * 0.05})`; c.beginPath(); c.ellipse(0, 0, 18 + Math.random() * 26, 6 + Math.random() * 8, 0, 0, 7); c.fill(); c.restore(); }
+    c.fillStyle = "#cfc6b2"; c.fillRect(0, h - 0.1 * ppm, w, 0.1 * ppm);
+    c.fillStyle = "rgba(0,0,0,.18)"; c.fillRect(0, h - 0.1 * ppm, w, 3);
   });
 }
+const deskTex = dyn("desk", 1024, 512, (c, w, h) => {
+  c.fillStyle = "#3a2a1c"; c.fillRect(0, 0, w, h);
+  for (let i = 0; i < 80; i++) { const y = (i / 80) * h + (Math.random() - 0.5) * 6; c.strokeStyle = `rgba(${90 + Math.random() * 50},${60 + Math.random() * 30},${36 + Math.random() * 20},.4)`; c.lineWidth = 1 + Math.random() * 2; c.beginPath(); for (let x = 0; x <= w; x += 16) c.lineTo(x, y + Math.sin(x * 0.02 + i) * 4); c.stroke(); }
+  const g = c.createRadialGradient(820, 360, 8, 820, 360, 64); g.addColorStop(.82, "rgba(20,12,6,0)"); g.addColorStop(.9, "rgba(20,12,6,.4)"); g.addColorStop(1, "rgba(20,12,6,0)"); c.fillStyle = g; c.beginPath(); c.arc(820, 360, 64, 0, 7); c.fill();
+});
+const rackFaceTex = dyn("rackface", 256, 360, (c, w, h) => {
+  c.fillStyle = "#0e1013"; c.fillRect(0, 0, w, h);
+  c.fillStyle = "#1c2025"; c.fillRect(0, 0, 18, h); c.fillRect(238, 0, 18, h);
+  c.fillStyle = "#000"; for (let y = 8; y < h; y += 22) { c.fillRect(6, y, 7, 7); c.fillRect(243, y, 7, 7); }
+  const unit = (y, hh, draw) => { c.fillStyle = "#15181d"; c.fillRect(20, y, 196, hh); c.strokeStyle = "#000"; c.strokeRect(20, y, 196, hh); draw(y); };
+  unit(8, 52, (y) => { c.fillStyle = "#d8dee4"; c.font = "700 13px monospace"; c.fillText("PWR", 30, y + 30); for (let i = 0; i < 8; i++) { c.fillStyle = i < 6 ? "#3be07a" : "#222"; c.fillRect(110 + i * 14, y + 20, 8, 12); } });
+  unit(64, 52, (y) => { for (let i = 0; i < 4; i++) { c.fillStyle = "#2a2e35"; c.beginPath(); c.arc(50 + i * 46, y + 24, 13, 0, 7); c.fill(); c.strokeStyle = "#888"; c.beginPath(); c.moveTo(50 + i * 46, y + 24); c.lineTo(50 + i * 46, y + 14); c.stroke(); } c.fillStyle = "#e0653a"; c.fillRect(208, y + 18, 8, 8); });
+  unit(120, 100, (y) => { c.fillStyle = "#0a0c0e"; for (let k = 0; k < 7; k++) c.fillRect(28, y + 8 + k * 12, 180, 5); });
+  unit(224, 52, (y) => { c.fillStyle = "#0a0b0d"; for (let r = 0; r < 2; r++) for (let i = 0; i < 12; i++) { c.beginPath(); c.arc(38 + i * 15, y + 18 + r * 18, 5, 0, 7); c.fill(); } });
+});
+const kaliTex = dyn("kali", 256, 420, (c, w, h) => {
+  c.fillStyle = "#17191c"; c.fillRect(0, 0, w, h);
+  for (let i = 0; i < 2600; i++) { c.fillStyle = `rgba(255,255,255,${Math.random() * 0.04})`; c.fillRect(Math.random() * w, Math.random() * h, 1, 1); }
+  let g = c.createRadialGradient(128, 110, 4, 128, 110, 58); g.addColorStop(0, "#0a0b0d"); g.addColorStop(.6, "#22262b"); g.addColorStop(1, "#101216"); c.fillStyle = g; c.beginPath(); c.arc(128, 110, 58, 0, 7); c.fill();
+  c.fillStyle = "#06070a"; c.beginPath(); c.arc(128, 110, 22, 0, 7); c.fill();
+  g = c.createRadialGradient(128, 268, 6, 128, 268, 86); g.addColorStop(0, "#1d2024"); g.addColorStop(.4, "#0b0c0f"); g.addColorStop(.7, "#23272c"); g.addColorStop(1, "#0a0b0d"); c.fillStyle = g; c.beginPath(); c.arc(128, 268, 86, 0, 7); c.fill();
+  c.fillStyle = "#15181c"; c.beginPath(); c.arc(128, 268, 26, 0, 7); c.fill();
+  c.fillStyle = "#000"; c.fillRect(48, 374, 160, 22);
+  c.fillStyle = "#9aa3ad"; c.font = "700 17px monospace"; c.fillText("KALI", 22, 40);
+  c.fillStyle = "#3be07a"; c.fillRect(222, 392, 6, 6);
+}, { flip: true });
+const keysTex = dyn("keys", 440, 115, (c, w, h) => {
+  c.fillStyle = "#d9dbdd"; c.fillRect(0, 0, w, h);
+  c.fillStyle = "#f4f5f6"; for (let y = 8; y < 105; y += 21) for (let x = 6; x < 431; x += 24) c.fillRect(x, y, 20, 17);
+  c.fillStyle = "rgba(160,164,170,.5)"; c.fillRect(54, 50, 20, 17); c.fillRect(78, 50, 20, 17); c.fillRect(102, 50, 20, 17); c.fillRect(126, 92, 120, 15);
+});
+const blindsTex = dyn("blinds", 720, 280, (c, w, h) => {
+  const slat = 19, gap = 11;
+  for (let x = 0; x < w; x += slat + gap) { const g = c.createLinearGradient(x, 0, x + slat, 0); g.addColorStop(0, "rgba(176,169,152,.94)"); g.addColorStop(.5, "rgba(140,133,116,.94)"); g.addColorStop(1, "rgba(104,98,84,.94)"); c.fillStyle = g; c.fillRect(x, 0, slat, h); }
+  c.fillStyle = "rgba(120,113,97,1)"; c.fillRect(0, 0, w, 10);
+});
 
-function wallTexture() {
-  return dyn("wall", 1024, 1024, (c, w, h) => {
-    c.fillStyle = "#d8d1c2"; c.fillRect(0, 0, w, h);
-    for (let i = 0; i < 26000; i++) {
-      const x = Math.random() * w, y = Math.random() * h;
-      c.fillStyle = `rgba(0,0,0,${Math.random() * 0.05})`;
-      c.fillRect(x, y, 1, 1);
-    }
-    // faint vertical roller streaks
-    for (let i = 0; i < 60; i++) {
-      c.fillStyle = `rgba(255,255,255,${Math.random() * 0.04})`;
-      c.fillRect(Math.random() * w, 0, 2, h);
-    }
-  });
-}
-
-function woodTexture() {
-  return dyn("walnut", 1024, 512, (c, w, h) => {
-    c.fillStyle = "#3a2418"; c.fillRect(0, 0, w, h);
-    for (let i = 0; i < 70; i++) {
-      const y = (i / 70) * h + (Math.random() - 0.5) * 6;
-      c.strokeStyle = `rgba(${90 + Math.random() * 50},${55 + Math.random() * 30},${30 + Math.random() * 20},.4)`;
-      c.lineWidth = 1 + Math.random() * 2; c.beginPath();
-      for (let x = 0; x <= w; x += 16) c.lineTo(x, y + Math.sin(x * 0.02 + i) * 4);
-      c.stroke();
-    }
-    const g = c.createRadialGradient(820, 360, 6, 820, 360, 60); // coffee ring
-    g.addColorStop(0, "rgba(20,12,6,0)"); g.addColorStop(.82, "rgba(20,12,6,0)");
-    g.addColorStop(.9, "rgba(20,12,6,.4)"); g.addColorStop(1, "rgba(20,12,6,0)");
-    c.fillStyle = g; c.beginPath(); c.arc(820, 360, 60, 0, 7); c.fill();
-  });
-}
-
-// =====================================================================
-// PBR material sugar
-// =====================================================================
-function mat(name, opts = {}) {
-  const m = new BABYLON.PBRMetallicRoughnessMaterial(name, scene);
-  const [r, g, b] = opts.color || [0.8, 0.8, 0.8];
-  m.baseColor = new BABYLON.Color3(r, g, b);
-  m.metallic = opts.metallic ?? 0;
-  m.roughness = opts.roughness ?? 0.85;
-  if (opts.tex) { m.baseTexture = opts.tex; if (opts.uv) opts.tex.uScale = opts.tex.vScale = opts.uv; }
-  if (opts.emissive) m.emissiveColor = new BABYLON.Color3(...opts.emissive);
-  if (opts.emissiveTex) m.emissiveTexture = opts.emissiveTex;
-  if (opts.alpha != null) { m.alpha = opts.alpha; m.transparencyMode = BABYLON.Material.MATERIAL_ALPHABLEND; }
-  return m;
-}
-
-const casters = []; // meshes that throw shadows
-const colliders = []; // walls/floor/furniture the player & physics bump into
-
-function box(name, w, h, d, x, y, z, material, { cast = true, collide = true } = {}) {
-  const m = BABYLON.MeshBuilder.CreateBox(name, { width: w, height: h, depth: d }, scene);
-  m.position.set(x, y, z);
-  m.material = material;
-  m.receiveShadows = true;
-  if (cast) casters.push(m);
-  if (collide) { m.checkCollisions = true; colliders.push(m); }
-  return m;
-}
-
-// =====================================================================
-// the shell — floor, ceiling, four walls, a real window opening
-// =====================================================================
-const ROOM = { w: 6.4, d: 5.4, h: 3.0 };
-const HW = ROOM.w / 2, HD = ROOM.d / 2;
-
-const floor = BABYLON.MeshBuilder.CreateGround("floor", { width: ROOM.w, height: ROOM.d }, scene);
-floor.material = mat("carpetMat", { tex: carpetTexture(), uv: 3, roughness: 0.97 });
-floor.receiveShadows = true;
-floor.checkCollisions = true;
-
-const ceil = BABYLON.MeshBuilder.CreateGround("ceil", { width: ROOM.w, height: ROOM.d }, scene);
-ceil.material = mat("ceilMat", { color: [0.82, 0.79, 0.72], roughness: 1 });
-ceil.position.y = ROOM.h; ceil.rotation.x = Math.PI; // face down
-ceil.receiveShadows = true;
-
-const wallMat = mat("wallMat", { tex: wallTexture(), uv: 2, roughness: 0.92 });
-const baseboardMat = mat("baseboard", { color: [0.9, 0.88, 0.82], roughness: 0.6 });
-
-// south (behind spawn), east, west solid. baseboards on each.
-function wall(name, w, x, z, ry) {
-  const m = box(name, w, ROOM.h, 0.12, x, ROOM.h / 2, z, wallMat);
-  m.rotation.y = ry;
-  const bb = box(name + "_bb", w, 0.12, 0.14, x, 0.06, z, baseboardMat, { cast: false });
-  bb.rotation.y = ry;
-}
-wall("wS", ROOM.w, 0, HD, 0);
-wall("wE", ROOM.d, HW, 0, Math.PI / 2);
-wall("wW", ROOM.d, -HW, 0, Math.PI / 2);
-
-// north wall = window wall: build it as a frame (sill, lintel, two jambs) around a hole
-const WIN = { w: 2.8, sill: 0.85, top: 2.45 };
-const jambW = (ROOM.w - WIN.w) / 2;
-box("wN_sill", ROOM.w, WIN.sill, 0.12, 0, WIN.sill / 2, -HD, wallMat);
-box("wN_head", ROOM.w, ROOM.h - WIN.top, 0.12, 0, (ROOM.h + WIN.top) / 2, -HD, wallMat);
-box("wN_jL", jambW, WIN.top - WIN.sill, 0.12, -(WIN.w + jambW) / 2, (WIN.sill + WIN.top) / 2, -HD, wallMat);
-box("wN_jR", jambW, WIN.top - WIN.sill, 0.12, (WIN.w + jambW) / 2, (WIN.sill + WIN.top) / 2, -HD, wallMat);
-// window frame trim (dark aluminium)
-const frameMat = mat("frame", { color: [0.06, 0.06, 0.07], metallic: 0.8, roughness: 0.4 });
-box("wN_frame", WIN.w + 0.1, 0.06, 0.16, 0, WIN.sill, -HD, frameMat, { cast: false });
-box("wN_frameT", WIN.w + 0.1, 0.06, 0.16, 0, WIN.top, -HD, frameMat, { cast: false });
-box("wN_mull", 0.05, WIN.top - WIN.sill, 0.16, 0, (WIN.sill + WIN.top) / 2, -HD, frameMat, { cast: false });
-
-// glass pane — thin, glossy, lets the outside through, blooms the sky
-const glass = BABYLON.MeshBuilder.CreatePlane("glass", { width: WIN.w, height: WIN.top - WIN.sill }, scene);
-glass.position.set(0, (WIN.sill + WIN.top) / 2, -HD + 0.02);
-const glassMat = mat("glassMat", { color: [0.6, 0.72, 0.85], metallic: 0.0, roughness: 0.05, alpha: 0.16 });
-glassMat.environmentIntensity = 1.2;
-glass.material = glassMat;
-
-// =====================================================================
-// outside — a dusk sky plane behind the window (this is the god-ray source)
-// =====================================================================
-const skyTex = dyn("sky", 1024, 1024, (c, w, h) => {
+// ---- the LA window sky (dusk golden hour over downtown) ----
+const skyTex = dyn("sky", 720, 280, (c, w, h) => {
   const g = c.createLinearGradient(0, 0, 0, h);
-  g.addColorStop(0, "#0a1840"); g.addColorStop(0.42, "#5a3f7a");
-  g.addColorStop(0.62, "#d8654a"); g.addColorStop(0.78, "#ffb15c"); g.addColorStop(1, "#ffe39a");
+  g.addColorStop(0, "#2a3c5e"); g.addColorStop(0.55, "#7a4f6a"); g.addColorStop(0.8, "#d88a52"); g.addColorStop(1, "#ffc878");
   c.fillStyle = g; c.fillRect(0, 0, w, h);
-  // a distant city silhouette
-  c.fillStyle = "#1a1426";
-  for (let x = 0; x < w; x += 26) {
-    const bh = 60 + Math.random() * 240;
-    c.fillRect(x, h - bh, 22 + Math.random() * 6, bh);
-    if (Math.random() < 0.5) { // lit windows
-      c.fillStyle = "rgba(255,210,140,.6)";
-      for (let k = 0; k < 6; k++) c.fillRect(x + 4 + (k % 2) * 8, h - bh + 10 + Math.floor(k / 2) * 16, 4, 6);
-      c.fillStyle = "#1a1426";
-    }
+  // sun glow low-right
+  let s = c.createRadialGradient(520, 150, 6, 520, 150, 130); s.addColorStop(0, "rgba(255,247,224,.95)"); s.addColorStop(.3, "rgba(255,220,150,.5)"); s.addColorStop(1, "rgba(255,200,120,0)"); c.fillStyle = s; c.fillRect(360, 20, 320, 230);
+  c.fillStyle = "#fff7e0"; c.beginPath(); c.arc(520, 150, 18, 0, 7); c.fill();
+  // night-glow band near the skyline
+  let ng = c.createLinearGradient(0, 280, 0, 160); ng.addColorStop(0, "rgba(255,150,70,.4)"); ng.addColorStop(1, "rgba(255,150,70,0)"); c.fillStyle = ng; c.fillRect(0, 160, w, 120);
+  // far ridge
+  const r = (i) => { const v = Math.abs(Math.sin(i * 127.1) * 43758.5453); return v - Math.floor(v); };
+  c.fillStyle = "rgba(70,60,80,.85)"; for (let i = 0; i < 26; i++) { const x = i * 30 - 12, bw = 20 + r(i) * 20, bh = 12 + r(i + 9) * 16; c.fillRect(x, h - bh, bw, bh); }
+  // downtown towers
+  const heights = [78, 64, 96, 58, 110, 72, 122, 66, 88, 96, 54]; let x = 340;
+  for (let i = 0; i < heights.length; i++) {
+    const bh = heights[i], bw = 24 + r(i + 3) * 16, top = h - bh;
+    c.fillStyle = "#1a1426"; c.fillRect(x, top, bw, bh);
+    // lit windows
+    for (let k = 0; k < (bh * bw) / 48; k++) { const wr = r(i * 31 + k); if (wr < 0.5) { c.fillStyle = wr < 0.12 ? "rgba(170,210,255,.8)" : `rgba(255,${200 + wr * 40},130,${0.45 + wr * 0.4})`; c.fillRect(x + 3 + (k * 7) % (bw - 6), top + 6 + ((k * 11) % (bh - 10)), 1.8, 2.4); } }
+    if (bh === 122) { c.fillStyle = "#ff2030"; c.fillRect(x + bw - 3, top - 3, 4, 4); } // Wilshire Grand beacon
+    x += bw + 4 + r(i + 7) * 12;
   }
+}, { flip: true });
+const rainTex = dyn("rain", 256, 256, (c, w, h) => {
+  for (let i = 0; i < 46; i++) { const x = Math.random() * w, y = Math.random() * h, len = 18 + Math.random() * 60; const g = c.createLinearGradient(x, y, x, y + len); g.addColorStop(0, "rgba(200,220,240,0)"); g.addColorStop(.8, `rgba(200,220,240,${0.25 + Math.random() * 0.3})`); g.addColorStop(1, "rgba(230,240,250,.6)"); c.fillStyle = g; c.fillRect(x, y, 1.4, len); c.fillStyle = "rgba(220,235,250,.5)"; c.fillRect(x - 0.6, y + len, 2.6, 2.6); }
 });
-const sky = box("sky", 30, 18, 0.1, 0, 6, -HD - 4, mat("skyMat", { color: [1, 1, 1], emissive: [1, 1, 1], roughness: 1 }), { cast: false, collide: false });
-sky.material.emissiveTexture = skyTex;
-sky.material.baseColor = new BABYLON.Color3(0, 0, 0);
-sky.material.emissiveColor = new BABYLON.Color3(0.62, 0.6, 0.58); // dusk, not a lightbulb — let the city read
-
-// a hot sun disc — the volumetric scatter origin, pushed to one side so the rays rake diagonally
-const sunDisc = BABYLON.MeshBuilder.CreatePlane("sunDisc", { size: 2.0 }, scene);
-sunDisc.position.set(-1.7, 2.9, -HD - 3.4);
-const sunMat = mat("sunMat", { color: [0, 0, 0], emissive: [1.9, 1.45, 0.95], roughness: 1 });
-sunMat.disableLighting = true;
-sunDisc.material = sunMat;
 
 // =====================================================================
-// lighting — low IBL fill + a single shadow-casting sun raking through the glass
+// SHELL — floor, ceiling, four walls (window + closet openings framed)
 // =====================================================================
-const hemi = new BABYLON.HemisphericLight("hemi", new BABYLON.Vector3(0, 1, 0), scene);
-hemi.intensity = 0.25;
-hemi.diffuse = new BABYLON.Color3(0.55, 0.58, 0.68);
-hemi.groundColor = new BABYLON.Color3(0.18, 0.15, 0.12);
+const floor = B.MeshBuilder.CreateGround("floor", { width: W, height: D }, scene);
+const floorMat = new B.StandardMaterial("floorMat", scene); floorMat.diffuseTexture = carpetTex; floorMat.specularColor = new B.Color3(0.02, 0.02, 0.02); floor.material = floorMat; floor.receiveShadows = true; floor.checkCollisions = true;
 
-const sun = new BABYLON.DirectionalLight("sun", new BABYLON.Vector3(-0.35, -0.62, 1), scene);
-sun.position = new BABYLON.Vector3(2.5, 5.5, -7);
-sun.intensity = 3.2;
-sun.diffuse = new BABYLON.Color3(1.0, 0.86, 0.66);
+const ceil = B.MeshBuilder.CreateGround("ceil", { width: W, height: D }, scene);
+ceil.material = matte("ceilMat", 0xd6cfc0); ceil.position.y = H; ceil.rotation.x = Math.PI; ceil.receiveShadows = true;
 
-const shadow = new BABYLON.ShadowGenerator(2048, sun);
-shadow.usePercentageCloserFiltering = true;
-shadow.filteringQuality = BABYLON.ShadowGenerator.QUALITY_HIGH;
-shadow.bias = 0.0009;
-shadow.normalBias = 0.012;
-shadow.darkness = 0.32;
+function wallMatFor(name, wm, hm) { const m = new B.StandardMaterial(name, scene); m.diffuseTexture = wallTex(name + "T", wm, hm); m.specularColor = new B.Color3(0.02, 0.02, 0.02); m.backFaceCulling = false; return m; }
+function wallSeg(name, w, h, x, y, z, ry, m, collide = true) { const me = box(name, w, h, 0.12, x, y, z, m); me.rotation.y = ry; if (collide) { me.checkCollisions = true; } return me; }
+
+const backMat = wallMatFor("back", W, H), eastMat = wallMatFor("east", D, H), westMat = wallMatFor("west", D, H), frontMat = wallMatFor("front", W, H);
+// back (z=+3.3), east (x=+2.6) solid
+wallSeg("wBack", W, H, 0, H / 2, ZB, 0, backMat);
+wallSeg("wEast", D, H, X, H / 2, 0, Math.PI / 2, eastMat);
+// west (x=-2.6) with closet hole z∈[-1.15,0.35], y∈[0,2.03]
+wallSeg("wWest_a", 3.3 - 1.15, H, X * -1, H / 2, (ZF + -1.15) / 2, Math.PI / 2, westMat); // z -3.3..-1.15
+wallSeg("wWest_b", 3.3 - 0.35, H, X * -1, H / 2, (0.35 + ZB) / 2, Math.PI / 2, westMat);   // z 0.35..3.3
+wallSeg("wWest_top", 1.5, H - 2.03, X * -1, (2.03 + H) / 2, -0.4, Math.PI / 2, westMat, false); // above closet
+// front (z=-3.3) with window hole x∈[-1.8,1.8], y∈[0.9,2.3]
+wallSeg("wFront_l", X - 1.8, H, -(1.8 + X) / 2, H / 2, ZF, 0, frontMat);
+wallSeg("wFront_r", X - 1.8, H, (1.8 + X) / 2, H / 2, ZF, 0, frontMat);
+wallSeg("wFront_b", 3.6, 0.9, 0, 0.45, ZF, 0, frontMat, false);
+wallSeg("wFront_t", 3.6, H - 2.3, 0, (2.3 + H) / 2, ZF, 0, frontMat, false);
 
 // =====================================================================
-// furniture
+// THE WINDOW — frame, sill, glass(LA sky), rain, blinds, curtains, rod
 // =====================================================================
-const woodMat = mat("wood", { tex: woodTexture(), roughness: 0.55, metallic: 0.0 });
+const frameMat = matte("winframe", 0xcfc6b2);
+box("winTop", 3.72, 0.07, 0.06, 0, 2.335, ZF + 0.03, frameMat, null, false);
+box("winBot", 3.72, 0.07, 0.06, 0, 0.865, ZF + 0.03, frameMat, null, false);
+box("winL", 0.07, 1.54, 0.06, -1.835, 1.6, ZF + 0.03, frameMat, null, false);
+box("winR", 0.07, 1.54, 0.06, 1.835, 1.6, ZF + 0.03, frameMat, null, false);
+box("winSill", WIN.w + 0.2, 0.04, 0.14, 0, 0.81, ZF + 0.07, frameMat, null, false);
+cyl("winRod", 0.014, 0.014, WIN.w + 0.7, 0, 2.6, ZF + 0.11, matte("rod", 0x4a443a), null, 8, false).rotation.z = Math.PI / 2;
 
-// --- the desk, under the window ---
-const DESK = { w: 2.2, d: 0.72, top: 0.74, z: -HD + 0.5 };
-box("deskTop", DESK.w, 0.05, DESK.d, 0, DESK.top, DESK.z, woodMat);
-const legMat = mat("legs", { color: [0.05, 0.05, 0.06], metallic: 0.7, roughness: 0.4 });
-for (const sx of [-1, 1]) {
-  box("dlegF" + sx, 0.05, DESK.top, 0.05, sx * (DESK.w / 2 - 0.08), DESK.top / 2, DESK.z + DESK.d / 2 - 0.06, legMat, { cast: false });
-  box("dlegB" + sx, 0.05, DESK.top, 0.05, sx * (DESK.w / 2 - 0.08), DESK.top / 2, DESK.z - DESK.d / 2 + 0.06, legMat, { cast: false });
+const skyMat = emis("skyMat", 0xffffff, { glow: false }); skyMat.emissiveTexture = skyTex; skyMat.emissiveColor = new B.Color3(0.5, 0.49, 0.48);
+const glass = plane("glass", WIN.w, WIN.h, skyMat); glass.position.set(0, 1.6, ZF + 0.01);
+const glassFront = plane("glassPane", WIN.w, WIN.h, glassMat("glassPane", 0x9fc0e0, 0.12, 0.04)); glassFront.position.set(0, 1.6, ZF + 0.015);
+
+const rainMat = emis("rainMat", 0xffffff, { glow: false, alpha: 0.0 }); rainMat.emissiveTexture = rainTex; rainMat.emissiveColor = new B.Color3(0.6, 0.7, 0.8); rainMat.alpha = 0; rainMat.useAlphaFromDiffuseTexture = false;
+const rainPane = plane("rain", WIN.w, WIN.h, rainMat); rainPane.position.set(0, 1.6, ZF + 0.02); rainPane.isVisible = false;
+
+// blinds — gathered to the left so the LA view shows
+const blindsMat = new B.StandardMaterial("blindsMat", scene); blindsMat.diffuseTexture = blindsTex; blindsMat.diffuseTexture.hasAlpha = true; blindsMat.useAlphaFromDiffuseTexture = true; blindsMat.backFaceCulling = false; blindsMat.specularColor = new B.Color3(0, 0, 0);
+const blinds = plane("blinds", WIN.w - 0.06, WIN.h - 0.04, blindsMat); blinds.position.set(WIN.cx - (WIN.w - 0.06) / 2 + 0.42, 1.6, ZF + 0.045); blinds.scaling.x = 0.18;
+
+// blackout curtains — tied to the sides
+const curtMat = matte("curtain", 0x2b2620);
+[-1, 1].forEach((side) => {
+  const piv = node("curtPivot" + side, side * (WIN.w / 2 + 0.12), WIN.cy + 0.08, ZF + 0.10);
+  box("curtain" + side, 1, WIN.h + 0.5, 0.05, -side * 0.5, 0, 0, curtMat, piv);
+  for (let i = 1; i <= 4; i++) box("curtFold" + side + i, 0.022, WIN.h + 0.5, 0.064, -side * (i / 5), 0, 0.01, curtMat, piv, false);
+  piv.scaling.x = 0.5; // open
+});
+
+// =====================================================================
+// ACOUSTIC PANELS — dark slabs with warm LED halo
+// =====================================================================
+const panelMat = matte("panelMat", 0x23262e);
+const ledRimMat = emis("ledRim", 0xffc46a, { add: true, alpha: 0.85 });
+function panelSlab(name, w, h, x, y, z, ry) {
+  const slab = box(name, w, h, 0.07, x, y, z, panelMat); slab.rotation.y = ry;
+  const rim = node(name + "rim", x, y, z); rim.rotation.y = ry;
+  box(name + "rt", w + 0.07, 0.02, 0.012, 0, h / 2 + 0.035, -0.022, ledRimMat, rim, false);
+  box(name + "rb", w + 0.07, 0.02, 0.012, 0, -(h / 2 + 0.035), -0.022, ledRimMat, rim, false);
+  box(name + "rl", 0.02, h + 0.07, 0.012, -(w / 2 + 0.035), 0, -0.022, ledRimMat, rim, false);
+  box(name + "rr", 0.02, h + 0.07, 0.012, (w / 2 + 0.035), 0, -0.022, ledRimMat, rim, false);
 }
-
-// --- the ultrawide: an animated emissive screen (the glow layer + bloom carry it) ---
-const screenW = 1.3, screenH = 0.42;
-const screenTex = new BABYLON.DynamicTexture("screen", { width: 1024, height: 332 }, scene, true);
-const sctx = screenTex.getContext();
-const monitor = box("monitorBody", screenW + 0.06, screenH + 0.06, 0.03, 0, DESK.top + 0.06 + screenH / 2, DESK.z - DESK.d / 2 + 0.04, mat("monBody", { color: [0.02, 0.02, 0.02], roughness: 0.4 }));
-const screen = BABYLON.MeshBuilder.CreatePlane("screen", { width: screenW, height: screenH }, scene);
-screen.position.set(0, DESK.top + 0.06 + screenH / 2, DESK.z - DESK.d / 2 + 0.06);
-const screenMat = mat("screenMat", { color: [0, 0, 0], roughness: 0.18 });
-screenMat.emissiveTexture = screenTex;
-screenMat.emissiveColor = new BABYLON.Color3(1, 1, 1);
-screen.material = screenMat;
-// monitor stand
-box("monStand", 0.06, 0.18, 0.06, 0, DESK.top + 0.09, DESK.z - DESK.d / 2 + 0.06, legMat, { cast: false });
-box("monFoot", 0.3, 0.02, 0.16, 0, DESK.top + 0.01, DESK.z - DESK.d / 2 + 0.08, legMat, { cast: false });
-
-// keyboard + a trackball
-box("keeb", 0.44, 0.02, 0.14, 0, DESK.top + 0.03, DESK.z + 0.06, mat("keeb", { color: [0.08, 0.08, 0.09], roughness: 0.5 }));
-const ball = BABYLON.MeshBuilder.CreateSphere("trackball", { diameter: 0.05 }, scene);
-ball.position.set(0.32, DESK.top + 0.04, DESK.z + 0.06);
-ball.material = mat("tb", { color: [0.7, 0.1, 0.1], metallic: 0.1, roughness: 0.3 });
-casters.push(ball);
-
-// the little black cube — a Mac Studio with a breathing LED
-const macLed = mat("macled", { color: [0.05, 0.05, 0.06], emissive: [0.0, 0.8, 0.5], roughness: 0.3 });
-box("mac", 0.2, 0.1, 0.2, -0.75, DESK.top + 0.05, DESK.z - 0.05, mat("mac", { color: [0.06, 0.06, 0.07], metallic: 0.6, roughness: 0.35 }));
-box("macFront", 0.2, 0.02, 0.005, -0.75, DESK.top + 0.04, DESK.z - 0.15, macLed, { cast: false });
+// back wall panels (z=+3.3, face -z)
+[0.56, 1.72, 2.88, 4.04].forEach((u, i) => panelSlab("pB" + i, 0.6, 1.2, 2.6 - (u + 0.3), 1.6, ZB - 0.038, Math.PI));
+// east wall panels (x=+2.6, face -x)
+[0.58, 1.71, 2.85, 3.98].forEach((u, i) => panelSlab("pE" + i, 0.55, 1.2, X - 0.038, 1.6, -3.3 + (u + 0.275), -Math.PI / 2));
+// front wall slabs flanking the window
+[-2.32, 2.2].forEach((fx, i) => panelSlab("pF" + i, 0.55, 1.2, fx, 1.6, ZF + 0.038, 0));
 
 // =====================================================================
-// the 12U rack on the east wall, with a strip of status LEDs
+// CLOSET opening (frame + open leaves) and the passage mouth
 // =====================================================================
-const rackMat = mat("rack", { color: [0.04, 0.04, 0.05], metallic: 0.5, roughness: 0.5 });
-const rackX = HW - 0.35;
-box("rack", 0.5, 1.5, 0.55, rackX, 0.75, 1.4, rackMat);
-const ledColors = [[1, 0.2, 0.2], [0.2, 1, 0.4], [0.2, 0.6, 1], [1, 0.8, 0.1], [0.9, 0.2, 0.9]];
-for (let i = 0; i < 9; i++) {
-  const col = ledColors[i % ledColors.length];
-  const u = box("ru" + i, 0.42, 0.13, 0.02, rackX, 0.2 + i * 0.15, 1.4 - 0.28, mat("ru" + i, { color: [0.07, 0.07, 0.08], roughness: 0.4 }), { cast: false });
-  const led = box("led" + i, 0.03, 0.03, 0.01, rackX - 0.16, 0.2 + i * 0.15, 1.4 - 0.29, mat("ledm" + i, { color: [0, 0, 0], emissive: col, roughness: 0.3 }), { cast: false, collide: false });
-  led._baseEmis = col;
-}
+const CZ = -0.4, OPEN_W = 1.5, OPEN_H = 2.03;
+const cfm = matte("closetFrame", 0xc4bba6);
+box("cJ1", 0.08, OPEN_H + 0.06, 0.06, -X + 0.01, (OPEN_H + 0.06) / 2, CZ - (OPEN_W / 2 + 0.03), cfm, null, false);
+box("cJ2", 0.08, OPEN_H + 0.06, 0.06, -X + 0.01, (OPEN_H + 0.06) / 2, CZ + (OPEN_W / 2 + 0.03), cfm, null, false);
+box("cHead", 0.08, 0.06, OPEN_W + 0.12, -X + 0.01, OPEN_H + 0.03, CZ, cfm, null, false);
+box("cThresh", 0.1, 0.025, OPEN_W, -X, 0.012, CZ, matte("thresh", 0x8a6a4a), null, false);
+// a dark recess behind the opening so it reads as depth
+box("cRecess", 0.9, OPEN_H, OPEN_W, -X - 0.46, OPEN_H / 2, CZ, matte("recess", 0x14120f), null, false);
+const leafMat = matte("leaf", 0xd8d0bd);
+[[0.35, -OPEN_W / 4, 1.5], [-1.15, OPEN_W / 4, -1.5]].forEach(([hz, lz, ry], i) => {
+  const hinge = node("cHinge" + i, -X + 0.035, 0, hz); hinge.rotation.y = ry;
+  box("cLeaf" + i, 0.045, OPEN_H, OPEN_W / 2, 0, OPEN_H / 2, lz, leafMat, hinge);
+});
 
 // =====================================================================
-// the lava lamp — glass cone, glowing blobs, its own point light
+// ENTRY DOOR (east wall) + METRO neon + dimmer + ceiling fixture
 // =====================================================================
-const lampBaseX = rackX, lampZ = -0.4;
-box("lampBase", 0.16, 0.12, 0.16, lampBaseX, 0.06, lampZ, mat("lb", { color: [0.7, 0.6, 0.2], metallic: 0.9, roughness: 0.3 }), { cast: false });
-const lampGlass = BABYLON.MeshBuilder.CreateCylinder("lampGlass", { height: 0.5, diameterTop: 0.1, diameterBottom: 0.22 }, scene);
-lampGlass.position.set(lampBaseX, 0.37, lampZ);
-lampGlass.material = mat("lg", { color: [0.9, 0.5, 0.2], roughness: 0.08, alpha: 0.32 });
-const blobs = [];
-for (let i = 0; i < 5; i++) {
-  const b = BABYLON.MeshBuilder.CreateSphere("blob" + i, { diameter: 0.05 + Math.random() * 0.05 }, scene);
-  b.material = mat("blobm" + i, { color: [0, 0, 0], emissive: [1.4, 0.3, 0.5], roughness: 0.4 });
-  b._phase = Math.random() * 7; b._speed = 0.25 + Math.random() * 0.3;
-  b.parent = null; b.position.set(lampBaseX, 0.2 + Math.random() * 0.3, lampZ);
-  blobs.push(b);
-}
-const lampLight = new BABYLON.PointLight("lampLight", new BABYLON.Vector3(lampBaseX, 0.4, lampZ), scene);
-lampLight.diffuse = new BABYLON.Color3(1, 0.35, 0.4);
-lampLight.intensity = 0.6; lampLight.range = 2.2;
-
-// =====================================================================
-// the bed — this IS the bedroom now. a low platform, mattress, duvet, pillows
-// =====================================================================
-const bedX = -HW + 1.1, bedZ = 0.3;
-box("bedFrame", 1.7, 0.22, 2.2, bedX, 0.11, bedZ, mat("bedframe", { color: [0.16, 0.11, 0.08], roughness: 0.7 }));
-box("mattress", 1.55, 0.18, 2.05, bedX, 0.31, bedZ, mat("mattress", { color: [0.85, 0.84, 0.8], roughness: 0.95 }), { cast: false });
-const duvet = box("duvet", 1.6, 0.12, 1.35, bedX, 0.42, bedZ + 0.35, mat("duvet", { color: [0.18, 0.22, 0.4], roughness: 1 }), { cast: false });
-for (const px of [-0.34, 0.34]) box("pillow" + px, 0.6, 0.12, 0.36, bedX + px, 0.44, bedZ - 0.78, mat("pillow", { color: [0.92, 0.9, 0.86], roughness: 1 }), { cast: false });
-
-// a round rug to soften the floor
-const rug = BABYLON.MeshBuilder.CreateDisc("rug", { radius: 1.1, tessellation: 48 }, scene);
-rug.rotation.x = Math.PI / 2; rug.position.set(0.2, 0.012, 0.4);
-rug.material = mat("rug", { color: [0.35, 0.12, 0.16], roughness: 1 });
-rug.receiveShadows = true;
-
-// =====================================================================
-// acoustic panels (east + south walls) — dark studio foam
-// =====================================================================
-const panelMat = mat("panel", { color: [0.09, 0.09, 0.1], roughness: 1 });
-for (let i = 0; i < 3; i++)
-  box("panelS" + i, 0.55, 0.55, 0.06, -1.2 + i * 1.2, 1.9, HD - 0.07, panelMat, { cast: false });
-
-// =====================================================================
-// THE METRO neon sign — the one thing allowed to outshine the sun
-// =====================================================================
-const neonTex = dyn("neon", 1024, 256, (c, w, h) => {
+const entry = node("entry", X - 0.035, 0, 2.3); entry.rotation.y = -Math.PI / 2;
+box("entryLeaf", 0.86, 2.03, 0.045, 0, 1.015, 0, matte("doorLeaf", 0xd8d0bd), entry, false);
+const neonTex = dyn("neon", 512, 128, (c, w, h) => {
   c.fillStyle = "#000"; c.fillRect(0, 0, w, h);
-  c.font = "bold 150px ui-monospace, monospace";
-  c.textAlign = "center"; c.textBaseline = "middle";
-  c.shadowColor = "#ff3bd0"; c.shadowBlur = 40;
-  c.fillStyle = "#ff8fe0"; c.fillText("THE METRO", w / 2, h / 2);
-  c.shadowBlur = 14; c.fillStyle = "#ffd9f4"; c.fillText("THE METRO", w / 2, h / 2);
+  c.textAlign = "center"; c.textBaseline = "middle"; c.font = "700 78px Archivo, sans-serif";
+  c.shadowColor = "#ff4d2e"; c.shadowBlur = 26; c.strokeStyle = "#ff6a4a"; c.lineWidth = 3; c.strokeText("METRO", w / 2, h / 2 + 4);
+  c.shadowBlur = 8; c.fillStyle = "#fff1ec"; c.fillText("METRO", w / 2, h / 2 + 4);
+}, { flip: true });
+box("neonPlaque", 0.68, 0.19, 0.012, 0, 1.62, 0.062, matte("plaque", 0x141518), entry, false);
+const neonMat = emis("neonMat", 0xffffff, { add: true }); neonMat.emissiveTexture = neonTex; neonMat.emissiveColor = new B.Color3(2.2, 0.55, 0.35);
+const neon = plane("neon", 0.62, 0.155, neonMat); neon.parent = entry; neon.position.set(0, 1.62, 0.075);
+// dimmer + ceiling fixture
+box("dimPlate", 0.025, 0.14, 0.09, X - 0.035, 1.3, 1.78, matte("dim", 0xe8e2d4), null, false);
+cyl("dimKnob", 0.018, 0.02, 0.02, X - 0.055, 1.3, 1.78, matte("dimk", 0xb8b2a4), null, 12, false).rotation.z = Math.PI / 2;
+cyl("fixture", 0.16, 0.19, 0.05, 0, H - 0.03, 0.4, matte("fix", 0xd8d2c4), null, 16, false);
+
+// =====================================================================
+// DESK RIG — desk(0.2,0,-2.81), D-Box, ultrawide+DAW, keyboard, trackball, Mac
+// =====================================================================
+const desk = node("desk", 0.2, 0, ZF + 0.49);
+box("deskTop", 1.9, 0.04, 0.78, 0, 0.72, 0, (() => { const m = new B.StandardMaterial("deskTopM", scene); m.diffuseTexture = deskTex; m.specularColor = new B.Color3(0.08, 0.07, 0.05); return m; })(), desk).checkCollisions = true;
+[-0.88, 0.88].forEach((lx) => box("deskLeg" + lx, 0.05, 0.7, 0.7, lx, 0.35, 0, matte("deskLeg", 0x16181b), desk, false));
+box("dbox", 0.36, 0.105, 0.26, 0, 0.7925, -0.2, matte("dbox", 0x111317), desk);
+cyl("dboxKnob", 0.028, 0.028, 0.02, 0.09, 0.79, -0.065, metal("dboxKnob", 0x3a3f46, 0.7, 0.4), desk, 18, false).rotation.x = Math.PI / 2;
+box("dboxLed", 0.008, 0.008, 0.004, -0.12, 0.81, -0.068, emis("dboxLed", 0x3be07a), desk, false);
+// ultrawide + animated DAW screen
+box("monBezel", 0.94, 0.41, 0.03, 0, 1.04, -0.21, matte("monBezel", 0x0c0d10), desk);
+const dawTex = new B.DynamicTexture("daw", { width: 1024, height: 434 }, scene, true);
+const dawMat = emis("dawMat", 0xffffff, { glow: false }); dawMat.emissiveTexture = dawTex; dawMat.emissiveColor = new B.Color3(1, 1, 1);
+const monScreen = plane("monScreen", 0.92, 0.39, dawMat); monScreen.parent = desk; monScreen.position.set(0, 1.04, -0.194); monScreen.rotation.y = Math.PI;
+// keyboard + trackball
+const kb = box("kb", 0.44, 0.012, 0.115, -0.04, 0.748, 0.13, matte("kb", 0xd9dbdd), desk, false); kb.rotation.x = -0.04;
+const kbTopMat = new B.StandardMaterial("kbTop", scene); kbTopMat.diffuseTexture = keysTex; kbTopMat.specularColor = new B.Color3(0.05, 0.05, 0.05);
+const kbTop = plane("kbTop", 0.44, 0.115, kbTopMat); kbTop.parent = desk; kbTop.position.set(-0.04, 0.7555, 0.13); kbTop.rotation.x = Math.PI / 2 + 0.04;
+box("tbBase", 0.1, 0.035, 0.12, 0.28, 0.7575, 0.13, matte("tbBase", 0x202327), desk, false);
+sph("tbBall", 0.052, 0.28, 0.785, 0.115, metal("tbBall", 0x8a1f2d, 0.2, 0.25), desk);
+// Mac Studio + portable monitor
+box("mac", 0.2, 0.095, 0.2, -0.7, 0.7875, -0.12, metal("mac", 0xc9ccd1, 0.6, 0.45), desk);
+box("pmBezel", 0.35, 0.225, 0.012, -0.7, 0.95, -0.14, matte("pmBezel", 0x0c0d10), desk).rotation.x = -0.12;
+const meterTex = new B.DynamicTexture("meter", { width: 330, height: 200 }, scene, true);
+const pmMat = emis("pmMat", 0xffffff, { glow: false }); pmMat.emissiveTexture = meterTex; pmMat.emissiveColor = new B.Color3(1, 1, 1);
+const pmScreen = plane("pmScreen", 0.33, 0.2, pmMat); pmScreen.parent = desk; pmScreen.position.set(-0.7, 0.95, -0.133); pmScreen.rotation.x = -0.12; pmScreen.rotation.y = Math.PI;
+// clock + mug
+box("clockBody", 0.17, 0.07, 0.05, 0.62, 0.775, -0.1, matte("clock", 0x101216), desk, false).rotation.x = -0.1;
+const clockTex = new B.DynamicTexture("clock", { width: 310, height: 116 }, scene, true);
+const clockMat = emis("clockMat", 0xffffff, { glow: false }); clockMat.emissiveTexture = clockTex; clockMat.emissiveColor = new B.Color3(1, 1, 1);
+const clockFace = plane("clockFace", 0.155, 0.058, clockMat); clockFace.parent = desk; clockFace.position.set(0.62, 0.7755, -0.073); clockFace.rotation.y = Math.PI;
+cyl("mug", 0.035, 0.032, 0.09, 0.49, 0.785, 0.04, matte("mug", 0xd8cdb8), desk, 14, false);
+cyl("coffee", 0.029, 0.029, 0.004, 0.49, 0.828, 0.04, matte("coffee", 0x2a1c10), desk, 14, false);
+// channel mixer (child of desk) + MIDI keybed
+const mixer = node("mixer", -0.44, 0.74, 0.14, desk); mixer.rotation.x = -0.12;
+box("mixChassis", 0.3, 0.04, 0.2, 0, 0.02, 0, matte("mixCh", 0x15171b), mixer, false);
+const mixZ = (pct) => 0.058 + (-0.116) * Math.min(pct, 150) / 150;
+const faderCaps = [];
+[[-0.09, 0x4fbfe6], [0, 0xff7a3c], [0.09, 0x6bff8a]].forEach(([px, col], i) => {
+  box("mixSlot" + i, 0.01, 0.006, 0.135, px, 0.044, 0, matte("mixSlot", 0x0a0b0d), mixer, false);
+  const cap = box("mixCap" + i, 0.036, 0.02, 0.022, px, 0.052, mixZ(100), matte("mixCap" + i, col), mixer, false); faderCaps.push(cap);
+  box("mixLed" + i, 0.008, 0.008, 0.005, px, 0.044, 0.084, emis("mixLed" + i, col), mixer, false);
 });
-const neon = BABYLON.MeshBuilder.CreatePlane("neon", { width: 1.8, height: 0.45 }, scene);
-neon.position.set(0, 2.3, HD - 0.08); neon.rotation.y = Math.PI;
-const neonMat = mat("neonMat", { color: [0, 0, 0], roughness: 1 });
-neonMat.emissiveTexture = neonTex;
-neonMat.emissiveColor = new BABYLON.Color3(2.2, 0.7, 1.8);
-neon.material = neonMat;
-const neonLight = new BABYLON.PointLight("neonLight", new BABYLON.Vector3(0, 2.2, HD - 0.4), scene);
-neonLight.diffuse = new BABYLON.Color3(1, 0.3, 0.85); neonLight.intensity = 0.5; neonLight.range = 3.5;
+box("midiBody", 0.96, 0.065, 0.27, 0, 0.46, 0.27, matte("midi", 0x191b1f), desk, false);
+const midiMat = new B.StandardMaterial("midiKeys", scene); midiMat.diffuseTexture = keysTex; midiMat.specularColor = new B.Color3(0.05, 0.05, 0.05);
+const midiKeys = plane("midiKeys", 0.9, 0.1, midiMat); midiKeys.parent = desk; midiKeys.position.set(0, 0.494, 0.345); midiKeys.rotation.x = Math.PI / 2;
 
 // =====================================================================
-// shadows: register every caster, let the big surfaces receive
+// MUSIC RIG — drum kit, telecaster, pedalboard+wah, kb pedals, kali, rack+radio
 // =====================================================================
-for (const m of casters) shadow.addShadowCaster(m, true);
+// --- electronic drum kit (Simmons hex pads, cyan rims) ---
+const ekit = node("ekit", -1.95, 0, -2.6); ekit.rotation.y = 0.85;
+const padMat = matte("padMat", 0x141417), faceMat = matte("padFace", 0x202126), tubeMat = matte("tube", 0x26282e);
+const rimMat = emis("rimMat", 0x39c2ff);
+function hexPad(name, r, x, y, lean, parent) {
+  const g = node(name, x, y, 0.04, parent); g.rotation.x = lean;
+  cyl(name + "p", r, r, 0.055, 0, 0, 0, padMat, g, 6);
+  cyl(name + "f", r - 0.018, r - 0.018, 0.012, 0, 0.03, 0, faceMat, g, 6, false);
+  const rim = B.MeshBuilder.CreateTorus(name + "r", { diameter: (r - 0.004) * 2, thickness: 0.022, tessellation: 6 }, scene); rim.material = rimMat; rim.parent = g; rim.position.y = 0.034; rim.rotation.y = Math.PI / 6;
+}
+hexPad("ep2", 0.115, -0.40, 0.92, 1.06, ekit); hexPad("ep3", 0.115, -0.135, 0.95, 1.06, ekit);
+hexPad("ep4", 0.115, 0.135, 0.95, 1.06, ekit); hexPad("ep5", 0.115, 0.40, 0.92, 1.06, ekit);
+hexPad("ep1", 0.14, -0.14, 0.64, 1.12, ekit);
+const kickG = node("kickG", 0.10, 0.26, 0.18, ekit); kickG.rotation.x = 1.45;
+cyl("kick", 0.22, 0.22, 0.09, 0, 0, 0, padMat, kickG, 6);
+[-1, 1].forEach((sd) => { cyl("dleg" + sd, 0.018, 0.018, 0.92, sd * 0.52, 0.46, 0, tubeMat, ekit, 8); cyl("dfoot" + sd, 0.016, 0.016, 0.42, sd * 0.52, 0.02, 0, tubeMat, ekit, 8, false).rotation.x = Math.PI / 2; });
+[0.84, 0.56].forEach((by, i) => cyl("dbar" + i, 0.016, 0.016, 1.08, 0, by, 0.01, tubeMat, ekit, 8, false).rotation.z = Math.PI / 2);
+
+// --- the yellow Telecaster on an A-frame ---
+const tele = node("tele", 1.58, 0.21, ZF + 0.58); tele.rotation.y = 0.3; tele.rotation.x = -0.16;
+const teleYellow = matte("teleYellow", 0xf2c84b);
+try {
+  const pts = [[-0.14, -0.18], [-0.2, 0.0], [-0.12, 0.13], [-0.045, 0.155], [0.04, 0.12], [0.16, 0.13], [0.185, 0.0], [0.12, -0.16], [-0.04, -0.21]].map(([px, py]) => new V3(px, 0, py));
+  const body = B.MeshBuilder.ExtrudePolygon("teleBody", { shape: pts, depth: 0.045, sideOrientation: B.Mesh.DOUBLESIDE }, scene, window.earcut);
+  body.material = teleYellow; body.parent = tele; body.rotation.x = -Math.PI / 2; body.position.set(0, 0, 0.045); casters.push(body);
+} catch (e) { const b = B.MeshBuilder.CreateCylinder("teleBody", { diameter: 0.34, height: 0.045, tessellation: 28 }, scene); b.scaling.set(1, 1, 1.25); b.material = teleYellow; b.parent = tele; b.rotation.x = Math.PI / 2; casters.push(b); }
+box("teleNeck", 0.055, 0.58, 0.022, 0, 0.425, 0.022, matte("teleNeck", 0xd8b878), tele);
+box("teleHead", 0.07, 0.13, 0.018, 0.012, 0.775, 0.022, matte("teleHead", 0xe2c685), tele);
+box("teleFret", 0.05, 0.58, 0.005, 0, 0.425, 0.036, matte("teleFret", 0x4a3526), tele, false);
+[-0.012, 0, 0.012].forEach((sx, i) => box("teleStr" + i, 0.0022, 0.74, 0.0022, sx, 0.26, 0.052, emis("teleStr", 0xd9dde2, { glow: false }), tele, false));
+box("teleBridge", 0.08, 0.035, 0.012, 0.02, -0.12, 0.052, metal("teleBridge", 0xb9bec6, 0.8, 0.35), tele, false);
+box("telePlate", 0.065, 0.022, 0.006, 0.115, -0.04, 0.05, metal("telePlate", 0xc6cbd2, 0.85, 0.28), tele, false).rotation.z = -0.5;
+[-1, 1].forEach((sd) => { cyl("teleLeg" + sd, 0.011, 0.011, 0.46, sd * 0.1, 0.21, -0.06, matte("teleStand", 0x23262b), tele, 8, false).rotation.z = sd * 0.32; });
+
+// --- pedalboard (OD/delay/reverb) + wah treadle ---
+const pedalboard = node("pedalboard", 1.52, 0, ZF + 1.02); pedalboard.rotation.y = 0.3;
+box("pbPlate", 0.5, 0.018, 0.2, 0, 0.055, 0, matte("pbPlate", 0x18191d), pedalboard, false).rotation.x = -0.26;
+function stomp(px, bodyCol, ledCol, parent, sz = 1) {
+  const g = node("stomp" + px, px, 0.064, -0.012, parent); g.rotation.x = -0.26;
+  box("enc", 0.105 * sz, 0.055, 0.125 * sz, 0, 0.0275, 0, matte("enc" + px + bodyCol, bodyCol), g, false);
+  cyl("sw", 0.016, 0.016, 0.022, 0, 0.06, 0.04, matte("sw", 0xb9bec6), g, 12, false);
+  box("led", 0.01, 0.01, 0.01, 0, 0.058, 0.006, emis("pedled" + px + ledCol, ledCol), g, false);
+}
+stomp(-0.15, 0x8a3b1e, 0xff7a3c, pedalboard); stomp(0, 0x1f7a6e, 0x46f0d6, pedalboard); stomp(0.15, 0x35307a, 0x8a7bff, pedalboard);
+const wah = node("wah", -0.44, 0, 0, pedalboard);
+box("wahBase", 0.135, 0.05, 0.215, 0, 0.025, 0, matte("wahBase", 0x101216), wah, false);
+const treadle = node("treadle", 0, 0.052, 0, wah); treadle.rotation.x = -0.1;
+box("tPlate", 0.125, 0.02, 0.205, 0, 0.01, 0, matte("tPlate", 0x7a1f2a), treadle, false);
+box("wahLed", 0.012, 0.012, 0.012, 0, 0.026, 0.092, emis("wahLed", 0xffe04a), treadle, false);
+// keyboard floor pedals
+const kbPedals = node("kbPedals", 0.2, 0, ZF + 1.0); kbPedals.rotation.y = -0.08;
+box("kbpPlate", 0.42, 0.018, 0.2, 0, 0.055, 0, matte("kbpPlate", 0x18191d), kbPedals, false).rotation.x = -0.24;
+stomp(-0.13, 0x6a2f7a, 0xd66bff, kbPedals, 0.95); stomp(0, 0x1f5a7a, 0x4fbfe6, kbPedals, 0.95); stomp(0.13, 0x2f6a3a, 0x6bff8a, kbPedals, 0.95);
+
+// --- Kali monitors on stands ---
+function kali(x, toeIn) {
+  const g = node("kali" + x, x, 0, ZF + 0.33); g.rotation.y = toeIn;
+  cyl("kbase", 0.17, 0.19, 0.02, 0, 0.01, 0, matte("kbase", 0x1a1c1f), g, 16, false);
+  cyl("kpole", 0.022, 0.022, 0.74, 0, 0.39, 0, matte("kpole", 0x202327), g, 10);
+  box("kplate", 0.2, 0.012, 0.24, 0, 0.766, 0, matte("kplate", 0x1a1c1f), g, false);
+  box("kcab", 0.225, 0.37, 0.26, 0, 0.957, 0, matte("kcab", 0x131519), g);
+  const fm = emis("kface" + x, 0xffffff, { glow: false }); fm.emissiveTexture = kaliTex; fm.emissiveColor = new B.Color3(0.5, 0.5, 0.52);
+  const face = plane("kface" + x, 0.215, 0.36, fm); face.parent = g; face.position.set(0, 0.957, 0.131);
+}
+kali(-0.95, Math.PI / 6); kali(1.35, -Math.PI / 6);
+
+// --- 12U rack on casters + Apollo Twin + LA radio + lava lamp ---
+const rack = node("rack", 2.1, 0, ZF + 0.78); rack.rotation.y = -0.25;
+box("rackBody", 0.56, 0.62, 0.6, 0, 0.37, 0, matte("rackBody", 0x101317), rack).checkCollisions = true;
+const rfm = emis("rackFaceM", 0xffffff, { glow: false }); rfm.emissiveTexture = rackFaceTex; rfm.emissiveColor = new B.Color3(0.5, 0.5, 0.52);
+const rface = plane("rackFace", 0.52, 0.58, rfm); rface.parent = rack; rface.position.set(0, 0.37, 0.301);
+[[-0.24, -0.24], [0.24, -0.24], [-0.24, 0.24], [0.24, 0.24]].forEach(([cx, cz], i) => cyl("caster" + i, 0.035, 0.035, 0.03, cx, 0.035, cz, matte("caster", 0x222428), rack, 12, false).rotation.z = Math.PI / 2);
+box("apollo", 0.16, 0.065, 0.15, 0, 0.7125, 0.1, metal("apollo", 0x9aa0a8, 0.65, 0.4), rack);
+cyl("apKnob", 0.032, 0.032, 0.018, 0, 0.748, 0.12, metal("apKnob", 0x2c2f34, 0.7, 0.35), rack, 18, false);
+// LA radio
+const radio = node("radio", 0.15, 0.68, -0.1, rack); radio.rotation.y = 0.3;
+box("rbody", 0.2, 0.11, 0.12, 0, 0.055, 0, matte("rbody", 0xcdb892), radio, false);
+box("rtrim", 0.205, 0.012, 0.125, 0, 0.018, 0, matte("rtrim", 0x2a2622), radio, false);
+const dialTex = dyn("dial", 180, 80, (c, w, h) => { c.fillStyle = "#0b0905"; c.fillRect(0, 0, w, h); c.fillStyle = "#6b5a32"; for (let i = 0; i < 19; i++) { const x = 8 + i * 9.1, tall = i % 3 === 0; c.fillRect(x, 14, 1, tall ? 16 : 9); } c.fillStyle = "#9c8550"; c.font = "10px monospace"; c.fillText("88", 6, 48); c.fillText("96", 78, 48); c.fillText("104", 150, 48); c.fillStyle = "#c8a85a"; c.font = "700 11px monospace"; c.fillText("FM · LOS ANGELES", 12, 66); }, { flip: true });
+const dialMat = emis("dialMat", 0xffb347, { glow: false }); dialMat.emissiveTexture = dialTex; dialMat.emissiveColor = new B.Color3(1, 0.7, 0.28);
+const dialFace = plane("dialFace", 0.085, 0.04, dialMat); dialFace.parent = radio; dialFace.position.set(0.05, 0.075, 0.0605);
+box("rneedle", 0.0035, 0.036, 0.004, 0.05, 0.075, 0.0625, emis("rneedle", 0xff4030), radio, false);
+[-0.075, 0.075].forEach((kx) => cyl("rknob" + kx, 0.011, 0.013, 0.012, kx, 0.028, 0.061, matte("rknob", 0x2a2622), radio, 16, false).rotation.x = Math.PI / 2);
+cyl("rant", 0.0022, 0.0035, 0.2, 0.085, 0.13, -0.045, metal("rant", 0xb8bcc2, 0.8, 0.3), radio, 6, false).rotation.z = -0.5;
+
+// --- lava lamp (on the rack) ---
+const lava = node("lava", -0.17, 0.68, -0.12, rack);
+const lampGold = matte("lampGold", 0x8a6a3a);
+cyl("lampBase", 0.034, 0.05, 0.07, 0, 0.035, 0, lampGold, lava, 14, false);
+cyl("lampCap", 0.02, 0.03, 0.045, 0, 0.247, 0, lampGold, lava, 14, false);
+cyl("lampGlass", 0.028, 0.044, 0.155, 0, 0.1475, 0, glassMat("lampGlass", 0xb33a14, 0.34, 0.1), lava, 14, false);
+const blobMat = emis("blobMat", 0xff8a3c);
+const blobs = [];
+for (let i = 0; i < 5; i++) { const b = B.MeshBuilder.CreateSphere("blob" + i, { diameter: (0.011 + (i % 3) * 0.004) * 2, segments: 10 }, scene); b.material = blobMat; b.parent = lava; b._speed = 0.16 + i * 0.07; b._phase = i * 1.7; blobs.push(b); }
 
 // =====================================================================
-// camera — first person, pointer-lock look, WASD, gravity + collision
+// CAT CORNER — litter box, food/water bowls, treat jar
 // =====================================================================
-const camera = new BABYLON.UniversalCamera("cam", new BABYLON.Vector3(0.4, 1.62, HD - 0.8), scene);
-camera.setTarget(new BABYLON.Vector3(0, 1.5, -HD));
+const litter = node("litter", -2.28, 0, 2.85);
+const trayMat = matte("tray", 0x9aa0a4);
+box("litFloor", 0.52, 0.03, 0.4, 0, 0.015, 0, trayMat, litter, false);
+[[0.52, 0.025, 0, -0.19], [0.52, 0.025, 0, 0.19]].forEach(([w, d, x, z], i) => box("litW" + i, w, 0.12, d, x, 0.06, z, trayMat, litter, false));
+[[0.025, 0.4, -0.248, 0], [0.025, 0.4, 0.248, 0]].forEach(([w, d, x, z], i) => box("litS" + i, w, 0.12, d, x, 0.06, z, trayMat, litter, false));
+const sandTex = dyn("sand", 128, 128, (c, w, h) => { c.fillStyle = "#cfc3a4"; c.fillRect(0, 0, w, h); for (let i = 0; i < 3000; i++) { c.fillStyle = `rgba(0,0,0,${Math.random() * 0.12})`; c.fillRect(Math.random() * w, Math.random() * h, 2, 2); } });
+const sandMat = new B.StandardMaterial("sandMat", scene); sandMat.diffuseTexture = sandTex; sandMat.emissiveColor = C(0x6b6048).scale(0.3); sandMat.specularColor = new B.Color3(0, 0, 0);
+const sand = B.MeshBuilder.CreateGround("sand", { width: 0.47, height: 0.35 }, scene); sand.material = sandMat; sand.parent = litter; sand.position.y = 0.045;
+function bowl(name, x, z, dishCol, fillMat) {
+  const g = node(name, x, 0, z);
+  const dm = matte(name + "dish", dishCol); dm.emissiveColor = C(dishCol).scale(0.35);
+  cyl(name + "dish", 0.075, 0.06, 0.045, 0, 0.0225, 0, dm, g, 16, false);
+  cyl(name + "fill", 0.058, 0.05, 0.03, 0, 0.025, 0, fillMat, g, 16, false);
+}
+const foodFillTex = dyn("food", 64, 64, (c, w, h) => { c.fillStyle = "#6a4a26"; c.fillRect(0, 0, w, h); for (let i = 0; i < 240; i++) { c.fillStyle = "#8a6438"; c.beginPath(); c.arc(Math.random() * w, Math.random() * h, 2, 0, 7); c.fill(); } });
+const foodMat = new B.StandardMaterial("foodMat", scene); foodMat.diffuseTexture = foodFillTex; foodMat.emissiveColor = C(0x6a4a26).scale(0.3); foodMat.specularColor = new B.Color3(0, 0, 0);
+const waterMat = new B.PBRMetallicRoughnessMaterial("waterMat", scene); waterMat.baseColor = C(0x3a7ab8); waterMat.roughness = 0.1; waterMat.metallic = 0.1; waterMat.alpha = 0.85; waterMat.emissiveColor = C(0x2f6f9c).scale(0.3);
+bowl("foodBowl", 2.32, 0.75, 0x8a3324, foodMat); bowl("waterBowl", 2.32, 1.08, 0x46606e, waterMat);
+// treat jar on the sill
+cyl("treatJar", 0.035, 0.035, 0.09, 1.4, 0.905, ZF + 0.07, glassMat("treatJar", 0xd8e4ea, 0.4, 0.05), null, 12, false);
+cyl("treatKibble", 0.029, 0.029, 0.055, 1.4, 0.888, ZF + 0.07, matte("treatKibble", 0x7a5530), null, 12, false);
+
+// =====================================================================
+// ERGO CHAIR (gas-lift, 5-star base) at the sweet spot
+// =====================================================================
+const SWEET = { x: 0.2, z: (ZF + 0.33) + 2.3 * Math.sqrt(3) / 2 };
+const chair = node("chair", SWEET.x, 0, SWEET.z); chair.rotation.y = Math.PI;
+box("seat", 0.48, 0.07, 0.46, 0, 0.47, 0, matte("seat", 0x1c1e22), chair);
+box("backrest", 0.46, 0.62, 0.06, 0, 0.85, -0.24, matte("backrest", 0x23262b), chair).rotation.x = 0.12;
+cyl("gascol", 0.025, 0.025, 0.32, 0, 0.28, 0, matte("gascol", 0x33363b), chair, 10);
+for (let i = 0; i < 5; i++) { const a = i / 5 * 2 * Math.PI; box("carm" + i, 0.3, 0.025, 0.05, Math.cos(a) * 0.15, 0.06, Math.sin(a) * 0.15, matte("carm", 0x26282c), chair, false).rotation.y = -a; sph("ccaster" + i, 0.06, Math.cos(a) * 0.29, 0.03, Math.sin(a) * 0.29, matte("ccaster", 0x111316), chair, false); }
+
+// =====================================================================
+// ACCESSORIES — gold record (east wall), plant (sill), yarn (cat area)
+// =====================================================================
+const gold = node("gold", X - 0.05, 1.55, 1.49);
+box("goldFrame", 0.04, 0.5, 0.5, 0, 0, 0, matte("goldFrame", 0x1a1c20), gold);
+cyl("goldDisc", 0.17, 0.17, 0.01, -0.03, 0, 0, metal("goldDisc", 0xd8b04a, 0.8, 0.3), gold, 22, false).rotation.z = Math.PI / 2;
+cyl("goldLabel", 0.05, 0.05, 0.012, -0.032, 0, 0, matte("goldLabel", 0x000822), gold, 14, false).rotation.z = Math.PI / 2;
+const plant = node("plant", 1.35, 0.83, ZF + 0.07);
+cyl("pot", 0.05, 0.038, 0.07, 0, 0.035, 0, matte("pot", 0xb06a42), plant, 9, false);
+for (let i = 0; i < 5; i++) { const a = i / 5 * 2 * Math.PI; const leaf = B.MeshBuilder.CreateCylinder("leaf" + i, { diameterTop: 0, diameterBottom: 0.032, height: 0.16 + (i % 3) * 0.05, tessellation: 5 }, scene); leaf.material = matte("leafM", 0x3f7a4a); leaf.parent = plant; leaf.position.set(Math.cos(a) * 0.02, 0.13 + (i % 3) * 0.02, Math.sin(a) * 0.02); leaf.rotation.z = Math.cos(a) * 0.22; leaf.rotation.x = Math.sin(a) * 0.22; casters.push(leaf); }
+const yarn = node("yarn", -1.85, 0.05, 2.6);
+sph("yarnBall", 0.1, 0, 0, 0, matte("yarn", 0xc23b4e), yarn);
+
+// =====================================================================
+// THE CAT — ginger tabby, stays "Lambert" (matte, no glow), wanders + purrs
+// =====================================================================
+const FUR = 0xd98a3d, CHEST = 0xf0e3c8, EYE = 0x7ddc6a;
+const catGrp = node("cat", 0.2, 0, SWEET.z + 0.3);
+const catRig = node("catRig", 0, 0, 0, catGrp);
+const furMat = matte("fur", FUR), chestMat = matte("chest", CHEST);
+const catBody = B.MeshBuilder.CreateCapsule("catBody", { radius: 0.062, height: 0.16 + 0.124, tessellation: 10, capSubdivisions: 6 }, scene); catBody.material = furMat; catBody.parent = catRig; catBody.position.y = 0.115; catBody.rotation.z = Math.PI / 2; casters.push(catBody);
+sph("catChest", 0.1, 0.07, 0.10, 0, chestMat, catRig);
+const catHead = node("catHead", 0.135, 0.16, 0, catRig);
+sph("catSkull", 0.108, 0, 0, 0, furMat, catHead);
+[-1, 1].forEach((s) => { const ear = B.MeshBuilder.CreateCylinder("ear" + s, { diameterTop: 0, diameterBottom: 0.036, height: 0.035, tessellation: 4 }, scene); ear.material = furMat; ear.parent = catHead; ear.position.set(-0.01, 0.05, s * 0.032); });
+[-1, 1].forEach((s) => sph("eye" + s, 0.015, 0.045, 0.012, s * 0.022, emis("catEye", EYE, { glow: false }), catHead, false));
+// 3-segment tail (chained)
+let tailParent = catRig; const tailSegs = [];
+for (let i = 0; i < 3; i++) { const seg = node("tail" + i, i === 0 ? -0.13 : 0, i === 0 ? 0.13 : 0.08, 0, tailParent); seg.rotation.z = 0.5; const m = B.MeshBuilder.CreateCylinder("tailM" + i, { diameterTop: (0.011 - i * 0.002) * 2, diameterBottom: (0.013 - i * 0.002) * 2, height: 0.09, tessellation: 6 }, scene); m.material = furMat; m.parent = seg; m.position.y = 0.045; casters.push(m); tailSegs.push(seg); tailParent = seg; }
+const catLegs = [];
+[[0.07, 0.035], [0.07, -0.035], [-0.07, 0.035], [-0.07, -0.035]].forEach(([lx, lz], i) => { const leg = cyl("catLeg" + i, 0.011, 0.009, 0.075, lx, 0.038, lz, furMat, catRig, 6); catLegs.push(leg); });
+
+// cat wander state
+const catSpots = [{ x: 0.2, z: SWEET.z, y: 0.51 }, { x: 0.2, z: -2.4, y: 0 }, { x: -1.7, z: -2.7, y: 0 }, { x: 1.9, z: 0.9, y: 0 }, { x: -1.2, z: 1.8, y: 0 }, { x: 1.0, z: 2.2, y: 0 }];
+let catState = { tx: 0.2, tz: SWEET.z + 0.3, ty: 0, yaw: Math.PI, baseY: 0, walking: false, dwell: 3 };
+
+// hearts pool
+const heartTex = dyn("heart", 64, 64, (c, w, h) => { c.fillStyle = "#ff7a9a"; c.font = "44px serif"; c.textAlign = "center"; c.textBaseline = "middle"; c.fillText("♥", 32, 36); }, { flip: true });
+const heartMat = emis("heartMat", 0xffffff, { glow: false }); heartMat.emissiveTexture = heartTex; heartMat.emissiveTexture.hasAlpha = true; heartMat.useAlphaFromEmissiveTexture = true; heartMat.opacityTexture = heartTex; heartMat.alpha = 1;
+const hearts = [];
+function popHearts() { const p = catGrp.getAbsolutePosition(); for (let i = 0; i < 3; i++) { const h = B.MeshBuilder.CreatePlane("heart", { size: 0.1 }, scene); h.material = heartMat; h.billboardMode = B.Mesh.BILLBOARDMODE_ALL; h.position.set(p.x + (Math.random() - 0.5) * 0.2, catState.baseY + 0.3, p.z + (Math.random() - 0.5) * 0.2); h._life = 1.6; h._vx = (Math.random() - 0.5) * 0.1; hearts.push(h); } }
+
+// =====================================================================
+// LIGHTS — outside sun raking through the glass, low fill, emissive points
+// =====================================================================
+const hemi = new B.HemisphericLight("hemi", new V3(0, 1, 0), scene);
+hemi.intensity = 0.32; hemi.diffuse = C(0x8a96a8); hemi.groundColor = C(0x2a241c);
+// golden-hour sun: az ~0.3 west, alt ~0.26 — position per world.js beam aiming
+const az = 0.3, alt = 0.26;
+const sun = new B.SpotLight("sun", new V3(Math.sin(az) * 10, WIN.cy + Math.tan(alt) * 10, ZF - 10), new V3(-Math.sin(az), -0.5, 1).normalize(), 1.3, 6, scene);
+sun.intensity = 4.6; sun.diffuse = C(0xfff0d8); sun.range = 80;
+const shadow = new B.ShadowGenerator(2048, sun);
+shadow.usePercentageCloserFiltering = true; shadow.filteringQuality = B.ShadowGenerator.QUALITY_HIGH; shadow.bias = 0.0011; shadow.normalBias = 0.02; shadow.darkness = 0.4;
+const windowLight = new B.PointLight("winLight", new V3(0, 1.6, ZF + 0.6), scene); windowLight.diffuse = C(0xffe9c0); windowLight.intensity = 3.4; windowLight.range = 5.5;
+const lavaLight = new B.PointLight("lavaLight", new V3(0, 0, 0), scene); lavaLight.parent = lava; lavaLight.position.set(0, 0.15, 0); lavaLight.diffuse = C(0xff8040); lavaLight.intensity = 0.85; lavaLight.range = 0.95;
+const neonLight = new B.PointLight("neonLight", new V3(0, 1.62, 0.4), scene); neonLight.parent = entry; neonLight.diffuse = C(0xff4d2e); neonLight.intensity = 1.3; neonLight.range = 1.7;
+const screenGlow = new B.PointLight("screenGlow", new V3(0, 1.19, 0.1), scene); screenGlow.parent = desk; screenGlow.position.set(0, 0.45, 0.1); screenGlow.diffuse = C(0x8fb6ff); screenGlow.intensity = 2.4; screenGlow.range = 2.6;
+
+// the bright sun disc outside, for the god-rays
+const sunDisc = B.MeshBuilder.CreatePlane("sunDisc", { size: 1.25 }, scene); sunDisc.position.set(Math.sin(az) * 3.2, 2.2, ZF - 2.4);
+const sunDiscMat = emis("sunDiscMat", 0xffffff, { glow: false }); sunDiscMat.emissiveColor = new B.Color3(1.35, 1.05, 0.72); sunDisc.material = sunDiscMat;
+
+// =====================================================================
+// SHADOWS — register casters, big surfaces receive
+// =====================================================================
+for (const m of casters) { try { shadow.addShadowCaster(m, true); } catch {} }
+
+// =====================================================================
+// POST — glow, default pipeline, SSAO, god-rays
+// =====================================================================
+const glow = new B.GlowLayer("glow", scene, { mainTextureSamples: 4 }); glow.intensity = 0.9;
+let pipeline; // built after the camera exists, below
+
+// =====================================================================
+// DUST — GPU particles drifting through the room
+// =====================================================================
+const dotTex = dyn("dot", 64, 64, (c, w, h) => { const g = c.createRadialGradient(32, 32, 0, 32, 32, 32); g.addColorStop(0, "rgba(200,194,180,1)"); g.addColorStop(1, "rgba(200,194,180,0)"); c.fillStyle = g; c.fillRect(0, 0, w, h); });
+try {
+  const dust = B.GPUParticleSystem.IsSupported ? new B.GPUParticleSystem("dust", { capacity: 2400 }, scene) : new B.ParticleSystem("dust", 900, scene);
+  dust.particleTexture = dotTex; dust.emitter = new V3(0, 1.3, -0.6);
+  dust.minEmitBox = new V3(-X, -1.1, ZF); dust.maxEmitBox = new V3(X, 1.3, ZB);
+  dust.color1 = new B.Color4(0.6, 0.58, 0.53, 0.4); dust.color2 = new B.Color4(0.6, 0.55, 0.5, 0.2); dust.colorDead = new B.Color4(1, 1, 1, 0);
+  dust.minSize = 0.005; dust.maxSize = 0.014; dust.minLifeTime = 9; dust.maxLifeTime = 18; dust.emitRate = 180;
+  dust.blendMode = B.ParticleSystem.BLENDMODE_ADD; dust.gravity = new V3(0, 0.006, 0);
+  dust.direction1 = new V3(-0.02, 0.02, -0.02); dust.direction2 = new V3(0.02, 0.05, 0.02);
+  dust.minEmitPower = 0.01; dust.maxEmitPower = 0.03; dust.updateSpeed = 0.012; dust.start();
+} catch (e) { console.warn("dust", e); }
+
+// =====================================================================
+// CAMERA — first-person, eye height 1.62, gravity + ellipsoid collision
+// =====================================================================
+const camera = new B.UniversalCamera("cam", new V3(0.2, 1.62, 1.4), scene);
+camera.setTarget(new V3(0, 1.5, ZF));
 camera.attachControl(canvas, true);
-camera.minZ = 0.05;
-camera.fov = 1.18;
-camera.speed = 0.16;
-camera.inertia = 0.78;
-camera.angularSensibility = 2400;
-camera.keysUp = [87, 38]; camera.keysDown = [83, 40];
-camera.keysLeft = [65, 37]; camera.keysRight = [68, 39];
-camera.checkCollisions = true;
-camera.applyGravity = true;
-camera.ellipsoid = new BABYLON.Vector3(0.35, 0.85, 0.35);
-camera.ellipsoidOffset = new BABYLON.Vector3(0, 0.85, 0);
+camera.minZ = 0.05; camera.fov = 1.18; camera.speed = 0.16; camera.inertia = 0.8; camera.angularSensibility = 2400;
+camera.keysUp = [87, 38]; camera.keysDown = [83, 40]; camera.keysLeft = [65, 37]; camera.keysRight = [68, 39];
+camera.checkCollisions = true; camera.applyGravity = true;
+camera.ellipsoid = new V3(0.4, 0.9, 0.4); camera.ellipsoidOffset = new V3(0, -0.72, 0);
+// post pipeline, now that the camera exists
+pipeline = new B.DefaultRenderingPipeline("pipeline", true, scene, [camera]);
+pipeline.fxaaEnabled = true; pipeline.samples = 4; pipeline.bloomEnabled = true; pipeline.bloomThreshold = 0.85; pipeline.bloomWeight = 0.4; pipeline.bloomKernel = 64; pipeline.bloomScale = 0.6;
+pipeline.bloomThreshold = 0.9; pipeline.bloomWeight = 0.34;
+pipeline.imageProcessingEnabled = true; pipeline.imageProcessing.vignetteEnabled = true; pipeline.imageProcessing.vignetteWeight = 2.4; pipeline.imageProcessing.vignetteColor = new B.Color4(0, 0, 0, 0);
+pipeline.grainEnabled = true; pipeline.grain.intensity = 6; pipeline.grain.animated = true; pipeline.sharpenEnabled = true; pipeline.sharpen.edgeAmount = 0.16;
+try { if (B.SSAO2RenderingPipeline.IsSupported) { const ssao = new B.SSAO2RenderingPipeline("ssao", scene, { ssaoRatio: 0.75, blurRatio: 1 }, [camera]); ssao.radius = 0.5; ssao.totalStrength = 1.0; ssao.base = 0.12; ssao.samples = 16; ssao.expensiveBlur = true; } } catch (e) { console.warn("ssao", e); }
+try { const vls = new B.VolumetricLightScatteringPostProcess("godrays", 1.0, camera, sunDisc, 90, B.Texture.BILINEAR_SAMPLINGMODE, engine, false, scene); vls.exposure = 0.2; vls.decay = 0.96815; vls.weight = 0.42; vls.density = 0.92; } catch (e) { console.warn("godrays", e); }
 
 // =====================================================================
-// post pipeline — glow, bloom, vignette, grain, FXAA, plus SSAO + god-rays
-// =====================================================================
-const glow = new BABYLON.GlowLayer("glow", scene, { mainTextureSamples: 4 });
-glow.intensity = 0.85;
-
-let pipeline;
-try {
-  pipeline = new BABYLON.DefaultRenderingPipeline("pipeline", true, scene, [camera]);
-  pipeline.fxaaEnabled = true;
-  pipeline.samples = 4;
-  pipeline.bloomEnabled = true;
-  pipeline.bloomThreshold = 0.86;
-  pipeline.bloomWeight = 0.42;
-  pipeline.bloomKernel = 64;
-  pipeline.bloomScale = 0.6;
-  pipeline.imageProcessingEnabled = true;
-  pipeline.imageProcessing.vignetteEnabled = true;
-  pipeline.imageProcessing.vignetteWeight = 2.6;
-  pipeline.imageProcessing.vignetteColor = new BABYLON.Color4(0, 0, 0, 0);
-  pipeline.grainEnabled = true;
-  pipeline.grain.intensity = 7;
-  pipeline.grain.animated = true;
-  pipeline.sharpenEnabled = true;
-  pipeline.sharpen.edgeAmount = 0.18;
-} catch (e) { console.warn("pipeline failed", e); }
-
-// SSAO2 for contact shadows where geometry meets the floor
-try {
-  if (BABYLON.SSAO2RenderingPipeline.IsSupported) {
-    const ssao = new BABYLON.SSAO2RenderingPipeline("ssao", scene, { ssaoRatio: 0.75, blurRatio: 1 }, [camera]);
-    ssao.radius = 0.55; ssao.totalStrength = 1.1; ssao.base = 0.12; ssao.samples = 16;
-    ssao.expensiveBlur = true;
-  }
-} catch (e) { console.warn("ssao failed", e); }
-
-// volumetric god-rays streaming through the window
-try {
-  const vls = new BABYLON.VolumetricLightScatteringPostProcess(
-    "godrays", 1.0, camera, sunDisc, 90, BABYLON.Texture.BILINEAR_SAMPLINGMODE, engine, false, scene);
-  vls.exposure = 0.22;
-  vls.decay = 0.96815;
-  vls.weight = 0.46;
-  vls.density = 0.93;
-} catch (e) { console.warn("godrays failed", e); }
-
-// =====================================================================
-// GPU-particle dust drifting in the sunbeam
-// =====================================================================
-const dotTex = dyn("dot", 64, 64, (c, w, h) => {
-  const g = c.createRadialGradient(32, 32, 0, 32, 32, 32);
-  g.addColorStop(0, "rgba(255,250,235,1)"); g.addColorStop(1, "rgba(255,250,235,0)");
-  c.fillStyle = g; c.fillRect(0, 0, w, h);
-});
-try {
-  const useGPU = BABYLON.GPUParticleSystem.IsSupported;
-  const dust = useGPU
-    ? new BABYLON.GPUParticleSystem("dust", { capacity: 3000 }, scene)
-    : new BABYLON.ParticleSystem("dust", 1200, scene);
-  dust.particleTexture = dotTex;
-  dust.emitter = new BABYLON.Vector3(0, 1.4, -0.6);
-  dust.minEmitBox = new BABYLON.Vector3(-HW + 0.4, -1.2, -HD + 0.4);
-  dust.maxEmitBox = new BABYLON.Vector3(HW - 0.4, 1.4, HD - 0.4);
-  dust.color1 = new BABYLON.Color4(1, 0.97, 0.9, 0.5);
-  dust.color2 = new BABYLON.Color4(1, 0.9, 0.8, 0.25);
-  dust.colorDead = new BABYLON.Color4(1, 1, 1, 0);
-  dust.minSize = 0.004; dust.maxSize = 0.014;
-  dust.minLifeTime = 8; dust.maxLifeTime = 16;
-  dust.emitRate = 220;
-  dust.blendMode = BABYLON.ParticleSystem.BLENDMODE_ADD;
-  dust.gravity = new BABYLON.Vector3(0, -0.002, 0);
-  dust.direction1 = new BABYLON.Vector3(-0.02, 0.02, -0.02);
-  dust.direction2 = new BABYLON.Vector3(0.02, 0.04, 0.02);
-  dust.minEmitPower = 0.01; dust.maxEmitPower = 0.04;
-  dust.updateSpeed = 0.01;
-  dust.start();
-} catch (e) { console.warn("dust failed", e); }
-
-// =====================================================================
-// animation loop bits (screen, lava, leds, blobs)
+// animated screens + clock
 // =====================================================================
 let T = 0;
-function drawScreen(t) {
-  const w = 1024, h = 332;
-  sctx.fillStyle = "#0a0c14"; sctx.fillRect(0, 0, w, h);
-  // a DAW-ish timeline with moving playhead + waveform lanes
-  sctx.fillStyle = "#121622"; sctx.fillRect(0, 0, w, 28);
-  sctx.fillStyle = "#ff3bd0"; sctx.font = "bold 16px monospace"; sctx.fillText("● THE METRO — session", 12, 20);
+const dctx = dawTex.getContext(), mctx = meterTex.getContext(), cctx = clockTex.getContext();
+function drawDaw(t) {
+  const w = 1024, h = 434; dctx.fillStyle = "#0a0c14"; dctx.fillRect(0, 0, w, h);
+  dctx.fillStyle = "#121622"; dctx.fillRect(0, 0, w, 34); dctx.fillStyle = "#ff3bd0"; dctx.font = "700 18px monospace"; dctx.fillText("● THE METRO — session", 14, 24);
   const lanes = ["#2dd4bf", "#a78bfa", "#fbbf24", "#f472b6"];
-  for (let L = 0; L < 4; L++) {
-    const y = 44 + L * 64;
-    sctx.fillStyle = "#10131c"; sctx.fillRect(8, y, w - 16, 52);
-    sctx.strokeStyle = lanes[L]; sctx.lineWidth = 2; sctx.beginPath();
-    for (let x = 0; x < w - 24; x += 4) {
-      const a = Math.sin(x * 0.05 + t * 2 + L) * Math.sin(x * 0.013 + L * 2);
-      sctx.lineTo(12 + x, y + 26 + a * (10 + L * 3));
-    }
-    sctx.stroke();
-  }
-  const px = ((t * 60) % (w - 24)) + 12;
-  sctx.strokeStyle = "#fff"; sctx.lineWidth = 1; sctx.beginPath();
-  sctx.moveTo(px, 28); sctx.lineTo(px, h); sctx.stroke();
-  screenTex.update(false);
+  for (let L = 0; L < 5; L++) { const y = 54 + L * 74; dctx.fillStyle = "#10131c"; dctx.fillRect(8, y, w - 16, 60); dctx.strokeStyle = lanes[L % 4]; dctx.lineWidth = 2; dctx.beginPath(); for (let x = 0; x < w - 24; x += 4) { const a = Math.sin(x * 0.05 + t * 2 + L) * Math.sin(x * 0.013 + L * 2); dctx.lineTo(12 + x, y + 30 + a * (12 + L * 3)); } dctx.stroke(); }
+  const px = ((t * 70) % (w - 24)) + 12; dctx.strokeStyle = "#fff"; dctx.lineWidth = 1; dctx.beginPath(); dctx.moveTo(px, 34); dctx.lineTo(px, h); dctx.stroke(); dawTex.update(false);
 }
+function drawMeter(t) {
+  const w = 330, h = 200; mctx.fillStyle = "#0a0d10"; mctx.fillRect(0, 0, w, h);
+  mctx.fillStyle = "#7be08a"; mctx.font = "700 14px monospace"; mctx.fillText("LUFS -14.2", 12, 22);
+  for (let i = 0; i < 14; i++) { const v = 0.5 + 0.5 * Math.sin(t * 4 + i); const bh = v * 150; const hue = v > 0.85 ? "#ff4d4d" : v > 0.6 ? "#ffd23b" : "#3be07a"; mctx.fillStyle = hue; mctx.fillRect(14 + i * 22, h - 20 - bh, 14, bh); } meterTex.update(false);
+}
+function drawClock() {
+  const w = 310, h = 116; cctx.fillStyle = "#06080c"; cctx.fillRect(0, 0, w, h);
+  const now = new Date(); const opt = { timeZone: "America/Los_Angeles", hour: "2-digit", minute: "2-digit", hour12: false };
+  let s = "--:--"; try { s = new Intl.DateTimeFormat("en-US", opt).format(now); } catch {}
+  cctx.fillStyle = "#ff7a3c"; cctx.font = "700 64px monospace"; cctx.textAlign = "center"; cctx.fillText(s, w / 2, 74); cctx.font = "700 16px monospace"; cctx.fillStyle = "#9c6a3a"; cctx.fillText("LOS ANGELES", w / 2, 100); cctx.textAlign = "left"; clockTex.update(false);
+}
+let clockAcc = 0;
 
 scene.onBeforeRenderObservable.add(() => {
-  const dt = engine.getDeltaTime() / 1000;
-  T += dt;
-  drawScreen(T);
-  // lava blobs bob inside the cone
-  for (const b of blobs) {
-    const y = 0.18 + (Math.sin(T * b._speed + b._phase) * 0.5 + 0.5) * 0.34;
-    b.position.y = y;
-    b.position.x = lampBaseX + Math.sin(T * b._speed * 0.7 + b._phase) * 0.03;
-    const s = 0.8 + Math.sin(T * b._speed * 1.3 + b._phase) * 0.3;
-    b.scaling.set(s, 1.4 - s * 0.4, s);
-  }
-  lampLight.intensity = 0.55 + Math.sin(T * 1.7) * 0.08;
-  // rack LEDs flicker like something's processing
-  scene.meshes.forEach(m => {
-    if (m.name.startsWith("led") && m.material && m._baseEmis) {
-      const f = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(T * (2 + m.name.length) + m.name.charCodeAt(3)));
-      m.material.emissiveColor.set(m._baseEmis[0] * f, m._baseEmis[1] * f, m._baseEmis[2] * f);
-    }
-  });
-  // neon breathes
-  const nb = 1.9 + Math.sin(T * 3.0) * 0.25 + (Math.random() < 0.01 ? -1.2 : 0); // occasional flicker
-  neonMat.emissiveColor.set(nb * 1.15, nb * 0.36, nb * 0.95);
+  const dt = Math.min(0.05, engine.getDeltaTime() / 1000); T += dt;
+  drawDaw(T); drawMeter(T); clockAcc += dt; if (clockAcc > 1) { clockAcc = 0; drawClock(); }
+  // lava blobs
+  for (const b of blobs) { const k = Math.sin(T * b._speed + b._phase); b.position.y = 0.10 + (k * 0.5 + 0.5) * 0.085; b.position.x = Math.sin(T * b._speed * 0.7 + b._phase * 2) * 0.012; b.position.z = Math.cos(T * b._speed * 0.6 + b._phase) * 0.012; b.scaling.y = 1 + 0.35 * Math.sin(T * b._speed * 1.9 + b._phase); }
+  lavaLight.intensity = 0.8 + 0.12 * Math.sin(T * 0.9);
+  // neon breathe + rare flicker
+  const nb = 2.0 + Math.sin(T * 3) * 0.2 + (Math.random() < 0.008 ? -1.4 : 0); neonMat.emissiveColor.set(nb * 1.1, nb * 0.28, nb * 0.18);
+  // radio needle scan
+  // cat update
+  updateCat(dt);
+  // hearts
+  for (let i = hearts.length - 1; i >= 0; i--) { const h = hearts[i]; h._life -= dt; if (h._life <= 0) { h.dispose(); hearts.splice(i, 1); continue; } h.position.y += dt * 0.35; h.position.x += h._vx * dt; h.material.alpha = Math.min(1, h._life / 0.8); }
 });
 
+function updateCat(dt) {
+  const cs = catState;
+  if (cs.walking) {
+    const dx = cs.tx - catGrp.position.x, dz = cs.tz - catGrp.position.z; const dist = Math.hypot(dx, dz);
+    if (dist < 0.06) { cs.walking = false; cs.dwell = 4 + Math.random() * 10; }
+    else { const want = Math.atan2(dx, dz); let dy = want - cs.yaw; while (dy > Math.PI) dy -= 2 * Math.PI; while (dy < -Math.PI) dy += 2 * Math.PI; cs.yaw += dy * Math.min(1, dt * 6); const spd = 0.5; catGrp.position.x += (dx / dist) * spd * dt; catGrp.position.z += (dz / dist) * spd * dt; }
+  } else { cs.dwell -= dt; if (cs.dwell <= 0) { const spot = catSpots[Math.floor(Math.random() * catSpots.length)]; cs.tx = spot.x; cs.tz = spot.z; cs.ty = spot.y; cs.walking = true; } }
+  cs.baseY += (cs.ty - cs.baseY) * Math.min(1, dt * 5);
+  catGrp.position.y = cs.baseY; catGrp.rotation.y = cs.yaw - Math.PI / 2;
+  // breathing / trot bob
+  const bob = cs.walking ? Math.abs(Math.sin(T * 8)) * 0.012 : Math.sin(T * 1.6) * 0.006;
+  catBody.position.y = 0.115 + bob;
+  // tail sway
+  const sway = Math.sin(T * (cs.walking ? 6 : 1.6)); tailSegs[0].rotation.x = sway * 0.35; tailSegs[1].rotation.x = sway * 0.30; tailSegs[2].rotation.x = sway * 0.25;
+  // legs trot
+  catLegs.forEach((leg, i) => { leg.rotation.x = cs.walking ? Math.sin(T * 8 + (i % 2 ? Math.PI : 0)) * 0.5 : 0; });
+}
+
 // =====================================================================
-// Havok physics — throw things around the room
+// HAVOK — throw things; click the cat for hearts
 // =====================================================================
 let physicsReady = false;
 async function initPhysics() {
   try {
     const havok = await HavokPhysics({ locateFile: (f) => "https://cdn.babylonjs.com/havok/" + f });
-    scene.enablePhysics(new BABYLON.Vector3(0, -9.81, 0), new BABYLON.HavokPlugin(true, havok));
-    // static colliders: floor + walls + desk so thrown objects land and bounce
-    new BABYLON.PhysicsAggregate(floor, BABYLON.PhysicsShapeType.BOX, { mass: 0, restitution: 0.4, friction: 0.8 }, scene);
-    for (const m of colliders) {
-      if (m === floor) continue;
-      try { new BABYLON.PhysicsAggregate(m, BABYLON.PhysicsShapeType.BOX, { mass: 0, restitution: 0.5 }, scene); } catch {}
-    }
+    scene.enablePhysics(new V3(0, -9.81, 0), new B.HavokPlugin(true, havok));
+    new B.PhysicsAggregate(floor, B.PhysicsShapeType.BOX, { mass: 0, restitution: 0.4, friction: 0.8 }, scene);
     physicsReady = true;
-  } catch (e) { console.warn("havok unavailable — room still works, just no throwing", e); }
+  } catch (e) { console.warn("havok", e); }
 }
-
 let thrown = 0;
-const throwColors = [[1, 0.3, 0.35], [0.3, 0.8, 1], [1, 0.85, 0.2], [0.6, 1, 0.4], [0.9, 0.4, 1]];
+const throwColors = [0xff4d59, 0x4dccff, 0xffd633, 0x99ff66, 0xe666ff];
 function throwBall() {
   if (!physicsReady || thrown > 40) return;
-  const c = throwColors[thrown % throwColors.length];
-  const s = BABYLON.MeshBuilder.CreateSphere("thrown" + thrown, { diameter: 0.12, segments: 16 }, scene);
-  s.position.copyFrom(camera.position).addInPlace(camera.getDirection(BABYLON.Axis.Z).scale(0.4));
-  s.material = mat("thrownm" + thrown, { color: c, metallic: 0.2, roughness: 0.25, emissive: c.map(v => v * 0.25) });
-  s.receiveShadows = true; shadow.addShadowCaster(s);
-  const agg = new BABYLON.PhysicsAggregate(s, BABYLON.PhysicsShapeType.SPHERE, { mass: 0.6, restitution: 0.72, friction: 0.5 }, scene);
-  agg.body.applyImpulse(camera.getDirection(BABYLON.Axis.Z).scale(7), s.position);
-  thrown++;
+  const col = throwColors[thrown % throwColors.length];
+  const s = B.MeshBuilder.CreateSphere("thrown" + thrown, { diameter: 0.12, segments: 16 }, scene);
+  const dir = camera.getDirection(B.Axis.Z);
+  s.position.copyFrom(camera.position).addInPlace(dir.scale(0.4));
+  const m = metal("thrownM" + thrown, col, 0.2, 0.25); m.emissiveColor = C(col).scale(0.25); s.material = m; s.receiveShadows = true; shadow.addShadowCaster(s);
+  const agg = new B.PhysicsAggregate(s, B.PhysicsShapeType.SPHERE, { mass: 0.6, restitution: 0.72, friction: 0.5 }, scene);
+  agg.body.applyImpulse(dir.scale(7), s.position); thrown++;
 }
-
-// =====================================================================
-// input + gate wiring
-// =====================================================================
 scene.onPointerObservable.add((p) => {
-  if (p.type === BABYLON.PointerEventTypes.POINTERDOWN) {
-    if (!engine.isPointerLock) engine.enterPointerlock();
-    else throwBall(); // locked + click = throw
-  }
+  if (p.type !== B.PointerEventTypes.POINTERDOWN) return;
+  if (!engine.isPointerLock) { engine.enterPointerlock(); return; }
+  const ray = camera.getForwardRay(3); const hit = scene.pickWithRay(ray, (m) => m.name.startsWith("cat") || m.name.startsWith("catSkull") || m.name.startsWith("catBody"));
+  if (hit && hit.hit) popHearts(); else throwBall();
 });
 
-// resize
+// =====================================================================
+// boot
+// =====================================================================
 window.addEventListener("resize", () => engine.resize());
-
-// render
 engine.runRenderLoop(() => scene.render());
-
-// build is synchronous; physics loads after so the room can paint immediately
-progress(70, "almost…");
-scene.whenReadyAsync().then(async () => {
-  progress(88, "physics…");
-  await initPhysics();
-  progress(100, "enter ▸");
-  enterBtn.disabled = false;
-});
+setProg(72, "almost…");
+scene.whenReadyAsync().then(async () => { setProg(88, "physics…"); await initPhysics(); setProg(100, "enter ▸"); enterBtn.disabled = false; });
 
 let entered = false;
 function enter() {
   if (entered) return; entered = true;
-  gate.classList.add("gone");
-  badge.classList.add("show");
-  hint.textContent = "WASD move · mouse look · click to throw · Esc to free cursor";
-  hint.classList.add("show");
-  setTimeout(() => hint.classList.remove("show"), 6500);
-  canvas.focus();
-  engine.enterPointerlock();
+  gate.classList.add("gone"); badge.classList.add("show");
+  hint.textContent = "WASD move · mouse look · click to throw · click the cat for ♥ · Esc frees cursor";
+  hint.classList.add("show"); setTimeout(() => hint.classList.remove("show"), 7000);
+  canvas.focus(); engine.enterPointerlock();
 }
 enterBtn.addEventListener("click", enter);
 
-// expose for the smoke-test harness, mirroring window.METRO_DEBUG
-window.METRO_BJS = { engine, scene, camera, throwBall, BABYLON };
+window.METRO_BJS = { engine, scene, camera, throwBall, popHearts, B };
