@@ -51,7 +51,7 @@ export function makeGymBall(rig, hooks) {
   const ball = { holder: null, x: rig.info.x, y: ballR, z: rig.info.z, vx: 0, vy: 0, vz: 0,
                  lastShotBy: null, thrownFrom: null, spin: 0 };
   const score = { red: 0, blue: 0 };
-  let charging = false, charge = 0;
+  let charging = false, charge = 0, chargeDir = 1;   // power OSCILLATES 0↔1 while held
   let lastSteal = 0, suppressClickUntil = 0;
   let acc = 0;
   let aimHoop = null;   // the basket latched when a wind-up begins (the one you're facing)
@@ -150,19 +150,108 @@ export function makeGymBall(rig, hooks) {
     return { inZone, ready: inZone && phase >= DUNK_WINDOW, phase, rim };
   }
 
-  // which way a (non-dunk) shot flies. on mobile we AUTO-AIM horizontally at the
-  // basket you latched when the wind-up began (the one you faced) with a fixed
-  // high loft — direction is solved and the ONLY skill is how long you hold
-  // (power). on desktop you free-aim with the camera.
+  // which way a (non-dunk) shot flies. AUTO-AIM points horizontally at the basket
+  // you latched when the wind-up began; the ARC (loft) is solved per distance so a
+  // makeable shot exists from anywhere, and the ONLY skill is the power (how long
+  // you hold) — the active-reload marker shows the perfect-release power. (the
+  // free-aim fallback below isn't used while auto-aim is on.)
   function aimDir(c, o) {
     if (hooks.autoAim && hooks.autoAim()) {
-      const rim = (aimHoop || facedHoop(c)).rim;
-      let hx = rim.x - o.x, hz = rim.z - o.z;
-      const hl = Math.hypot(hx, hz) || 1, loft = 0.92, cp = Math.cos(loft);
-      return { x: hx / hl * cp, y: Math.sin(loft), z: hz / hl * cp };
+      const h = aimHoop || facedHoop(c), rim = h.rim;
+      const sol = solveShot(c, h), cp = Math.cos(sol.loft);
+      let hx = rim.x - o.x, hz = rim.z - o.z; const hl = Math.hypot(hx, hz) || 1;
+      return { x: hx / hl * cp, y: Math.sin(sol.loft), z: hz / hl * cp };
     }
     return launchDir(c.yaw, c.pitch);
   }
+
+  // ---- the shot solver + "active-reload" marker. for a swish you need the right
+  // ARC and the right POWER. we fix the arc per distance (so a makeable shot always
+  // exists and its perfect power sits comfortably mid-bar) and leave the power to
+  // you — that's the skill, and the marker shows where perfect is. recomputed only
+  // when your distance to the rim changes (cached), so it's cheap per frame.
+  const LOFT_MIN = 0.5, LOFT_MAX = 0.92;   // arc range: ~29°(flat heave) … ~53°(high)
+  const ASSIST_HALF = 0.085;     // release within this of the marker = a PERFECT swish (active-reload)
+  // fly the projectile with the SAME physics + rim/backboard bounces as step(),
+  // launched from o at `loft` along horizontal unit dir `dh` at speed sp. return
+  // the horizontal miss (m) at the moment it drops DOWN through the rim plane —
+  // exactly what step()'s make check uses — so the solver agrees with reality.
+  // (a ball that never crosses the rim going down = a clean miss → Infinity.)
+  function simShot(o, dh, loft, sp, h) {
+    const rim = h.rim, rimR = h.rimR, bb = h.backboard, side = h.side, cp = Math.cos(loft);
+    let x = o.x, y = o.y, z = o.z, vx = dh.x * cp * sp, vy = Math.sin(loft) * sp, vz = dh.z * cp * sp;
+    for (let s = 0; s < 400; s++) {
+      const py = y;
+      vy -= G * DT;
+      const sv = Math.hypot(vx, vy, vz) || 1e-6, dr = DRAG * sv * DT;
+      vx -= dr * vx; vy -= dr * vy; vz -= dr * vz;
+      x += vx * DT; y += vy * DT; z += vz * DT;
+      if (y - ballR <= floorY) return Infinity;          // hit the floor first → miss
+      // backboard bank
+      const into = side > 0 ? (vx > 0 && x + ballR >= bb.x) : (vx < 0 && x - ballR <= bb.x);
+      if (into && z > bb.z0 && z < bb.z1 && y > bb.y0 && y < bb.y1) { x = bb.x - side * ballR; vx = -vx * BB_E; vy *= 0.94; vz *= 0.86; }
+      // rim torus bounce (nearest point on the ring)
+      const dx = x - rim.x, dz = z - rim.z, hdr = Math.hypot(dx, dz);
+      if (hdr > 1e-4) {
+        const nx = rim.x + dx / hdr * rimR, nz = rim.z + dz / hdr * rimR;
+        const ex = x - nx, ey = y - rim.y, ez = z - nz, ed = Math.hypot(ex, ey, ez);
+        if (ed < ballR + WIRE_R) {
+          const inv = 1 / (ed || 1), Nx = ex * inv, Ny = ey * inv, Nz = ez * inv, vn = vx * Nx + vy * Ny + vz * Nz;
+          if (vn < 0) { const j = (1 + RIM_E) * vn; vx -= j * Nx; vy -= j * Ny; vz -= j * Nz; }
+          const push = ballR + WIRE_R - ed; x += Nx * push; y += Ny * push; z += Nz * push;
+        }
+      }
+      // the make plane: dropping down through the rim's height
+      if (py > rim.y && y <= rim.y && vy < 0) return Math.hypot(x - rim.x, z - rim.z);
+    }
+    return Infinity;
+  }
+  // for one loft, scan the whole power bar; a make is a drop-through within the
+  // ring (matches step()). opt = the most-centred make; band = makeable charges.
+  function scanPower(o, dh, loft, h) {
+    const N = 60, THRESH = h.rimR - ballR * 0.12, hd = new Array(N + 1);
+    let bI = -1, bHd = Infinity, anyI = 0, anyHd = Infinity;
+    for (let i = 0; i <= N; i++) {
+      hd[i] = simShot(o, dh, loft, speedFor(i / N), h);
+      if (hd[i] < anyHd) { anyHd = hd[i]; anyI = i; }
+      if (hd[i] < THRESH && hd[i] < bHd) { bHd = hd[i]; bI = i; }
+    }
+    if (bI < 0) return { loft, opt: anyI / N, lo: anyI / N, hi: anyI / N, miss: anyHd, makeable: false };
+    let lo = bI, hi = bI;
+    while (lo > 0 && hd[lo - 1] < THRESH) lo--;
+    while (hi < N && hd[hi + 1] < THRESH) hi++;
+    return { loft, opt: bI / N, lo: lo / N, hi: hi / N, miss: bHd, makeable: true };
+  }
+  // pick the arc whose perfect power is makeable AND closest to mid-bar (so the
+  // oscillating meter has room to either side); if nothing's reachable, the arc
+  // that gets nearest (marker shows amber — too far to drop).
+  function solveShotFor(c, h) {
+    const o = myHand(), rim = h.rim;
+    let hx = rim.x - o.x, hz = rim.z - o.z; const hl = Math.hypot(hx, hz) || 1;
+    const dh = { x: hx / hl, z: hz / hl }, L = 16;
+    let best = null;
+    for (let li = 0; li <= L; li++) {
+      const s = scanPower(o, dh, LOFT_MIN + (LOFT_MAX - LOFT_MIN) * li / L, h);
+      // makeable arcs win and are ranked by how centred the perfect-power is (room
+      // to oscillate); if nothing drops, rank by how close the best arc gets
+      s.score = s.makeable ? Math.abs(s.opt - 0.6) : 10 + s.miss;
+      if (!best || s.score < best.score) best = s;
+    }
+    // the sweet zone shown on the bar = the active-reload snap window around the
+    // perfect power (release in it → guaranteed swish; see shoot()). fixed width,
+    // so it's a fair, readable target at any range — not the razor-thin physics.
+    if (best.makeable) { best.lo = Math.max(0, best.opt - ASSIST_HALF); best.hi = Math.min(1, best.opt + ASSIST_HALF); }
+    return best;
+  }
+  let solKey = "", solCache = null;
+  function solveShot(c, h) {
+    const flat = Math.hypot(c.x - h.rim.x, c.z - h.rim.z);
+    const key = h.side + "|" + flat.toFixed(2) + "|" + ((c.gymY || 0).toFixed(2));
+    if (key === solKey && solCache) return solCache;
+    solKey = key; solCache = solveShotFor(c, h);
+    return solCache;
+  }
+  function optimalCharge() { const c = hooks.ctx(), h = aimHoop || facedHoop(c); return solveShot(c, h); }
 
   function shoot() {
     if (ball.holder !== me()) return;
@@ -177,9 +266,18 @@ export function makeGymBall(rig, hooks) {
       d = { x: 0, y: -0.8, z: 0 }; sp = 6;
       hooks.sound?.dunk?.();
     } else {
-      d = aimDir(c, o); sp = speedFor(charge);
+      d = aimDir(c, o);
+      // ACTIVE RELOAD: if you released inside the green snap-zone, the power locks
+      // to perfect and it swishes; outside it, you fly your raw power (and live
+      // with it). makes the marker a real, fair reward for nailing the timing.
+      let useCharge = charge;
+      if (hooks.autoAim && hooks.autoAim()) {
+        const sol = solveShot(c, aimHoop || facedHoop(c));
+        if (sol.makeable && Math.abs(charge - sol.opt) <= ASSIST_HALF) useCharge = sol.opt;
+      }
+      sp = speedFor(useCharge);
       ball.x = o.x; ball.y = o.y; ball.z = o.z;
-      hooks.sound?.shoot?.(charge);
+      hooks.sound?.shoot?.(useCharge);
     }
     ball.holder = null;
     ball.vx = d.x * sp; ball.vy = d.y * sp; ball.vz = d.z * sp;
@@ -224,14 +322,24 @@ export function makeGymBall(rig, hooks) {
     const team = hoop.side > 0 ? "red" : "blue";   // east hoop is red's to attack
     let pts = 2;
     if (ball.thrownFrom && Math.hypot(ball.thrownFrom.x - hoop.rim.x, ball.thrownFrom.z - hoop.rim.z) > THREE_R) pts = 3;
-    score[team] += pts;
-    rig.setScore(score.red, score.blue);
     hoop.swish?.();
+    // WARM-UP: a make still swishes the net, but it doesn't count AND the ball is
+    // NOT reset — it drops through and bounces around for you to chase and grab
+    // (you're just shooting around until the room readies up; main.js owns phase)
+    if (hooks.live && !hooks.live()) return;
     // the only particles in the game: a celebratory burst out of the hoop
     rig.burst?.(hoop.rim.x, hoop.rim.y, hoop.rim.z, team === "red" ? 0xff5a4d : 0x5a9bff, 34, 4.5);
+    score[team] += pts;
+    rig.setScore(score.red, score.blue);
     hooks.onScore?.(team, pts, score.red, score.blue);
     resetToCenter();
     hooks.send({ sub: "score", team, pts, red: score.red, blue: score.blue, t: Date.now() });
+  }
+  // tip-off: zero the board and put the ball back at centre for the jump
+  function startGame() {
+    score.red = 0; score.blue = 0;
+    rig.setScore(0, 0);
+    resetToCenter();
   }
   function resetToCenter() {
     ball.holder = null; ball.lastShotBy = null; ball.thrownFrom = null;
@@ -309,22 +417,31 @@ export function makeGymBall(rig, hooks) {
       if (ball.holder === me() && hooks.ctx().locked) {
         const pressed = hooks.ctx().pressed;
         if (pressed) {
-          if (!charging) aimHoop = facedHoop(hooks.ctx());   // latch the basket you're facing
-          charging = true; charge = Math.min(1, charge + dt / CHARGE_T);
+          if (!charging) { aimHoop = facedHoop(hooks.ctx()); charge = 0; chargeDir = 1; }   // latch the basket + start the sweep low
+          charging = true;
+          // a PING-PONG power bar: the meter ramps to the top, then back to the
+          // bottom, over and over, so if you miss the window you just wait for it
+          // to swing back around — release when it's where you want it.
+          charge += chargeDir * dt / CHARGE_T;
+          if (charge >= 1) { charge = 1; chargeDir = -1; }
+          else if (charge <= 0) { charge = 0; chargeDir = 1; }
         } else if (charging && !pressed) { shoot(); }
         if (charging) {
           const auto = hooks.autoAim && hooks.autoAim();
+          let opt = null;
           if (auto) {
-            // mobile: hide the arc (power-by-feel is the skill) and lock the
-            // camera/crosshair onto the latched backboard so you see the target
+            // hide the arc (power-by-feel is the skill) and lock the camera/
+            // crosshair onto the latched backboard so you see the target; the
+            // power bar gets the optimal-release marker for where you stand
             rig.hideGuide();
             const h = aimHoop || facedHoop(hooks.ctx());
             hooks.setAimLock?.({ x: h.backboard.x, y: 3.4, z: h.rim.z });
+            opt = optimalCharge();
           } else {
             const o = myHand(); rig.setArc(arcPts(o, aimDir(hooks.ctx(), o), speedFor(charge)));
           }
-          hooks.power?.(charge);
-        } else { rig.hideGuide(); hooks.power?.(0); hooks.setAimLock?.(null); }
+          hooks.power?.(charge, opt);
+        } else { rig.hideGuide(); hooks.power?.(0, null); hooks.setAimLock?.(null); }
       } else { rig.hideGuide(); hooks.setAimLock?.(null); }
     } else {
       // loose: fixed-step the projectile
@@ -390,7 +507,7 @@ export function makeGymBall(rig, hooks) {
   }
 
   return {
-    tick, click, pass, shoot, recv, reset, leave, dunk: dunkInfo,
+    tick, click, pass, shoot, recv, reset, leave, dunk: dunkInfo, startGame,
     score, holder: () => ball.holder, haveBall: () => ball.holder === me(),
     stamina: () => 1,
     debug: () => ({ holder: ball.holder, charge: +charge.toFixed(2), red: score.red, blue: score.blue,

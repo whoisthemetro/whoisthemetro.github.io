@@ -305,6 +305,10 @@ addEventListener("keydown", (e) => {
   if (e.code === "KeyE" && !e.repeat && inGym && entered && !modalOpen && controls.locked) {
     gymBall.pass();
   }
+  // R readies you up during gym warm-up (desktop — you can't click DOM locked)
+  if (e.code === "KeyR" && !e.repeat && inGym && entered && !modalOpen && !gymLive) {
+    toggleReady();
+  }
   // press G in the venue to re-skin the loft (backdrop + neon + the soothing
   // bed). local + instant — resets to the default on reload. a dj broadcasts
   // the look so the whole room follows.
@@ -667,7 +671,7 @@ canvas.addEventListener("click", () => {
 function castAt(ndcX, ndcY) {
   raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera);
   // doors are included as blockers so notes can't be pinned onto them
-  const targets = [cat.hitMesh, toyHit, bartender.hitMesh, mirror.glass, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, ...world.elevHits, ...world.elevCallHits, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.guitarVoiceHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, world.pool.hit, world.pool.resetHit, world.pool.joinHit, world.pool2.hit, world.pool2.resetHit, world.pool2.joinHit, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.radioHits, ...world.laRadioHits, ...world.filterPedalHit, ...world.vacuumHits, ...notesWall.raycastTargets(), screenMesh, world.gym.joinHit, world.gym.exitHit, ...world.blockers];
+  const targets = [cat.hitMesh, toyHit, bartender.hitMesh, mirror.glass, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, ...world.elevHits, ...world.elevCallHits, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.guitarVoiceHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, world.pool.hit, world.pool.resetHit, world.pool.joinHit, world.pool2.hit, world.pool2.resetHit, world.pool2.joinHit, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.radioHits, ...world.laRadioHits, ...world.filterPedalHit, ...world.vacuumHits, ...notesWall.raycastTargets(), screenMesh, world.gym.joinHit, world.gym.exitHit, ...world.gym.readyHits, ...world.blockers];
   const hits = raycaster.intersectObjects(targets, false);
   return hits[0] || null;
 }
@@ -940,6 +944,9 @@ controls.onAction((ndcX, ndcY) => {
     // other thing worth clicking is the EXIT panel
     const h = castAt(ndcX, ndcY);
     if (h && h.object.userData.gymExit && h.distance < 4) { leaveGym(); return; }
+    // tap the READY board on the wall to ready up for tip-off (aim + click from
+    // anywhere on the court — it's a deliberate look at the sign)
+    if (h && h.object.userData.gymReady && !gymLive) { toggleReady(); return; }
     gymBall.click();
     return;
   }
@@ -2764,6 +2771,11 @@ const GYM = world.gym;
 const gymTeams = new Map();          // uid -> "red" | "blue" (for balance + display)
 let myGymTeam = "red";
 let gymBucketAt = 0;
+// match phase (Echo-style): you spawn into WARM-UP (free roam, unlimited boost,
+// makes don't count). everyone present readies up → TIP-OFF → live game (real
+// stamina rules, the board counts). gymReady holds the uids that are readied.
+let gymLive = false;
+const gymReady = new Set();
 
 // silent unless you're actually in the gym — recv() still runs everywhere to
 // keep ball state synced, but the bedroom shouldn't hear distant dribbles
@@ -2801,7 +2813,12 @@ const gymBall = makeGymBall(GYM, {
     return { x: g.grp.position.x, y: g.grp.position.y, z: g.grp.position.z, yaw: g.target.yaw };
   },
   team: () => myGymTeam,
-  autoAim: () => IS_TOUCH,    // mobile: aim is solved at the hoop; power (hold time) is the skill
+  // aim is auto-solved at the hoop you're facing for EVERYONE now (desktop too):
+  // the only skill is power (how long you hold). while winding up, the camera
+  // eases onto the backboard so you see exactly where it's going — a big assist
+  // that makes shooting readable for anybody, mouse or thumb.
+  autoAim: () => true,
+  live: () => gymLive,        // false during warm-up → makes don't count yet
   setAimLock: (pt) => { controls.aimLockTarget = pt; },   // ease camera onto the backboard while shooting
   // the best teammate to pass to: same team, the one you're most facing, in range
   passTarget: () => {
@@ -2820,10 +2837,24 @@ const gymBall = makeGymBall(GYM, {
     return best;
   },
   send: (p) => presence.sendAct({ kind: "bball", ...p }),
-  power: (c) => {
+  power: (c, opt) => {
     if (!gymPowerWrap) return;
-    if (c > 0) { gymPowerWrap.style.display = "block"; gymPowerEl.style.width = Math.round(c * 100) + "%"; }
-    else gymPowerWrap.style.display = "none";
+    if (c <= 0) { gymPowerWrap.style.display = "none"; return; }
+    gymPowerWrap.style.display = "block";
+    gymPowerEl.style.width = Math.round(c * 100) + "%";
+    // the active-reload marker: a bright line at the perfect-swish power, with a
+    // green sweet-zone band when a make is reachable (amber line if it can't be)
+    if (opt) {
+      gymPowerOpt.style.display = "block";
+      gymPowerOpt.style.left = (opt.opt * 100) + "%";
+      gymPowerOpt.style.background = opt.makeable ? "#eafff2" : "#ffd27a";
+      gymPowerOpt.style.boxShadow = opt.makeable ? "0 0 7px 1px #6bffb0" : "0 0 7px 1px #e0a050";
+      if (opt.makeable && opt.hi > opt.lo) {
+        gymPowerBand.style.display = "block";
+        gymPowerBand.style.left = (opt.lo * 100) + "%";
+        gymPowerBand.style.width = ((opt.hi - opt.lo) * 100) + "%";
+      } else gymPowerBand.style.display = "none";
+    } else { gymPowerOpt.style.display = "none"; gymPowerBand.style.display = "none"; }
   },
   sound: gymSound,
   toast,
@@ -2845,7 +2876,7 @@ controls.onLookTap(() => { if (inGym) gymBall.click(); });
 let gymHud = null, gymScoreEl = null, gymStamEl = null;
 // the throw meter: same slim green→yellow→red bar as the arcade pop-a-shot,
 // shown only while you wind up a shot
-let gymPowerWrap = null, gymPowerEl = null;
+let gymPowerWrap = null, gymPowerEl = null, gymPowerBand = null, gymPowerOpt = null;
 let gymDunkWrap = null, gymDunkFill = null, gymDunkLabel = null;
 function buildGymHud() {
   if (gymHud) return;
@@ -2862,24 +2893,27 @@ function buildGymHud() {
   document.body.appendChild(gymHud);
   gymScoreEl = gymHud.querySelector("#gym-score");
   gymStamEl = gymHud.querySelector("#gym-stam");
-  gymHud.querySelector("#gym-hint").textContent = IS_TOUCH
-    ? ""
-    : "WASD move · SPACE jump · SHIFT dash · hold CLICK to shoot · click to grab/steal · E pass";
-  // mobile: a clean screen — no score or text clutter, just the boost bar.
-  // the two thumbsticks carry move/look + boost (left edge) + grab (right tap).
-  if (IS_TOUCH) {
-    gymScoreEl.style.display = "none";
-    gymHud.querySelector("#gym-hint").style.display = "none";
-    gymHud.querySelector("#gym-boost-label").style.display = "none";
-  }
+  // a CLEAN screen on every device now: the score lives on the wall scoreboards
+  // and the controls/ready prompt on the wall READY board, so the only thing left
+  // up top is the slim boost gauge. no score line, no control hints, no clutter.
+  gymScoreEl.style.display = "none";
+  gymHud.querySelector("#gym-hint").style.display = "none";
+  gymHud.querySelector("#gym-boost-label").style.display = "none";
   // the arcade-style power meter, centered low on screen
   gymPowerWrap = document.createElement("div");
   gymPowerWrap.style.cssText =
     "position:fixed;left:50%;bottom:120px;transform:translateX(-50%);z-index:55;display:none;" +
     "width:200px;height:11px;border:1px solid #8a5a3a;border-radius:7px;overflow:hidden;background:rgba(0,0,0,.45)";
-  gymPowerWrap.innerHTML = '<div id="gym-power" style="height:100%;width:0;background:linear-gradient(90deg,#3bd17a,#ffd23c,#e23a52)"></div>';
+  // fill = current (oscillating) power; band = the makeable sweet zone for where
+  // you stand; opt line = the perfect-swish release point (active-reload marker)
+  gymPowerWrap.innerHTML =
+    '<div id="gym-power" style="position:absolute;left:0;top:0;height:100%;width:0;background:linear-gradient(90deg,#3bd17a,#ffd23c,#e23a52)"></div>' +
+    '<div id="gym-power-band" style="position:absolute;top:0;bottom:0;background:rgba(180,255,210,.4);display:none"></div>' +
+    '<div id="gym-power-opt" style="position:absolute;top:0;bottom:0;width:3px;margin-left:-1px;background:#eafff2;box-shadow:0 0 7px 1px #6bffb0;display:none"></div>';
   document.body.appendChild(gymPowerWrap);
   gymPowerEl = gymPowerWrap.querySelector("#gym-power");
+  gymPowerBand = gymPowerWrap.querySelector("#gym-power-band");
+  gymPowerOpt = gymPowerWrap.querySelector("#gym-power-opt");
   // the DUNK meter: appears in the paint near your hoop. jump to fill it; the
   // green window at the top is the moment to release for an automatic slam.
   gymDunkWrap = document.createElement("div");
@@ -2894,6 +2928,16 @@ function buildGymHud() {
   document.body.appendChild(gymDunkWrap);
   gymDunkFill = gymDunkWrap.querySelector("#gym-dunk-fill");
   gymDunkLabel = gymDunkWrap.querySelector("#gym-dunk-label");
+}
+// the WARM-UP / ready state lives entirely on the wall READY board now — no DOM
+// clutter. this just redraws that board (the live ready count, or GAME ON).
+let gymReadyKey = "";   // cache so we only redraw the board when state changes
+function updateGymWarm() {
+  if (!inGym) return;
+  const present = gymPresentUids();
+  let ready = 0; for (const uid of present) if (gymReady.has(uid)) ready++;
+  const key = `${gymLive}|${myReady()}|${ready}|${present.size}`;
+  if (key !== gymReadyKey) { gymReadyKey = key; try { GYM.setReady(gymLive, myReady(), ready, present.size); } catch (e) {} }
 }
 function updateDunkMeter() {
   if (!gymDunkWrap) return;
@@ -2920,9 +2964,10 @@ function updateGymHud() {
     " — " +
     `<span style='color:${!meRed ? "#7ab0ff" : "#5a9bff"}'>${!meRed ? "► " : ""}${s.blue} 🔵</span>`;
   gymStamEl.style.width = Math.round((controls.stamina || 0) * 100) + "%";
-  // grey while you carry (boost locked — Echo VR rule), cyan when ready,
-  // magenta while recharging
-  gymStamEl.style.background = controls.holdingBall ? "#566" : (controls.stamina > 0.3 ? "#2ff0ff" : "#ff3df0");
+  // green in warm-up (unlimited boost), grey while you carry in-game (boost
+  // locked — Echo VR rule), cyan when ready, magenta while recharging
+  gymStamEl.style.background = !gymLive ? "#3bff9d"
+    : controls.holdingBall ? "#566" : (controls.stamina > 0.3 ? "#2ff0ff" : "#ff3df0");
 }
 
 /* --- mobile touch controls for the gym: twin sticks (left=move+edge-boost,
@@ -2989,6 +3034,42 @@ function showGymUI(on) {
   if (on) updateGymHud();
 }
 
+/* --- warm-up → tip-off (the ready-up flow) --- */
+// who's actually in the gym right now: me + any peer we've heard a team for who
+// still has a live ghost. that's the set that has to ready up to start.
+function gymPresentUids() {
+  const set = new Set([identity.uid]);
+  for (const [uid] of gymTeams) if (uid !== identity.uid && ghosts.byUid.has(uid)) set.add(uid);
+  return set;
+}
+const myReady = () => gymReady.has(identity.uid);
+function setMyReady(on) {
+  if (gymLive) return;
+  if (on) gymReady.add(identity.uid); else gymReady.delete(identity.uid);
+  presence.sendAct({ kind: "bball", sub: "ready", uid: identity.uid, ready: on, t: Date.now() });
+  updateGymWarm();
+  maybeTipOff();
+}
+function toggleReady() { if (inGym && !gymLive) setMyReady(!myReady()); }
+// everyone present readied → I call the tip-off for the whole room (idempotent —
+// startGymGame guards on gymLive, and the broadcast makes every client agree)
+function maybeTipOff() {
+  if (gymLive || !inGym) return;
+  const present = gymPresentUids();
+  for (const uid of present) if (!gymReady.has(uid)) return;
+  presence.sendAct({ kind: "bball", sub: "start", t: Date.now() });
+  startGymGame();
+}
+function startGymGame() {
+  if (gymLive) return;
+  gymLive = true;
+  controls.gymWarmup = false;
+  gymReady.clear();
+  gymBall.startGame();          // 0–0, ball to centre
+  controls.stamina = 1;
+  if (inGym) { updateGymHud(); updateGymWarm(); toast("🏀 TIP-OFF! — game on, boost is limited now"); gymSound.swish(); }
+}
+
 // JOIN sign on the arcade court → ride out to the gym (auto-balanced team)
 function joinGym() {
   if (modalOpen || elevBusy) return;
@@ -3000,6 +3081,8 @@ function setupGym() {
   controls.gym = true;
   controls.gymY = 0; controls.vy = 0; controls.grounded = true; controls.stamina = 1;
   controls.pitch = 0;
+  // spawn into WARM-UP: unlimited boost, free roam, makes don't count yet
+  gymLive = false; gymReady.clear(); controls.gymWarmup = true; gymReadyKey = "";
   const sp = world.gymSpawnFor(myGymTeam);
   controls.pos.x = sp.x; controls.pos.z = sp.z; controls.yaw = sp.yaw;
   gymTeams.set(identity.uid, myGymTeam);
@@ -3011,10 +3094,11 @@ function setupGym() {
   store.logEvent("boat");          // counts as a portal trip
   progress.bump("trips");
   showGymUI(true);
+  updateGymWarm();
   // announce my team + ask everyone else's, so the count balances + displays
   presence.sendAct({ kind: "bball", sub: "team", uid: identity.uid, team: myGymTeam, t: Date.now() });
   presence.sendAct({ kind: "bball", sub: "teamq", uid: identity.uid, t: Date.now() });
-  toast(`🏀 you're on ${myGymTeam === "red" ? "🔴 RED" : "🔵 BLUE"} — attack the ${myGymTeam === "red" ? "EAST" : "WEST"} hoop`);
+  toast(`🏀 you're on ${myGymTeam === "red" ? "🔴 RED" : "🔵 BLUE"} — warm up, then READY to tip off`);
   hide(paused);
   if (entered) safeLock();
 }
@@ -3022,6 +3106,8 @@ function teardownGym() {
   gymBall.leave();
   inGym = false;
   controls.gym = false;
+  controls.gymWarmup = false;
+  gymLive = false; gymReady.clear();
   controls.gymY = 0; controls.vy = 0; controls.grounded = true;
   controls.touchJump = false; controls.touchSprint = false;
   controls.aimLockTarget = null;
@@ -3528,9 +3614,20 @@ addEventListener("keydown", (e) => {
       // team/teamq keep the roster balanced + the HUD honest
       if (p.sub === "team") {
         gymTeams.set(p.uid, p.team);
-        if (inGym) updateGymHud();
+        if (inGym) { updateGymHud(); updateGymWarm(); }
       } else if (p.sub === "teamq") {
-        if (inGym && p.uid !== identity.uid) presence.sendAct({ kind: "bball", sub: "team", uid: identity.uid, team: myGymTeam, t: Date.now() });
+        if (inGym && p.uid !== identity.uid) {
+          presence.sendAct({ kind: "bball", sub: "team", uid: identity.uid, team: myGymTeam, t: Date.now() });
+          // tell a newcomer the room's already tipped off so they sync to live
+          if (gymLive) presence.sendAct({ kind: "bball", sub: "phase", live: true, t: Date.now() });
+        }
+      } else if (p.sub === "ready") {
+        if (p.ready) gymReady.add(p.uid); else gymReady.delete(p.uid);
+        if (inGym) { updateGymWarm(); maybeTipOff(); }
+      } else if (p.sub === "start") {
+        if (inGym) startGymGame();
+      } else if (p.sub === "phase") {
+        if (inGym && p.live) startGymGame();
       } else {
         gymBall.recv(p);
         if (inGym && (p.sub === "score")) updateGymHud();
@@ -3727,6 +3824,7 @@ renderer.setAnimationLoop(() => {
     gymBall.tick(dt);
     updateGymHud();
     updateDunkMeter();
+    if (!gymLive) updateGymWarm();    // keep the ready count fresh as peers come/go
   }
   // basketball is free-roam — tick it every frame with your live pose; it only
   // does anything once you're standing on the court

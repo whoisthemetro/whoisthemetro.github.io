@@ -6488,11 +6488,19 @@ export function buildWorld() {
       sbTex.needsUpdate = true;
     };
     drawSB(0, 0);
-    for (const sz of [-1, 1]) {
-      const sb = new THREE.Mesh(new THREE.PlaneGeometry(3.0, 1.17),
+    // a scoreboard mounted high on each BASELINE wall, above its hoop, facing
+    // into the court — like a real gym (no more board dangling over centre).
+    // both share sbTex, so drawSB() updates them together.
+    const sbY = 5.7;
+    for (const side of [-1, 1]) {
+      const sb = new THREE.Mesh(new THREE.PlaneGeometry(3.5, 1.37),
         new THREE.MeshBasicMaterial({ map: sbTex }));
-      sb.position.set(GX, CEIL - 1.4, GZ + sz * 0.3);
-      sb.rotation.y = sz < 0 ? Math.PI : 0; add(sb);
+      sb.position.set(GX + side * (WX - 0.18), sbY, GZ);
+      sb.rotation.y = side < 0 ? Math.PI / 2 : -Math.PI / 2;   // face toward centre
+      add(sb);
+      // a dark backer box so it reads as a mounted unit, not a floating panel
+      const back = box(0.12, 1.56, 3.7, lam(0x0a0c14));
+      back.position.set(GX + side * (WX - 0.05), sbY, GZ); add(back);
     }
 
     // --- aim guide: a faint parabola while you wind up a shot ---
@@ -6564,6 +6572,41 @@ export function buildWorld() {
     exitSign.rotation.y = Math.PI / 2;
     exitSign.userData.gymExit = true; add(exitSign);
 
+    // --- the READY board: a big lit panel on each sideline wall. tap it to ready
+    // up; when everyone present is ready the game tips off. main.js redraws it
+    // via setReady() with the live ready count. both share one canvas/texture. ---
+    const readyCv = document.createElement("canvas"); readyCv.width = 512; readyCv.height = 256;
+    const readyTex = new THREE.CanvasTexture(readyCv); readyTex.colorSpace = THREE.SRGBColorSpace;
+    const drawReady = (live, mine, ready, total) => {
+      const g = readyCv.getContext("2d");
+      g.fillStyle = "#0a0c12"; g.fillRect(0, 0, 512, 256);
+      g.textAlign = "center"; g.textBaseline = "middle";
+      if (live) {
+        g.strokeStyle = "#3bff9d"; g.lineWidth = 9; g.strokeRect(10, 10, 492, 236);
+        g.fillStyle = "#3bff9d"; g.shadowColor = "#3bff9d"; g.shadowBlur = 22;
+        g.font = "900 68px monospace"; g.fillText("GAME ON", 256, 128);
+      } else {
+        const col = mine ? "#ffd23c" : "#3bff9d";
+        g.strokeStyle = col; g.lineWidth = 9; g.strokeRect(10, 10, 492, 236);
+        g.fillStyle = col; g.shadowColor = col; g.shadowBlur = 20;
+        g.font = "900 54px monospace"; g.fillText(mine ? "✓ YOU'RE READY" : "TAP TO READY", 256, 86);
+        g.shadowBlur = 0;
+        g.fillStyle = "#eaf2ff"; g.font = "900 46px monospace"; g.fillText(`${ready} / ${total} ready`, 256, 156);
+        g.fillStyle = "#9adcff"; g.font = "800 26px monospace"; g.fillText("all ready = tip-off", 256, 208);
+      }
+      readyTex.needsUpdate = true;
+    };
+    drawReady(false, false, 0, 1);
+    const readyHits = [];
+    for (const sz of [-1, 1]) {
+      const rs = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 1.3),
+        new THREE.MeshBasicMaterial({ map: readyTex, transparent: true }));
+      rs.position.set(GX, 2.55, GZ + sz * (HALFW + 2.0));   // high on each sideline wall, above the bleachers
+      rs.rotation.y = sz < 0 ? 0 : Math.PI;                 // face inward toward centre
+      rs.userData.gymReady = true; rs.userData.cullRoom = "gym"; add(rs);
+      readyHits.push(rs);
+    }
+
     return {
       info: { x: GX, z: GZ }, ceilY: CEIL, floorY: 0, ballR,
       // where the ball may roam: full length to the baseline walls, but the
@@ -6580,6 +6623,7 @@ export function buildWorld() {
       hoops, ball, mesh: ball, setArc, hideGuide,
       setScore: drawSB, burst, updateParticles,
       joinHit: joinSign, exitHit: exitSign,
+      readyHits, setReady: drawReady,
     };
   })();
 

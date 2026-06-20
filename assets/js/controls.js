@@ -49,6 +49,7 @@ export class Controls {
     this.touchJump = false;   // mobile buttons set these; desktop uses keys
     this.touchSprint = false;
     this.holdingBall = false; // true while you carry the gym ball (blocks boost)
+    this.gymWarmup = false;   // warm-up (pre-tipoff): unlimited boost, free roam
     this._jumpHeld = false;
     this._sprinting = false;
     // zero-g flight (THE CREW arena)
@@ -325,9 +326,16 @@ export class Controls {
     // quarter — the cooldown feel, no infinite running.
     // boost: SHIFT, the touch button, OR shoving the move-stick to its outer
     // edge (mobile stand-in for "press harder"). never while you carry the ball.
+    // WARM-UP (before the room readies up): unlimited boost so it's easy to move
+    // around — the meter stays pinned full and even carrying the ball can't lock
+    // it. once the game tips off the real Echo-style stamina rules below kick in.
     const stickBoost = Math.hypot(this.joy.x, this.joy.y) > 0.92;
-    const wantSprint = (this.keys.has("ShiftLeft") || this.keys.has("ShiftRight") || this.touchSprint || stickBoost) && !this.holdingBall;
-    if (wantSprint && len > 0.01 && this.stamina > 0.02 && (this._sprinting || this.stamina > 0.3)) {
+    const warmup = this.gymWarmup;
+    const wantSprint = (this.keys.has("ShiftLeft") || this.keys.has("ShiftRight") || this.touchSprint || stickBoost) && (warmup || !this.holdingBall);
+    if (warmup) {
+      this.stamina = 1;
+      this._sprinting = wantSprint && len > 0.01;
+    } else if (wantSprint && len > 0.01 && this.stamina > 0.02 && (this._sprinting || this.stamina > 0.3)) {
       this._sprinting = true;
       this.stamina = Math.max(0, this.stamina - dt / GYM_STAM_DRAIN);
       if (this.stamina <= 0) this._sprinting = false;
