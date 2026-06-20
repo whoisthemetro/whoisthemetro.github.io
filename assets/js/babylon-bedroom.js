@@ -470,6 +470,26 @@ box("rneedle", 0.0035, 0.036, 0.004, 0.05, 0.075, 0.0625, emis("rneedle", 0xff40
 [-0.075, 0.075].forEach((kx) => cyl("rknob" + kx, 0.011, 0.013, 0.012, kx, 0.028, 0.061, matte("rknob", 0x2a2622), radio, 16, false).rotation.x = Math.PI / 2);
 cyl("rant", 0.0022, 0.0035, 0.2, 0.085, 0.13, -0.045, metal("rant", 0xb8bcc2, 0.8, 0.3), radio, 6, false).rotation.z = -0.5;
 
+// ---- realistic hero prop: a real PBR boombox (Khronos "BoomBox", CC0) replaces the box radio ----
+let heroFit = { s: 1, ry: 2.4, x: 0.13, y: 0.80, z: -0.05 }; // tuned live below
+async function loadHeroProps() {
+  try {
+    const res = await B.SceneLoader.ImportMeshAsync("", "/assets/models/", "BoomBox.glb", scene);
+    const root = res.meshes[0];
+    const { min, max } = root.getHierarchyBoundingVectors();
+    const size = max.subtract(min);
+    const s = 0.30 / Math.max(size.x, size.y, size.z); // fit to ~0.30 m on its longest side
+    root.scaling.scaleInPlace(s);
+    root.parent = rack;
+    root.position.set(heroFit.x, heroFit.y, heroFit.z);
+    root.rotation = new V3(0, heroFit.ry, 0);
+    for (const m of res.meshes) { if (m.getTotalVertices && m.getTotalVertices() > 0) { m.receiveShadows = true; try { shadow.addShadowCaster(m); } catch {} } }
+    radio.setEnabled(false); // hide the procedural radio (kept as fallback)
+    window.METRO_BJS && (window.METRO_BJS.boombox = root);
+    return root;
+  } catch (e) { console.warn("hero prop load failed — keeping procedural radio", e); }
+}
+
 // --- lava lamp (on the rack) ---
 const lava = node("lava", -0.17, 0.68, -0.12, rack);
 const lampGold = matte("lampGold", 0x8a6a3a);
@@ -804,7 +824,7 @@ scene.onPointerObservable.add((p) => {
 window.addEventListener("resize", () => engine.resize());
 engine.runRenderLoop(() => scene.render());
 setProg(72, "almost…");
-scene.whenReadyAsync().then(async () => { setProg(88, "physics…"); await initPhysics(); setProg(100, "enter ▸"); enterBtn.disabled = false; });
+scene.whenReadyAsync().then(async () => { setProg(82, "loading models…"); await loadHeroProps(); setProg(90, "physics…"); await initPhysics(); setProg(100, "enter ▸"); enterBtn.disabled = false; });
 
 let entered = false;
 function enter() {
