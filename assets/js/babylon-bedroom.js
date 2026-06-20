@@ -50,7 +50,7 @@ ip.colorCurves = grade;
 
 const envTex = B.CubeTexture.CreateFromPrefilteredData("https://assets.babylonjs.com/environments/environmentSpecular.env", scene);
 scene.environmentTexture = envTex;
-scene.environmentIntensity = 0.4;
+scene.environmentIntensity = 0.16;
 
 // =====================================================================
 // helpers
@@ -541,11 +541,11 @@ const az = 0.3, alt = 0.26;
 const sun = new B.SpotLight("sun", new V3(Math.sin(az) * 10, WIN.cy + Math.tan(alt) * 10, ZF - 10), new V3(-Math.sin(az), -0.5, 1).normalize(), 1.3, 6, scene);
 sun.intensity = 3.4; sun.diffuse = C(0xfff0d8); sun.range = 80;
 const shadow = new B.ShadowGenerator(2048, sun);
-shadow.usePercentageCloserFiltering = true; shadow.filteringQuality = B.ShadowGenerator.QUALITY_HIGH; shadow.bias = 0.0011; shadow.normalBias = 0.02; shadow.darkness = 0.4;
-const windowLight = new B.PointLight("winLight", new V3(0, 1.6, ZF + 0.6), scene); windowLight.diffuse = C(0xffe9c0); windowLight.intensity = 2.4; windowLight.range = 5.5;
+shadow.usePercentageCloserFiltering = true; shadow.filteringQuality = B.ShadowGenerator.QUALITY_HIGH; shadow.bias = 0.0011; shadow.normalBias = 0.02; shadow.darkness = 0.16;
+const windowLight = new B.PointLight("winLight", new V3(0, 1.6, ZF + 0.6), scene); windowLight.diffuse = C(0xffe9c0); windowLight.intensity = 2.2; windowLight.range = 3.8;
 const lavaLight = new B.PointLight("lavaLight", new V3(0, 0, 0), scene); lavaLight.parent = lava; lavaLight.position.set(0, 0.15, 0); lavaLight.diffuse = C(0xff8040); lavaLight.intensity = 0.85; lavaLight.range = 0.95;
 const neonLight = new B.PointLight("neonLight", new V3(0, 1.62, 0.4), scene); neonLight.parent = entry; neonLight.diffuse = C(0xff4d2e); neonLight.intensity = 1.3; neonLight.range = 1.7;
-const screenGlow = new B.PointLight("screenGlow", new V3(0, 1.19, 0.1), scene); screenGlow.parent = desk; screenGlow.position.set(0, 0.45, 0.1); screenGlow.diffuse = C(0x8fb6ff); screenGlow.intensity = 2.4; screenGlow.range = 2.6;
+const screenGlow = new B.PointLight("screenGlow", new V3(0, 1.19, 0.1), scene); screenGlow.parent = desk; screenGlow.position.set(0, 0.45, 0.1); screenGlow.diffuse = C(0x8fb6ff); screenGlow.intensity = 1.7; screenGlow.range = 1.7;
 
 // the bright sun disc outside, for the god-rays
 const sunDisc = B.MeshBuilder.CreatePlane("sunDisc", { size: 1.25 }, scene); sunDisc.position.set(Math.sin(az) * 3.2, 2.2, ZF - 2.4);
@@ -553,7 +553,7 @@ const sunDiscMat = emis("sunDiscMat", 0xffffff, { glow: false }); sunDiscMat.emi
 
 // ---- switchable lighting moods (press L to cycle) ----
 const MOODS = [
-  { id: "golden", label: "golden hour", sun: 3.4, sunCol: 0xfff0d8, hemi: 0.32, hSky: 0x8a96a8, hGnd: 0x2a241c, win: 2.4, sky: [0.50, 0.49, 0.48], exp: 0.90, lamp: 0, disc: [1.35, 1.05, 0.72] },
+  { id: "golden", label: "golden hour", sun: 4.6, sunCol: 0xfff0d8, hemi: 0.14, hSky: 0x8a96a8, hGnd: 0x2a241c, win: 2.2, sky: [0.50, 0.49, 0.48], exp: 0.90, lamp: 0, disc: [1.35, 1.05, 0.72] },
   { id: "midday", label: "midday sun", sun: 5.6, sunCol: 0xfff6e8, hemi: 0.60, hSky: 0xbcd0ec, hGnd: 0x6a5e4c, win: 3.0, sky: [0.92, 0.93, 0.98], exp: 0.95, lamp: 0, disc: [1.90, 1.80, 1.60] },
   { id: "studio", label: "clean studio", sun: 2.4, sunCol: 0xffffff, hemi: 0.90, hSky: 0xc8ccd4, hGnd: 0x8a8680, win: 2.0, sky: [0.70, 0.70, 0.72], exp: 0.96, lamp: 3, disc: [1.00, 1.00, 1.00] },
   { id: "night", label: "night · neon", sun: 0.12, sunCol: 0x9fb6e8, hemi: 0.10, hSky: 0x3a4660, hGnd: 0x1a1610, win: 0.4, sky: [0.12, 0.13, 0.22], exp: 1.06, lamp: 7, disc: [0.18, 0.22, 0.40] },
@@ -573,7 +573,9 @@ let moodIdx = 0; applyMood(MOODS[moodIdx]);
 // =====================================================================
 // SHADOWS — register casters, big surfaces receive
 // =====================================================================
-for (const m of casters) { try { shadow.addShadowCaster(m, true); } catch {} }
+// only SOLID things cast shadows — emissive bits (LEDs, screens, neon, drum rims,
+// lava blobs, guitar strings) are light, not occluders, so skip them.
+for (const m of casters) { try { if (m.material && m.material.disableLighting) continue; shadow.addShadowCaster(m, true); } catch {} }
 
 // =====================================================================
 // POST — glow, default pipeline, SSAO, god-rays
@@ -603,7 +605,7 @@ const EYE_H = 1.62; // 5'8" eye height — desk (0.74) lands at mid-thigh, same 
 const camera = new B.UniversalCamera("cam", new V3(0.2, EYE_H, 1.4), scene);
 camera.setTarget(new V3(0, EYE_H, ZF));
 camera.attachControl(canvas, true);
-camera.minZ = 0.05; camera.fov = 1.18; camera.speed = 0.34; camera.inertia = 0.72; camera.angularSensibility = 2400;
+camera.minZ = 0.05; camera.fov = 1.18; camera.speed = 0.20; camera.inertia = 0.72; camera.angularSensibility = 2400;
 camera.keysUp = [87, 38]; camera.keysDown = [83, 40]; camera.keysLeft = [65, 37]; camera.keysRight = [68, 39];
 // FIXED eye height — no gravity. the flat floor doesn't need it, and gravity+ellipsoid
 // was making the camera CLIMB while walking (1.50 → 1.79). collisions stay on for walls/furniture.
