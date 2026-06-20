@@ -169,30 +169,50 @@ const blindsTex = dyn("blinds", 720, 280, (c, w, h) => {
   c.fillStyle = "rgba(120,113,97,1)"; c.fillRect(0, 0, w, 10);
 });
 
-// ---- the LA window sky (dusk golden hour over downtown) ----
-const skyTex = dyn("sky", 720, 280, (c, w, h) => {
-  const g = c.createLinearGradient(0, 0, 0, h);
-  g.addColorStop(0, "#2a3c5e"); g.addColorStop(0.55, "#7a4f6a"); g.addColorStop(0.8, "#d88a52"); g.addColorStop(1, "#ffc878");
-  c.fillStyle = g; c.fillRect(0, 0, w, h);
-  // sun glow low-right
-  let s = c.createRadialGradient(520, 150, 6, 520, 150, 130); s.addColorStop(0, "rgba(255,247,224,.95)"); s.addColorStop(.3, "rgba(255,220,150,.5)"); s.addColorStop(1, "rgba(255,200,120,0)"); c.fillStyle = s; c.fillRect(360, 20, 320, 230);
-  c.fillStyle = "#fff7e0"; c.beginPath(); c.arc(520, 150, 18, 0, 7); c.fill();
-  // night-glow band near the skyline
-  let ng = c.createLinearGradient(0, 280, 0, 160); ng.addColorStop(0, "rgba(255,150,70,.4)"); ng.addColorStop(1, "rgba(255,150,70,0)"); c.fillStyle = ng; c.fillRect(0, 160, w, 120);
-  // far ridge
-  const r = (i) => { const v = Math.abs(Math.sin(i * 127.1) * 43758.5453); return v - Math.floor(v); };
-  c.fillStyle = "rgba(70,60,80,.85)"; for (let i = 0; i < 26; i++) { const x = i * 30 - 12, bw = 20 + r(i) * 20, bh = 12 + r(i + 9) * 16; c.fillRect(x, h - bh, bw, bh); }
-  // downtown towers
-  const heights = [78, 64, 96, 58, 110, 72, 122, 66, 88, 96, 54]; let x = 340;
-  for (let i = 0; i < heights.length; i++) {
-    const bh = heights[i], bw = 24 + r(i + 3) * 16, top = h - bh;
-    c.fillStyle = "#1a1426"; c.fillRect(x, top, bw, bh);
-    // lit windows
-    for (let k = 0; k < (bh * bw) / 48; k++) { const wr = r(i * 31 + k); if (wr < 0.5) { c.fillStyle = wr < 0.12 ? "rgba(170,210,255,.8)" : `rgba(255,${200 + wr * 40},130,${0.45 + wr * 0.4})`; c.fillRect(x + 3 + (k * 7) % (bw - 6), top + 6 + ((k * 11) % (bh - 10)), 1.8, 2.4); } }
-    if (bh === 122) { c.fillStyle = "#ff2030"; c.fillRect(x + bw - 3, top - 3, 4, 4); } // Wilshire Grand beacon
-    x += bw + 4 + r(i + 7) * 12;
+// ---- the LA window sky — redrawn for the real time of day (drawSky below) ----
+const skyTex = new B.DynamicTexture("sky", { width: 720, height: 280 }, scene, true);
+skyTex.vScale = -1; skyTex.vOffset = 1;
+const skyStars = Array.from({ length: 90 }, () => ({ x: Math.random() * 720, y: Math.random() * 200, r: Math.random() }));
+const rnd = (i) => { const v = Math.abs(Math.sin(i * 127.1) * 43758.5453); return v - Math.floor(v); };
+const TOWERS = [78, 64, 96, 58, 110, 72, 122, 66, 88, 96, 54];
+// sunAz/sunAlt/moonAlt in radians, frac = moon illumination, clouds 0..1
+function drawSky(sunAz, sunAlt, moonAlt, frac, clouds) {
+  const c = skyTex.getContext(), w = 720, h = 280, aD = sunAlt * 180 / Math.PI;
+  let top, bot;
+  if (aD > 5) { top = "#7fb2e0"; bot = "#c8dcec"; }
+  else if (aD > -6) { top = "#2a3c5e"; bot = "#d88a52"; }
+  else if (aD > -12) { top = "#141d33"; bot = "#3a3550"; }
+  else { top = "#0a0f1f"; bot = "#1a2030"; }
+  const g = c.createLinearGradient(0, 0, 0, h); g.addColorStop(0, top); g.addColorStop(1, bot); c.fillStyle = g; c.fillRect(0, 0, w, h);
+  // stars when dark and clear
+  if (aD < -8 && clouds < 0.55) for (const s of skyStars) { c.fillStyle = `rgba(255,255,255,${(0.25 + s.r * 0.5) * (1 - clouds)})`; const sz = s.r > 0.8 ? 2 : 1.4; c.fillRect(s.x, s.y, sz, sz); }
+  // night sky-glow band over downtown
+  if (aD < -4) { const ng = c.createLinearGradient(0, 280, 0, 160); ng.addColorStop(0, "rgba(255,150,70,.4)"); ng.addColorStop(1, "rgba(255,150,70,0)"); c.fillStyle = ng; c.fillRect(0, 160, w, 120); }
+  // the sun, mapped from az/alt to the canvas
+  const azD = sunAz * 180 / Math.PI;
+  if (aD > -2 && Math.abs(azD) < 75) {
+    const sx = 360 + (azD / 60) * 320, sy = 250 - (Math.min(aD, 60) / 60) * 235;
+    const gl = c.createRadialGradient(sx, sy, 4, sx, sy, 130); gl.addColorStop(0, "rgba(255,247,224,.92)"); gl.addColorStop(.35, "rgba(255,220,150,.4)"); gl.addColorStop(1, "rgba(255,200,120,0)"); c.fillStyle = gl; c.fillRect(sx - 140, sy - 140, 280, 280);
+    if (aD > -1) { c.fillStyle = "#fff7e0"; c.beginPath(); c.arc(sx, sy, 16, 0, 7); c.fill(); }
   }
-}, { flip: true });
+  // skyline (far ridge + downtown), day vs night palette
+  const night = aD < -4;
+  c.fillStyle = night ? "rgba(12,14,22,.95)" : "rgba(70,60,80,.8)";
+  for (let i = 0; i < 26; i++) { const x = i * 30 - 12, bw = 20 + rnd(i) * 20, bh = 12 + rnd(i + 9) * 16; c.fillRect(x, h - bh, bw, bh); }
+  let x = 340;
+  for (let i = 0; i < TOWERS.length; i++) {
+    const bh = TOWERS[i], bw = 24 + rnd(i + 3) * 16, t = h - bh;
+    c.fillStyle = night ? "#0c0e16" : "rgba(70,80,95,.9)"; c.fillRect(x, t, bw, bh);
+    if (night) for (let k = 0; k < (bh * bw) / 48; k++) { const wr = rnd(i * 31 + k); if (wr < 0.5) { c.fillStyle = wr < 0.12 ? "rgba(170,210,255,.8)" : `rgba(255,${200 + wr * 40},130,${0.45 + wr * 0.4})`; c.fillRect(x + 3 + (k * 7) % (bw - 6), t + 6 + ((k * 11) % (bh - 10)), 1.8, 2.4); } }
+    if (bh === 122 && night) { c.fillStyle = "#ff2030"; c.fillRect(x + bw - 3, t - 3, 4, 4); }
+    x += bw + 4 + rnd(i + 7) * 12;
+  }
+  // clouds
+  if (clouds > 0.1) { const dk = aD > 0 ? 225 : 38; for (let i = 0; i < clouds * 16; i++) { c.fillStyle = `rgba(${dk},${dk},${dk + 6},${0.1 + clouds * 0.16})`; c.beginPath(); c.ellipse(((i * 137) % 760) - 20, 20 + ((i * 71) % 140), 90 + (i * 31) % 70, 22 + (i * 13) % 16, 0, 0, 7); c.fill(); } }
+  // moon with phase (when up and sky dark enough)
+  if (moonAlt > 0 && aD < 2) { const mx = 200, my = 230 - (Math.min(moonAlt * 180 / Math.PI, 60) / 60) * 200, br = 0.55 + 0.45 * frac; c.fillStyle = `rgba(235,240,248,${br})`; c.beginPath(); c.arc(mx, my, 13, 0, 7); c.fill(); c.fillStyle = "rgba(10,15,31,.85)"; c.beginPath(); c.arc(mx + 26 * (1 - frac) * 0.6, my, 13, 0, 7); c.fill(); }
+  skyTex.update(false);
+}
 const rainTex = dyn("rain", 256, 256, (c, w, h) => {
   for (let i = 0; i < 46; i++) { const x = Math.random() * w, y = Math.random() * h, len = 18 + Math.random() * 60; const g = c.createLinearGradient(x, y, x, y + len); g.addColorStop(0, "rgba(200,220,240,0)"); g.addColorStop(.8, `rgba(200,220,240,${0.25 + Math.random() * 0.3})`); g.addColorStop(1, "rgba(230,240,250,.6)"); c.fillStyle = g; c.fillRect(x, y, 1.4, len); c.fillStyle = "rgba(220,235,250,.5)"; c.fillRect(x - 0.6, y + len, 2.6, 2.6); }
 });
@@ -568,7 +588,70 @@ function applyMood(m) {
   roomLamp.intensity = m.lamp;
   fixtureGlow.material.emissiveColor = m.lamp > 0.5 ? C(0xffe2b8) : C(0x222222);
 }
-let moodIdx = 0; applyMood(MOODS[moodIdx]);
+// =====================================================================
+// LIVE ENVIRONMENT — real day/night from your location, dynamic sky, astro, weather
+// =====================================================================
+let LAT = 33.9164, LNG = -118.3526;   // Hawthorne, CA — fallback; geolocation overrides
+const weather = { clouds: 0, rain: 0 };
+let envAcc = 0;
+
+// astro ceiling — a star field + Big Dipper that fades in after dusk
+const astroTex = new B.DynamicTexture("astro", { width: 512, height: 512 }, scene, true);
+const astroStars = Array.from({ length: 70 }, () => ({ a: Math.random() * 7, r: 26 + Math.random() * 214, s: Math.random() }));
+const DIPPER = [[0.17, 0.30], [0.29, 0.34], [0.41, 0.36], [0.51, 0.40], [0.54, 0.52], [0.43, 0.56], [0.39, 0.46]];
+function drawAstro(rot) {
+  const c = astroTex.getContext(), cx = 256, cy = 256; c.clearRect(0, 0, 512, 512);
+  for (const s of astroStars) { const a = s.a + rot, x = cx + Math.cos(a) * s.r, y = cy + Math.sin(a) * s.r, rr = s.s > 0.85 ? 2.4 : 1.4; const gl = c.createRadialGradient(x, y, 0, x, y, rr * 2.6); gl.addColorStop(0, `rgba(255,255,255,${0.5 + s.s * 0.5})`); gl.addColorStop(1, "rgba(255,255,255,0)"); c.fillStyle = gl; c.beginPath(); c.arc(x, y, rr * 2.6, 0, 7); c.fill(); }
+  c.strokeStyle = "rgba(150,180,235,.5)"; c.lineWidth = 1.4; c.beginPath(); DIPPER.forEach(([px, py], i) => { const x = px * 512, y = py * 512; i ? c.lineTo(x, y) : c.moveTo(x, y); }); c.stroke();
+  c.fillStyle = "rgba(190,205,235,.6)"; c.font = "15px monospace"; c.fillText("ursa major", 90, 320);
+  astroTex.update(false);
+}
+const astroMat = new B.StandardMaterial("astroMat", scene); astroMat.emissiveTexture = astroTex; astroMat.emissiveTexture.hasAlpha = true; astroMat.diffuseColor = new B.Color3(0, 0, 0); astroMat.disableLighting = true; astroMat.alphaMode = B.Engine.ALPHA_ADD; astroMat.backFaceCulling = false;
+const astro = B.MeshBuilder.CreateGround("astroCeil", { width: W - 0.12, height: D - 0.12 }, scene); astro.material = astroMat; astro.position.y = H - 0.04; astro.rotation.x = Math.PI; astro.isVisible = false;
+
+// the daylight driver — aims the sun/moon through the window and recolors everything
+let autoMode = true;
+function updateEnv(date) {
+  if (!window.SunCalc) { applyMood(MOODS[0]); return; }
+  const sp = SunCalc.getPosition(date, LAT, LNG), mp = SunCalc.getMoonPosition(date, LAT, LNG), mi = SunCalc.getMoonIllumination(date);
+  const sunAlt = sp.altitude, moonAlt = mp.altitude, frac = mi.fraction;
+  const useSun = sunAlt > -0.05;
+  const az = Math.max(-0.9, Math.min(0.9, useSun ? sp.azimuth : mp.azimuth));
+  const alt = Math.max(useSun ? sunAlt : moonAlt, 0.06);
+  sun.position.set(Math.sin(az) * 10, WIN.cy + Math.tan(alt) * 10, ZF - 10);
+  sun.setDirectionToTarget(new V3(0, 0.6, 0));
+  sunDisc.position.set(Math.sin(az) * 3.0, 1.0 + Math.tan(alt) * 2.6, ZF - 2.4);
+  // phase → colors + (deliberately low-ambient) intensities, keeping light only from the window
+  let beamC, beamI, winC, winI, hS, hG, hI, skyS, disc, lamp;
+  if (sunAlt > 0) { const k = Math.sin(Math.min(sunAlt, 1.2)); beamC = 0xfff2da; beamI = 2.6 + 4.2 * k; winC = 0xfff0d8; winI = 1.4 + 1.6 * k; hS = 0xaebbd0; hG = 0x6a5e4c; hI = 0.12 + 0.08 * k; skyS = 0.85 + 0.15 * k; disc = [0.5 + 1.2 * k, 0.45 + 1.1 * k, 0.4 + 0.95 * k]; lamp = 0; }
+  else if (sunAlt > -0.2) { const k = 1 + sunAlt / 0.2; beamC = 0xe8a060; beamI = 1.4 + 3.0 * k; winC = 0xd8915a; winI = 1.0 + 1.4 * k; hS = 0x9a8da0; hG = 0x4a4034; hI = 0.1 + 0.05 * k; skyS = 0.45 + 0.35 * k; disc = [0.4 + 1.0 * k, 0.28 + 0.7 * k, 0.2 + 0.5 * k]; lamp = 1.5 * (1 - k); }
+  else if (moonAlt > 0) { const k = Math.sin(moonAlt) * frac; beamC = 0xbfd0ee; beamI = 0.4 + 1.4 * k; winC = 0x9fb6e8; winI = 0.3 + 1.0 * k; hS = 0x6a7890; hG = 0x2a241c; hI = 0.08; skyS = 0.16 + 0.12 * k; disc = [0.08 + 0.25 * k, 0.1 + 0.3 * k, 0.16 + 0.45 * k]; lamp = 4; }
+  else { beamC = 0x7a7080; beamI = 0.08; winC = 0x8a7a9a; winI = 0.3; hS = 0x565e6e; hG = 0x241f18; hI = 0.07; skyS = 0.12; disc = [0.06, 0.07, 0.13]; lamp = 5; }
+  const dim = Math.max(0.2, 1 - 0.6 * weather.clouds - (weather.rain ? 0.1 : 0));
+  beamI *= dim; winI *= Math.max(0.4, 1 - 0.4 * weather.clouds);
+  sun.diffuse = C(beamC); sun.intensity = beamI;
+  windowLight.diffuse = C(winC); windowLight.intensity = winI;
+  hemi.diffuse = C(hS); hemi.groundColor = C(hG); hemi.intensity = hI;
+  sunDiscMat.emissiveColor.set(disc[0], disc[1], disc[2]);
+  skyMat.emissiveColor.set(0.6 * skyS, 0.59 * skyS, 0.58 * skyS);
+  roomLamp.intensity = 0; fixtureGlow.material.emissiveColor = C(0x222222); // auto cycle = light only from outside; lamp stays a manual control
+  ip.exposure = sunAlt > 0 ? 0.92 : sunAlt > -0.2 ? 0.95 : 1.04;
+  drawSky(sp.azimuth, sunAlt, moonAlt, frac, weather.clouds);
+  rainPane.isVisible = weather.rain > 0; rainMat.alpha = weather.rain > 0 ? 0.55 : 0;
+  const fade = Math.max(0, Math.min(1, (-sunAlt * 57.3 - 4) / 6));
+  astro.isVisible = fade > 0.02; astroMat.emissiveColor = new B.Color3(fade * 2, fade * 2, fade * 2.1);
+  if (astro.isVisible) drawAstro((date.getHours() * 3600 + date.getMinutes() * 60) / 86400 * Math.PI * 2);
+}
+
+// weather from Open-Meteo (CORS-open, no key)
+async function fetchWeather() {
+  try { const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LNG}&current=cloud_cover,precipitation`); const j = await r.json(); const cur = j.current || {}; weather.clouds = (cur.cloud_cover || 0) / 100; weather.rain = cur.precipitation > 0.5 ? 2 : cur.precipitation > 0.05 ? 1 : 0; } catch (e) { /* clear on failure */ }
+}
+// the visitor's real location, with Hawthorne as the fallback
+if (navigator.geolocation) navigator.geolocation.getCurrentPosition((p) => { LAT = p.coords.latitude; LNG = p.coords.longitude; fetchWeather().then(() => { if (autoMode) updateEnv(new Date()); }); }, () => { }, { timeout: 8000, maximumAge: 6e5 });
+fetchWeather();
+updateEnv(new Date());
+let moodIdx = -1; // -1 = auto (real time at your location); 0..n = a frozen mood
 
 // =====================================================================
 // SHADOWS — register casters, big surfaces receive
@@ -648,6 +731,9 @@ let clockAcc = 0;
 
 scene.onBeforeRenderObservable.add(() => {
   const dt = Math.min(0.05, engine.getDeltaTime() / 1000); T += dt;
+  // re-read the real sun/moon every few seconds (cheap; the sky only changes slowly)
+  envAcc += dt; if (envAcc > 4) { envAcc = 0; if (autoMode) updateEnv(new Date()); }
+  if (rainPane.isVisible) rainTex.vOffset -= dt * (weather.rain === 2 ? 0.5 : 0.25);
   drawDaw(T); drawMeter(T); clockAcc += dt; if (clockAcc > 1) { clockAcc = 0; drawClock(); }
   // lava blobs
   for (const b of blobs) { const k = Math.sin(T * b._speed + b._phase); b.position.y = 0.10 + (k * 0.5 + 0.5) * 0.085; b.position.x = Math.sin(T * b._speed * 0.7 + b._phase * 2) * 0.012; b.position.z = Math.cos(T * b._speed * 0.6 + b._phase) * 0.012; b.scaling.y = 1 + 0.35 * Math.sin(T * b._speed * 1.9 + b._phase); }
@@ -733,7 +819,17 @@ enterBtn.addEventListener("click", enter);
 // press L to cycle the lighting mood (golden hour → midday → studio → night/neon)
 function flashHint(t) { hint.textContent = t; hint.classList.add("show"); clearTimeout(flashHint._t); flashHint._t = setTimeout(() => hint.classList.remove("show"), 2400); }
 window.addEventListener("keydown", (e) => {
-  if (e.code === "KeyL") { moodIdx = (moodIdx + 1) % MOODS.length; applyMood(MOODS[moodIdx]); flashHint("lighting: " + MOODS[moodIdx].label); }
+  if (e.code !== "KeyL") return;
+  moodIdx = moodIdx + 1 >= MOODS.length ? -1 : moodIdx + 1;
+  if (moodIdx < 0) { autoMode = true; updateEnv(new Date()); flashHint("lighting: auto — real time at your location"); }
+  else { autoMode = false; applyMood(MOODS[moodIdx]); flashHint("lighting: " + MOODS[moodIdx].label + " (frozen)"); }
 });
 
-window.METRO_BJS = { engine, scene, camera, throwBall, popHearts, B, applyMood, MOODS, setMood: (i) => { moodIdx = i % MOODS.length; applyMood(MOODS[moodIdx]); } };
+window.METRO_BJS = {
+  engine, scene, camera, throwBall, popHearts, B, applyMood, MOODS,
+  setMood: (i) => { autoMode = false; moodIdx = i % MOODS.length; applyMood(MOODS[moodIdx]); },
+  // preview a time of day (hours 0-23) without waiting for the real clock
+  previewTime: (h, m = 30) => { autoMode = false; const d = new Date(); d.setHours(h, m, 0, 0); updateEnv(d); },
+  goAuto: () => { autoMode = true; updateEnv(new Date()); },
+  get weather() { return weather; },
+};
