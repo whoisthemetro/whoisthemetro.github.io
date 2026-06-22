@@ -341,9 +341,7 @@ const roomLamp = new B.PointLight("roomLamp", new V3(0, H - 0.35, 0.4), scene); 
 const desk = node("desk", 0.2, 0, ZF + 0.49);
 box("deskTop", 1.9, 0.04, 0.78, 0, 0.72, 0, (() => { const m = new B.StandardMaterial("deskTopM", scene); m.diffuseTexture = deskTex; m.specularColor = new B.Color3(0.08, 0.07, 0.05); return m; })(), desk).checkCollisions = true;
 [-0.88, 0.88].forEach((lx) => box("deskLeg" + lx, 0.05, 0.7, 0.7, lx, 0.35, 0, matte("deskLeg", 0x16181b), desk, false));
-box("dbox", 0.36, 0.105, 0.26, 0, 0.7925, -0.2, matte("dbox", 0x111317), desk);
-cyl("dboxKnob", 0.028, 0.028, 0.02, 0.09, 0.79, -0.065, metal("dboxKnob", 0x3a3f46, 0.7, 0.4), desk, 18, false).rotation.x = Math.PI / 2;
-box("dboxLed", 0.008, 0.008, 0.004, -0.12, 0.81, -0.068, emis("dboxLed", 0x3be07a), desk, false);
+// (D-Box removed — the ultrawide stands on its own)
 // ultrawide + animated DAW screen
 box("monBezel", 0.94, 0.41, 0.03, 0, 1.04, -0.21, matte("monBezel", 0x0c0d10), desk);
 const dawTex = new B.DynamicTexture("daw", { width: 1024, height: 434 }, scene, false);
@@ -362,14 +360,14 @@ const meterTex = new B.DynamicTexture("meter", { width: 330, height: 200 }, scen
 const pmMat = emis("pmMat", 0xffffff, { glow: false }); pmMat.emissiveTexture = meterTex; pmMat.emissiveColor = new B.Color3(1, 1, 1);
 const pmScreen = plane("pmScreen", 0.33, 0.2, pmMat); pmScreen.parent = desk; pmScreen.position.set(-0.58, 0.95, -0.153); pmScreen.rotation.x = -0.12; pmScreen.rotation.y = Math.PI;
 // clock + mug
-box("clockBody", 0.17, 0.07, 0.05, -0.78, 0.775, 0.25, matte("clock", 0x101216), desk, false).rotation.x = -0.1;
+box("clockBody", 0.17, 0.07, 0.05, -0.58, 0.775, -0.15, matte("clock", 0x101216), desk, false).rotation.x = -0.1;
 const clockTex = new B.DynamicTexture("clock", { width: 310, height: 116 }, scene, false);
 const clockMat = emis("clockMat", 0xffffff, { glow: false }); clockMat.emissiveTexture = clockTex; clockMat.emissiveColor = new B.Color3(1, 1, 1);
-const clockFace = plane("clockFace", 0.155, 0.058, clockMat); clockFace.parent = desk; clockFace.position.set(-0.78, 0.7755, 0.277); clockFace.rotation.y = Math.PI;
+const clockFace = plane("clockFace", 0.155, 0.058, clockMat); clockFace.parent = desk; clockFace.position.set(-0.58, 0.7755, -0.123); clockFace.rotation.y = Math.PI;
 cyl("mug", 0.035, 0.032, 0.09, 0.49, 0.785, 0.04, matte("mug", 0xd8cdb8), desk, 14, false);
 cyl("coffee", 0.029, 0.029, 0.004, 0.49, 0.828, 0.04, matte("coffee", 0x2a1c10), desk, 14, false);
 // channel mixer (child of desk) + MIDI keybed
-const mixer = node("mixer", -0.72, 0.74, 0.0, desk); mixer.rotation.x = -0.12;
+const mixer = node("mixer", 0.05, 0.74, 0.02, desk); mixer.rotation.x = -0.12;
 box("mixChassis", 0.3, 0.04, 0.2, 0, 0.02, 0, matte("mixCh", 0x15171b), mixer, false);
 const mixZ = (pct) => 0.058 + (-0.116) * Math.min(pct, 150) / 150;
 const faderCaps = [];
@@ -446,8 +444,11 @@ function kali(x, toeIn) {
   cyl("kpole", 0.022, 0.022, 0.74, 0, 0.39, 0, matte("kpole", 0x202327), g, 10);
   box("kplate", 0.2, 0.012, 0.24, 0, 0.766, 0, matte("kplate", 0x1a1c1f), g, false);
   box("kcab", 0.225, 0.37, 0.26, 0, 0.957, 0, matte("kcab", 0x131519), g);
-  const fm = emis("kface" + x, 0xffffff, { glow: false }); fm.emissiveTexture = kaliTex; fm.emissiveColor = new B.Color3(0.5, 0.5, 0.52);
+  // LIT face (not emissive) so the speaker no longer glows like a light source
+  const fm = new B.StandardMaterial("kface" + x, scene); fm.diffuseTexture = kaliTex; fm.specularColor = new B.Color3(0.05, 0.05, 0.05);
   const face = plane("kface" + x, 0.215, 0.36, fm); face.parent = g; face.position.set(0, 0.957, 0.131);
+  // only the power LED glows
+  box("kled" + x, 0.011, 0.011, 0.006, 0.082, 0.802, 0.134, emis("kledm" + x, 0x3be07a), g, false);
 }
 kali(-0.95, Math.PI / 6); kali(1.35, -Math.PI / 6);
 
@@ -540,7 +541,7 @@ async function loadHeroProps() {
 // the ultrawide monitor stays procedural so it keeps its animated DAW screen.
 const deskProps = {};
 async function loadDeskProps() {
-  const place = async (file, key, target, x, z, ry, hide = [], rx = 0) => {
+  const place = async (file, key, target, x, z, ry, hide = [], rx = 0, tint = null) => {
     try {
       const m = await importGLB(file);
       m.parent = desk;
@@ -550,12 +551,15 @@ async function loadDeskProps() {
       m.computeWorldMatrix(true);
       const { min } = m.getHierarchyBoundingVectors();
       m.position.y += 0.74 - min.y; // rest on the desk top
+      if (tint != null) m.getChildMeshes().forEach(cm => { const mt = cm.material; if (mt) { if (mt.albedoColor) mt.albedoColor = C(tint); if (mt.baseColor) mt.baseColor = C(tint); if (mt.diffuseColor) mt.diffuseColor = C(tint); } });
       hide.forEach(n => scene.getMeshByName(n)?.setEnabled(false));
       deskProps[key] = m;
     } catch (e) { console.warn("desk model " + file + " failed", e); }
   };
-  await place("kb.glb", "kb", 0.44, 0.0, 0.12, 0, ["kb", "kbTop"]);
-  await place("mug.glb", "mug", 0.095, 0.58, 0.15, 0, ["mug", "coffee"]);
+  await place("kbapple.glb", "kb", 0.40, 0.12, 0.14, 0, ["kb", "kbTop"], 0, 0xcfd2d4); // Apple-aluminium recolour, typing area
+  await place("mouse.glb", "mouse", 0.11, 0.44, 0.16, 0, ["tbBase", "tbBall"], -Math.PI / 2); // lay it flat; replaces trackball
+  await place("mug2.glb", "mug", 0.1, -0.42, 0.28, 0, ["mug", "coffee"]); // better mug, front-left corner
+  await place("midi.glb", "midi", 0.5, 0.0, 0.33, 0, ["midiBody", "midiKeys"]); // MIDI controller at the front edge
   await loadMonitors();
   // Mac Studio kept procedural (on the right) — no free Mac model, and the silver box reads more like a Studio than a generic PC tower
 }
@@ -587,15 +591,15 @@ async function loadMonitors() {
     scene.getMeshByName("monBezel")?.setEnabled(false);
     deskProps.ultrawide = tv;
   } catch (e) { console.warn("ultrawide failed — keeping procedural", e); }
-  try { // small portable display: a thin tablet propped up to the left
+  try { // small portable display, propped on top of the Mac Studio, angled toward the player
     const tab = await importGLB("tablet.glb");
     tab.parent = desk;
-    tab.scaling.setAll(0.34 / tab._naturalMax);
-    tab.rotation = new V3(Math.PI / 2 - 0.3, 0, 0); // stand it up, leaning back like a propped portable display
-    tab.position.set(-0.6, 0.74, -0.12);
+    tab.scaling.setAll(0.30 / tab._naturalMax);
+    tab.rotation = new V3(Math.PI / 2 - 0.28, -0.35, 0); // stand it up + angle toward the person
+    tab.position.set(0.66, 0.835, -0.18); // sit it on the Mac Studio (right side)
     tab.computeWorldMatrix(true);
     const { min } = tab.getHierarchyBoundingVectors();
-    tab.position.y += 0.74 - min.y;
+    tab.position.y += 0.835 - min.y; // rest on the Mac top
     scene.getMeshByName("pmBezel")?.setEnabled(false);
     pmScreen.setEnabled(false);
     deskProps.portable = tab;
@@ -700,8 +704,10 @@ const neonLight = new B.PointLight("neonLight", new V3(0, 1.62, 0.4), scene); ne
 const screenGlow = new B.PointLight("screenGlow", new V3(0, 1.19, 0.1), scene); screenGlow.parent = desk; screenGlow.position.set(0, 0.45, 0.1); screenGlow.diffuse = C(0x8fb6ff); screenGlow.intensity = 1.7; screenGlow.range = 1.7;
 
 // the bright sun disc outside, for the god-rays
-const sunDisc = B.MeshBuilder.CreatePlane("sunDisc", { size: 1.25 }, scene); sunDisc.position.set(Math.sin(az) * 3.2, 2.2, ZF - 2.4);
-const sunDiscMat = emis("sunDiscMat", 0xffffff, { glow: false }); sunDiscMat.emissiveColor = new B.Color3(1.35, 1.05, 0.72); sunDisc.material = sunDiscMat;
+// a round, soft sun glow (was a hard square that read as an obvious light panel through the window)
+const sunGlowTex = dyn("sunGlow", 128, 128, (c, w, h) => { const g = c.createRadialGradient(64, 64, 0, 64, 64, 64); g.addColorStop(0, "#ffffff"); g.addColorStop(0.4, "#cfcfcf"); g.addColorStop(1, "#000000"); c.fillStyle = g; c.fillRect(0, 0, w, h); });
+const sunDisc = B.MeshBuilder.CreateDisc("sunDisc", { radius: 0.7, tessellation: 40 }, scene); sunDisc.position.set(Math.sin(az) * 3.2, 2.2, ZF - 2.4);
+const sunDiscMat = emis("sunDiscMat", 0xffffff, { glow: false }); sunDiscMat.emissiveTexture = sunGlowTex; sunDiscMat.emissiveColor = new B.Color3(1.35, 1.05, 0.72); sunDiscMat.alphaMode = B.Engine.ALPHA_ADD; sunDisc.material = sunDiscMat;
 
 // ---- switchable lighting moods (press L to cycle) ----
 const MOODS = [
