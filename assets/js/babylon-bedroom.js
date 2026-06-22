@@ -940,16 +940,92 @@ scene.onPointerObservable.add((p) => {
 // =====================================================================
 // boot
 // =====================================================================
+// =====================================================================
+// DESK ARRANGE MODE — drag props on the desk; persists to localStorage and
+// exports a layout you paste back so it gets baked in permanently.
+// =====================================================================
+const LS_KEY = "metro.desk.layout";
+let editMode = false, selected = null, dragging = false, grabOff = { x: 0, z: 0 }, editables = [], editHL = null;
+const editToggle = document.getElementById("edit-toggle"), editPanel = document.getElementById("editpanel");
+const editSel = document.getElementById("edit-sel"), editXform = document.getElementById("edit-xform");
+function meshesOf(node) { const cm = node.getChildMeshes ? node.getChildMeshes(false) : []; return cm.length ? cm : [node]; }
+function nodeXform(n) { return { x: +n.position.x.toFixed(3), y: +n.position.y.toFixed(3), z: +n.position.z.toFixed(3), ry: +n.rotation.y.toFixed(3), s: +n.scaling.x.toFixed(3) }; }
+function applyXform(n, t) { n.position.set(t.x, t.y, t.z); n.rotation.y = t.ry; if (t.s) n.scaling.setAll(t.s); }
+function layoutObj() { const o = {}; editables.forEach(e => o[e.name] = nodeXform(e.node)); return o; }
+function saveLayout() { try { localStorage.setItem(LS_KEY, JSON.stringify(layoutObj())); } catch { } }
+function setupEditor() {
+  const uwScreen = scene.getMeshByName("uwScreenPlane"); if (uwScreen && deskProps.ultrawide) uwScreen.setParent(deskProps.ultrawide);
+  const clockBody = scene.getMeshByName("clockBody"), clockFace = scene.getMeshByName("clockFace"); if (clockBody && clockFace) clockFace.setParent(clockBody);
+  editables = [
+    { name: "monitor", node: deskProps.ultrawide }, { name: "external-monitor", node: deskProps.portable },
+    { name: "keyboard", node: deskProps.kb }, { name: "mouse", node: deskProps.mouse }, { name: "midi", node: deskProps.midi },
+    { name: "mixer", node: mixer }, { name: "mug", node: deskProps.mug }, { name: "clock", node: clockBody }, { name: "mac", node: scene.getMeshByName("mac") },
+  ].filter(e => e.node);
+  editables.forEach(e => meshesOf(e.node).forEach(m => { m._editable = e; m.isPickable = true; }));
+  editHL = new B.HighlightLayer("editHL", scene);
+  let saved = {}; try { saved = JSON.parse(localStorage.getItem(LS_KEY) || "{}"); } catch { }
+  editables.forEach(e => { if (saved[e.name]) applyXform(e.node, saved[e.name]); });
+  editToggle.addEventListener("click", () => toggleEdit(!editMode));
+  document.getElementById("edit-copy").addEventListener("click", () => { const t = JSON.stringify(layoutObj(), null, 2); navigator.clipboard?.writeText(t).then(() => flashHint("layout copied — paste it to me to bake in")); console.log("DESK LAYOUT:\n" + t); });
+  document.getElementById("edit-reset").addEventListener("click", () => { try { localStorage.removeItem(LS_KEY); } catch { } location.reload(); });
+  document.getElementById("edit-done").addEventListener("click", () => toggleEdit(false));
+  window.addEventListener("keydown", onEditKey);
+  scene.onPointerObservable.add(onEditPointer);
+}
+function selectEd(e) {
+  if (selected) meshesOf(selected.node).forEach(m => editHL.removeMesh(m));
+  selected = e;
+  if (e) { meshesOf(e.node).forEach(m => editHL.addMesh(m, B.Color3.FromHexString("#2dd4bf"))); editSel.textContent = "▸ " + e.name; updXformHud(); }
+  else { editSel.textContent = "click an item to select"; editXform.textContent = ""; }
+}
+function updXformHud() { if (!selected) return; const t = nodeXform(selected.node); editXform.textContent = `x ${t.x}  y ${t.y}  z ${t.z}\nrot ${t.ry}  size ${t.s}`; }
+function planeHit(h) { const ray = scene.createPickingRay(scene.pointerX, scene.pointerY, B.Matrix.Identity(), camera); const t = (h - ray.origin.y) / ray.direction.y; if (t <= 0) return null; const p = ray.origin.add(ray.direction.scale(t)); return { x: p.x - 0.2, z: p.z + 2.81 }; }
+function toggleEdit(on) {
+  editMode = on; editToggle.classList.toggle("on", on); editPanel.classList.toggle("show", on);
+  editToggle.textContent = on ? "✦ exit arrange" : "✦ arrange desk";
+  if (on) { engine.exitPointerlock?.(); camera.detachControl(); flashHint("arrange mode — click an item, drag to move"); } else { selectEd(null); camera.attachControl(canvas, true); }
+}
+function onEditPointer(pi) {
+  if (!editMode) return;
+  if (pi.type === B.PointerEventTypes.POINTERDOWN) {
+    const pick = scene.pick(scene.pointerX, scene.pointerY, m => !!m._editable);
+    if (pick.hit && pick.pickedMesh && pick.pickedMesh._editable) {
+      selectEd(pick.pickedMesh._editable);
+      const hit = planeHit(selected.node.getAbsolutePosition().y);
+      grabOff = hit ? { x: selected.node.position.x - hit.x, z: selected.node.position.z - hit.z } : { x: 0, z: 0 };
+      dragging = true;
+    } else selectEd(null);
+  } else if (pi.type === B.PointerEventTypes.POINTERUP) { dragging = false; if (selected) saveLayout(); }
+  else if (pi.type === B.PointerEventTypes.POINTERMOVE && dragging && selected) {
+    const hit = planeHit(selected.node.getAbsolutePosition().y);
+    if (hit) { selected.node.position.x = hit.x + grabOff.x; selected.node.position.z = hit.z + grabOff.z; updXformHud(); }
+  }
+}
+function onEditKey(ev) {
+  if (ev.code === "KeyG") { toggleEdit(!editMode); ev.preventDefault(); return; }
+  if (!editMode || !selected) return;
+  const n = selected.node, f = ev.shiftKey ? 0.2 : 1, st = 0.01 * f, rt = 0.05 * f, sc = 0.02 * f; let ok = true;
+  switch (ev.code) {
+    case "ArrowUp": n.position.z -= st; break; case "ArrowDown": n.position.z += st; break;
+    case "ArrowLeft": n.position.x -= st; break; case "ArrowRight": n.position.x += st; break;
+    case "BracketLeft": n.rotation.y -= rt; break; case "BracketRight": n.rotation.y += rt; break;
+    case "Minus": n.position.y -= st; break; case "Equal": n.position.y += st; break;
+    case "Comma": n.scaling.setAll(Math.max(0.05, n.scaling.x - sc)); break; case "Period": n.scaling.setAll(n.scaling.x + sc); break;
+    default: ok = false;
+  }
+  if (ok) { ev.preventDefault(); updXformHud(); saveLayout(); }
+}
+
 window.addEventListener("resize", () => engine.resize());
 engine.runRenderLoop(() => scene.render());
 setProg(72, "almost…");
-scene.whenReadyAsync().then(async () => { setProg(82, "loading models…"); await loadHeroProps(); setProg(90, "physics…"); await initPhysics(); setProg(100, "enter ▸"); enterBtn.disabled = false; });
+scene.whenReadyAsync().then(async () => { setProg(82, "loading models…"); await loadHeroProps(); setupEditor(); setProg(90, "physics…"); await initPhysics(); setProg(100, "enter ▸"); enterBtn.disabled = false; });
 
 let entered = false;
 function enter() {
   if (entered) return; entered = true;
-  gate.classList.add("gone"); badge.classList.add("show"); document.getElementById("credits")?.classList.add("show");
-  hint.textContent = "WASD move · mouse look · L = lighting mood · click to throw · click the cat for ♥ · Esc frees cursor";
+  gate.classList.add("gone"); badge.classList.add("show"); document.getElementById("credits")?.classList.add("show"); editToggle.classList.add("show");
+  hint.textContent = "WASD move · mouse look · G = arrange desk · L = lighting · click to throw · Esc frees cursor";
   hint.classList.add("show"); setTimeout(() => hint.classList.remove("show"), 7000);
   canvas.focus(); engine.enterPointerlock();
 }
@@ -970,6 +1046,7 @@ window.METRO_BJS = {
   // preview a time of day (hours 0-23) without waiting for the real clock
   previewTime: (h, m = 30) => { autoMode = false; const d = new Date(); d.setHours(h, m, 0, 0); updateEnv(d); },
   goAuto: () => { autoMode = true; updateEnv(new Date()); },
+  toggleEdit: (on) => toggleEdit(on), get editLayout() { return layoutObj(); },
   get weather() { return weather; },
   get boombox() { return boombox; },
   get pedalboard() { return pbRef; },

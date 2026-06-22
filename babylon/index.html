@@ -38,6 +38,26 @@
   #credits { position: fixed; right: 1rem; bottom: .6rem; z-index: 6; font-size: .5rem; letter-spacing: .08em;
     color: #56535c; opacity: 0; transition: opacity .5s; max-width: 60vw; text-align: right; }
   #credits.show { opacity: 1; }
+
+  /* desk arrange / edit mode */
+  #editpanel { position: fixed; left: 1rem; top: 2.6rem; z-index: 8; width: 16rem;
+    background: rgba(10,10,14,.86); border: 1px solid #34343f; border-radius: 10px; padding: .8rem .9rem;
+    font-size: .64rem; letter-spacing: .04em; color: #cfcdd6; display: none; backdrop-filter: blur(8px); }
+  #editpanel.show { display: block; }
+  #editpanel h2 { margin: 0 0 .5rem; font-size: .66rem; letter-spacing: .22em; color: #ff3bd0; }
+  #edit-sel { color: #8fe0c4; font-size: .72rem; margin-bottom: .35rem; }
+  #edit-xform { color: #9a97a2; font-size: .58rem; margin-bottom: .5rem; white-space: pre; }
+  #editpanel .keys { color: #76737e; font-size: .54rem; line-height: 1.5; margin-bottom: .6rem; }
+  #editpanel button { font: inherit; font-size: .58rem; letter-spacing: .12em; cursor: pointer;
+    padding: .45rem .6rem; margin: 0 .3rem .2rem 0; color: #eee; background: #1a1a22;
+    border: 1px solid #3a3a44; border-radius: 6px; transition: all .15s; }
+  #editpanel button:hover { background: #24242e; border-color: #ff3bd0; }
+  #edit-copy { border-color: #2dd4bf !important; }
+  #edit-toggle { position: fixed; left: 1rem; bottom: .6rem; z-index: 8; font: inherit; font-size: .56rem;
+    letter-spacing: .14em; cursor: pointer; padding: .5rem .8rem; color: #cfcdd6; background: rgba(10,10,14,.7);
+    border: 1px solid #34343f; border-radius: 999px; opacity: 0; transition: opacity .5s; }
+  #edit-toggle.show { opacity: 1; }
+  #edit-toggle.on { color: #ff3bd0; border-color: #ff3bd0; }
 </style>
 </head>
 <body>
@@ -46,6 +66,17 @@
   <div id="badge">BABYLON · PHASE 1 · BEDROOM</div>
   <div id="credits">3D models (CC0/CC-BY via Khronos &amp; Poly Pizza): BoomBox — Khronos · keyboard — A. Safayan · mouse — davis · mug — M. Fuchs · MIDI — G. Ibias · pedal — P. Simcoe · ultrawide — J-Toastie · tablet — Poly by Google</div>
   <div id="hint"></div>
+
+  <button id="edit-toggle">✦ arrange desk</button>
+  <div id="editpanel">
+    <h2>ARRANGE DESK</h2>
+    <div id="edit-sel">click an item to select</div>
+    <div id="edit-xform"></div>
+    <div class="keys">drag = move on desk · [ ] = rotate · −/= = height<br>, . = size · ↑↓←→ = nudge · Shift = fine</div>
+    <button id="edit-copy">copy layout</button>
+    <button id="edit-reset">reset</button>
+    <button id="edit-done">done (G)</button>
+  </div>
 
   <div id="gate">
     <div class="card">
