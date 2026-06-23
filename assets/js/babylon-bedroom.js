@@ -328,12 +328,30 @@ const neonTex = dyn("neon", 512, 128, (c, w, h) => {
 box("neonPlaque", 0.68, 0.19, 0.012, 0, 1.62, 0.062, matte("plaque", 0x141518), entry, false);
 const neonMat = emis("neonMat", 0xffffff, { add: true }); neonMat.emissiveTexture = neonTex; neonMat.emissiveColor = new B.Color3(2.2, 0.55, 0.35);
 const neon = plane("neon", 0.62, 0.155, neonMat); neon.parent = entry; neon.position.set(0, 1.62, 0.075);
-// dimmer + ceiling fixture
-box("dimPlate", 0.025, 0.14, 0.09, X - 0.035, 1.3, 1.78, matte("dim", 0xe8e2d4), null, false);
-cyl("dimKnob", 0.018, 0.02, 0.02, X - 0.055, 1.3, 1.78, matte("dimk", 0xb8b2a4), null, 12, false).rotation.z = Math.PI / 2;
+// light panel on the east wall — a vertical dimmer + a horizontal hue slider you point at & drag (no menu).
+// dim runs y 1.20→1.40 (off→full); hue handle slides in z 1.73→1.85 across the rainbow track.
+box("lp_back", 0.02, 0.36, 0.17, 2.53, 1.30, 1.78, matte("lp_back", 0x15151b), null, false);
+box("lp_bezel", 0.024, 0.34, 0.15, 2.527, 1.30, 1.78, matte("lp_bezel", 0x222230), null, false);
+box("lp_dimtrack", 0.014, 0.22, 0.022, 2.516, 1.31, 1.745, matte("lp_dimtrk", 0x07070a), null, false);
+const dimHandle = box("lp_dimh", 0.032, 0.03, 0.07, 2.508, 1.20, 1.745, emis("lp_dimh", 0x666666, { glow: false }), null, false);
+box("lp_huetrack", 0.014, 0.03, 0.14, 2.516, 1.155, 1.79, emis("lp_huetrk", 0x888888, { glow: false }), null, false);
+const hueHandle = box("lp_hueh", 0.032, 0.05, 0.018, 2.508, 1.155, 1.79, emis("lp_hueh", 0xff8040, { glow: false }), null, false);
+// invisible, forgiving pick pads in front of the handles so the crosshair doesn't need to be pixel-perfect
+const dimPad = box("lp_dimpad", 0.006, 0.21, 0.16, 2.498, 1.325, 1.78, matte("lp_pad", 0x000000), null, false); dimPad.visibility = 0; dimPad._lightCtrl = "dim";
+const huePad = box("lp_huepad", 0.006, 0.075, 0.16, 2.498, 1.16, 1.78, matte("lp_pad2", 0x000000), null, false); huePad.visibility = 0; huePad._lightCtrl = "hue";
 cyl("fixture", 0.16, 0.19, 0.05, 0, H - 0.03, 0.4, matte("fix", 0xd8d2c4), null, 16, false);
 const fixtureGlow = cyl("fixtureGlow", 0.13, 0.13, 0.012, 0, H - 0.058, 0.4, emis("fixGlow", 0x222222, { glow: false }), null, 16, false);
 const roomLamp = new B.PointLight("roomLamp", new V3(0, H - 0.35, 0.4), scene); roomLamp.diffuse = C(0xffe2b8); roomLamp.intensity = 0; roomLamp.range = 9;
+// the room light the panel controls (level 0..1, hue 0..360). manual — survives the day/night ticks.
+let lampLevel = 0, lampHue = 38, lampSat = 0.35;
+function lampColor() { return B.Color3.FromHSV(lampHue, lampSat, 1); }
+function updateLamp() {
+  const col = lampColor();
+  roomLamp.diffuse = col; roomLamp.intensity = lampLevel * 16; roomLamp.range = 11;
+  fixtureGlow.material.emissiveColor = lampLevel > 0.02 ? col.scale(0.85) : C(0x222222);
+  dimHandle.position.y = 1.20 + lampLevel * 0.20; dimHandle.material.emissiveColor = lampLevel > 0.02 ? col : C(0x3a3a3a);
+  hueHandle.position.z = 1.73 + (lampHue / 360) * 0.12; hueHandle.material.emissiveColor = col;
+}
 
 // =====================================================================
 // DESK RIG — desk(0.2,0,-2.81), D-Box, ultrawide+DAW, keyboard, trackball, Mac
@@ -732,24 +750,23 @@ function applyMood(m) {
 // =====================================================================
 // LIVE ENVIRONMENT — real day/night from your location, dynamic sky, astro, weather
 // =====================================================================
-let LAT = 33.9164, LNG = -118.3526;   // Hawthorne, CA — fallback; geolocation overrides
+const LAT = 33.9164, LNG = -118.3526;   // Hawthorne, CA — sun & moon are computed for exactly here
 const weather = { clouds: 0, rain: 0 };
 let envAcc = 0;
 
-// astro ceiling — a star field + Big Dipper that fades in after dusk
-const astroTex = new B.DynamicTexture("astro", { width: 512, height: 512 }, scene, true);
-const astroStars = Array.from({ length: 70 }, () => ({ a: Math.random() * 7, r: 26 + Math.random() * 214, s: Math.random() }));
-const DIPPER = [[0.17, 0.30], [0.29, 0.34], [0.41, 0.36], [0.51, 0.40], [0.54, 0.52], [0.43, 0.56], [0.39, 0.46]];
-function drawAstro(rot) {
-  const c = astroTex.getContext(), cx = 256, cy = 256; c.clearRect(0, 0, 512, 512);
-  for (const s of astroStars) { const a = s.a + rot, x = cx + Math.cos(a) * s.r, y = cy + Math.sin(a) * s.r, rr = s.s > 0.85 ? 2.4 : 1.4; const gl = c.createRadialGradient(x, y, 0, x, y, rr * 2.6); gl.addColorStop(0, `rgba(255,255,255,${0.5 + s.s * 0.5})`); gl.addColorStop(1, "rgba(255,255,255,0)"); c.fillStyle = gl; c.beginPath(); c.arc(x, y, rr * 2.6, 0, 7); c.fill(); }
-  c.strokeStyle = "rgba(150,180,235,.5)"; c.lineWidth = 1.4; c.beginPath(); DIPPER.forEach(([px, py], i) => { const x = px * 512, y = py * 512; i ? c.lineTo(x, y) : c.moveTo(x, y); }); c.stroke();
-  c.fillStyle = "rgba(190,205,235,.6)"; c.font = "15px monospace"; c.fillText("ursa major", 90, 320);
-  astroTex.update(false);
+// astro ceiling — real GEOMETRY stars (emissive colour works + the glow layer makes them
+// glow); only the stars glow, never the whole roof. Fades in at night.
+const STAR_MAT = new B.StandardMaterial("starMat", scene);
+STAR_MAT.diffuseColor = new B.Color3(0, 0, 0); STAR_MAT.specularColor = new B.Color3(0, 0, 0); STAR_MAT.emissiveColor = new B.Color3(0, 0, 0); STAR_MAT.disableLighting = true;
+const astroGrp = node("astroGrp", 0, H - 0.05, 0);
+const sRnd = (i) => { const v = Math.abs(Math.sin(i * 12.9898) * 43758.5453); return v - Math.floor(v); };
+for (let i = 0; i < 95; i++) {
+  const star = B.MeshBuilder.CreateSphere("star" + i, { diameter: 0.013 * (0.5 + sRnd(i + 33) * 0.7), segments: 6 }, scene);
+  star.material = STAR_MAT; star.parent = astroGrp; star.position.set((sRnd(i) - 0.5) * (W - 0.4), 0, (sRnd(i + 99) - 0.5) * (D - 0.4));
 }
-const astroMat = new B.StandardMaterial("astroMat", scene); astroMat.emissiveTexture = astroTex; astroMat.emissiveTexture.hasAlpha = true; astroMat.diffuseColor = new B.Color3(0, 0, 0); astroMat.disableLighting = true; astroMat.alphaMode = B.Engine.ALPHA_ADD; astroMat.backFaceCulling = false;
-const astro = B.MeshBuilder.CreateGround("astroCeil", { width: W - 0.12, height: D - 0.12 }, scene); astro.material = astroMat; astro.position.y = H - 0.04; astro.rotation.x = Math.PI; astro.isVisible = false;
-drawAstro(0); // initialise the texture so the material is ready (otherwise whenReadyAsync hangs on it)
+const DIPPER = [[-1.7, -1.4], [-1.0, -1.05], [-0.3, -0.8], [0.35, -0.55], [0.5, 0.2], [-0.25, 0.45], [-0.55, -0.25]]; // Big Dipper, brighter
+DIPPER.forEach((d, i) => { const s = B.MeshBuilder.CreateSphere("dip" + i, { diameter: 0.026, segments: 8 }, scene); s.material = STAR_MAT; s.parent = astroGrp; s.position.set(d[0], 0, d[1]); });
+astroGrp.setEnabled(false);
 
 // the daylight driver — aims the sun/moon through the window and recolors everything
 let autoMode = true;
@@ -776,21 +793,19 @@ function updateEnv(date) {
   hemi.diffuse = C(hS); hemi.groundColor = C(hG); hemi.intensity = hI;
   sunDiscMat.emissiveColor.set(disc[0], disc[1], disc[2]);
   skyMat.emissiveColor.set(0.6 * skyS, 0.59 * skyS, 0.58 * skyS);
-  roomLamp.intensity = 0; fixtureGlow.material.emissiveColor = C(0x222222); // auto cycle = light only from outside; lamp stays a manual control
+  updateLamp(); // the room lamp is driven by the manual dimmer, not the day/night cycle
   ip.exposure = sunAlt > 0 ? 0.92 : sunAlt > -0.2 ? 0.95 : 1.04;
   drawSky(sp.azimuth, sunAlt, moonAlt, frac, weather.clouds);
   rainPane.isVisible = weather.rain > 0; rainMat.alpha = weather.rain > 0 ? 0.55 : 0;
   const fade = Math.max(0, Math.min(1, (-sunAlt * 57.3 - 4) / 6));
-  astro.isVisible = fade > 0.02; astroMat.emissiveColor = new B.Color3(fade * 2, fade * 2, fade * 2.1);
-  if (astro.isVisible) drawAstro((date.getHours() * 3600 + date.getMinutes() * 60) / 86400 * Math.PI * 2);
+  astroGrp.setEnabled(fade > 0.02); STAR_MAT.emissiveColor.set(fade * 1.7, fade * 1.7, fade * 1.85);
 }
 
 // weather from Open-Meteo (CORS-open, no key)
 async function fetchWeather() {
   try { const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LNG}&current=cloud_cover,precipitation`); const j = await r.json(); const cur = j.current || {}; weather.clouds = (cur.cloud_cover || 0) / 100; weather.rain = cur.precipitation > 0.5 ? 2 : cur.precipitation > 0.05 ? 1 : 0; } catch (e) { /* clear on failure */ }
 }
-// the visitor's real location, with Hawthorne as the fallback
-if (navigator.geolocation) navigator.geolocation.getCurrentPosition((p) => { LAT = p.coords.latitude; LNG = p.coords.longitude; fetchWeather().then(() => { if (autoMode) updateEnv(new Date()); }); }, () => { }, { timeout: 8000, maximumAge: 6e5 });
+// (location is pinned to Hawthorne, CA — no geolocation override)
 fetchWeather();
 updateEnv(new Date());
 let moodIdx = -1; // -1 = auto (real time at your location); 0..n = a frozen mood
@@ -933,9 +948,23 @@ function throwBall() {
   const agg = new B.PhysicsAggregate(s, B.PhysicsShapeType.SPHERE, { mass: 0.6, restitution: 0.72, friction: 0.5 }, scene);
   agg.body.applyImpulse(dir.scale(7), s.position); thrown++;
 }
+let lightDrag = null;
 scene.onPointerObservable.add((p) => {
-  if (p.type !== B.PointerEventTypes.POINTERDOWN || editMode || composerOpen) return;
+  if (editMode || composerOpen) return;
+  // dragging the light panel (point-and-drag dimmer / hue, no menu)
+  if (lightDrag) {
+    if (p.type === B.PointerEventTypes.POINTERMOVE) {
+      const e = p.event;
+      if (lightDrag === "dim") lampLevel = Math.max(0, Math.min(1, lampLevel - (e.movementY || 0) * 0.004));
+      else lampHue = ((lampHue + (e.movementX || 0) * 0.7) % 360 + 360) % 360;
+      updateLamp(); return;
+    }
+    if (p.type === B.PointerEventTypes.POINTERUP) { lightDrag = null; camera.attachControl(canvas, true); return; }
+  }
+  if (p.type !== B.PointerEventTypes.POINTERDOWN) return;
   if (!engine.isPointerLock) { engine.enterPointerlock(); return; }
+  const lc = scene.pickWithRay(camera.getForwardRay(3.5), (m) => !!m._lightCtrl);
+  if (lc && lc.hit) { lightDrag = lc.pickedMesh._lightCtrl; camera.detachControl(); return; } // grab the dimmer/hue
   const ray = camera.getForwardRay(7);
   const wallHit = scene.pickWithRay(ray, (m) => !!m._noteWall);
   if (wallHit && wallHit.hit) { openComposer(wallHit.pickedMesh._noteWall, wallHit.pickedPoint); return; }
@@ -999,7 +1028,7 @@ function renderImportedNote(n) {
   const pos = bareWallSpot(w, n.wall, n.x, n.y, sz); if (!pos) return; // no bare-wall spot → skip
   const mat = new B.StandardMaterial("inote", scene);
   if (isPhoto) { mat.diffuseTexture = new B.Texture(n._imageUrl, scene); mat.emissiveColor = new B.Color3(0.45, 0.45, 0.45); } // a real photo, lifted out of the dark
-  else { const col = (n.color && n.color[0] === "#") ? n.color : "#f4ecc8"; mat.diffuseTexture = noteTexture(text, col); mat.emissiveColor = B.Color3.FromHexString(col).scale(0.55); }
+  else { const col = (n.color && n.color[0] === "#") ? n.color : "#f4ecc8"; mat.diffuseTexture = noteTexture(text, col); mat.emissiveColor = B.Color3.FromHexString(col).scale(0.35); }
   mat.specularColor = new B.Color3(0.04, 0.04, 0.04); mat.backFaceCulling = false;
   const card = B.MeshBuilder.CreatePlane("note", { size: sz, sideOrientation: B.Mesh.DOUBLESIDE }, scene);
   card.material = mat;
@@ -1037,7 +1066,7 @@ function renderNote(note) {
   // diffuse texture (samples reliably) + a tint of the note's own colour as emissive, so it
   // reads as a colour card even on a dark wall and the text shows clearly under light
   const mat = new B.StandardMaterial("noteMat", scene); mat.diffuseTexture = noteTexture(note.text, note.color);
-  mat.specularColor = new B.Color3(0.04, 0.04, 0.04); mat.emissiveColor = B.Color3.FromHexString(note.color).scale(0.55); mat.backFaceCulling = false;
+  mat.specularColor = new B.Color3(0.04, 0.04, 0.04); mat.emissiveColor = B.Color3.FromHexString(note.color).scale(0.35); mat.backFaceCulling = false;
   const card = B.MeshBuilder.CreatePlane("note", { size: 0.19, sideOrientation: B.Mesh.DOUBLESIDE }, scene);
   card.material = mat;
   const p = wall.origin.add(wall.uDir.scale(note.u)).add(wall.vDir.scale(note.v)).add(wall.normal.scale(0.09)); // proud of the inner wall face (wall is 0.12 thick)
@@ -1182,7 +1211,7 @@ let entered = false;
 function enter() {
   if (entered) return; entered = true;
   gate.classList.add("gone"); badge.classList.add("show"); document.getElementById("credits")?.classList.add("show"); editToggle.classList.add("show");
-  hint.textContent = "WASD move · mouse look · click a wall = leave a note · G = arrange · L = lighting · Esc frees cursor";
+  hint.textContent = "WASD move · mouse look · wall = note · panel by the door = drag the light · G arrange · L lighting · Esc frees cursor";
   hint.classList.add("show"); setTimeout(() => hint.classList.remove("show"), 7000);
   canvas.focus(); engine.enterPointerlock();
 }
@@ -1218,4 +1247,8 @@ window.METRO_BJS = {
   tuneApollo: (rx, ry, rz, t, x, z) => tuneApollo(rx, ry, rz, t, x, z),
   get deskProps() { return deskProps; },
   deskTune: (key, t, x, z, ry, rx = 0) => { const m = deskProps[key]; if (!m) return; m.scaling.setAll(t / m._naturalMax); m.rotation = new V3(rx, ry, 0); m.position.set(x, 0.74, z); m.computeWorldMatrix(true); const { min } = m.getHierarchyBoundingVectors(); m.position.y += 0.74 - min.y; },
+  // light panel debug: read + drive the dimmer the way the pointer-drag does
+  get lamp() { return { level: lampLevel, hue: lampHue, intensity: roomLamp.intensity }; },
+  setLamp: (lvl, hue) => { if (lvl != null) lampLevel = Math.max(0, Math.min(1, lvl)); if (hue != null) lampHue = ((hue % 360) + 360) % 360; updateLamp(); },
+  pickLightCtrl: () => { const lc = scene.pickWithRay(camera.getForwardRay(3.5), (m) => !!m._lightCtrl); return lc && lc.hit ? lc.pickedMesh._lightCtrl : null; },
 };
