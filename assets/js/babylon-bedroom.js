@@ -243,6 +243,20 @@ wallSeg("wFront_r", X - 1.8, H, (1.8 + X) / 2, H / 2, ZF, 0, frontMat);
 wallSeg("wFront_b", 3.6, 0.9, 0, 0.45, ZF, 0, frontMat, false);
 wallSeg("wFront_t", 3.6, H - 2.3, 0, (2.3 + H) / 2, ZF, 0, frontMat, false);
 
+// invisible solid colliders — the walls have visual holes (window, closet) but you can't walk through
+// glass or into the closet recess. only the arcade door (handled elsewhere) is a real opening; seal the rest.
+function solid(name, w, h, d, x, y, z, ry = 0) {
+  const me = B.MeshBuilder.CreateBox(name, { width: w, height: h, depth: d }, scene);
+  me.position.set(x, y, z); me.rotation.y = ry; me.isVisible = false; me.checkCollisions = true; me.isPickable = false;
+  return me;
+}
+solid("colFront", 3.72, H, 0.12, 0, H / 2, ZF);          // seal the whole window wall (glass blocks you)
+solid("colWest", D, H, 0.12, -X, H / 2, 0, Math.PI / 2);  // seal the closet mouth (it's a recess, not a passage)
+solid("colBack", W, H, 0.12, 0, H / 2, ZB);               // belt-and-suspenders on the back wall
+// furniture you shouldn't be able to walk through (the rack already collides on its own body)
+solid("colDesk", 1.95, 0.78, 0.86, 0.2, 0.39, ZF + 0.49);     // the whole desk footprint
+solid("colDrums", 0.95, 1.0, 0.95, -1.95, 0.5, -2.6, 0.85);   // the e-drum kit
+
 // =====================================================================
 // THE WINDOW — frame, sill, glass(LA sky), rain, blinds, curtains, rod
 // =====================================================================
@@ -347,8 +361,9 @@ let lampLevel = 0, lampHue = 38, lampSat = 0.35;
 function lampColor() { return B.Color3.FromHSV(lampHue, lampSat, 1); }
 function updateLamp() {
   const col = lampColor();
-  roomLamp.diffuse = col; roomLamp.intensity = lampLevel * 16; roomLamp.range = 11;
-  fixtureGlow.material.emissiveColor = lampLevel > 0.02 ? col.scale(0.85) : C(0x222222);
+  // gentle: full-up is a soft room light, not a floodlight. ease-in curve so the low end isn't twitchy.
+  roomLamp.diffuse = col; roomLamp.intensity = Math.pow(lampLevel, 1.5) * 5.0; roomLamp.range = 9;
+  fixtureGlow.material.emissiveColor = lampLevel > 0.02 ? col.scale(0.6) : C(0x222222);
   dimHandle.position.y = 1.20 + lampLevel * 0.20; dimHandle.material.emissiveColor = lampLevel > 0.02 ? col : C(0x3a3a3a);
   hueHandle.position.z = 1.73 + (lampHue / 360) * 0.12; hueHandle.material.emissiveColor = col;
 }
@@ -360,11 +375,13 @@ const desk = node("desk", 0.2, 0, ZF + 0.49);
 box("deskTop", 1.9, 0.04, 0.78, 0, 0.72, 0, (() => { const m = new B.StandardMaterial("deskTopM", scene); m.diffuseTexture = deskTex; m.specularColor = new B.Color3(0.08, 0.07, 0.05); return m; })(), desk).checkCollisions = true;
 [-0.88, 0.88].forEach((lx) => box("deskLeg" + lx, 0.05, 0.7, 0.7, lx, 0.35, 0, matte("deskLeg", 0x16181b), desk, false));
 // (D-Box removed — the ultrawide stands on its own)
-// ultrawide + animated DAW screen
+// ultrawide monitor — it's ON, slideshowing the photos people pinned to the wall (see slide driver below)
 box("monBezel", 0.94, 0.41, 0.03, 0, 1.04, -0.21, matte("monBezel", 0x0c0d10), desk);
-const dawTex = new B.DynamicTexture("daw", { width: 1024, height: 434 }, scene, false);
-const dawMat = emis("dawMat", 0xffffff, { glow: false }); dawMat.emissiveTexture = dawTex; dawMat.emissiveColor = new B.Color3(1, 1, 1);
-const monScreen = plane("monScreen", 0.92, 0.39, dawMat); monScreen.parent = desk; monScreen.position.set(0, 1.04, -0.194); monScreen.rotation.y = Math.PI;
+const slideTex = new B.DynamicTexture("slide", { width: 1024, height: 434 }, scene, true);
+slideTex.uScale = -1; slideTex.uOffset = 1; slideTex.vScale = -1; slideTex.vOffset = 1; // monScreen is rotated 180°; un-rotate the image
+const slideMat = emis("slideMat", 0xffffff, { glow: false }); slideMat.emissiveTexture = slideTex; slideMat.emissiveColor = new B.Color3(0.62, 0.62, 0.62);
+const monScreen = plane("monScreen", 0.92, 0.39, slideMat); monScreen.parent = desk; monScreen.position.set(0, 1.04, -0.194); monScreen.rotation.y = Math.PI;
+const dawTex = new B.DynamicTexture("daw", { width: 1024, height: 434 }, scene, false); // kept for the meter helper's sibling API; unused on screen
 // keyboard + trackball
 const kb = box("kb", 0.44, 0.012, 0.115, -0.04, 0.748, 0.13, matte("kb", 0xd9dbdd), desk, false); kb.rotation.x = -0.04;
 const kbTopMat = new B.StandardMaterial("kbTop", scene); kbTopMat.diffuseTexture = keysTex; kbTopMat.specularColor = new B.Color3(0.05, 0.05, 0.05);
@@ -595,17 +612,14 @@ async function loadMonitors() {
     tv.position.y += 0.74 - bb.min.y; // rest the stand on the desk
     tv.computeWorldMatrix(true);
     bb = tv.getHierarchyBoundingVectors();
-    // the TV screen mesh has no usable UVs, so put our live DAW plane on the panel face instead
+    // the TV screen mesh has no usable UVs (and a plane parented to the GLB __root__ won't render the
+    // slideshow), so reuse the procedural monScreen — it's correctly oriented + already shows DynamicTextures.
+    // just slide it onto the TV's panel face, proud of the glass, and size it to fit.
     const h = bb.max.y - bb.min.y, panelBot = bb.min.y + h * 0.24, top = bb.max.y - h * 0.06;
     const sw = (bb.max.x - bb.min.x) * 0.9, sh = (top - panelBot) * 0.95;
-    monScreen.setEnabled(false); // retire the procedural screen plane
-    // a clean dark "on" screen (emissive color reliably renders here; the texture path did not)
-    const uw = new B.StandardMaterial("uwScreen", scene);
-    uw.emissiveColor = new B.Color3(0.05, 0.07, 0.13); uw.diffuseColor = new B.Color3(0, 0, 0);
-    uw.specularColor = new B.Color3(0.02, 0.02, 0.03); uw.disableLighting = true;
-    const uwPlane = B.MeshBuilder.CreatePlane("uwScreenPlane", { width: sw, height: sh }, scene);
-    uwPlane.material = uw; uwPlane.parent = desk;
-    uwPlane.position.set((bb.min.x + bb.max.x) / 2 - 0.2, (panelBot + top) / 2, (bb.max.z + 0.02) + 2.81);
+    const cx = (bb.min.x + bb.max.x) / 2, cy = (panelBot + top) / 2;
+    monScreen.scaling.set(sw / 0.92, sh / 0.39, 1);
+    monScreen.position.set(cx - desk.position.x, cy - desk.position.y, (bb.max.z + 0.03) - desk.position.z); // proud of the panel, toward the room
     scene.getMeshByName("monBezel")?.setEnabled(false);
     deskProps.ultrawide = tv;
   } catch (e) { console.warn("ultrawide failed — keeping procedural", e); }
@@ -696,7 +710,9 @@ const catLegs = [];
 [[0.07, 0.035], [0.07, -0.035], [-0.07, 0.035], [-0.07, -0.035]].forEach(([lx, lz], i) => { const leg = cyl("catLeg" + i, 0.011, 0.009, 0.075, lx, 0.038, lz, furMat, catRig, 6); catLegs.push(leg); });
 
 // cat wander state
-const catSpots = [{ x: 0.2, z: SWEET.z, y: 0.51 }, { x: 0.2, z: -2.4, y: 0 }, { x: -1.7, z: -2.7, y: 0 }, { x: 1.9, z: 0.9, y: 0 }, { x: -1.2, z: 1.8, y: 0 }, { x: 1.0, z: 2.2, y: 0 }];
+// spots all sit in the open middle/back of the room — the front third (z < -1.9) is desk/drums/rack,
+// so the cat's straight-line trots between these never cross furniture. it's also clamped to the room each frame.
+const catSpots = [{ x: 0.2, z: SWEET.z, y: 0.51 }, { x: 1.6, z: 0.6, y: 0 }, { x: -1.4, z: 0.4, y: 0 }, { x: 1.7, z: 2.2, y: 0 }, { x: -1.4, z: 2.2, y: 0 }, { x: 0.3, z: 1.6, y: 0 }];
 let catState = { tx: 0.2, tz: SWEET.z + 0.3, ty: 0, yaw: Math.PI, baseY: 0, walking: false, dwell: 3 };
 
 // hearts pool
@@ -886,12 +902,42 @@ function drawClock() {
 }
 let clockAcc = 0;
 
+// THE MONITOR SLIDESHOW — the ultrawide is on, cycling the photos people pinned to the wall.
+// urls are filled by importWallNotes(); we cover-fit each into slideTex (a DynamicTexture, which renders
+// as emissive here — a loaded jpg as emissiveTexture would not).
+const slide = { urls: [], i: -1, acc: 0, period: 6 };
+function drawSlide(img, label) {
+  const sctx = slideTex.getContext(), w = 1024, h = 434;
+  sctx.filter = "none"; sctx.fillStyle = "#04050a"; sctx.fillRect(0, 0, w, h);
+  if (img) {
+    const s = Math.max(w / img.width, h / img.height), dw = img.width * s, dh = img.height * s;
+    sctx.save(); sctx.beginPath(); sctx.rect(0, 0, w, h); sctx.clip();
+    sctx.filter = "contrast(1.12) saturate(1.12)";
+    sctx.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh); sctx.restore(); sctx.filter = "none";
+  }
+  sctx.strokeStyle = "#0a0c12"; sctx.lineWidth = 10; sctx.strokeRect(0, 0, w, h); // thin inner bezel
+  sctx.fillStyle = "rgba(0,0,0,.42)"; sctx.fillRect(0, h - 32, w, 32);
+  sctx.fillStyle = "#2dd4bf"; sctx.font = "700 18px ui-monospace, monospace"; sctx.textAlign = "left";
+  sctx.fillText(label || "▸ THE WALL", 16, h - 11); slideTex.update(false);
+}
+function nextSlide() {
+  if (!slide.urls.length) { drawSlide(null, "▸ the wall — powering on…"); return; }
+  slide.i = (slide.i + 1) % slide.urls.length;
+  const url = slide.urls[slide.i], n = slide.i + 1, tot = slide.urls.length;
+  const im = new Image(); im.crossOrigin = "anonymous";
+  im.onload = () => { try { drawSlide(im, `▸ the wall   ${n}/${tot}`); } catch (e) { drawSlide(null, `▸ the wall   ${n}/${tot}`); } };
+  im.onerror = () => drawSlide(null, `▸ the wall   ${n}/${tot}`);
+  im.src = url;
+}
+drawSlide(null, "▸ the wall — powering on…");
+
 scene.onBeforeRenderObservable.add(() => {
   const dt = Math.min(0.05, engine.getDeltaTime() / 1000); T += dt;
   // re-read the real sun/moon every few seconds (cheap; the sky only changes slowly)
   envAcc += dt; if (envAcc > 4) { envAcc = 0; if (autoMode) updateEnv(new Date()); }
   if (rainPane.isVisible) rainTex.vOffset -= dt * (weather.rain === 2 ? 0.5 : 0.25);
-  drawDaw(T); drawMeter(T); clockAcc += dt; if (clockAcc > 1) { clockAcc = 0; drawClock(); }
+  drawMeter(T); clockAcc += dt; if (clockAcc > 1) { clockAcc = 0; drawClock(); }
+  slide.acc += dt; if (slide.acc > slide.period) { slide.acc = 0; nextSlide(); } // advance the monitor slideshow
   // lava blobs
   for (const b of blobs) { const k = Math.sin(T * b._speed + b._phase); b.position.y = 0.10 + (k * 0.5 + 0.5) * 0.085; b.position.x = Math.sin(T * b._speed * 0.7 + b._phase * 2) * 0.012; b.position.z = Math.cos(T * b._speed * 0.6 + b._phase) * 0.012; b.scaling.y = 1 + 0.35 * Math.sin(T * b._speed * 1.9 + b._phase); }
   lavaLight.intensity = 0.8 + 0.12 * Math.sin(T * 0.9);
@@ -914,6 +960,9 @@ function updateCat(dt) {
     else { const want = Math.atan2(dx, dz); let dy = want - cs.yaw; while (dy > Math.PI) dy -= 2 * Math.PI; while (dy < -Math.PI) dy += 2 * Math.PI; cs.yaw += dy * Math.min(1, dt * 6); const spd = 0.5; catGrp.position.x += (dx / dist) * spd * dt; catGrp.position.z += (dz / dist) * spd * dt; }
   } else { cs.dwell -= dt; if (cs.dwell <= 0) { const spot = catSpots[Math.floor(Math.random() * catSpots.length)]; cs.tx = spot.x; cs.tz = spot.z; cs.ty = spot.y; cs.walking = true; } }
   cs.baseY += (cs.ty - cs.baseY) * Math.min(1, dt * 5);
+  // never let the cat leave the room (or tunnel a wall on a long lerp)
+  catGrp.position.x = Math.max(-2.35, Math.min(2.35, catGrp.position.x));
+  catGrp.position.z = Math.max(-3.05, Math.min(3.05, catGrp.position.z));
   catGrp.position.y = cs.baseY; catGrp.rotation.y = cs.yaw - Math.PI / 2;
   // breathing / trot bob
   const bob = cs.walking ? Math.abs(Math.sin(T * 8)) * 0.012 : Math.sin(T * 1.6) * 0.006;
@@ -955,8 +1004,8 @@ scene.onPointerObservable.add((p) => {
   if (lightDrag) {
     if (p.type === B.PointerEventTypes.POINTERMOVE) {
       const e = p.event;
-      if (lightDrag === "dim") lampLevel = Math.max(0, Math.min(1, lampLevel - (e.movementY || 0) * 0.004));
-      else lampHue = ((lampHue + (e.movementX || 0) * 0.7) % 360 + 360) % 360;
+      if (lightDrag === "dim") lampLevel = Math.max(0, Math.min(1, lampLevel - (e.movementY || 0) * 0.0022));
+      else lampHue = ((lampHue + (e.movementX || 0) * 0.5) % 360 + 360) % 360;
       updateLamp(); return;
     }
     if (p.type === B.PointerEventTypes.POINTERUP) { lightDrag = null; camera.attachControl(canvas, true); return; }
@@ -1019,6 +1068,27 @@ function bareWallSpot(w, wallId, x, y, sz) {
   }
   return null;
 }
+// a wall photo as a self-lit print. KEY: loaded-image emissiveTexture does NOT render in the main pass
+// here (only DynamicTextures do), so we draw the jpg INTO a DynamicTexture canvas — with a contrast/sat
+// boost so it isn't washed out — and use that as emissive. disableLighting = the photo reads at full
+// contrast in any room light (no flat gray wash, readable even in the dark).
+function photoTexture(url, onReady) {
+  const dt = new B.DynamicTexture("photoDT" + Math.round(Math.abs(Math.sin(url.length * 7.7)) * 1e6), { width: 8, height: 8 }, scene, true);
+  dt.vScale = -1; dt.vOffset = 1; // match the note-card orientation (same as dyn flip:true)
+  const img = new Image(); img.crossOrigin = "anonymous";
+  img.onload = () => {
+    try {
+      const W = 640, H = Math.max(8, Math.round(640 * img.height / img.width));
+      dt.scaleTo(W, H); const ctx = dt.getContext();
+      ctx.filter = "contrast(1.22) saturate(1.14) brightness(1.04)";
+      ctx.drawImage(img, 0, 0, W, H); dt.update(false);
+      if (onReady) onReady(dt, W / H);
+    } catch (e) { /* tainted canvas / CORS — leave the fallback below */ if (onReady) onReady(null); }
+  };
+  img.onerror = () => { if (onReady) onReady(null); };
+  img.src = url;
+  return dt;
+}
 function renderImportedNote(n) {
   const w = IMPORT_WALLS[n.wall]; if (!w) return;
   const isPhoto = n.kind === "photo" && n._imageUrl;
@@ -1027,8 +1097,12 @@ function renderImportedNote(n) {
   const sz = isPhoto ? 0.3 : 0.2;
   const pos = bareWallSpot(w, n.wall, n.x, n.y, sz); if (!pos) return; // no bare-wall spot → skip
   const mat = new B.StandardMaterial("inote", scene);
-  if (isPhoto) { mat.diffuseTexture = new B.Texture(n._imageUrl, scene); mat.emissiveColor = new B.Color3(0.45, 0.45, 0.45); } // a real photo, lifted out of the dark
-  else { const col = (n.color && n.color[0] === "#") ? n.color : "#f4ecc8"; mat.diffuseTexture = noteTexture(text, col); mat.emissiveColor = B.Color3.FromHexString(col).scale(0.35); }
+  if (isPhoto) {
+    mat.disableLighting = true; mat.diffuseColor = new B.Color3(0, 0, 0); mat.emissiveColor = new B.Color3(1, 1, 1);
+    // start with a flat-diffuse fallback (renders immediately); swap to the contrasty self-lit DynamicTexture once decoded
+    mat.diffuseTexture = new B.Texture(n._imageUrl, scene); mat.disableLighting = false; mat.emissiveColor = new B.Color3(0.4, 0.4, 0.4);
+    photoTexture(n._imageUrl, (dt) => { if (dt) { mat.emissiveTexture = dt; mat.diffuseTexture = dt; mat.disableLighting = true; mat.emissiveColor = new B.Color3(1, 1, 1); } });
+  } else { const col = (n.color && n.color[0] === "#") ? n.color : "#f4ecc8"; mat.diffuseTexture = noteTexture(text, col); mat.emissiveColor = B.Color3.FromHexString(col).scale(0.15); }
   mat.specularColor = new B.Color3(0.04, 0.04, 0.04); mat.backFaceCulling = false;
   const card = B.MeshBuilder.CreatePlane("note", { size: sz, sideOrientation: B.Mesh.DOUBLESIDE }, scene);
   card.material = mat;
@@ -1045,7 +1119,8 @@ async function importWallNotes() {
     if (!res.ok) return;
     const rows = await res.json();
     const photoBase = cfg.SUPABASE_URL + "/storage/v1/object/public/photos/";
-    rows.forEach(n => { if (n.kind === "photo" && n.image_path) n._imageUrl = photoBase + n.image_path; renderImportedNote(n); });
+    rows.forEach(n => { if (n.kind === "photo" && n.image_path) { n._imageUrl = photoBase + n.image_path; slide.urls.push(n._imageUrl); } renderImportedNote(n); });
+    if (slide.urls.length) { slide.acc = slide.period; } // kick the monitor slideshow on the next tick
     if (rows.length) flashHint(rows.length + " notes loaded from the wall");
   } catch (e) { console.warn("wall notes fetch failed", e); }
 }
@@ -1066,7 +1141,7 @@ function renderNote(note) {
   // diffuse texture (samples reliably) + a tint of the note's own colour as emissive, so it
   // reads as a colour card even on a dark wall and the text shows clearly under light
   const mat = new B.StandardMaterial("noteMat", scene); mat.diffuseTexture = noteTexture(note.text, note.color);
-  mat.specularColor = new B.Color3(0.04, 0.04, 0.04); mat.emissiveColor = B.Color3.FromHexString(note.color).scale(0.35); mat.backFaceCulling = false;
+  mat.specularColor = new B.Color3(0.04, 0.04, 0.04); mat.emissiveColor = B.Color3.FromHexString(note.color).scale(0.15); mat.backFaceCulling = false;
   const card = B.MeshBuilder.CreatePlane("note", { size: 0.19, sideOrientation: B.Mesh.DOUBLESIDE }, scene);
   card.material = mat;
   const p = wall.origin.add(wall.uDir.scale(note.u)).add(wall.vDir.scale(note.v)).add(wall.normal.scale(0.09)); // proud of the inner wall face (wall is 0.12 thick)
@@ -1251,4 +1326,5 @@ window.METRO_BJS = {
   get lamp() { return { level: lampLevel, hue: lampHue, intensity: roomLamp.intensity }; },
   setLamp: (lvl, hue) => { if (lvl != null) lampLevel = Math.max(0, Math.min(1, lvl)); if (hue != null) lampHue = ((hue % 360) + 360) % 360; updateLamp(); },
   pickLightCtrl: () => { const lc = scene.pickWithRay(camera.getForwardRay(3.5), (m) => !!m._lightCtrl); return lc && lc.hit ? lc.pickedMesh._lightCtrl : null; },
+  get slide() { return { count: slide.urls.length, i: slide.i }; }, nextSlide: () => nextSlide(),
 };
