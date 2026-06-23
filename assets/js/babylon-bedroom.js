@@ -280,7 +280,7 @@ const curtMat = matte("curtain", 0x2b2620);
 const panelMat = matte("panelMat", 0x23262e);
 const ledRimMat = emis("ledRim", 0xffc46a, { add: true, alpha: 0.85 });
 function panelSlab(name, w, h, x, y, z, ry) {
-  const slab = box(name, w, h, 0.07, x, y, z, panelMat); slab.rotation.y = ry; slab._panel = true;
+  const slab = box(name, w, h, 0.07, x, y, z, panelMat); slab.rotation.y = ry; slab._panel = true; slab._blocker = true;
   const rim = node(name + "rim", x, y, z); rim.rotation.y = ry;
   box(name + "rt", w + 0.07, 0.02, 0.012, 0, h / 2 + 0.035, -0.022, ledRimMat, rim, false);
   box(name + "rb", w + 0.07, 0.02, 0.012, 0, -(h / 2 + 0.035), -0.022, ledRimMat, rim, false);
@@ -962,39 +962,45 @@ const NOTE_COLORS = ["#f4ecc8", "#f7b7c8", "#bfe3ff", "#c8efc0", "#ffd9a0"];
 // the REAL site's wall convention (three.js): notes store x,y as 0..1 fractions of the wall.
 // origin/uDir/vDir/w/h match the live room; `right` = camera-right so imported text isn't mirrored.
 const IMPORT_WALLS = {
-  back: { origin: new V3(X, 0, ZB), uDir: new V3(-1, 0, 0), vDir: new V3(0, 1, 0), normal: new V3(0, 0, -1), w: W, h: H, right: new V3(1, 0, 0) },
-  west: { origin: new V3(-X, 0, ZB), uDir: new V3(0, 0, -1), vDir: new V3(0, 1, 0), normal: new V3(1, 0, 0), w: D, h: H, right: new V3(0, 0, 1) },
-  east: { origin: new V3(X, 0, ZF), uDir: new V3(0, 0, 1), vDir: new V3(0, 1, 0), normal: new V3(-1, 0, 0), w: D, h: H, right: new V3(0, 0, -1) },
+  back: { origin: new V3(X, 0, ZB), uDir: new V3(-1, 0, 0), vDir: new V3(0, 1, 0), normal: new V3(0, 0, -1), w: W, h: H, voids: [] },
+  west: { origin: new V3(-X, 0, ZB), uDir: new V3(0, 0, -1), vDir: new V3(0, 1, 0), normal: new V3(1, 0, 0), w: D, h: H, voids: [{ u0: 2.7, u1: 4.7, v0: 0, v1: 2.2 }] }, // closet doorway
+  east: { origin: new V3(X, 0, ZF), uDir: new V3(0, 0, 1), vDir: new V3(0, 1, 0), normal: new V3(-1, 0, 0), w: D, h: H, voids: [{ u0: 5.0, u1: 6.2, v0: 0, v1: 2.2 }] }, // entry door
 };
 const importPlaced = { back: [], east: [], west: [] };
-// spiral out from the intended (x,y) until the spot is on BARE wall: a ray toward the wall must
-// hit the wall mesh itself (not an acoustic panel in front, not the closet hole = a miss).
+function inVoid(w, u, v, m) { return (w.voids || []).some(z => u + m > z.u0 && u - m < z.u1 && v + m > z.v0 && v - m < z.v1); }
+// spiral from the intended (x,y) until the WHOLE note footprint sits on bare wall: every corner
+// ray must hit the wall mesh (no panel/door in front, no hole), clear of voids, de-overlapped.
 function bareWallSpot(w, wallId, x, y, sz) {
-  const U0 = (x ?? 0.5) * w.w, V0 = (y ?? 0.5) * w.h, half = sz / 2 + 0.02;
+  const U0 = (x ?? 0.5) * w.w, V0 = (y ?? 0.5) * w.h, half = sz / 2;
   let a = 0, r = 0;
-  for (let i = 0; i < 160; i++) {
-    const u = U0 + Math.cos(a) * r, v = V0 + Math.sin(a) * r; a += 1.2; r += 0.03;
-    if (v < half + 0.05 || v > w.h - half - 0.05) continue; // keep off floor/ceiling
-    const surf = w.origin.add(w.uDir.scale(u)).add(w.vDir.scale(v));
-    if (importPlaced[wallId].some(s => B.Vector3.Distance(s, surf) < sz + 0.04)) continue; // de-overlap
-    const ray = new B.Ray(surf.add(w.normal.scale(0.4)), w.normal.scale(-1), 0.8);
-    const hit = scene.pickWithRay(ray, (mm) => mm._wallId === wallId || mm._panel);
-    if (hit && hit.hit && hit.pickedMesh && hit.pickedMesh._wallId === wallId) {
-      importPlaced[wallId].push(surf);
-      return hit.pickedPoint.add(w.normal.scale(0.04)); // 4cm proud of the actual wall face
+  for (let i = 0; i < 240; i++) {
+    const u = U0 + Math.cos(a) * r, v = V0 + Math.sin(a) * r; a += 1.15; r += 0.022;
+    if (v < half + 0.08 || v > w.h - half - 0.08) continue;          // off floor/ceiling
+    if (inVoid(w, u, v, half + 0.04)) continue;                       // off doorways
+    const center = w.origin.add(w.uDir.scale(u)).add(w.vDir.scale(v));
+    if (importPlaced[wallId].some(s => B.Vector3.Distance(s, center) < sz + 0.05)) continue; // de-overlap
+    let centerHit = null, clear = true;
+    for (const [du, dv] of [[0, 0], [half, half], [-half, half], [half, -half], [-half, -half]]) {
+      const s = w.origin.add(w.uDir.scale(u + du)).add(w.vDir.scale(v + dv));
+      const hit = scene.pickWithRay(new B.Ray(s.add(w.normal.scale(0.4)), w.normal.scale(-1), 0.8), (mm) => mm._wallId === wallId || mm._blocker);
+      if (!(hit && hit.hit && hit.pickedMesh && hit.pickedMesh._wallId === wallId)) { clear = false; break; } // corner over a panel/door/hole
+      if (du === 0 && dv === 0) centerHit = hit.pickedPoint;
     }
+    if (clear && centerHit) { importPlaced[wallId].push(center); return centerHit.add(w.normal.scale(0.045)); }
   }
   return null;
 }
 function renderImportedNote(n) {
   const w = IMPORT_WALLS[n.wall]; if (!w) return;
-  const text = n.kind === "link" ? (n.text || n.url || "link ↗") : (n.text || (n.kind === "photo" ? "📷 photo" : ""));
-  if (!text) return;
-  const sz = n.kind === "photo" ? 0.26 : 0.2;
+  const isPhoto = n.kind === "photo" && n._imageUrl;
+  const text = n.kind === "link" ? (n.text || n.url || "link ↗") : (n.text || "");
+  if (!isPhoto && !text) return;
+  const sz = isPhoto ? 0.3 : 0.2;
   const pos = bareWallSpot(w, n.wall, n.x, n.y, sz); if (!pos) return; // no bare-wall spot → skip
-  const col = (n.color && n.color[0] === "#") ? n.color : "#f4ecc8";
-  const mat = new B.StandardMaterial("inote", scene); mat.diffuseTexture = noteTexture(text, col);
-  mat.specularColor = new B.Color3(0.04, 0.04, 0.04); mat.emissiveColor = B.Color3.FromHexString(col).scale(0.55); mat.backFaceCulling = false;
+  const mat = new B.StandardMaterial("inote", scene);
+  if (isPhoto) { mat.diffuseTexture = new B.Texture(n._imageUrl, scene); mat.emissiveColor = new B.Color3(0.45, 0.45, 0.45); } // a real photo, lifted out of the dark
+  else { const col = (n.color && n.color[0] === "#") ? n.color : "#f4ecc8"; mat.diffuseTexture = noteTexture(text, col); mat.emissiveColor = B.Color3.FromHexString(col).scale(0.55); }
+  mat.specularColor = new B.Color3(0.04, 0.04, 0.04); mat.backFaceCulling = false;
   const card = B.MeshBuilder.CreatePlane("note", { size: sz, sideOrientation: B.Mesh.DOUBLESIDE }, scene);
   card.material = mat;
   card.position.set(pos.x, pos.y, pos.z);
@@ -1006,10 +1012,11 @@ async function importWallNotes() {
   const cfg = window.METRO_CONFIG;
   if (!cfg || !cfg.SUPABASE_URL || !cfg.SUPABASE_ANON_KEY) return;
   try {
-    const res = await fetch(`${cfg.SUPABASE_URL}/rest/v1/notes?select=wall,x,y,rot,text,color,kind,url&wall=in.(back,west,east)&order=created_at.asc&limit=2000`, { headers: { apikey: cfg.SUPABASE_ANON_KEY, Authorization: "Bearer " + cfg.SUPABASE_ANON_KEY } });
+    const res = await fetch(`${cfg.SUPABASE_URL}/rest/v1/notes?select=wall,x,y,rot,text,color,kind,url,image_path&wall=in.(back,west,east)&order=created_at.asc&limit=2000`, { headers: { apikey: cfg.SUPABASE_ANON_KEY, Authorization: "Bearer " + cfg.SUPABASE_ANON_KEY } });
     if (!res.ok) return;
     const rows = await res.json();
-    rows.forEach(renderImportedNote);
+    const photoBase = cfg.SUPABASE_URL + "/storage/v1/object/public/photos/";
+    rows.forEach(n => { if (n.kind === "photo" && n.image_path) n._imageUrl = photoBase + n.image_path; renderImportedNote(n); });
     if (rows.length) flashHint(rows.length + " notes loaded from the wall");
   } catch (e) { console.warn("wall notes fetch failed", e); }
 }
