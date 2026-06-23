@@ -1057,10 +1057,10 @@ function playKey(midi, vel = 0.5) {
   amp.gain.setValueAtTime(0.0001, t);
   amp.gain.exponentialRampToValueAtTime(vel * 0.5, t + 0.05);   // gentle swell in
   amp.gain.setTargetAtTime(vel * 0.32, t + 0.12, 0.3);          // settle to sustain
-  amp.gain.setTargetAtTime(0.0001, t + 1.0, 0.5);               // long release
-  [-8, -0.5, 7].forEach((cents) => { const o = ac.createOscillator(); o.type = "sawtooth"; o.frequency.value = f * Math.pow(2, cents / 1200); o.connect(lp); o.start(t); o.stop(t + 2.8); });
+  amp.gain.setTargetAtTime(0.0001, t + 0.45, 0.24);            // tamed release (was t+1.0, tau 0.5)
+  [-8, -0.5, 7].forEach((cents) => { const o = ac.createOscillator(); o.type = "sawtooth"; o.frequency.value = f * Math.pow(2, cents / 1200); o.connect(lp); o.start(t); o.stop(t + 1.9); });
   lp.connect(amp);
-  const sub = ac.createOscillator(); sub.type = "sine"; sub.frequency.value = f / 2; const sg = ac.createGain(); sg.gain.value = 0.32; sub.connect(sg); sg.connect(amp); sub.start(t); sub.stop(t + 2.8);
+  const sub = ac.createOscillator(); sub.type = "sine"; sub.frequency.value = f / 2; const sg = ac.createGain(); sg.gain.value = 0.32; sub.connect(sg); sg.connect(amp); sub.start(t); sub.stop(t + 1.9);
   amp.connect(chorusIn); // 80s shimmer + reverb tail
 }
 // Karplus-Strong plucked string (rendered offline into a buffer, then played)
@@ -1074,12 +1074,11 @@ function pluck(freq, when, dur = 2.2, damp = 0.5, gain = 0.5, wet = 0.16, chorus
   if (chorus) g.connect(chorusIn); else out(g, wet); // 80s clean guitar rides the chorus bus
   src.start(when || ac.currentTime);
 }
-// A-minor up the neck: low at the headstock (top) → high at the bridge (bottom).
+// up the neck in the CURRENTLY-SELECTED scale: low at the headstock → high at the bridge.
 // 80s clean electric: bright (low damping) Karplus pluck pushed through the chorus + reverb.
-const AMIN = [45, 47, 48, 50, 52, 53, 55, 57, 59, 60, 62, 64, 65, 67, 69]; // A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 E4 F4 G4 A4
 function guitarNote(frac) {
-  const f = Math.max(0, Math.min(1, frac)); // 0 headstock → 1 bridge
-  const midi = AMIN[Math.round(f * (AMIN.length - 1))];
+  const notes = guitarScaleNotes(), f = Math.max(0, Math.min(1, frac)); // 0 headstock → 1 bridge
+  const midi = notes[Math.round(f * (notes.length - 1))];
   pluck(mtof(midi), 0, 2.9, 0.22, 0.5, 0.2, true); // bright + chorused
   strumFx = 0.25;
 }
@@ -1101,8 +1100,9 @@ function drum(kind) {
 }
 // tag the instrument meshes so a click finds them; map drum pads to sounds
 let keyGlow = null, scaleScreenTex = null, scaleIdx = 0, octShift = 0;
-// the two screen buttons cycle these; 0 chromatic, 1 major, 2 minor, 3 diminished, 4 augmented.
-// root A so the keybed agrees with the A-minor guitar. degree i runs up the scale then octaves.
+// the two screen buttons cycle the SCALE. it no longer constrains the keybed (that's a real piano
+// now) — it drives the GUITAR: change the scale here and the guitar plays in it.
+// 0 chromatic, 1 major, 2 minor, 3 diminished, 4 augmented.
 const SCALES = [
   [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], // chromatic
   [0, 2, 4, 5, 7, 9, 11],                  // major
@@ -1110,11 +1110,29 @@ const SCALES = [
   [0, 2, 3, 5, 6, 8, 9, 11],               // diminished (octatonic)
   [0, 3, 4, 7, 8, 11],                     // augmented (hexatonic)
 ];
-const KEY_ROOT = 45, KEY_STEPS = 15; // A2, ~2 octaves of clickable positions
-function keyMidi(u) {
-  const i = Math.round(Math.max(0, Math.min(1, u)) * (KEY_STEPS - 1));
-  const sc = SCALES[scaleIdx], L = sc.length;
-  return KEY_ROOT + octShift + sc[i % L] + 12 * Math.floor(i / L);
+// THE KEYBED is a real piano: 15 white keys (C→C, 2 octaves) with the sharps on the black keys.
+// white-key semitones across an octave (C D E F G A B); black keys exist above C,D,F,G,A (not E,B).
+const WHITE = [0, 2, 4, 5, 7, 9, 11], NW = 15, KEY_ROOT_C = 48; // leftmost white key = C3
+function pianoKey(u, vBack) {
+  const fx = Math.max(0, Math.min(1, u)) * NW; // fractional white-key position 0..15
+  // black key: in the BACK ~half of the strip, near a white-key boundary that carries a sharp
+  if (vBack > 0.5) {
+    const bnd = Math.round(fx);
+    if (bnd > 0 && bnd < NW && Math.abs(fx - bnd) < 0.32) {
+      const lower = bnd - 1, io = lower % 7; // the black sits above the lower white key
+      if (io === 0 || io === 1 || io === 3 || io === 4 || io === 5)
+        return { midi: KEY_ROOT_C + octShift + Math.floor(lower / 7) * 12 + WHITE[io] + 1, black: true, gx: bnd / NW };
+    }
+  }
+  let wi = Math.floor(fx); if (wi >= NW) wi = NW - 1; if (wi < 0) wi = 0;
+  return { midi: KEY_ROOT_C + octShift + Math.floor(wi / 7) * 12 + WHITE[wi % 7], black: false, gx: (wi + 0.5) / NW };
+}
+// the GUITAR follows the selected scale (rooted A2, head→low → bridge→high)
+const GUITAR_ROOT = 45;
+function guitarScaleNotes() {
+  const sc = SCALES[scaleIdx], out = []; let o = 0;
+  while (out.length < 15) { for (const s of sc) { out.push(GUITAR_ROOT + o * 12 + s); if (out.length >= 15) break; } o++; }
+  return out;
 }
 function drawScaleScreen() {
   if (!scaleScreenTex) return;
@@ -1195,11 +1213,17 @@ function playInstrument(pick) {
   const info = pick.pickedMesh._instr; if (!info) return;
   const p = pick.pickedPoint;
   if (info.type === "key") {
-    const s = info.strip; let u = 0.5;
-    if (p && s) u = (p.x - s.x0) / (s.x1 - s.x0);
-    u = Math.max(0, Math.min(1, u));
-    playKey(keyMidi(u)); // pitch follows the selected scale + octave
-    if (keyGlow && s) { const qi = Math.round(u * (KEY_STEPS - 1)) / (KEY_STEPS - 1); keyGlow.position.x = s.x0 + qi * (s.x1 - s.x0); keyGlow.visibility = 1; keyFx = 0.16; } // snap the glow to the played key
+    const s = info.strip; let u = 0.5, vBack = 0;
+    if (p && s) { u = (p.x - s.x0) / (s.x1 - s.x0); vBack = (s.z1 - p.z) / (s.z1 - s.z0); } // u left→right, vBack front(0)→back(1)
+    u = Math.max(0, Math.min(1, u)); vBack = Math.max(0, Math.min(1, vBack));
+    const k = pianoKey(u, vBack); // real piano: white = natural, black (back) = sharp
+    playKey(k.midi);
+    if (keyGlow && s) { // snap the glow to the played key; black keys sit narrower + further back
+      keyGlow.position.x = s.x0 + k.gx * (s.x1 - s.x0);
+      keyGlow.position.z = k.black ? (s.z0 * 0.72 + s.z1 * 0.28) : (s.z0 + s.z1) / 2;
+      keyGlow.scaling.x = k.black ? 0.5 : 1;
+      keyGlow.visibility = 1; keyFx = 0.16;
+    }
   } else if (info.type === "btn") {
     if (info.action === "scaleDown") scaleIdx = (scaleIdx + SCALES.length - 1) % SCALES.length;
     else if (info.action === "scaleUp") scaleIdx = (scaleIdx + 1) % SCALES.length;
@@ -1558,6 +1582,7 @@ window.METRO_BJS = {
   aimPlay: () => { const r = scene.pickWithRay(camera.getForwardRay(7), (m) => !!m._instr); if (r && r.hit) { playInstrument(r); return r.pickedMesh._instr.type; } return null; },
   get keyGlow() { return keyGlow; }, guitarNote: (f) => guitarNote(f),
   get synth() { return { scale: scaleIdx, oct: octShift }; },
+  keyAt: (u, vBack = 0) => pianoKey(u, vBack), guitarNotes: () => guitarScaleNotes(),
   setScale: (i) => { scaleIdx = ((i % SCALES.length) + SCALES.length) % SCALES.length; drawScaleScreen(); },
   setOct: (n) => { octShift = Math.max(-24, Math.min(24, n)); },
   pressBtn: (action) => { const r = scene.meshes.find(m => m._instr && m._instr.type === "btn" && m._instr.action === action); if (r) playInstrument({ pickedMesh: r, pickedPoint: r.absolutePosition }); return { scale: scaleIdx, oct: octShift }; },
