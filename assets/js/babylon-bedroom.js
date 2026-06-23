@@ -280,7 +280,7 @@ const curtMat = matte("curtain", 0x2b2620);
 const panelMat = matte("panelMat", 0x23262e);
 const ledRimMat = emis("ledRim", 0xffc46a, { add: true, alpha: 0.85 });
 function panelSlab(name, w, h, x, y, z, ry) {
-  const slab = box(name, w, h, 0.07, x, y, z, panelMat); slab.rotation.y = ry;
+  const slab = box(name, w, h, 0.07, x, y, z, panelMat); slab.rotation.y = ry; slab._panel = true;
   const rim = node(name + "rim", x, y, z); rim.rotation.y = ry;
   box(name + "rt", w + 0.07, 0.02, 0.012, 0, h / 2 + 0.035, -0.022, ledRimMat, rim, false);
   box(name + "rb", w + 0.07, 0.02, 0.012, 0, -(h / 2 + 0.035), -0.022, ledRimMat, rim, false);
@@ -966,18 +966,39 @@ const IMPORT_WALLS = {
   west: { origin: new V3(-X, 0, ZB), uDir: new V3(0, 0, -1), vDir: new V3(0, 1, 0), normal: new V3(1, 0, 0), w: D, h: H, right: new V3(0, 0, 1) },
   east: { origin: new V3(X, 0, ZF), uDir: new V3(0, 0, 1), vDir: new V3(0, 1, 0), normal: new V3(-1, 0, 0), w: D, h: H, right: new V3(0, 0, -1) },
 };
+const importPlaced = { back: [], east: [], west: [] };
+// spiral out from the intended (x,y) until the spot is on BARE wall: a ray toward the wall must
+// hit the wall mesh itself (not an acoustic panel in front, not the closet hole = a miss).
+function bareWallSpot(w, wallId, x, y, sz) {
+  const U0 = (x ?? 0.5) * w.w, V0 = (y ?? 0.5) * w.h, half = sz / 2 + 0.02;
+  let a = 0, r = 0;
+  for (let i = 0; i < 160; i++) {
+    const u = U0 + Math.cos(a) * r, v = V0 + Math.sin(a) * r; a += 1.2; r += 0.03;
+    if (v < half + 0.05 || v > w.h - half - 0.05) continue; // keep off floor/ceiling
+    const surf = w.origin.add(w.uDir.scale(u)).add(w.vDir.scale(v));
+    if (importPlaced[wallId].some(s => B.Vector3.Distance(s, surf) < sz + 0.04)) continue; // de-overlap
+    const ray = new B.Ray(surf.add(w.normal.scale(0.4)), w.normal.scale(-1), 0.8);
+    const hit = scene.pickWithRay(ray, (mm) => mm._wallId === wallId || mm._panel);
+    if (hit && hit.hit && hit.pickedMesh && hit.pickedMesh._wallId === wallId) {
+      importPlaced[wallId].push(surf);
+      return hit.pickedPoint.add(w.normal.scale(0.04)); // 4cm proud of the actual wall face
+    }
+  }
+  return null;
+}
 function renderImportedNote(n) {
   const w = IMPORT_WALLS[n.wall]; if (!w) return;
   const text = n.kind === "link" ? (n.text || n.url || "link ↗") : (n.text || (n.kind === "photo" ? "📷 photo" : ""));
   if (!text) return;
+  const sz = n.kind === "photo" ? 0.26 : 0.2;
+  const pos = bareWallSpot(w, n.wall, n.x, n.y, sz); if (!pos) return; // no bare-wall spot → skip
   const col = (n.color && n.color[0] === "#") ? n.color : "#f4ecc8";
   const mat = new B.StandardMaterial("inote", scene); mat.diffuseTexture = noteTexture(text, col);
   mat.specularColor = new B.Color3(0.04, 0.04, 0.04); mat.emissiveColor = B.Color3.FromHexString(col).scale(0.55); mat.backFaceCulling = false;
-  const card = B.MeshBuilder.CreatePlane("note", { size: n.kind === "photo" ? 0.26 : 0.2, sideOrientation: B.Mesh.DOUBLESIDE }, scene);
+  const card = B.MeshBuilder.CreatePlane("note", { size: sz, sideOrientation: B.Mesh.DOUBLESIDE }, scene);
   card.material = mat;
-  const p = w.origin.add(w.uDir.scale((n.x ?? 0.5) * w.w)).add(w.vDir.scale((n.y ?? 0.5) * w.h)).add(w.normal.scale(0.09));
-  card.position.set(p.x, p.y, p.z);
-  card.rotation = B.Vector3.RotationFromAxis(w.right, w.vDir, w.normal); card.computeWorldMatrix(true);
+  card.position.set(pos.x, pos.y, pos.z);
+  card.rotation = B.Vector3.RotationFromAxis(B.Vector3.Cross(w.vDir, w.normal), w.vDir, w.normal); card.computeWorldMatrix(true);
   if (n.rot) card.rotate(B.Axis.Z, n.rot, B.Space.LOCAL);
   card.receiveShadows = true;
 }
@@ -1014,7 +1035,7 @@ function renderNote(note) {
   card.material = mat;
   const p = wall.origin.add(wall.uDir.scale(note.u)).add(wall.vDir.scale(note.v)).add(wall.normal.scale(0.09)); // proud of the inner wall face (wall is 0.12 thick)
   card.position.set(p.x, p.y, p.z);
-  card.rotation = B.Vector3.RotationFromAxis(wall.uDir, wall.vDir, wall.normal); // local x=right, y=up, z=faces room
+  card.rotation = B.Vector3.RotationFromAxis(B.Vector3.Cross(wall.vDir, wall.normal), wall.vDir, wall.normal); // right-handed: x = up × normal, z faces room
   card.computeWorldMatrix(true);
   if (note.tilt) card.rotate(B.Axis.Z, note.tilt, B.Space.LOCAL); // slight stuck-on tilt
   card.receiveShadows = true; note._mesh = card;
@@ -1040,9 +1061,9 @@ function postNote() {
 }
 function setupNotes() {
   const m = (n) => scene.getMeshByName(n);
-  if (m("wBack")) m("wBack")._noteWall = NOTE_WALLS.back;
-  if (m("wEast")) m("wEast")._noteWall = NOTE_WALLS.east;
-  ["wWest_a", "wWest_b", "wWest_top"].forEach(n => { if (m(n)) m(n)._noteWall = NOTE_WALLS.west; });
+  if (m("wBack")) { m("wBack")._noteWall = NOTE_WALLS.back; m("wBack")._wallId = "back"; }
+  if (m("wEast")) { m("wEast")._noteWall = NOTE_WALLS.east; m("wEast")._wallId = "east"; }
+  ["wWest_a", "wWest_b", "wWest_top"].forEach(n => { if (m(n)) { m(n)._noteWall = NOTE_WALLS.west; m(n)._wallId = "west"; } });
   const cc = document.getElementById("note-colors");
   NOTE_COLORS.forEach((col, i) => { const b = document.createElement("button"); b.style.background = col; if (i === 0) b.classList.add("sel"); b.onclick = () => { noteColor = col; [...cc.children].forEach(x => x.classList.remove("sel")); b.classList.add("sel"); }; cc.appendChild(b); });
   document.getElementById("note-post").onclick = postNote;
