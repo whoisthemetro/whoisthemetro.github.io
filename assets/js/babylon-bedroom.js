@@ -433,6 +433,9 @@ hexPad("ep4", 0.115, 0.135, 0.95, 1.06, ekit); hexPad("ep5", 0.115, 0.40, 0.92, 
 hexPad("ep1", 0.14, -0.14, 0.64, 1.12, ekit);
 const kickG = node("kickG", 0.10, 0.26, 0.18, ekit); kickG.rotation.x = 1.45;
 cyl("kick", 0.22, 0.22, 0.09, 0, 0, 0, padMat, kickG, 6);
+// kick-drum glow: a soft-lit port + the same cyan rim the hex pads wear
+cyl("kickf", 0.185, 0.185, 0.012, 0, 0.047, 0, emis("kickFace", 0x123a4a), kickG, 6, false);
+const kickRim = B.MeshBuilder.CreateTorus("kickr", { diameter: 0.404, thickness: 0.03, tessellation: 6 }, scene); kickRim.material = rimMat; kickRim.parent = kickG; kickRim.position.y = 0.05; kickRim.rotation.y = Math.PI / 6;
 [-1, 1].forEach((sd) => { cyl("dleg" + sd, 0.018, 0.018, 0.92, sd * 0.52, 0.46, 0, tubeMat, ekit, 8); cyl("dfoot" + sd, 0.016, 0.016, 0.42, sd * 0.52, 0.02, 0, tubeMat, ekit, 8, false).rotation.x = Math.PI / 2; });
 [0.84, 0.56].forEach((by, i) => cyl("dbar" + i, 0.016, 0.016, 1.08, 0, by, 0.01, tubeMat, ekit, 8, false).rotation.z = Math.PI / 2);
 
@@ -467,10 +470,14 @@ box("wahBase", 0.135, 0.05, 0.215, 0, 0.025, 0, matte("wahBase", 0x101216), wah,
 const treadle = node("treadle", 0, 0.052, 0, wah); treadle.rotation.x = -0.1;
 box("tPlate", 0.125, 0.02, 0.205, 0, 0.01, 0, matte("tPlate", 0x7a1f2a), treadle, false);
 box("wahLed", 0.012, 0.012, 0.012, 0, 0.026, 0.092, emis("wahLed", 0xffe04a), treadle, false);
-// keyboard floor pedals
+// keyboard floor pedals — REMOVED from the room (user: the clutter goes, the FX stays).
+// their reverb/colour lives in the global audio chain (the convolver send in ensureAudio),
+// so the sound is unchanged; we just don't draw the stompboxes. node built then disabled
+// so the editor registry / layout JSON below stays valid.
 const kbPedals = node("kbPedals", 0.2, 0, ZF + 1.0); kbPedals.rotation.y = -0.08;
 box("kbpPlate", 0.42, 0.018, 0.2, 0, 0.055, 0, matte("kbpPlate", 0x18191d), kbPedals, false).rotation.x = -0.24;
 stomp(-0.13, 0x6a2f7a, 0xd66bff, kbPedals, 0.95); stomp(0, 0x1f5a7a, 0x4fbfe6, kbPedals, 0.95); stomp(0.13, 0x2f6a3a, 0x6bff8a, kbPedals, 0.95);
+kbPedals.setEnabled(false);
 
 // --- Kali monitors on stands ---
 function kali(x, toeIn) {
@@ -946,6 +953,7 @@ scene.onBeforeRenderObservable.add(() => {
   // radio needle scan
   // instrument feedback: strummed strings shiver, hit pads bob down then spring back
   if (strumFx > 0) { strumFx = Math.max(0, strumFx - dt); for (let i = 0; i < 3; i++) { const s = scene.getMeshByName("teleStr" + i); if (s) s.rotation.z = Math.sin(T * 90 + i) * strumFx * 0.12; } }
+  if (keyFx > 0) { keyFx = Math.max(0, keyFx - dt); if (keyGlow) keyGlow.visibility = keyFx / 0.16; }
   for (let i = drumFx.length - 1; i >= 0; i--) { const f = drumFx[i]; f.t -= dt; const k = Math.max(0, f.t / 0.12); if (f.node) f.node.scaling.y = 1 - k * 0.4; if (f.t <= 0) { if (f.node) f.node.scaling.y = 1; drumFx.splice(i, 1); } }
   // cat update
   updateCat(dt);
@@ -1038,16 +1046,25 @@ function playKey(midi, vel = 0.5) {
   car.start(t); mod.start(t); car.stop(t + 2.1); mod.stop(t + 2.1);
 }
 // Karplus-Strong plucked string (rendered offline into a buffer, then played)
-function pluck(freq, when, dur = 2.2, damp = 0.5, gain = 0.5) {
+function pluck(freq, when, dur = 2.2, damp = 0.5, gain = 0.5, wet = 0.16) {
   const ac = ensureAudio(), rate = ac.sampleRate, n = Math.max(2, Math.round(rate / freq)), total = Math.floor(rate * dur);
   const buf = ac.createBuffer(1, total, rate), d = buf.getChannelData(0), ring = new Float32Array(n);
   for (let i = 0; i < n; i++) ring[i] = Math.random() * 2 - 1;
   const fb = 0.992 - damp * 0.02; let pi = 0;
   for (let i = 0; i < total; i++) { const cur = ring[pi], nxt = ring[(pi + 1) % n]; d[i] = cur; ring[pi] = (cur + nxt) * 0.5 * fb; pi = (pi + 1) % n; }
-  const src = ac.createBufferSource(); src.buffer = buf; const g = ac.createGain(); g.gain.value = gain; src.connect(g); out(g, 0.16);
+  const src = ac.createBufferSource(); src.buffer = buf; const g = ac.createGain(); g.gain.value = gain; src.connect(g); out(g, wet);
   src.start(when || ac.currentTime);
 }
-// a few nice voicings (midi) — each strum advances the progression, alternating down/up
+// A-minor up the neck: low at the headstock (top) → high at the bridge (bottom).
+// click position picks the note; a fatter reverb send than the rest gives it the wash the user asked for.
+const AMIN = [45, 47, 48, 50, 52, 53, 55, 57, 59, 60, 62, 64, 65, 67, 69]; // A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 E4 F4 G4 A4
+function guitarNote(frac) {
+  const f = Math.max(0, Math.min(1, frac)); // 0 headstock → 1 bridge
+  const midi = AMIN[Math.round(f * (AMIN.length - 1))];
+  pluck(mtof(midi), 0, 2.7, 0.42, 0.5, 0.34); // long ring + heavy reverb
+  strumFx = 0.25;
+}
+// a few nice voicings (midi) — kept for the debug API; a click in-world plays the positional scale above
 const CHORDS = [[40, 47, 52, 56, 59, 64], [45, 52, 55, 60, 64, 69], [43, 47, 50, 55, 59, 67], [38, 45, 50, 57, 62, 66]]; // E  Am  G  D
 let chordIdx = 0;
 function strumGuitar() {
@@ -1064,12 +1081,30 @@ function drum(kind) {
   else { const f = kind === "tom1" ? 210 : kind === "tom2" ? 160 : 120; const o = ac.createOscillator(); o.type = "sine"; o.frequency.setValueAtTime(f * 1.4, t); o.frequency.exponentialRampToValueAtTime(f, t + 0.18); const g = ac.createGain(); g.gain.setValueAtTime(0.75, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.3); o.connect(g); out(g, 0.16); o.start(t); o.stop(t + 0.32); }
 }
 // tag the instrument meshes so a click finds them; map drum pads to sounds
+let keyGlow = null;
 function setupInstruments() {
   const tag = (mesh, info) => { if (mesh) mesh._instr = info; };
-  // guitar: every part of the Tele strums a chord
-  const teleNode = scene.getTransformNodeByName("tele"); if (teleNode) teleNode.getChildMeshes().forEach(m => tag(m, { type: "guitar" }));
-  // keys: the MIDI keybed plays pitch by where you click along it
-  tag(scene.getMeshByName("midiKeys"), { type: "key" });
+  // guitar: click anywhere along the Tele — position picks the note (carry the node for the math)
+  const teleNode = scene.getTransformNodeByName("tele"); if (teleNode) teleNode.getChildMeshes().forEach(m => tag(m, { type: "guitar", tele: teleNode }));
+  // KEYS: an invisible forgiving pad over the GLB controller's FRONT key strip only (not the
+  // pads/knobs on the top panel). pitch by where you click left→right; the pressed key lights up.
+  const midiRoot = deskProps.midi;
+  if (midiRoot) {
+    const bb = midiRoot.getHierarchyBoundingVectors();
+    const x0 = bb.min.x + 0.006, x1 = bb.max.x - 0.006;  // nearly full width of the unit
+    const zF = bb.max.z, zB = zF - 0.10;                 // the keys live in the front ~10cm
+    const yT = bb.max.y + 0.0015;                        // a hair above the keytops
+    const strip = { x0, x1, z0: zB, z1: zF };
+    const pad = B.MeshBuilder.CreatePlane("midiKeyPad", { width: x1 - x0, height: zF - zB, sideOrientation: B.Mesh.DOUBLESIDE }, scene);
+    pad.rotation.x = Math.PI / 2; pad.position.set((x0 + x1) / 2, yT, (zB + zF) / 2);
+    pad.visibility = 0; pad.isPickable = true; pad._instr = { type: "key", strip };
+    // the light-up: a warm additive quad one key wide, parked over the pressed key, faded by keyFx
+    keyGlow = B.MeshBuilder.CreatePlane("keyGlow", { width: (x1 - x0) / 14, height: zF - zB, sideOrientation: B.Mesh.DOUBLESIDE }, scene);
+    keyGlow.rotation.x = Math.PI / 2; keyGlow.position.set((x0 + x1) / 2, yT + 0.0006, (zB + zF) / 2);
+    keyGlow.material = emis("keyGlowMat", 0xffe9a8, { add: true, alpha: 0.85 }); keyGlow.visibility = 0; keyGlow.isPickable = false;
+  } else {
+    tag(scene.getMeshByName("midiKeys"), { type: "key" }); // fallback to the procedural keybed if the GLB failed to load
+  }
   // drums: each pad → a voice (ep1 big = snare, kick = kick, others toms/hat)
   const padMap = { ep1: "snare", ep2: "hat", ep3: "tom1", ep4: "tom2", ep5: "tom3", kick: "kick" };
   for (const id in padMap) {
@@ -1078,12 +1113,26 @@ function setupInstruments() {
     ["p", "f", "r", ""].forEach(s => tag(scene.getMeshByName(id + s), info)); // every piece of the pad triggers it
   }
 }
-let strumFx = 0; const drumFx = [];
+let strumFx = 0, keyFx = 0; const drumFx = [];
 function playInstrument(pick) {
   const info = pick.pickedMesh._instr; if (!info) return;
-  if (info.type === "key") { let u = 0.5; const tc = pick.getTextureCoordinates ? pick.getTextureCoordinates() : null; if (tc) u = tc.x; const midi = 48 + Math.round(Math.max(0, Math.min(1, u)) * 24); playKey(midi); }
-  else if (info.type === "guitar") strumGuitar();
-  else if (info.type === "drum") { drum(info.drum); if (info.pad) drumFx.push({ node: info.pad, t: 0.12 }); }
+  const p = pick.pickedPoint;
+  if (info.type === "key") {
+    const s = info.strip; let u = 0.5;
+    if (p && s) { const tc = pick.getTextureCoordinates ? pick.getTextureCoordinates() : null; u = s ? (p.x - s.x0) / (s.x1 - s.x0) : (tc ? tc.x : 0.5); }
+    u = Math.max(0, Math.min(1, u));
+    playKey(48 + Math.round(u * 24)); // C3..C5 left→right
+    if (keyGlow && p) { keyGlow.position.x = info.strip.x0 + u * (info.strip.x1 - info.strip.x0); keyGlow.visibility = 1; keyFx = 0.16; }
+  } else if (info.type === "guitar") {
+    let frac = 0.5;
+    if (info.tele && p) {
+      const inv = info.tele.getWorldMatrix().clone(); inv.invert();
+      const local = B.Vector3.TransformCoordinates(p, inv);
+      const HEAD_Y = 0.84, BRIDGE_Y = -0.18; // neck runs +Y; head top, bridge bottom
+      frac = (HEAD_Y - local.y) / (HEAD_Y - BRIDGE_Y); // low at the head → high at the bridge
+    }
+    guitarNote(frac);
+  } else if (info.type === "drum") { drum(info.drum); if (info.pad) drumFx.push({ node: info.pad, t: 0.12 }); }
 }
 
 let lightDrag = null;
@@ -1422,4 +1471,7 @@ window.METRO_BJS = {
   playKey: (m) => playKey(m), strumGuitar: () => strumGuitar(), drum: (k) => drum(k),
   audioPeak: () => new Promise((res) => { const ac = ensureAudio(); const an = ac.createAnalyser(); an.fftSize = 2048; master.connect(an); const data = new Float32Array(an.fftSize); let peak = 0; const t0 = ac.currentTime; const iv = setInterval(() => { an.getFloatTimeDomainData(data); for (const v of data) peak = Math.max(peak, Math.abs(v)); if (ac.currentTime - t0 > 0.6) { clearInterval(iv); try { master.disconnect(an); } catch {} res(+peak.toFixed(3)); } }, 20); }),
   pickInstr: () => { const r = scene.pickWithRay(camera.getForwardRay(7), (m) => !!m._instr); return r && r.hit ? r.pickedMesh._instr.type + (r.pickedMesh._instr.drum ? ":" + r.pickedMesh._instr.drum : "") : null; },
+  // aim the crosshair at an instrument and actually play it (drives the same path a click does)
+  aimPlay: () => { const r = scene.pickWithRay(camera.getForwardRay(7), (m) => !!m._instr); if (r && r.hit) { playInstrument(r); return r.pickedMesh._instr.type; } return null; },
+  get keyGlow() { return keyGlow; }, guitarNote: (f) => guitarNote(f),
 };
