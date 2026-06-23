@@ -57,6 +57,11 @@
     border: 1px solid #3a3a44; border-radius: 6px; transition: all .15s; }
   #editpanel button:hover { background: #24242e; border-color: #ff3bd0; }
   #edit-copy { border-color: #2dd4bf !important; }
+  #screenfx { border-top: 1px solid #2a2a33; margin: .55rem 0 .6rem; padding-top: .55rem; }
+  #screenfx .fxh { color: #ff3bd0; font-size: .54rem; letter-spacing: .2em; margin-bottom: .35rem; }
+  #screenfx .fxrow { display: flex; align-items: center; gap: .5rem; margin: .28rem 0; }
+  #screenfx label { width: 4.6rem; color: #8fe0c4; font-size: .54rem; letter-spacing: .08em; }
+  #screenfx input[type=range] { flex: 1; accent-color: #2dd4bf; height: 2px; }
   #edit-toggle { position: fixed; left: 1rem; bottom: .6rem; z-index: 8; font: inherit; font-size: .56rem;
     letter-spacing: .14em; cursor: pointer; padding: .5rem .8rem; color: #cfcdd6; background: rgba(10,10,14,.7);
     border: 1px solid #34343f; border-radius: 999px; opacity: 0; transition: opacity .5s; }
@@ -96,6 +101,12 @@
     <div id="edit-sel">click an item to select</div>
     <div id="edit-xform"></div>
     <div class="keys">drag = move on desk · [ ] = rotate · −/= = height<br>, . = size · ↑↓←→ = nudge · Shift = fine</div>
+    <div id="screenfx">
+      <div class="fxh">SCREEN PHOTOS</div>
+      <div class="fxrow"><label>contrast</label><input id="fx-contrast" type="range" min="0.6" max="1.6" step="0.02" value="1.06"></div>
+      <div class="fxrow"><label>shadows</label><input id="fx-shadows" type="range" min="-0.5" max="0.5" step="0.02" value="0"></div>
+      <div class="fxrow"><label>screen out</label><input id="fx-depth" type="range" min="0" max="0.05" step="0.002" value="0.012"></div>
+    </div>
     <button id="edit-copy">copy layout</button>
     <button id="edit-reset">reset</button>
     <button id="edit-done">done (G)</button>

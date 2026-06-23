@@ -377,9 +377,9 @@ box("deskTop", 1.9, 0.04, 0.78, 0, 0.72, 0, (() => { const m = new B.StandardMat
 // (D-Box removed — the ultrawide stands on its own)
 // ultrawide monitor — it's ON, slideshowing the photos people pinned to the wall (see slide driver below)
 box("monBezel", 0.94, 0.41, 0.03, 0, 1.04, -0.21, matte("monBezel", 0x0c0d10), desk);
-const slideTex = new B.DynamicTexture("slide", { width: 1024, height: 434 }, scene, true);
+const slideTex = new B.DynamicTexture("slide", { width: 2048, height: 868 }, scene, true); // 2x the old 1024×434 — sharper photos
 slideTex.uScale = -1; slideTex.uOffset = 1; slideTex.vScale = -1; slideTex.vOffset = 1; // monScreen is rotated 180°; un-rotate the image
-const slideMat = emis("slideMat", 0xffffff, { glow: false }); slideMat.emissiveTexture = slideTex; slideMat.emissiveColor = new B.Color3(0.62, 0.62, 0.62);
+const slideMat = emis("slideMat", 0xffffff, { glow: false }); slideMat.emissiveTexture = slideTex; slideMat.emissiveColor = new B.Color3(0.42, 0.42, 0.42); // dimmer — was 0.62, the screen was washing out the desk
 const monScreen = plane("monScreen", 0.92, 0.39, slideMat); monScreen.parent = desk; monScreen.position.set(0, 1.04, -0.194); monScreen.rotation.y = Math.PI;
 const dawTex = new B.DynamicTexture("daw", { width: 1024, height: 434 }, scene, false); // kept for the meter helper's sibling API; unused on screen
 // keyboard + trackball
@@ -626,7 +626,8 @@ async function loadMonitors() {
     const sw = (bb.max.x - bb.min.x) * 0.9, sh = (top - panelBot) * 0.95;
     const cx = (bb.min.x + bb.max.x) / 2, cy = (panelBot + top) / 2;
     monScreen.scaling.set(sw / 0.92, sh / 0.39, 1);
-    monScreen.position.set(cx - desk.position.x, cy - desk.position.y, (bb.max.z + 0.03) - desk.position.z); // proud of the panel, toward the room
+    monScreen.position.x = cx - desk.position.x; monScreen.position.y = cy - desk.position.y;
+    monScreen._panelZ = bb.max.z - desk.position.z; applyScreenDepth(); // sits `screenDepth` proud of the panel — tunable in arrange mode
     scene.getMeshByName("monBezel")?.setEnabled(false);
     deskProps.ultrawide = tv;
   } catch (e) { console.warn("ultrawide failed — keeping procedural", e); }
@@ -902,31 +903,49 @@ function drawMeter(t) {
   for (let i = 0; i < 14; i++) { const v = 0.5 + 0.5 * Math.sin(t * 4 + i); const bh = v * 150; const hue = v > 0.85 ? "#ff4d4d" : v > 0.6 ? "#ffd23b" : "#3be07a"; mctx.fillStyle = hue; mctx.fillRect(14 + i * 22, h - 20 - bh, 14, bh); } meterTex.update(false);
 }
 function drawClock() {
-  const w = 310, h = 116; cctx.fillStyle = "#06080c"; cctx.fillRect(0, 0, w, h);
+  // ONLY the numbers glow: pure-black field emits nothing (emissive), so just the lit digits read.
+  const w = 310, h = 116; cctx.fillStyle = "#000000"; cctx.fillRect(0, 0, w, h);
   const now = new Date(); const opt = { timeZone: "America/Los_Angeles", hour: "2-digit", minute: "2-digit", hour12: false };
   let s = "--:--"; try { s = new Intl.DateTimeFormat("en-US", opt).format(now); } catch {}
-  cctx.fillStyle = "#ff7a3c"; cctx.font = "700 64px monospace"; cctx.textAlign = "center"; cctx.fillText(s, w / 2, 74); cctx.font = "700 16px monospace"; cctx.fillStyle = "#9c6a3a"; cctx.fillText("LOS ANGELES", w / 2, 100); cctx.textAlign = "left"; clockTex.update(false);
+  cctx.fillStyle = "#ff7a3c"; cctx.font = "700 58px monospace"; cctx.textAlign = "center"; cctx.textBaseline = "middle";
+  cctx.fillText(s, w / 2, h / 2 + 2); cctx.textAlign = "left"; cctx.textBaseline = "alphabetic"; clockTex.update(false);
 }
 let clockAcc = 0;
 
 // THE MONITOR SLIDESHOW — the ultrawide is on, cycling the photos people pinned to the wall.
 // urls are filled by importWallNotes(); we cover-fit each into slideTex (a DynamicTexture, which renders
 // as emissive here — a loaded jpg as emissiveTexture would not).
-const slide = { urls: [], i: -1, acc: 0, period: 6 };
+const slide = { urls: [], i: -1, acc: 0, period: 6, lastImg: null, lastLabel: "" };
+// live photo grade for ALL the screen pics at once (driven by the arrange-mode sliders)
+const photoFx = { contrast: 1.06, shadows: 0 }; // shadows: <0 deepen, >0 lift the blacks
+let screenDepth = 0.012; // how far the slideshow plane sits proud of the TV glass
+const SCREEN_FX_KEY = "metro.screen.fx";
+function applyScreenDepth() { if (monScreen._panelZ != null) monScreen.position.z = monScreen._panelZ + screenDepth; }
 function drawSlide(img, label) {
-  const sctx = slideTex.getContext(), w = 1024, h = 434;
-  sctx.filter = "none"; sctx.fillStyle = "#04050a"; sctx.fillRect(0, 0, w, h);
+  slide.lastImg = img; slide.lastLabel = label; // remember, so the sliders can re-grade the same shot live
+  const sctx = slideTex.getContext(), sz = slideTex.getSize(), w = sz.width, h = sz.height, k = h / 434; // ui sized to the original 434px design
+  sctx.globalCompositeOperation = "source-over"; sctx.filter = "none"; sctx.fillStyle = "#04050a"; sctx.fillRect(0, 0, w, h);
   if (img) {
-    const s = Math.max(w / img.width, h / img.height), dw = img.width * s, dh = img.height * s;
-    sctx.save(); sctx.beginPath(); sctx.rect(0, 0, w, h); sctx.clip();
-    sctx.filter = "contrast(1.12) saturate(1.12)";
-    sctx.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh); sctx.restore(); sctx.filter = "none";
+    sctx.imageSmoothingEnabled = true; sctx.imageSmoothingQuality = "high";
+    // CONTAIN, not cover — show the WHOLE photo (letterboxed), never crop/zoom into it
+    const s = Math.min(w / img.width, h / img.height), dw = img.width * s, dh = img.height * s, dx = (w - dw) / 2, dy = (h - dh) / 2;
+    sctx.filter = `contrast(${photoFx.contrast}) saturate(1.08)`;
+    sctx.drawImage(img, dx, dy, dw, dh); sctx.filter = "none";
+    if (photoFx.shadows > 0) { // lift the blacks toward grey
+      sctx.globalCompositeOperation = "lighten"; const L = Math.round(255 * photoFx.shadows * 0.6);
+      sctx.fillStyle = `rgb(${L},${L},${L})`; sctx.fillRect(dx, dy, dw, dh);
+    } else if (photoFx.shadows < 0) { // deepen the shadows (multiply pulls darks down hardest)
+      sctx.globalCompositeOperation = "multiply"; const m = Math.round(255 * (1 + photoFx.shadows));
+      sctx.fillStyle = `rgb(${m},${m},${m})`; sctx.fillRect(dx, dy, dw, dh);
+    }
+    sctx.globalCompositeOperation = "source-over";
   }
-  sctx.strokeStyle = "#0a0c12"; sctx.lineWidth = 10; sctx.strokeRect(0, 0, w, h); // thin inner bezel
-  sctx.fillStyle = "rgba(0,0,0,.42)"; sctx.fillRect(0, h - 32, w, 32);
-  sctx.fillStyle = "#2dd4bf"; sctx.font = "700 18px ui-monospace, monospace"; sctx.textAlign = "left";
-  sctx.fillText(label || "▸ THE WALL", 16, h - 11); slideTex.update(false);
+  sctx.strokeStyle = "#0a0c12"; sctx.lineWidth = 10 * k; sctx.strokeRect(0, 0, w, h); // thin inner bezel
+  const bar = 32 * k; sctx.fillStyle = "rgba(0,0,0,.42)"; sctx.fillRect(0, h - bar, w, bar);
+  sctx.fillStyle = "#2dd4bf"; sctx.font = `700 ${Math.round(18 * k)}px ui-monospace, monospace`; sctx.textAlign = "left";
+  sctx.fillText(label || "▸ THE WALL", 16 * k, h - 11 * k); slideTex.update(false);
 }
+function regrade() { drawSlide(slide.lastImg, slide.lastLabel); } // re-paint the current shot with the latest grade
 function nextSlide() {
   if (!slide.urls.length) { drawSlide(null, "▸ the wall — powering on…"); return; }
   slide.i = (slide.i + 1) % slide.urls.length;
@@ -1475,6 +1494,15 @@ function setupEditor() {
   document.getElementById("edit-copy").addEventListener("click", () => { const t = JSON.stringify(layoutObj(), null, 2); navigator.clipboard?.writeText(t).then(() => flashHint("layout copied — paste it to me to bake in")); console.log("DESK LAYOUT:\n" + t); });
   document.getElementById("edit-reset").addEventListener("click", () => { try { localStorage.removeItem(LS_KEY); } catch { } location.reload(); });
   document.getElementById("edit-done").addEventListener("click", () => toggleEdit(false));
+  // screen photo grade + how far the slideshow plane sits off the glass
+  const fxC = document.getElementById("fx-contrast"), fxS = document.getElementById("fx-shadows"), fxD = document.getElementById("fx-depth");
+  try { const sv = JSON.parse(localStorage.getItem(SCREEN_FX_KEY) || "{}"); if (sv.contrast != null) photoFx.contrast = sv.contrast; if (sv.shadows != null) photoFx.shadows = sv.shadows; if (sv.depth != null) screenDepth = sv.depth; } catch { }
+  if (fxC) fxC.value = photoFx.contrast; if (fxS) fxS.value = photoFx.shadows; if (fxD) fxD.value = screenDepth;
+  applyScreenDepth(); regrade();
+  const saveFx = () => { try { localStorage.setItem(SCREEN_FX_KEY, JSON.stringify({ contrast: photoFx.contrast, shadows: photoFx.shadows, depth: screenDepth })); } catch { } };
+  fxC?.addEventListener("input", () => { photoFx.contrast = +fxC.value; regrade(); saveFx(); });
+  fxS?.addEventListener("input", () => { photoFx.shadows = +fxS.value; regrade(); saveFx(); });
+  fxD?.addEventListener("input", () => { screenDepth = +fxD.value; applyScreenDepth(); saveFx(); });
   window.addEventListener("keydown", onEditKey);
   scene.onPointerObservable.add(onEditPointer);
 }
