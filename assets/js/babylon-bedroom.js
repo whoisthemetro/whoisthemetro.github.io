@@ -945,6 +945,18 @@ scene.onPointerObservable.add((p) => {
 // exports a layout you paste back so it gets baked in permanently.
 // =====================================================================
 const LS_KEY = "metro.desk.layout";
+// baked-in arrangement (your "copy layout"); localStorage overrides this per-visitor
+const DEFAULT_LAYOUT = {
+  "monitor": { x: 0, y: 0.749, z: -0.2, ry: -1.571, s: 0.543 },
+  "external-monitor": { x: 0.66, y: 0.979, z: -0.18, ry: -0.35, s: 0.004 },
+  "keyboard": { x: -0.02, y: 0.751, z: 0.25, ry: 0, s: 0.181 },
+  "mouse": { x: 0.31, y: 0.74, z: 0.2, ry: 0, s: 1.104 },
+  "midi": { x: -0.03, y: 0.63, z: 0.478, ry: 0, s: 0.004 },
+  "mixer": { x: -0.02, y: 0.74, z: 0.01, ry: 0, s: 1 },
+  "mug": { x: 0.45, y: 0.779, z: -0.02, ry: 0, s: 0.004 },
+  "clock": { x: -0.75, y: 0.775, z: -0.15, ry: 0.35, s: 1 },
+  "mac": { x: 0.66, y: 0.787, z: -0.18, ry: 0, s: 1 },
+};
 let editMode = false, selected = null, dragging = false, grabOff = { x: 0, z: 0 }, editables = [], editHL = null;
 const editToggle = document.getElementById("edit-toggle"), editPanel = document.getElementById("editpanel");
 const editSel = document.getElementById("edit-sel"), editXform = document.getElementById("edit-xform");
@@ -960,11 +972,13 @@ function setupEditor() {
     { name: "monitor", node: deskProps.ultrawide }, { name: "external-monitor", node: deskProps.portable },
     { name: "keyboard", node: deskProps.kb }, { name: "mouse", node: deskProps.mouse }, { name: "midi", node: deskProps.midi },
     { name: "mixer", node: mixer }, { name: "mug", node: deskProps.mug }, { name: "clock", node: clockBody }, { name: "mac", node: scene.getMeshByName("mac") },
+    { name: "pedalboard", node: pbRef }, { name: "guitar", node: tele }, // floor items (world space)
   ].filter(e => e.node);
   editables.forEach(e => meshesOf(e.node).forEach(m => { m._editable = e; m.isPickable = true; }));
   editHL = new B.HighlightLayer("editHL", scene);
   let saved = {}; try { saved = JSON.parse(localStorage.getItem(LS_KEY) || "{}"); } catch { }
-  editables.forEach(e => { if (saved[e.name]) applyXform(e.node, saved[e.name]); });
+  const layout = Object.assign({}, DEFAULT_LAYOUT, saved); // saved (localStorage) overrides the baked default
+  editables.forEach(e => { if (layout[e.name]) applyXform(e.node, layout[e.name]); });
   editToggle.addEventListener("click", () => toggleEdit(!editMode));
   document.getElementById("edit-copy").addEventListener("click", () => { const t = JSON.stringify(layoutObj(), null, 2); navigator.clipboard?.writeText(t).then(() => flashHint("layout copied — paste it to me to bake in")); console.log("DESK LAYOUT:\n" + t); });
   document.getElementById("edit-reset").addEventListener("click", () => { try { localStorage.removeItem(LS_KEY); } catch { } location.reload(); });
@@ -979,7 +993,8 @@ function selectEd(e) {
   else { editSel.textContent = "click an item to select"; editXform.textContent = ""; }
 }
 function updXformHud() { if (!selected) return; const t = nodeXform(selected.node); editXform.textContent = `x ${t.x}  y ${t.y}  z ${t.z}\nrot ${t.ry}  size ${t.s}`; }
-function planeHit(h) { const ray = scene.createPickingRay(scene.pointerX, scene.pointerY, B.Matrix.Identity(), camera); const t = (h - ray.origin.y) / ray.direction.y; if (t <= 0) return null; const p = ray.origin.add(ray.direction.scale(t)); return { x: p.x - 0.2, z: p.z + 2.81 }; }
+function planeHit(h) { const ray = scene.createPickingRay(scene.pointerX, scene.pointerY, B.Matrix.Identity(), camera); const t = (h - ray.origin.y) / ray.direction.y; if (t <= 0) return null; const p = ray.origin.add(ray.direction.scale(t)); return { x: p.x, z: p.z }; } // world x/z
+function setWorldXZ(n, wx, wz) { const y = n.position.y; if (n.parent && n.parent.getWorldMatrix) { const loc = B.Vector3.TransformCoordinates(new V3(wx, n.getAbsolutePosition().y, wz), B.Matrix.Invert(n.parent.computeWorldMatrix(true))); n.position.x = loc.x; n.position.z = loc.z; } else { n.position.x = wx; n.position.z = wz; } n.position.y = y; }
 function toggleEdit(on) {
   editMode = on; editToggle.classList.toggle("on", on); editPanel.classList.toggle("show", on);
   editToggle.textContent = on ? "✦ exit arrange" : "✦ arrange desk";
@@ -991,14 +1006,14 @@ function onEditPointer(pi) {
     const pick = scene.pick(scene.pointerX, scene.pointerY, m => !!m._editable);
     if (pick.hit && pick.pickedMesh && pick.pickedMesh._editable) {
       selectEd(pick.pickedMesh._editable);
-      const hit = planeHit(selected.node.getAbsolutePosition().y);
-      grabOff = hit ? { x: selected.node.position.x - hit.x, z: selected.node.position.z - hit.z } : { x: 0, z: 0 };
+      const abs = selected.node.getAbsolutePosition(), hit = planeHit(abs.y);
+      grabOff = hit ? { x: abs.x - hit.x, z: abs.z - hit.z } : { x: 0, z: 0 };
       dragging = true;
     } else selectEd(null);
   } else if (pi.type === B.PointerEventTypes.POINTERUP) { dragging = false; if (selected) saveLayout(); }
   else if (pi.type === B.PointerEventTypes.POINTERMOVE && dragging && selected) {
     const hit = planeHit(selected.node.getAbsolutePosition().y);
-    if (hit) { selected.node.position.x = hit.x + grabOff.x; selected.node.position.z = hit.z + grabOff.z; updXformHud(); }
+    if (hit) { setWorldXZ(selected.node, hit.x + grabOff.x, hit.z + grabOff.z); updXformHud(); }
   }
 }
 function onEditKey(ev) {
