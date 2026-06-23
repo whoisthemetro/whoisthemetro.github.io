@@ -944,6 +944,9 @@ scene.onBeforeRenderObservable.add(() => {
   // neon breathe + rare flicker
   const nb = 2.0 + Math.sin(T * 3) * 0.2 + (Math.random() < 0.008 ? -1.4 : 0); neonMat.emissiveColor.set(nb * 1.1, nb * 0.28, nb * 0.18);
   // radio needle scan
+  // instrument feedback: strummed strings shiver, hit pads bob down then spring back
+  if (strumFx > 0) { strumFx = Math.max(0, strumFx - dt); for (let i = 0; i < 3; i++) { const s = scene.getMeshByName("teleStr" + i); if (s) s.rotation.z = Math.sin(T * 90 + i) * strumFx * 0.12; } }
+  for (let i = drumFx.length - 1; i >= 0; i--) { const f = drumFx[i]; f.t -= dt; const k = Math.max(0, f.t / 0.12); if (f.node) f.node.scaling.y = 1 - k * 0.4; if (f.t <= 0) { if (f.node) f.node.scaling.y = 1; drumFx.splice(i, 1); } }
   // cat update
   updateCat(dt);
   // hearts
@@ -997,6 +1000,92 @@ function throwBall() {
   const agg = new B.PhysicsAggregate(s, B.PhysicsShapeType.SPHERE, { mass: 0.6, restitution: 0.72, friction: 0.5 }, scene);
   agg.body.applyImpulse(dir.scale(7), s.position); thrown++;
 }
+// =====================================================================
+// SOUND — the instruments are PLAYABLE. pure WebAudio synthesis. (Babylon's
+// audio engine is for playing/spatialising files, not synthesis — so "better
+// sounds" here means better synths, not a Babylon feature: a Karplus-Strong
+// plucked guitar, an FM Rhodes for the keys, and synthesised drums, all
+// through a shared reverb.) the context is built lazily on the first click.
+// =====================================================================
+let AC = null, master = null, verbSend = null;
+function ensureAudio() {
+  if (AC) { if (AC.state === "suspended") AC.resume(); return AC; }
+  AC = new (window.AudioContext || window.webkitAudioContext)();
+  master = AC.createGain(); master.gain.value = 0.5;
+  const comp = AC.createDynamicsCompressor(); comp.threshold.value = -16; comp.ratio.value = 3; comp.attack.value = 0.003; comp.release.value = 0.25;
+  master.connect(comp); comp.connect(AC.destination);
+  const verb = AC.createConvolver(); verb.buffer = makeImpulse(2.0, 2.4);
+  verbSend = AC.createGain(); verbSend.gain.value = 0.9; verbSend.connect(verb); verb.connect(master); // a little room around everything
+  return AC;
+}
+function makeImpulse(dur, decay) {
+  const rate = AC.sampleRate, len = Math.floor(rate * dur), buf = AC.createBuffer(2, len, rate);
+  for (let ch = 0; ch < 2; ch++) { const d = buf.getChannelData(ch); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decay); }
+  return buf;
+}
+function noiseBuf(dur) { const len = Math.floor(AC.sampleRate * dur), b = AC.createBuffer(1, len, AC.sampleRate), d = b.getChannelData(0); for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1; const s = AC.createBufferSource(); s.buffer = b; return s; }
+function out(node, wet = 0.18) { node.connect(master); const g = AC.createGain(); g.gain.value = wet; node.connect(g); g.connect(verbSend); } // dry to master + a send to the reverb
+const mtof = (m) => 440 * Math.pow(2, (m - 69) / 12);
+// FM Rhodes voice (1:1 ratio with a decaying mod index = tine bell + body)
+function playKey(midi, vel = 0.5) {
+  const ac = ensureAudio(), t = ac.currentTime, f = mtof(midi);
+  const car = ac.createOscillator(); car.type = "sine"; car.frequency.value = f;
+  const mod = ac.createOscillator(); mod.type = "sine"; mod.frequency.value = f * 1.0;
+  const mg = ac.createGain(); const idx = f * 2.2; mg.gain.setValueAtTime(idx, t); mg.gain.exponentialRampToValueAtTime(idx * 0.02 + 0.001, t + 0.4);
+  mod.connect(mg); mg.connect(car.frequency);
+  const amp = ac.createGain(); amp.gain.setValueAtTime(0.0001, t); amp.gain.exponentialRampToValueAtTime(vel, t + 0.004); amp.gain.exponentialRampToValueAtTime(0.0001, t + 2.0);
+  car.connect(amp); out(amp, 0.22);
+  car.start(t); mod.start(t); car.stop(t + 2.1); mod.stop(t + 2.1);
+}
+// Karplus-Strong plucked string (rendered offline into a buffer, then played)
+function pluck(freq, when, dur = 2.2, damp = 0.5, gain = 0.5) {
+  const ac = ensureAudio(), rate = ac.sampleRate, n = Math.max(2, Math.round(rate / freq)), total = Math.floor(rate * dur);
+  const buf = ac.createBuffer(1, total, rate), d = buf.getChannelData(0), ring = new Float32Array(n);
+  for (let i = 0; i < n; i++) ring[i] = Math.random() * 2 - 1;
+  const fb = 0.992 - damp * 0.02; let pi = 0;
+  for (let i = 0; i < total; i++) { const cur = ring[pi], nxt = ring[(pi + 1) % n]; d[i] = cur; ring[pi] = (cur + nxt) * 0.5 * fb; pi = (pi + 1) % n; }
+  const src = ac.createBufferSource(); src.buffer = buf; const g = ac.createGain(); g.gain.value = gain; src.connect(g); out(g, 0.16);
+  src.start(when || ac.currentTime);
+}
+// a few nice voicings (midi) — each strum advances the progression, alternating down/up
+const CHORDS = [[40, 47, 52, 56, 59, 64], [45, 52, 55, 60, 64, 69], [43, 47, 50, 55, 59, 67], [38, 45, 50, 57, 62, 66]]; // E  Am  G  D
+let chordIdx = 0;
+function strumGuitar() {
+  const ac = ensureAudio(), notes = CHORDS[chordIdx % CHORDS.length], up = chordIdx % 2 === 1; chordIdx++;
+  const order = up ? [...notes].reverse() : notes;
+  order.forEach((m, i) => pluck(mtof(m), ac.currentTime + i * 0.022, 2.4, 0.45, 0.42));
+  strumFx = 0.3;
+}
+function drum(kind) {
+  const ac = ensureAudio(), t = ac.currentTime;
+  if (kind === "kick") { const o = ac.createOscillator(); o.type = "sine"; o.frequency.setValueAtTime(155, t); o.frequency.exponentialRampToValueAtTime(45, t + 0.11); const g = ac.createGain(); g.gain.setValueAtTime(0.95, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.24); o.connect(g); out(g, 0.06); o.start(t); o.stop(t + 0.26); }
+  else if (kind === "snare") { const nz = noiseBuf(0.2), hp = ac.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 1400; const g = ac.createGain(); g.gain.setValueAtTime(0.7, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.17); nz.connect(hp); hp.connect(g); out(g, 0.22); nz.start(t); const o = ac.createOscillator(); o.type = "triangle"; o.frequency.setValueAtTime(185, t); const og = ac.createGain(); og.gain.setValueAtTime(0.45, t); og.gain.exponentialRampToValueAtTime(0.001, t + 0.11); o.connect(og); out(og, 0.1); o.start(t); o.stop(t + 0.12); }
+  else if (kind === "hat") { const nz = noiseBuf(0.07), hp = ac.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 8000; const g = ac.createGain(); g.gain.setValueAtTime(0.32, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.05); nz.connect(hp); hp.connect(g); out(g, 0.05); nz.start(t); }
+  else { const f = kind === "tom1" ? 210 : kind === "tom2" ? 160 : 120; const o = ac.createOscillator(); o.type = "sine"; o.frequency.setValueAtTime(f * 1.4, t); o.frequency.exponentialRampToValueAtTime(f, t + 0.18); const g = ac.createGain(); g.gain.setValueAtTime(0.75, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.3); o.connect(g); out(g, 0.16); o.start(t); o.stop(t + 0.32); }
+}
+// tag the instrument meshes so a click finds them; map drum pads to sounds
+function setupInstruments() {
+  const tag = (mesh, info) => { if (mesh) mesh._instr = info; };
+  // guitar: every part of the Tele strums a chord
+  const teleNode = scene.getTransformNodeByName("tele"); if (teleNode) teleNode.getChildMeshes().forEach(m => tag(m, { type: "guitar" }));
+  // keys: the MIDI keybed plays pitch by where you click along it
+  tag(scene.getMeshByName("midiKeys"), { type: "key" });
+  // drums: each pad → a voice (ep1 big = snare, kick = kick, others toms/hat)
+  const padMap = { ep1: "snare", ep2: "hat", ep3: "tom1", ep4: "tom2", ep5: "tom3", kick: "kick" };
+  for (const id in padMap) {
+    const bobNode = scene.getTransformNodeByName(id) || scene.getTransformNodeByName(id + "G"); // hex pads are nodes; the kick lives under kickG
+    const info = { type: "drum", drum: padMap[id], pad: bobNode };
+    ["p", "f", "r", ""].forEach(s => tag(scene.getMeshByName(id + s), info)); // every piece of the pad triggers it
+  }
+}
+let strumFx = 0; const drumFx = [];
+function playInstrument(pick) {
+  const info = pick.pickedMesh._instr; if (!info) return;
+  if (info.type === "key") { let u = 0.5; const tc = pick.getTextureCoordinates ? pick.getTextureCoordinates() : null; if (tc) u = tc.x; const midi = 48 + Math.round(Math.max(0, Math.min(1, u)) * 24); playKey(midi); }
+  else if (info.type === "guitar") strumGuitar();
+  else if (info.type === "drum") { drum(info.drum); if (info.pad) drumFx.push({ node: info.pad, t: 0.12 }); }
+}
+
 let lightDrag = null;
 scene.onPointerObservable.add((p) => {
   if (editMode || composerOpen) return;
@@ -1015,6 +1104,8 @@ scene.onPointerObservable.add((p) => {
   const lc = scene.pickWithRay(camera.getForwardRay(3.5), (m) => !!m._lightCtrl);
   if (lc && lc.hit) { lightDrag = lc.pickedMesh._lightCtrl; camera.detachControl(); return; } // grab the dimmer/hue
   const ray = camera.getForwardRay(7);
+  const instr = scene.pickWithRay(ray, (m) => !!m._instr);
+  if (instr && instr.hit) { playInstrument(instr); return; } // play the guitar / keys / drums
   const wallHit = scene.pickWithRay(ray, (m) => !!m._noteWall);
   if (wallHit && wallHit.hit) { openComposer(wallHit.pickedMesh._noteWall, wallHit.pickedPoint); return; }
   const cat = scene.pickWithRay(ray, (m) => m.name.startsWith("cat"));
@@ -1280,15 +1371,16 @@ function onEditKey(ev) {
 window.addEventListener("resize", () => engine.resize());
 engine.runRenderLoop(() => scene.render());
 setProg(72, "almost…");
-scene.whenReadyAsync().then(async () => { setProg(82, "loading models…"); await loadHeroProps(); setupEditor(); setupNotes(); setProg(90, "physics…"); await initPhysics(); setProg(100, "enter ▸"); enterBtn.disabled = false; });
+scene.whenReadyAsync().then(async () => { setProg(82, "loading models…"); await loadHeroProps(); setupEditor(); setupNotes(); setupInstruments(); setProg(90, "physics…"); await initPhysics(); setProg(100, "enter ▸"); enterBtn.disabled = false; });
 
 let entered = false;
 function enter() {
   if (entered) return; entered = true;
   gate.classList.add("gone"); badge.classList.add("show"); document.getElementById("credits")?.classList.add("show"); editToggle.classList.add("show");
-  hint.textContent = "WASD move · mouse look · wall = note · panel by the door = drag the light · G arrange · L lighting · Esc frees cursor";
+  hint.textContent = "WASD move · click: play the guitar / keys / drums · wall = note · panel by the door = light · G arrange · L lighting";
   hint.classList.add("show"); setTimeout(() => hint.classList.remove("show"), 7000);
   canvas.focus(); engine.enterPointerlock();
+  try { ensureAudio(); } catch (e) { /* audio is best-effort */ } // build the audio context on this user gesture
 }
 enterBtn.addEventListener("click", enter);
 // crosshair: visible only while looking around (pointer-locked), hidden in menus/arrange/composer
@@ -1327,4 +1419,7 @@ window.METRO_BJS = {
   setLamp: (lvl, hue) => { if (lvl != null) lampLevel = Math.max(0, Math.min(1, lvl)); if (hue != null) lampHue = ((hue % 360) + 360) % 360; updateLamp(); },
   pickLightCtrl: () => { const lc = scene.pickWithRay(camera.getForwardRay(3.5), (m) => !!m._lightCtrl); return lc && lc.hit ? lc.pickedMesh._lightCtrl : null; },
   get slide() { return { count: slide.urls.length, i: slide.i }; }, nextSlide: () => nextSlide(),
+  playKey: (m) => playKey(m), strumGuitar: () => strumGuitar(), drum: (k) => drum(k),
+  audioPeak: () => new Promise((res) => { const ac = ensureAudio(); const an = ac.createAnalyser(); an.fftSize = 2048; master.connect(an); const data = new Float32Array(an.fftSize); let peak = 0; const t0 = ac.currentTime; const iv = setInterval(() => { an.getFloatTimeDomainData(data); for (const v of data) peak = Math.max(peak, Math.abs(v)); if (ac.currentTime - t0 > 0.6) { clearInterval(iv); try { master.disconnect(an); } catch {} res(+peak.toFixed(3)); } }, 20); }),
+  pickInstr: () => { const r = scene.pickWithRay(camera.getForwardRay(7), (m) => !!m._instr); return r && r.hit ? r.pickedMesh._instr.type + (r.pickedMesh._instr.drum ? ":" + r.pickedMesh._instr.drum : "") : null; },
 };
