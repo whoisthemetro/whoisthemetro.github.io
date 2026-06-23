@@ -58,6 +58,24 @@
     border: 1px solid #34343f; border-radius: 999px; opacity: 0; transition: opacity .5s; }
   #edit-toggle.show { opacity: 1; }
   #edit-toggle.on { color: #ff3bd0; border-color: #ff3bd0; }
+
+  /* note composer */
+  #composer { position: fixed; inset: 0; z-index: 11; display: none; place-items: center;
+    background: rgba(4,4,6,.55); backdrop-filter: blur(3px); }
+  #composer.show { display: grid; }
+  #composer .card { width: 20rem; max-width: 88vw; background: #14141b; border: 1px solid #34343f;
+    border-radius: 12px; padding: 1.1rem 1.2rem; box-shadow: 0 18px 60px rgba(0,0,0,.6); }
+  #composer h2 { margin: 0 0 .6rem; font-size: .66rem; letter-spacing: .22em; color: #ff3bd0; }
+  #note-text { width: 100%; box-sizing: border-box; height: 5rem; resize: none; font: inherit; font-size: .8rem;
+    color: #1a1a1a; background: #f4ecc8; border: none; border-radius: 6px; padding: .6rem .7rem; }
+  #note-colors { display: flex; gap: .5rem; margin: .7rem 0; }
+  #note-colors button { width: 1.5rem; height: 1.5rem; border-radius: 50%; border: 2px solid transparent; cursor: pointer; padding: 0; }
+  #note-colors button.sel { border-color: #fff; }
+  #composer .row { display: flex; justify-content: space-between; align-items: center; gap: .6rem; }
+  #composer .row .left { font-size: .54rem; color: #76737e; }
+  #composer button.act { font: inherit; font-size: .62rem; letter-spacing: .14em; cursor: pointer;
+    padding: .5rem 1rem; color: #eee; background: #1f1f29; border: 1px solid #3a3a44; border-radius: 7px; }
+  #composer button.act.post { border-color: #2dd4bf; color: #8fe0c4; }
 </style>
 </head>
 <body>
@@ -76,6 +94,21 @@
     <button id="edit-copy">copy layout</button>
     <button id="edit-reset">reset</button>
     <button id="edit-done">done (G)</button>
+  </div>
+
+  <div id="composer">
+    <div class="card">
+      <h2>POST A NOTE</h2>
+      <textarea id="note-text" maxlength="180" placeholder="leave something on the wall…"></textarea>
+      <div id="note-colors"></div>
+      <div class="row">
+        <span class="left">it stays on the wall</span>
+        <span>
+          <button class="act" id="note-cancel">cancel</button>
+          <button class="act post" id="note-post">post</button>
+        </span>
+      </div>
+    </div>
   </div>
 
   <div id="gate">

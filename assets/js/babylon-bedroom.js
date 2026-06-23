@@ -706,7 +706,10 @@ const screenGlow = new B.PointLight("screenGlow", new V3(0, 1.19, 0.1), scene); 
 // the bright sun disc outside, for the god-rays
 // a round, soft sun glow (was a hard square that read as an obvious light panel through the window)
 const sunGlowTex = dyn("sunGlow", 128, 128, (c, w, h) => { const g = c.createRadialGradient(64, 64, 0, 64, 64, 64); g.addColorStop(0, "#ffffff"); g.addColorStop(0.4, "#cfcfcf"); g.addColorStop(1, "#000000"); c.fillStyle = g; c.fillRect(0, 0, w, h); });
-const sunDisc = B.MeshBuilder.CreateDisc("sunDisc", { radius: 0.7, tessellation: 40 }, scene); sunDisc.position.set(Math.sin(az) * 3.2, 2.2, ZF - 2.4);
+const clampSun = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+// keep the god-ray sun pinned INSIDE the window opening (so it's only ever seen through the glass, never bleeding over the wall)
+const placeSun = (az2, alt2) => sunDisc.position.set(clampSun(Math.sin(az2) * 1.4, -1.1, 1.1), clampSun(1.0 + Math.tan(alt2) * 0.7, 1.05, 2.15), ZF + 0.05);
+const sunDisc = B.MeshBuilder.CreateDisc("sunDisc", { radius: 0.32, tessellation: 40 }, scene); placeSun(az, alt);
 const sunDiscMat = emis("sunDiscMat", 0xffffff, { glow: false }); sunDiscMat.emissiveTexture = sunGlowTex; sunDiscMat.emissiveColor = new B.Color3(1.35, 1.05, 0.72); sunDiscMat.alphaMode = B.Engine.ALPHA_ADD; sunDisc.material = sunDiscMat;
 
 // ---- switchable lighting moods (press L to cycle) ----
@@ -759,7 +762,7 @@ function updateEnv(date) {
   const alt = Math.max(useSun ? sunAlt : moonAlt, 0.06);
   sun.position.set(Math.sin(az) * 10, WIN.cy + Math.tan(alt) * 10, ZF - 10);
   sun.setDirectionToTarget(new V3(0, 0.6, 0));
-  sunDisc.position.set(Math.sin(az) * 3.0, 1.0 + Math.tan(alt) * 2.6, ZF - 2.4);
+  placeSun(az, alt); // clamped inside the window opening
   // phase → colors + (deliberately low-ambient) intensities, keeping light only from the window
   let beamC, beamI, winC, winI, hS, hG, hI, skyS, disc, lamp;
   if (sunAlt > 0) { const k = Math.sin(Math.min(sunAlt, 1.2)); beamC = 0xfff2da; beamI = 2.6 + 4.2 * k; winC = 0xfff0d8; winI = 1.4 + 1.6 * k; hS = 0xaebbd0; hG = 0x6a5e4c; hI = 0.12 + 0.08 * k; skyS = 0.85 + 0.15 * k; disc = [0.5 + 1.2 * k, 0.45 + 1.1 * k, 0.4 + 0.95 * k]; lamp = 0; }
@@ -931,15 +934,89 @@ function throwBall() {
   agg.body.applyImpulse(dir.scale(7), s.position); thrown++;
 }
 scene.onPointerObservable.add((p) => {
-  if (p.type !== B.PointerEventTypes.POINTERDOWN) return;
+  if (p.type !== B.PointerEventTypes.POINTERDOWN || editMode || composerOpen) return;
   if (!engine.isPointerLock) { engine.enterPointerlock(); return; }
-  const ray = camera.getForwardRay(3); const hit = scene.pickWithRay(ray, (m) => m.name.startsWith("cat") || m.name.startsWith("catSkull") || m.name.startsWith("catBody"));
-  if (hit && hit.hit) popHearts(); else throwBall();
+  const ray = camera.getForwardRay(7);
+  const wallHit = scene.pickWithRay(ray, (m) => !!m._noteWall);
+  if (wallHit && wallHit.hit) { openComposer(wallHit.pickedMesh._noteWall, wallHit.pickedPoint); return; }
+  const cat = scene.pickWithRay(ray, (m) => m.name.startsWith("cat"));
+  if (cat && cat.hit) popHearts(); else throwBall();
 });
 
 // =====================================================================
 // boot
 // =====================================================================
+// =====================================================================
+// THE NOTES — click a wall to leave a note. Persists in localStorage for now
+// (Supabase sharing comes when this room replaces the live site).
+// =====================================================================
+const NOTES_KEY = "metro.notes";
+let composerOpen = false, pending = null, noteColor = "#f4ecc8", notes = [];
+const NOTE_WALLS = {
+  // uDir = "rightward as seen from the room" so text isn't mirrored; vDir = up; normal = into room (card faces this way)
+  back: { origin: new V3(-X, 0, ZB), uDir: new V3(1, 0, 0), vDir: new V3(0, 1, 0), normal: new V3(0, 0, -1) },
+  east: { origin: new V3(X, 0, ZB), uDir: new V3(0, 0, -1), vDir: new V3(0, 1, 0), normal: new V3(-1, 0, 0) },
+  west: { origin: new V3(-X, 0, ZF), uDir: new V3(0, 0, 1), vDir: new V3(0, 1, 0), normal: new V3(1, 0, 0) },
+};
+const NOTE_COLORS = ["#f4ecc8", "#f7b7c8", "#bfe3ff", "#c8efc0", "#ffd9a0"];
+const composerEl = document.getElementById("composer"), noteTextEl = document.getElementById("note-text");
+function noteTexture(text, color) {
+  return dyn("note" + Math.round(Math.abs(Math.sin(text.length * 9.1)) * 1e6), 256, 256, (c, w, h) => {
+    c.fillStyle = color; c.fillRect(0, 0, w, h);
+    c.fillStyle = "rgba(0,0,0,.06)"; c.fillRect(0, h - 16, w, 16);
+    c.fillStyle = "#23201a"; c.font = "600 22px ui-monospace, monospace"; c.textBaseline = "top";
+    const words = (text || "").split(/\s+/), lines = []; let line = "";
+    for (const wd of words) { const t = line ? line + " " + wd : wd; if (c.measureText(t).width > w - 32 && line) { lines.push(line); line = wd; } else line = t; }
+    if (line) lines.push(line);
+    lines.slice(0, 7).forEach((ln, i) => c.fillText(ln, 18, 22 + i * 30));
+  }, { flip: true });
+}
+function renderNote(note) {
+  const wall = NOTE_WALLS[note.wall]; if (!wall) return;
+  // diffuse texture (samples reliably) + a tint of the note's own colour as emissive, so it
+  // reads as a colour card even on a dark wall and the text shows clearly under light
+  const mat = new B.StandardMaterial("noteMat", scene); mat.diffuseTexture = noteTexture(note.text, note.color);
+  mat.specularColor = new B.Color3(0.04, 0.04, 0.04); mat.emissiveColor = B.Color3.FromHexString(note.color).scale(0.55); mat.backFaceCulling = false;
+  const card = B.MeshBuilder.CreatePlane("note", { size: 0.19, sideOrientation: B.Mesh.DOUBLESIDE }, scene);
+  card.material = mat;
+  const p = wall.origin.add(wall.uDir.scale(note.u)).add(wall.vDir.scale(note.v)).add(wall.normal.scale(0.09)); // proud of the inner wall face (wall is 0.12 thick)
+  card.position.set(p.x, p.y, p.z);
+  card.rotation = B.Vector3.RotationFromAxis(wall.uDir, wall.vDir, wall.normal); // local x=right, y=up, z=faces room
+  card.computeWorldMatrix(true);
+  if (note.tilt) card.rotate(B.Axis.Z, note.tilt, B.Space.LOCAL); // slight stuck-on tilt
+  card.receiveShadows = true; note._mesh = card;
+}
+function deoverlap(wall, u, v) {
+  let a = 0, r = 0;
+  for (let i = 0; i < 80; i++) { const tu = u + Math.cos(a) * r, tv = v + Math.sin(a) * r; if (!notes.some(n => n.wall === wall && Math.hypot(n.u - tu, n.v - tv) < 0.21)) return { u: tu, v: tv }; a += 1.1; r += 0.028; }
+  return { u, v };
+}
+function loadNotes() { try { notes = JSON.parse(localStorage.getItem(NOTES_KEY) || "[]"); } catch { notes = []; } notes.forEach(renderNote); }
+function saveNotes() { try { localStorage.setItem(NOTES_KEY, JSON.stringify(notes.map(n => ({ id: n.id, wall: n.wall, u: n.u, v: n.v, text: n.text, color: n.color, tilt: n.tilt, created_at: n.created_at })))); } catch { } }
+function openComposer(wall, worldPoint) {
+  pending = { wallId: Object.keys(NOTE_WALLS).find(k => NOTE_WALLS[k] === wall), u: B.Vector3.Dot(worldPoint.subtract(wall.origin), wall.uDir), v: B.Vector3.Dot(worldPoint.subtract(wall.origin), wall.vDir) };
+  composerOpen = true; engine.exitPointerlock?.(); camera.detachControl();
+  composerEl.classList.add("show"); noteTextEl.value = ""; setTimeout(() => noteTextEl.focus(), 30);
+}
+function closeComposer() { composerOpen = false; composerEl.classList.remove("show"); camera.attachControl(canvas, true); engine.enterPointerlock?.(); }
+function postNote() {
+  const text = noteTextEl.value.trim(); if (!text || !pending) { closeComposer(); pending = null; return; }
+  const { u, v } = deoverlap(pending.wallId, pending.u, pending.v);
+  const note = { id: "n" + Date.now(), wall: pending.wallId, u, v, text, color: noteColor, tilt: Math.sin(notes.length * 7.3) * 0.1, created_at: Date.now() };
+  notes.push(note); renderNote(note); saveNotes(); closeComposer(); pending = null;
+}
+function setupNotes() {
+  const m = (n) => scene.getMeshByName(n);
+  if (m("wBack")) m("wBack")._noteWall = NOTE_WALLS.back;
+  if (m("wEast")) m("wEast")._noteWall = NOTE_WALLS.east;
+  ["wWest_a", "wWest_b", "wWest_top"].forEach(n => { if (m(n)) m(n)._noteWall = NOTE_WALLS.west; });
+  const cc = document.getElementById("note-colors");
+  NOTE_COLORS.forEach((col, i) => { const b = document.createElement("button"); b.style.background = col; if (i === 0) b.classList.add("sel"); b.onclick = () => { noteColor = col; [...cc.children].forEach(x => x.classList.remove("sel")); b.classList.add("sel"); }; cc.appendChild(b); });
+  document.getElementById("note-post").onclick = postNote;
+  document.getElementById("note-cancel").onclick = () => { closeComposer(); pending = null; };
+  loadNotes();
+}
+
 // =====================================================================
 // DESK ARRANGE MODE — drag props on the desk; persists to localStorage and
 // exports a layout you paste back so it gets baked in permanently.
@@ -1019,6 +1096,7 @@ function onEditPointer(pi) {
   }
 }
 function onEditKey(ev) {
+  if (composerOpen) return;
   if (ev.code === "KeyG") { toggleEdit(!editMode); ev.preventDefault(); return; }
   if (!editMode || !selected) return;
   const n = selected.node, f = ev.shiftKey ? 0.2 : 1, st = 0.01 * f, rt = 0.05 * f, sc = 0.02 * f; let ok = true;
@@ -1036,13 +1114,13 @@ function onEditKey(ev) {
 window.addEventListener("resize", () => engine.resize());
 engine.runRenderLoop(() => scene.render());
 setProg(72, "almost…");
-scene.whenReadyAsync().then(async () => { setProg(82, "loading models…"); await loadHeroProps(); setupEditor(); setProg(90, "physics…"); await initPhysics(); setProg(100, "enter ▸"); enterBtn.disabled = false; });
+scene.whenReadyAsync().then(async () => { setProg(82, "loading models…"); await loadHeroProps(); setupEditor(); setupNotes(); setProg(90, "physics…"); await initPhysics(); setProg(100, "enter ▸"); enterBtn.disabled = false; });
 
 let entered = false;
 function enter() {
   if (entered) return; entered = true;
   gate.classList.add("gone"); badge.classList.add("show"); document.getElementById("credits")?.classList.add("show"); editToggle.classList.add("show");
-  hint.textContent = "WASD move · mouse look · G = arrange desk · L = lighting · click to throw · Esc frees cursor";
+  hint.textContent = "WASD move · mouse look · click a wall = leave a note · G = arrange · L = lighting · Esc frees cursor";
   hint.classList.add("show"); setTimeout(() => hint.classList.remove("show"), 7000);
   canvas.focus(); engine.enterPointerlock();
 }
@@ -1051,7 +1129,7 @@ enterBtn.addEventListener("click", enter);
 // press L to cycle the lighting mood (golden hour → midday → studio → night/neon)
 function flashHint(t) { hint.textContent = t; hint.classList.add("show"); clearTimeout(flashHint._t); flashHint._t = setTimeout(() => hint.classList.remove("show"), 2400); }
 window.addEventListener("keydown", (e) => {
-  if (e.code !== "KeyL") return;
+  if (composerOpen || e.code !== "KeyL") return;
   moodIdx = moodIdx + 1 >= MOODS.length ? -1 : moodIdx + 1;
   if (moodIdx < 0) { autoMode = true; updateEnv(new Date()); flashHint("lighting: auto — real time at your location"); }
   else { autoMode = false; applyMood(MOODS[moodIdx]); flashHint("lighting: " + MOODS[moodIdx].label + " (frozen)"); }
@@ -1064,6 +1142,8 @@ window.METRO_BJS = {
   previewTime: (h, m = 30) => { autoMode = false; const d = new Date(); d.setHours(h, m, 0, 0); updateEnv(d); },
   goAuto: () => { autoMode = true; updateEnv(new Date()); },
   toggleEdit: (on) => toggleEdit(on), get editLayout() { return layoutObj(); },
+  get notes() { return notes; }, openComposerAt: (wallId, u, v) => { const w = NOTE_WALLS[wallId]; openComposer(w, w.origin.add(w.uDir.scale(u)).add(w.vDir.scale(v))); },
+  postTestNote: (wall, u, v, text, color) => { const n = { id: "t" + Date.now() + Math.round(u * 99), wall, u, v, text, color: color || "#f4ecc8", tilt: 0.05, created_at: Date.now() }; notes.push(n); renderNote(n); saveNotes(); return n; },
   get weather() { return weather; },
   get boombox() { return boombox; },
   get pedalboard() { return pbRef; },
