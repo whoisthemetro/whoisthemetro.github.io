@@ -948,14 +948,16 @@ const LS_KEY = "metro.desk.layout";
 // baked-in arrangement (your "copy layout"); localStorage overrides this per-visitor
 const DEFAULT_LAYOUT = {
   "monitor": { x: 0, y: 0.749, z: -0.2, ry: -1.571, s: 0.543 },
-  "external-monitor": { x: 0.66, y: 0.979, z: -0.18, ry: -0.35, s: 0.004 },
+  "external-monitor": { x: 0.74, y: 0.979, z: -0.18, ry: -0.35, s: 0.004 },
   "keyboard": { x: -0.02, y: 0.751, z: 0.25, ry: 0, s: 0.181 },
   "mouse": { x: 0.31, y: 0.74, z: 0.2, ry: 0, s: 1.104 },
   "midi": { x: -0.03, y: 0.63, z: 0.478, ry: 0, s: 0.004 },
   "mixer": { x: -0.02, y: 0.74, z: 0.01, ry: 0, s: 1 },
   "mug": { x: 0.45, y: 0.779, z: -0.02, ry: 0, s: 0.004 },
   "clock": { x: -0.75, y: 0.775, z: -0.15, ry: 0.35, s: 1 },
-  "mac": { x: 0.66, y: 0.787, z: -0.18, ry: 0, s: 1 },
+  "mac": { x: 0.73, y: 0.787, z: -0.18, ry: 0, s: 1 },
+  "pedalboard": { x: 1.46, y: 0, z: -2.38, ry: 2.6, s: 1 },
+  "guitar": { x: 1.61, y: 0.21, z: -2.65, ry: -0.6, s: 1 },
 };
 let editMode = false, selected = null, dragging = false, grabOff = { x: 0, z: 0 }, editables = [], editHL = null;
 const editToggle = document.getElementById("edit-toggle"), editPanel = document.getElementById("editpanel");
