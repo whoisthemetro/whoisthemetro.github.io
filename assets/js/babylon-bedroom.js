@@ -959,6 +959,39 @@ const NOTE_WALLS = {
   west: { origin: new V3(-X, 0, ZF), uDir: new V3(0, 0, 1), vDir: new V3(0, 1, 0), normal: new V3(1, 0, 0) },
 };
 const NOTE_COLORS = ["#f4ecc8", "#f7b7c8", "#bfe3ff", "#c8efc0", "#ffd9a0"];
+// the REAL site's wall convention (three.js): notes store x,y as 0..1 fractions of the wall.
+// origin/uDir/vDir/w/h match the live room; `right` = camera-right so imported text isn't mirrored.
+const IMPORT_WALLS = {
+  back: { origin: new V3(X, 0, ZB), uDir: new V3(-1, 0, 0), vDir: new V3(0, 1, 0), normal: new V3(0, 0, -1), w: W, h: H, right: new V3(1, 0, 0) },
+  west: { origin: new V3(-X, 0, ZB), uDir: new V3(0, 0, -1), vDir: new V3(0, 1, 0), normal: new V3(1, 0, 0), w: D, h: H, right: new V3(0, 0, 1) },
+  east: { origin: new V3(X, 0, ZF), uDir: new V3(0, 0, 1), vDir: new V3(0, 1, 0), normal: new V3(-1, 0, 0), w: D, h: H, right: new V3(0, 0, -1) },
+};
+function renderImportedNote(n) {
+  const w = IMPORT_WALLS[n.wall]; if (!w) return;
+  const text = n.kind === "link" ? (n.text || n.url || "link ↗") : (n.text || (n.kind === "photo" ? "📷 photo" : ""));
+  if (!text) return;
+  const col = (n.color && n.color[0] === "#") ? n.color : "#f4ecc8";
+  const mat = new B.StandardMaterial("inote", scene); mat.diffuseTexture = noteTexture(text, col);
+  mat.specularColor = new B.Color3(0.04, 0.04, 0.04); mat.emissiveColor = B.Color3.FromHexString(col).scale(0.55); mat.backFaceCulling = false;
+  const card = B.MeshBuilder.CreatePlane("note", { size: n.kind === "photo" ? 0.26 : 0.2, sideOrientation: B.Mesh.DOUBLESIDE }, scene);
+  card.material = mat;
+  const p = w.origin.add(w.uDir.scale((n.x ?? 0.5) * w.w)).add(w.vDir.scale((n.y ?? 0.5) * w.h)).add(w.normal.scale(0.09));
+  card.position.set(p.x, p.y, p.z);
+  card.rotation = B.Vector3.RotationFromAxis(w.right, w.vDir, w.normal); card.computeWorldMatrix(true);
+  if (n.rot) card.rotate(B.Axis.Z, n.rot, B.Space.LOCAL);
+  card.receiveShadows = true;
+}
+async function importWallNotes() {
+  const cfg = window.METRO_CONFIG;
+  if (!cfg || !cfg.SUPABASE_URL || !cfg.SUPABASE_ANON_KEY) return;
+  try {
+    const res = await fetch(`${cfg.SUPABASE_URL}/rest/v1/notes?select=wall,x,y,rot,text,color,kind,url&wall=in.(back,west,east)&order=created_at.asc&limit=2000`, { headers: { apikey: cfg.SUPABASE_ANON_KEY, Authorization: "Bearer " + cfg.SUPABASE_ANON_KEY } });
+    if (!res.ok) return;
+    const rows = await res.json();
+    rows.forEach(renderImportedNote);
+    if (rows.length) flashHint(rows.length + " notes loaded from the wall");
+  } catch (e) { console.warn("wall notes fetch failed", e); }
+}
 const composerEl = document.getElementById("composer"), noteTextEl = document.getElementById("note-text");
 function noteTexture(text, color) {
   return dyn("note" + Math.round(Math.abs(Math.sin(text.length * 9.1)) * 1e6), 256, 256, (c, w, h) => {
@@ -1015,6 +1048,7 @@ function setupNotes() {
   document.getElementById("note-post").onclick = postNote;
   document.getElementById("note-cancel").onclick = () => { closeComposer(); pending = null; };
   loadNotes();
+  importWallNotes(); // pull the real notes off your live wall (read-only)
 }
 
 // =====================================================================
@@ -1125,6 +1159,9 @@ function enter() {
   canvas.focus(); engine.enterPointerlock();
 }
 enterBtn.addEventListener("click", enter);
+// crosshair: visible only while looking around (pointer-locked), hidden in menus/arrange/composer
+const crosshairEl = document.getElementById("crosshair");
+document.addEventListener("pointerlockchange", () => crosshairEl?.classList.toggle("show", !!document.pointerLockElement));
 
 // press L to cycle the lighting mood (golden hour → midday → studio → night/neon)
 function flashHint(t) { hint.textContent = t; hint.classList.add("show"); clearTimeout(flashHint._t); flashHint._t = setTimeout(() => hint.classList.remove("show"), 2400); }

@@ -38,6 +38,10 @@
   #credits { position: fixed; right: 1rem; bottom: .6rem; z-index: 6; font-size: .5rem; letter-spacing: .08em;
     color: #56535c; opacity: 0; transition: opacity .5s; max-width: 60vw; text-align: right; }
   #credits.show { opacity: 1; }
+  #crosshair { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 5;
+    width: 7px; height: 7px; border-radius: 50%; background: rgba(255,255,255,.55);
+    box-shadow: 0 0 2px 1px rgba(0,0,0,.55); opacity: 0; transition: opacity .15s; pointer-events: none; }
+  #crosshair.show { opacity: 1; }
 
   /* desk arrange / edit mode */
   #editpanel { position: fixed; left: 1rem; top: 2.6rem; z-index: 8; width: 16rem;
@@ -81,6 +85,7 @@
 <body>
   <canvas id="stage" tabindex="0"></canvas>
 
+  <div id="crosshair"></div>
   <div id="badge">BABYLON · PHASE 1 · BEDROOM</div>
   <div id="credits">3D models (CC0/CC-BY via Khronos &amp; Poly Pizza): BoomBox — Khronos · keyboard — A. Safayan · mouse — davis · mug — M. Fuchs · MIDI — G. Ibias · pedal — P. Simcoe · ultrawide — J-Toastie · tablet — Poly by Google</div>
   <div id="hint"></div>
@@ -127,6 +132,8 @@
   <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
   <script src="https://cdn.babylonjs.com/havok/HavokPhysics_umd.js"></script>
 
+  <!-- Supabase keys (public anon key) so the room can read the real wall notes -->
+  <script src="../assets/js/config.js"></script>
   <script type="module" src="../assets/js/babylon-bedroom.js"></script>
 </body>
 </html>
