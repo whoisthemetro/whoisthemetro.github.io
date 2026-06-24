@@ -1727,7 +1727,7 @@ const DEFAULT_LAYOUT = {
   "mac": { x: 0.73, y: 0.787, z: -0.18, ry: 0, s: 1 },
   "pedalboard": { x: 1.46, y: 0, z: -2.38, ry: 2.6, s: 1 },
   "guitar": { x: 1.61, y: 0.21, z: -2.65, ry: -0.6, s: 1 },
-  "dumbek": { x: -1.95, y: 0, z: -1.5, ry: 0.55, s: 1 },
+  "dumbek": { x: -1.72, y: 0, z: -1.84, ry: 0.55, s: 1 },
 };
 let editMode = false, selected = null, dragging = false, grabOff = { x: 0, z: 0 }, editables = [], editHL = null;
 let selWall = null, wallDragging = false; // wall photos slide along their wall, separate from the X/Z desk drag
