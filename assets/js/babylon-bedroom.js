@@ -917,8 +917,8 @@ let clockAcc = 0;
 // as emissive here — a loaded jpg as emissiveTexture would not).
 const slide = { urls: [], i: -1, acc: 0, period: 6, lastImg: null, lastLabel: "" };
 // live photo grade for ALL the screen pics at once (driven by the arrange-mode sliders)
-const photoFx = { contrast: 1.06, shadows: 0 }; // shadows: <0 deepen, >0 lift the blacks
-let screenDepth = 0.012; // how far the slideshow plane sits proud of the TV glass
+const photoFx = { contrast: 1.08, shadows: -0.4 }; // shadows: <0 deepen, >0 lift the blacks
+let screenDepth = 0; // how far the slideshow plane sits proud of the TV glass
 const SCREEN_FX_KEY = "metro.screen.fx";
 function applyScreenDepth() { if (monScreen._panelZ != null) monScreen.position.z = monScreen._panelZ + screenDepth; }
 function drawSlide(img, label) {
