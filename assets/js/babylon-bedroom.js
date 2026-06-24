@@ -640,18 +640,22 @@ async function loadHeroProps() {
 // THE DUMBEK — a real hand drum (Poly Pizza "Bongos", Poly by Google, CC-BY) you can
 // walk up to and strike. It lives inside a pivot node (scale 1) so the hit-bounce can
 // squash it toward the floor without fighting the GLB's own fit scale.
-let bongos = null, bongoPivot = null;
+let bongos = null, bongoPivot = null, bongoSquash = null;
 const BONGO = { x: -1.95, y: 0, z: -1.5, ry: 0.55, target: 0.36 };
 async function loadDumbek() {
   try {
     bongos = await importGLB("bongos.glb");
+    // bongoPivot is the EDITABLE node (drag/rotate/resize in arrange mode); bongoSquash sits
+    // under it and is the ONLY thing the hit-bounce touches (its .scaling.y, baseline 1), so
+    // the bounce never fights a player-applied resize on the pivot.
     bongoPivot = node("bongoPivot", BONGO.x, BONGO.y, BONGO.z); bongoPivot.rotation.y = BONGO.ry;
-    bongos.parent = bongoPivot;
+    bongoSquash = node("bongoSquash", 0, 0, 0, bongoPivot);
+    bongos.parent = bongoSquash;
     bongos.scaling.setAll(BONGO.target / bongos._naturalMax);
     bongos.rotation = new V3(0, 0, 0); bongos.position.set(0, 0, 0);
     bongos.computeWorldMatrix(true);
     const { min } = bongos.getHierarchyBoundingVectors();
-    bongos.position.y -= min.y - BONGO.y; // rest the drum's bottom on the floor
+    bongos.position.y -= min.y - BONGO.y; // rest the drum's bottom on the floor (squash compresses toward it)
   } catch (e) { console.warn("bongos (dumbek) load failed", e); }
 }
 
@@ -1456,7 +1460,7 @@ function setupInstruments() {
     ["p", "f", "r", ""].forEach(s => tag(scene.getMeshByName(id + s), info)); // every piece of the pad triggers it
   }
   // the dumbek (bongos GLB): strike anywhere on it → a random one of your own 77 hits
-  if (bongos) bongos.getChildMeshes().forEach(m => tag(m, { type: "dumbek", pad: bongoPivot }));
+  if (bongos) bongos.getChildMeshes().forEach(m => tag(m, { type: "dumbek", pad: bongoSquash }));
 }
 let strumFx = 0, keyFx = 0; const drumFx = [];
 function playInstrument(pick) {
@@ -1723,6 +1727,7 @@ const DEFAULT_LAYOUT = {
   "mac": { x: 0.73, y: 0.787, z: -0.18, ry: 0, s: 1 },
   "pedalboard": { x: 1.46, y: 0, z: -2.38, ry: 2.6, s: 1 },
   "guitar": { x: 1.61, y: 0.21, z: -2.65, ry: -0.6, s: 1 },
+  "dumbek": { x: -1.95, y: 0, z: -1.5, ry: 0.55, s: 1 },
 };
 let editMode = false, selected = null, dragging = false, grabOff = { x: 0, z: 0 }, editables = [], editHL = null;
 let selWall = null, wallDragging = false; // wall photos slide along their wall, separate from the X/Z desk drag
@@ -1741,6 +1746,7 @@ function setupEditor() {
     { name: "keyboard", node: deskProps.kb }, { name: "mouse", node: deskProps.mouse }, { name: "midi", node: deskProps.midi },
     { name: "mixer", node: mixer }, { name: "mug", node: deskProps.mug }, { name: "clock", node: clockBody }, { name: "mac", node: scene.getMeshByName("mac") },
     { name: "pedalboard", node: pbRef }, { name: "guitar", node: tele }, // floor items (world space)
+    { name: "dumbek", node: bongoPivot }, // the hand drum — drags on the floor like the pedalboard
   ].filter(e => e.node);
   editables.forEach(e => meshesOf(e.node).forEach(m => { m._editable = e; m.isPickable = true; }));
   editHL = new B.HighlightLayer("editHL", scene);
