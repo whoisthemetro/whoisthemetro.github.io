@@ -525,6 +525,10 @@ radioTune._radioScan = true; // click it to scan the dial
 const radioGlow = new B.PointLight("radioGlow", new V3(0.205, 0.72, 0.22), scene); radioGlow.parent = rack;
 radioGlow.diffuse = new B.Color3(0.35, 1, 0.5); radioGlow.range = 0.9; radioGlow.intensity = 0; // off until power-on
 let radioState = "off";
+// the boombox model carries its own baked emissive (the blue display glow); we gate it to power so a
+// powered-off radio goes dark. filled in once the GLB loads (see loadHeroProps).
+const boomboxEmis = [];
+function setBoomboxGlow(on) { for (const e of boomboxEmis) e.mat.emissiveColor = on ? e.onCol : new B.Color3(0, 0, 0); }
 // the LA tuner — streams a real station over a bare <audio> element (see radio.js). its status
 // callback is the single source of truth for the LED + glow, so the light is always honest.
 const laRadio = createRadio({
@@ -533,6 +537,7 @@ const laRadio = createRadio({
 });
 function paintRadioLed() {
   const C3 = B.Color3;
+  setBoomboxGlow(radioState !== "off"); // the model's blue display follows power
   if (radioState === "off") { radioLedMat.emissiveColor = new C3(0, 0, 0); radioGlow.intensity = 0; }
   else if (radioState === "live") { radioLedMat.emissiveColor = new C3(0.2, 1, 0.4); radioGlow.diffuse = new C3(0.35, 1, 0.5); radioGlow.intensity = 0.6; }
   else if (radioState === "error") { radioLedMat.emissiveColor = new C3(1, 0.18, 0.12); radioGlow.diffuse = new C3(1, 0.25, 0.2); radioGlow.intensity = 0.4; }
@@ -595,7 +600,17 @@ async function loadHeroProps() {
     boombox.parent = rack;
     placeBoombox(heroFit.x, heroFit.y, heroFit.z, heroFit.ry, heroFit.target);
     radio.setEnabled(false);
-    boombox.getChildMeshes().forEach(m => { m._radioToggle = true; }); // click the boombox to power on/off
+    boombox.getChildMeshes().forEach(m => {
+      m._radioToggle = true; // click the boombox to power on/off
+      const mat = m.material, ec = mat && mat.emissiveColor;
+      const glows = mat && (mat.emissiveTexture || (ec && (ec.r > 0.001 || ec.g > 0.001 || ec.b > 0.001)));
+      if (glows && !boomboxEmis.some(e => e.mat === mat)) {
+        let onCol = ec ? ec.clone() : new B.Color3(1, 1, 1);
+        if (mat.emissiveTexture && onCol.r < 0.01 && onCol.g < 0.01 && onCol.b < 0.01) onCol = new B.Color3(1, 1, 1); // texture carries it
+        boomboxEmis.push({ mat, onCol });
+      }
+    });
+    setBoomboxGlow(false); // radio boots off → display dark
   } catch (e) {
     console.warn("boombox load failed — keeping procedural radio", e);
     radio.getChildMeshes().forEach(m => { m._radioToggle = true; }); // fall back to the box radio as the toggle
