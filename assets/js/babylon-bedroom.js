@@ -10,6 +10,8 @@
 // through the glass, GlowLayer+bloom on every emissive, GPU-particle dust, and Havok you
 // can throw things with. still 100% procedural — no asset files.
 
+import { createRadio, LA_STATIONS } from "./radio.js";
+
 const B = window.BABYLON;
 const V3 = B.Vector3;
 const canvas = document.getElementById("stage");
@@ -513,6 +515,41 @@ box("rneedle", 0.0035, 0.036, 0.004, 0.05, 0.075, 0.0625, emis("rneedle", 0xff40
 [-0.075, 0.075].forEach((kx) => cyl("rknob" + kx, 0.011, 0.013, 0.012, kx, 0.028, 0.061, matte("rknob", 0x2a2622), radio, 16, false).rotation.x = Math.PI / 2);
 cyl("rant", 0.0022, 0.0035, 0.2, 0.085, 0.13, -0.045, metal("rant", 0xb8bcc2, 0.8, 0.3), radio, 6, false).rotation.z = -0.5;
 
+// --- radio power LED + tune knob + a soft glow, all on the rack top by the boombox ---
+// the LED reads the live tuner state: dark when off, amber while it locks, green when on-air.
+const radioLedMat = emis("radioLedMat", 0x111111, { glow: true }); radioLedMat.emissiveColor = new B.Color3(0, 0, 0);
+const radioLed = cyl("radioLed", 0.009, 0.009, 0.004, 0.205, 0.705, 0.235, radioLedMat, rack, 14, false); radioLed.rotation.x = Math.PI / 2;
+const radioTuneMat = metal("radioTuneM", 0x2a2622, 0.5, 0.4);
+const radioTune = cyl("radioTune", 0.018, 0.02, 0.016, 0.205, 0.705, 0.17, radioTuneMat, rack, 18, false); radioTune.rotation.x = Math.PI / 2;
+radioTune._radioScan = true; // click it to scan the dial
+const radioGlow = new B.PointLight("radioGlow", new V3(0.205, 0.72, 0.22), scene); radioGlow.parent = rack;
+radioGlow.diffuse = new B.Color3(0.35, 1, 0.5); radioGlow.range = 0.9; radioGlow.intensity = 0; // off until power-on
+let radioState = "off";
+// the LA tuner — streams a real station over a bare <audio> element (see radio.js). its status
+// callback is the single source of truth for the LED + glow, so the light is always honest.
+const laRadio = createRadio({
+  stations: LA_STATIONS, storeKey: "metro.radio.la",
+  onStatus: (info) => { radioState = info.on ? info.state : "off"; paintRadioLed(); },
+});
+function paintRadioLed() {
+  const C3 = B.Color3;
+  if (radioState === "off") { radioLedMat.emissiveColor = new C3(0, 0, 0); radioGlow.intensity = 0; }
+  else if (radioState === "live") { radioLedMat.emissiveColor = new C3(0.2, 1, 0.4); radioGlow.diffuse = new C3(0.35, 1, 0.5); radioGlow.intensity = 0.6; }
+  else if (radioState === "error") { radioLedMat.emissiveColor = new C3(1, 0.18, 0.12); radioGlow.diffuse = new C3(1, 0.25, 0.2); radioGlow.intensity = 0.4; }
+  else { radioLedMat.emissiveColor = new C3(1, 0.62, 0.12); radioGlow.diffuse = new C3(1, 0.65, 0.2); radioGlow.intensity = 0.45; } // tuning
+}
+const radioLabel = (i = laRadio.info()) => `📻 ${i.station.hz} ${i.station.name} · ${i.station.tag}`;
+// a quick FM-hiss burst as the dial scans (radio.js's own radioStatic feeds the three.js audio graph,
+// which this page doesn't build — so we run our own off the bedroom's WebAudio master)
+function radioScanStatic() {
+  if (!AC) return;
+  const t = AC.currentTime, src = noiseBuf(0.3), hp = AC.createBiquadFilter();
+  hp.type = "highpass"; hp.frequency.value = 1600;
+  const g = AC.createGain(); src.connect(hp); hp.connect(g); g.connect(master);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.04, t + 0.012); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+  src.start(t); src.stop(t + 0.24);
+}
+
 // ---- realistic hero prop: a real PBR boombox (Khronos "BoomBox", CC0) replaces the box radio ----
 // placed LEFT of the Apollo on the rack top, facing the rack front (+z local), not touching anything
 let heroFit = { ry: 0, x: 0, y: 0.74, z: 0.10, target: 0.22 }; // front-center of the rack top, where the Apollo was
@@ -558,7 +595,11 @@ async function loadHeroProps() {
     boombox.parent = rack;
     placeBoombox(heroFit.x, heroFit.y, heroFit.z, heroFit.ry, heroFit.target);
     radio.setEnabled(false);
-  } catch (e) { console.warn("boombox load failed — keeping procedural radio", e); }
+    boombox.getChildMeshes().forEach(m => { m._radioToggle = true; }); // click the boombox to power on/off
+  } catch (e) {
+    console.warn("boombox load failed — keeping procedural radio", e);
+    radio.getChildMeshes().forEach(m => { m._radioToggle = true; }); // fall back to the box radio as the toggle
+  }
   try { // realistic guitar pedals (Poly Pizza, CC-BY) on a board, replacing the procedural pedalboard
     const base = await importGLB("pedal.glb");
     const nm = base._naturalMax;
@@ -969,7 +1010,8 @@ scene.onBeforeRenderObservable.add(() => {
   lavaLight.intensity = 0.8 + 0.12 * Math.sin(T * 0.9);
   // neon breathe + rare flicker
   const nb = 2.0 + Math.sin(T * 3) * 0.2 + (Math.random() < 0.008 ? -1.4 : 0); neonMat.emissiveColor.set(nb * 1.1, nb * 0.28, nb * 0.18);
-  // radio needle scan
+  // radio LED breathes while it's locking onto a station
+  if (radioState === "tuning") { const k = 0.6 + 0.4 * Math.sin(T * 9); radioLedMat.emissiveColor.set(k, k * 0.62, k * 0.12); radioGlow.intensity = 0.25 + 0.25 * k; }
   // instrument feedback: strummed strings shiver, hit pads bob down then spring back
   if (strumFx > 0) { strumFx = Math.max(0, strumFx - dt); for (let i = 0; i < 3; i++) { const s = scene.getMeshByName("teleStr" + i); if (s) s.rotation.z = Math.sin(T * 90 + i) * strumFx * 0.12; } }
   if (keyFx > 0) { keyFx = Math.max(0, keyFx - dt); if (keyGlow) keyGlow.visibility = keyFx / 0.16; }
@@ -1281,6 +1323,10 @@ scene.onPointerObservable.add((p) => {
   const ray = camera.getForwardRay(7);
   const instr = scene.pickWithRay(ray, (m) => !!m._instr);
   if (instr && instr.hit) { playInstrument(instr); return; } // play the guitar / keys / drums
+  const radTog = scene.pickWithRay(ray, (m) => !!m._radioToggle);
+  if (radTog && radTog.hit) { const on = laRadio.toggle(); flashHint(on ? radioLabel() : "📻 radio off"); return; } // power on/off
+  const radScn = scene.pickWithRay(ray, (m) => !!m._radioScan);
+  if (radScn && radScn.hit) { if (!laRadio.info().on) laRadio.power(true); else laRadio.scan(1); radioScanStatic(); flashHint(radioLabel()); return; } // scan the dial
   const wallHit = scene.pickWithRay(ray, (m) => !!m._noteWall);
   if (wallHit && wallHit.hit) { openComposer(wallHit.pickedMesh._noteWall, wallHit.pickedPoint); return; }
   const cat = scene.pickWithRay(ray, (m) => m.name.startsWith("cat"));
@@ -1610,13 +1656,13 @@ function onEditKey(ev) {
 window.addEventListener("resize", () => engine.resize());
 engine.runRenderLoop(() => scene.render());
 setProg(72, "almost…");
-scene.whenReadyAsync().then(async () => { setProg(82, "loading models…"); await loadHeroProps(); setupEditor(); setupNotes(); setupInstruments(); setProg(90, "physics…"); await initPhysics(); setProg(100, "enter ▸"); enterBtn.disabled = false; });
+scene.whenReadyAsync().then(async () => { setProg(82, "loading models…"); await loadHeroProps(); setupEditor(); setupNotes(); setupInstruments(); laRadio.init(); laRadio.setGain(1); setProg(90, "physics…"); await initPhysics(); setProg(100, "enter ▸"); enterBtn.disabled = false; });
 
 let entered = false;
 function enter() {
   if (entered) return; entered = true;
   gate.classList.add("gone"); badge.classList.add("show"); document.getElementById("credits")?.classList.add("show"); editToggle.classList.add("show");
-  hint.textContent = "WASD move · click: play the guitar / keys / drums · wall = note · panel by the door = light · G arrange · L lighting";
+  hint.textContent = "WASD move · click: guitar / keys / drums · the boombox = radio on/off (knob scans) · wall = note · panel by the door = light · G arrange · L lighting";
   hint.classList.add("show"); setTimeout(() => hint.classList.remove("show"), 7000);
   canvas.focus(); engine.enterPointerlock();
   try { ensureAudio(); } catch (e) { /* audio is best-effort */ } // build the audio context on this user gesture
@@ -1645,6 +1691,7 @@ window.METRO_BJS = {
   get notes() { return notes; }, openComposerAt: (wallId, u, v) => { const w = NOTE_WALLS[wallId]; openComposer(w, w.origin.add(w.uDir.scale(u)).add(w.vDir.scale(v))); },
   postTestNote: (wall, u, v, text, color) => { const n = { id: "t" + Date.now() + Math.round(u * 99), wall, u, v, text, color: color || "#f4ecc8", tilt: 0.05, created_at: Date.now() }; notes.push(n); renderNote(n); saveNotes(); return n; },
   get weather() { return weather; },
+  radio: laRadio, radioPower: (on) => laRadio.power(on), radioScan: () => { laRadio.scan(1); radioScanStatic(); return laRadio.info(); },
   get boombox() { return boombox; },
   get pedalboard() { return pbRef; },
   placeBoombox: (x, y, z, ry, t) => placeBoombox(x, y, z, ry, t),
