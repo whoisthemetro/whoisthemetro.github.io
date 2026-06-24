@@ -11,6 +11,7 @@
 // can throw things with. still 100% procedural — no asset files.
 
 import { createRadio, LA_STATIONS } from "./radio.js";
+import { getStarPosition, getPlanetPositions, getMoonPosition, getMoonIllumination, STARS } from "./astro.js";
 
 const B = window.BABYLON;
 const V3 = B.Vector3;
@@ -834,19 +835,99 @@ const LAT = 33.9164, LNG = -118.3526;   // Hawthorne, CA — sun & moon are comp
 const weather = { clouds: 0, rain: 0 };
 let envAcc = 0;
 
-// astro ceiling — real GEOMETRY stars (emissive colour works + the glow layer makes them
-// glow); only the stars glow, never the whole roof. Fades in at night.
-const STAR_MAT = new B.StandardMaterial("starMat", scene);
-STAR_MAT.diffuseColor = new B.Color3(0, 0, 0); STAR_MAT.specularColor = new B.Color3(0, 0, 0); STAR_MAT.emissiveColor = new B.Color3(0, 0, 0); STAR_MAT.disableLighting = true;
-const astroGrp = node("astroGrp", 0, H - 0.05, 0);
-const sRnd = (i) => { const v = Math.abs(Math.sin(i * 12.9898) * 43758.5453); return v - Math.floor(v); };
-for (let i = 0; i < 95; i++) {
-  const star = B.MeshBuilder.CreateSphere("star" + i, { diameter: 0.013 * (0.5 + sRnd(i + 33) * 0.7), segments: 6 }, scene);
-  star.material = STAR_MAT; star.parent = astroGrp; star.position.set((sRnd(i) - 0.5) * (W - 0.4), 0, (sRnd(i + 99) - 0.5) * (D - 0.4));
+// astro ceiling — a real star projector for tonight's actual sky (ported from the
+// three.js world): 25 catalogue stars placed by sidereal time, the Big Dipper joined
+// up + named, the naked-eye planets from a pocket ephemeris, the moon with its true
+// phase. A fisheye look-up texture: zenith mid-ceiling, horizons at the walls. The
+// emissive paint feeds the glow layer, so only the stars glow — never the whole roof.
+const astroTex = new B.DynamicTexture("astroTex", { width: 640, height: 800 }, scene, true);
+astroTex.hasAlpha = true;
+const astroMat = new B.StandardMaterial("astroMat", scene);
+astroMat.diffuseColor = new B.Color3(0, 0, 0); astroMat.disableLighting = true;
+astroMat.diffuseTexture = astroTex; astroMat.emissiveTexture = astroTex; // emissive-only samples flat WHITE here — wire both
+astroMat.useAlphaFromDiffuseTexture = true; astroMat.transparencyMode = B.Material.MATERIAL_ALPHABLEND;
+astroMat.backFaceCulling = false; glowMats.push(astroMat);
+const astroPlane = B.MeshBuilder.CreatePlane("astroPlane", { width: W - 0.12, height: D - 0.12, sideOrientation: B.Mesh.DOUBLESIDE }, scene);
+astroPlane.rotation.x = Math.PI / 2;            // lie flat, readable looking up
+astroPlane.position.set(0, H - 0.02, 0);
+astroPlane.isPickable = false; astroPlane.setEnabled(false);
+
+function drawAstro() {
+  const g = astroTex.getContext(), cw = 640, ch = 800, cx = cw / 2, cy = ch / 2;
+  const Rx = cx * 0.94, Ry = cy * 0.94;
+  g.clearRect(0, 0, cw, ch);
+  const now = new Date();
+
+  // alt/az → ceiling spot: zenith center, horizon at the walls. az from south toward
+  // west; canvas top = north, right = west (matches how the sunlight already aims).
+  const spot = (p) => {
+    if (p.altitude < 0.035) return null;
+    const f = 1 - p.altitude / (Math.PI / 2);
+    return { x: cx + Math.sin(p.azimuth) * f * Rx, y: cy + Math.cos(p.azimuth) * f * Ry };
+  };
+  const dot = (s, r, tint, soft = 2.6) => {
+    const glow = g.createRadialGradient(s.x, s.y, 0, s.x, s.y, r * soft);
+    glow.addColorStop(0, tint);
+    glow.addColorStop(0.35, tint.startsWith("rgba") ? tint : tint + "99");
+    glow.addColorStop(1, "rgba(0,0,0,0)");
+    g.fillStyle = glow;
+    g.beginPath(); g.arc(s.x, s.y, r * soft, 0, 7); g.fill();
+  };
+  const label = (s, text, dy = 16) => {
+    g.fillStyle = "rgba(190,205,235,0.6)"; g.font = "11px Archivo, sans-serif"; g.textAlign = "center";
+    g.fillText(text, s.x, s.y + dy);
+  };
+
+  // cardinal letters around the rim, so you can orient yourself
+  g.fillStyle = "rgba(170,185,215,0.5)"; g.font = "13px Archivo, sans-serif"; g.textAlign = "center";
+  g.fillText("n", cx, 22); g.fillText("s", cx, ch - 12); g.fillText("w", cw - 14, cy + 4); g.fillText("e", 14, cy + 4);
+
+  // the stars — the dipper's seven are the catalogue tail
+  const spots = STARS.map(([name, ra, dec, mag, tint]) => {
+    const s = spot(getStarPosition(now, LAT, LNG, ra, dec));
+    if (s) dot(s, Math.max(1.6, 4.6 - mag * 1.1), tint);
+    return s;
+  });
+  for (const [i, name] of [[0, "sirius"], [2, "arcturus"], [3, "vega"], [10, "antares"], [17, "polaris"]]) {
+    if (spots[i]) label(spots[i], name);
+  }
+
+  // join the dipper: bowl, then the handle's long curve
+  const dip = spots.slice(18);
+  g.strokeStyle = "rgba(150,170,210,0.30)"; g.lineWidth = 1.2;
+  for (const [a, b] of [[0, 1], [1, 2], [2, 3], [3, 0], [3, 4], [4, 5], [5, 6]]) {
+    if (dip[a] && dip[b]) { g.beginPath(); g.moveTo(dip[a].x, dip[a].y); g.lineTo(dip[b].x, dip[b].y); g.stroke(); }
+  }
+  if (dip[3] && dip[4]) label({ x: (dip[3].x + dip[4].x) / 2, y: (dip[3].y + dip[4].y) / 2 }, "the big dipper", 24);
+
+  // wandering stars, named — the planets a toy projector never gets right
+  for (const p of getPlanetPositions(now, LAT, LNG)) {
+    const s = spot(p);
+    if (!s) continue;
+    dot(s, Math.max(2, 4.2 - p.mag * 0.9), p.tint);
+    label(s, p.name);
+  }
+
+  // the moon, with tonight's actual face
+  const ms = spot(getMoonPosition(now, LAT, LNG));
+  if (ms) {
+    const frac = getMoonIllumination(now).fraction;
+    dot(ms, 9, "rgba(235,240,250,0.9)", 2.0);
+    g.fillStyle = "rgba(232,238,250,0.95)"; g.beginPath(); g.arc(ms.x, ms.y, 9, 0, 7); g.fill();
+    g.fillStyle = "rgba(8,9,14,0.9)"; g.beginPath();
+    g.arc(ms.x + 18 * (1 - frac) * (frac < 0.5 ? 1 : -1) * 0.6, ms.y, 9, 0, 7); g.fill();
+    label(ms, "moon", 24);
+  }
+  astroTex.update(false);
 }
-const DIPPER = [[-1.7, -1.4], [-1.0, -1.05], [-0.3, -0.8], [0.35, -0.55], [0.5, 0.2], [-0.25, 0.45], [-0.55, -0.25]]; // Big Dipper, brighter
-DIPPER.forEach((d, i) => { const s = B.MeshBuilder.CreateSphere("dip" + i, { diameter: 0.026, segments: 8 }, scene); s.material = STAR_MAT; s.parent = astroGrp; s.position.set(d[0], 0, d[1]); });
-astroGrp.setEnabled(false);
+
+// dusk fades it in, dawn takes it back
+function updateAstro(sunAlt) {
+  const k = Math.max(0, Math.min(1, (-sunAlt * 57.3 - 4) / 6));
+  astroMat.alpha = k * 0.92;
+  astroPlane.setEnabled(k > 0.02);
+  if (k > 0.02) drawAstro();
+}
 
 // the daylight driver — aims the sun/moon through the window and recolors everything
 let autoMode = true;
@@ -877,8 +958,7 @@ function updateEnv(date) {
   ip.exposure = sunAlt > 0 ? 0.92 : sunAlt > -0.2 ? 0.95 : 1.04;
   drawSky(sp.azimuth, sunAlt, moonAlt, frac, weather.clouds);
   rainPane.isVisible = weather.rain > 0; rainMat.alpha = weather.rain > 0 ? 0.55 : 0;
-  const fade = Math.max(0, Math.min(1, (-sunAlt * 57.3 - 4) / 6));
-  astroGrp.setEnabled(fade > 0.02); STAR_MAT.emissiveColor.set(fade * 1.7, fade * 1.7, fade * 1.85);
+  updateAstro(sunAlt);
 }
 
 // weather from Open-Meteo (CORS-open, no key)
@@ -1701,6 +1781,7 @@ window.METRO_BJS = {
   setMood: (i) => { autoMode = false; moodIdx = i % MOODS.length; applyMood(MOODS[moodIdx]); },
   // preview a time of day (hours 0-23) without waiting for the real clock
   previewTime: (h, m = 30) => { autoMode = false; const d = new Date(); d.setHours(h, m, 0, 0); updateEnv(d); },
+  forceAstro: () => { astroPlane.setEnabled(true); astroMat.alpha = 0.92; drawAstro(); },
   goAuto: () => { autoMode = true; updateEnv(new Date()); },
   toggleEdit: (on) => toggleEdit(on), get editLayout() { return layoutObj(); },
   get notes() { return notes; }, openComposerAt: (wallId, u, v) => { const w = NOTE_WALLS[wallId]; openComposer(w, w.origin.add(w.uDir.scale(u)).add(w.vDir.scale(v))); },
