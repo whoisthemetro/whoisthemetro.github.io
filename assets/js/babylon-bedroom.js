@@ -634,6 +634,25 @@ async function loadHeroProps() {
   scene.getMeshByName("apollo")?.setEnabled(false);
   scene.getMeshByName("apKnob")?.setEnabled(false);
   await loadDeskProps();
+  await loadDumbek();
+}
+
+// THE DUMBEK — a real hand drum (Poly Pizza "Bongos", Poly by Google, CC-BY) you can
+// walk up to and strike. It lives inside a pivot node (scale 1) so the hit-bounce can
+// squash it toward the floor without fighting the GLB's own fit scale.
+let bongos = null, bongoPivot = null;
+const BONGO = { x: -1.95, y: 0, z: -1.5, ry: 0.55, target: 0.36 };
+async function loadDumbek() {
+  try {
+    bongos = await importGLB("bongos.glb");
+    bongoPivot = node("bongoPivot", BONGO.x, BONGO.y, BONGO.z); bongoPivot.rotation.y = BONGO.ry;
+    bongos.parent = bongoPivot;
+    bongos.scaling.setAll(BONGO.target / bongos._naturalMax);
+    bongos.rotation = new V3(0, 0, 0); bongos.position.set(0, 0, 0);
+    bongos.computeWorldMatrix(true);
+    const { min } = bongos.getHierarchyBoundingVectors();
+    bongos.position.y -= min.y - BONGO.y; // rest the drum's bottom on the floor
+  } catch (e) { console.warn("bongos (dumbek) load failed", e); }
 }
 
 // realistic desk props (Poly Pizza CC-BY / Kenney CC0) — keyboard, computer, mug, lamp.
@@ -1237,6 +1256,7 @@ function ensureAudio() {
     chorusIn.connect(dl); dl.connect(cOut);
   });
   cOut.connect(master); cOut.connect(verbSend); // chorus gets a reverb tail too
+  loadDumbekSamples(); // start pulling the dumbek samples in the background on this first gesture
   return AC;
 }
 function makeImpulse(dur, decay) {
@@ -1298,6 +1318,34 @@ function drum(kind) {
   else if (kind === "hat") { const nz = noiseBuf(0.07), hp = ac.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 8000; const g = ac.createGain(); g.gain.setValueAtTime(0.32, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.05); nz.connect(hp); hp.connect(g); out(g, 0.05); nz.start(t); }
   else { const f = kind === "tom1" ? 210 : kind === "tom2" ? 160 : 120; const o = ac.createOscillator(); o.type = "sine"; o.frequency.setValueAtTime(f * 1.4, t); o.frequency.exponentialRampToValueAtTime(f, t + 0.18); const g = ac.createGain(); g.gain.setValueAtTime(0.75, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.3); o.connect(g); out(g, 0.16); o.start(t); o.stop(t + 0.32); }
 }
+// THE DUMBEK — a goblet/hand drum voiced by the user's OWN 77 sample hits (recorded
+// Aug 2015). 48k mono one-shots, lazy-loaded into AudioBuffers; a random one per strike,
+// dry + the room reverb. Files: assets/audio/dumbek/dumbek-01.wav … -77.wav.
+const DUMBEK_N = 77;
+const dumbekBufs = []; let dumbekLoading = false;
+async function loadDumbekSamples() {
+  if (dumbekLoading || !AC) return; dumbekLoading = true;
+  const decode = (arr) => new Promise((ok, no) => AC.decodeAudioData(arr, ok, no)); // callback form for Safari
+  const url = (i) => `/assets/audio/dumbek/dumbek-${String(i + 1).padStart(2, "0")}.wav`; // absolute — the page lives at /babylon/
+  let next = 0;
+  const worker = async () => {
+    while (next < DUMBEK_N) {
+      const i = next++;
+      try { dumbekBufs[i] = await decode(await fetch(url(i)).then(r => r.arrayBuffer())); }
+      catch (e) { /* skip a sample that won't fetch/decode */ }
+    }
+  };
+  await Promise.all(Array.from({ length: 6 }, worker)); // 6 in flight; ~2.7MB total, tiny files
+}
+function hitDumbek() {
+  const ac = ensureAudio();
+  const loaded = dumbekBufs.filter(Boolean);
+  if (!loaded.length) { loadDumbekSamples(); return; }     // still warming up — let this tap pass
+  const src = ac.createBufferSource(); src.buffer = loaded[(Math.random() * loaded.length) | 0];
+  const g = ac.createGain(); g.gain.value = 0.72 + Math.random() * 0.28; // a little hit-to-hit dynamics
+  src.connect(g); out(g, 0.24); src.start(ac.currentTime);  // dry + the drum reverb
+}
+
 // tag the instrument meshes so a click finds them; map drum pads to sounds
 let keyGlow = null, scaleScreenTex = null, scaleIdx = 0, octShift = 0;
 // the two screen buttons cycle the SCALE. it no longer constrains the keybed (that's a real piano
@@ -1407,6 +1455,8 @@ function setupInstruments() {
     const info = { type: "drum", drum: padMap[id], pad: bobNode };
     ["p", "f", "r", ""].forEach(s => tag(scene.getMeshByName(id + s), info)); // every piece of the pad triggers it
   }
+  // the dumbek (bongos GLB): strike anywhere on it → a random one of your own 77 hits
+  if (bongos) bongos.getChildMeshes().forEach(m => tag(m, { type: "dumbek", pad: bongoPivot }));
 }
 let strumFx = 0, keyFx = 0; const drumFx = [];
 function playInstrument(pick) {
@@ -1440,6 +1490,7 @@ function playInstrument(pick) {
     }
     guitarNote(frac);
   } else if (info.type === "drum") { drum(info.drum); if (info.pad) drumFx.push({ node: info.pad, t: 0.12 }); }
+  else if (info.type === "dumbek") { hitDumbek(); if (info.pad) drumFx.push({ node: info.pad, t: 0.12 }); }
 }
 
 let lightDrag = null;
@@ -1848,6 +1899,8 @@ window.METRO_BJS = {
   pickLightCtrl: () => { const lc = scene.pickWithRay(camera.getForwardRay(3.5), (m) => !!m._lightCtrl); return lc && lc.hit ? lc.pickedMesh._lightCtrl : null; },
   get slide() { return { count: slide.urls.length, i: slide.i }; }, nextSlide: () => nextSlide(),
   playKey: (m) => playKey(m), strumGuitar: () => strumGuitar(), drum: (k) => drum(k),
+  hitDumbek: () => hitDumbek(), get dumbekLoaded() { return dumbekBufs.filter(Boolean).length; }, get bongos() { return bongos; },
+  placeBongos: (x, z, ry, t) => { if (!bongoPivot) return; bongoPivot.position.set(x, BONGO.y, z); bongoPivot.rotation.y = ry; bongos.scaling.setAll(t / bongos._naturalMax); bongos.position.set(0, 0, 0); bongos.computeWorldMatrix(true); const { min } = bongos.getHierarchyBoundingVectors(); bongos.position.y -= min.y - BONGO.y; },
   audioPeak: () => new Promise((res) => { const ac = ensureAudio(); const an = ac.createAnalyser(); an.fftSize = 2048; master.connect(an); const data = new Float32Array(an.fftSize); let peak = 0; const t0 = ac.currentTime; const iv = setInterval(() => { an.getFloatTimeDomainData(data); for (const v of data) peak = Math.max(peak, Math.abs(v)); if (ac.currentTime - t0 > 0.6) { clearInterval(iv); try { master.disconnect(an); } catch {} res(+peak.toFixed(3)); } }, 20); }),
   pickInstr: () => { const r = scene.pickWithRay(camera.getForwardRay(7), (m) => !!m._instr); return r && r.hit ? r.pickedMesh._instr.type + (r.pickedMesh._instr.drum ? ":" + r.pickedMesh._instr.drum : "") : null; },
   // aim the crosshair at an instrument and actually play it (drives the same path a click does)
