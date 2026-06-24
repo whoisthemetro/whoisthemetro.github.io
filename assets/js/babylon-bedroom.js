@@ -866,12 +866,12 @@ function makeTag(text, size = 26) {
   const t = new B.DynamicTexture("tag_" + text, { width: 256, height: 64 }, scene, true);
   const g = t.getContext(); g.clearRect(0, 0, 256, 64);
   g.fillStyle = "rgba(206,218,242,0.95)"; g.font = "600 " + size + "px sans-serif"; g.textAlign = "center"; g.textBaseline = "middle";
-  g.fillText(text, 128, 36); t.update(false); t.hasAlpha = true;
+  g.fillText(text, 128, 36); t.update(false); t.hasAlpha = true; t.vScale = -1; t.vOffset = 1; // un-flip (canvas y-down) so the text reads upright
   const m = new B.StandardMaterial("tagM_" + text, scene);
   m.diffuseColor = new B.Color3(0, 0, 0); m.disableLighting = true;
   m.diffuseTexture = t; m.emissiveTexture = t; m.useAlphaFromDiffuseTexture = true;
   m.transparencyMode = B.Material.MATERIAL_ALPHABLEND; m.backFaceCulling = false;
-  const aspect = 256 / 64, hgt = 0.11;
+  const aspect = 256 / 64, hgt = 0.075;
   const p = B.MeshBuilder.CreatePlane("tag", { width: hgt * aspect, height: hgt }, scene);
   p.material = m; p.parent = astroGrp; p.isPickable = false; p.billboardMode = B.Mesh.BILLBOARDMODE_ALL;
   return p;
@@ -879,9 +879,9 @@ function makeTag(text, size = 26) {
 
 // the 25 catalogue stars — a glowing bead each, sized by magnitude
 const starBeads = STARS.map(([name, ra, dec, mag, tint], i) => {
-  const dia = Math.max(0.06, 0.2 - mag * 0.024);           // brighter stars = bigger orb (these read like the ceiling lamps)
-  const mult = Math.max(2.4, Math.min(5.5, 5.2 - mag * 0.5)); // hot, but keeps the spectral tint
-  const s = B.MeshBuilder.CreateSphere("astar" + i, { diameter: dia, segments: 10 }, scene);
+  const dia = Math.max(0.011, 0.036 - mag * 0.005);        // small, slim points — like the stars in the original room
+  const mult = Math.max(2.4, Math.min(5.5, 5.2 - mag * 0.5)); // hot, so the tiny core still reads + tints
+  const s = B.MeshBuilder.CreateSphere("astar" + i, { diameter: dia, segments: 8 }, scene);
   s.material = beadMat("astarM" + i, parseInt(tint.slice(1), 16), mult); s.parent = astroGrp; s.isPickable = false;
   return { mesh: s, ra, dec };
 });
@@ -892,20 +892,20 @@ const starTags = NAMED.map(([i, nm]) => ({ i, tag: makeTag(nm, 22) }));
 // the naked-eye planets — fatter, hotter beads (recomputed each tick), each named
 const PLANET_NAMES = ["mercury", "venus", "mars", "jupiter", "saturn"];
 const planetBeads = PLANET_NAMES.map((nm, i) => {
-  const s = B.MeshBuilder.CreateSphere("aplanet" + i, { diameter: 0.15, segments: 14 }, scene);
+  const s = B.MeshBuilder.CreateSphere("aplanet" + i, { diameter: 0.03, segments: 10 }, scene);
   s.material = beadMat("aplanetM" + i, 0xffffff, 4); s.parent = astroGrp; s.isPickable = false;
   return { mesh: s, tag: makeTag(nm, 24) };
 });
 
 // the moon — a glowing disc, dimmed by tonight's illuminated fraction
-const moonBead = B.MeshBuilder.CreateSphere("amoon", { diameter: 0.3, segments: 18 }, scene);
+const moonBead = B.MeshBuilder.CreateSphere("amoon", { diameter: 0.09, segments: 16 }, scene);
 moonBead.material = beadMat("amoonM", 0xeef2fa, 1.1); moonBead.parent = astroGrp; moonBead.isPickable = false;
 const moonTag = makeTag("moon", 22);
 
 // the Big Dipper, joined with thin glowing tubes (bowl, then the handle's curve)
 const DIP_LINKS = [[0, 1], [1, 2], [2, 3], [3, 0], [3, 4], [4, 5], [5, 6]];
 const dipTubes = DIP_LINKS.map((_, i) => {
-  const t = B.MeshBuilder.CreateCylinder("adip" + i, { height: 1, diameter: 0.012, tessellation: 6 }, scene);
+  const t = B.MeshBuilder.CreateCylinder("adip" + i, { height: 1, diameter: 0.004, tessellation: 6 }, scene);
   t.material = beadMat("adipM" + i, 0x9fb6e8, 4); t.parent = astroGrp; t.isPickable = false; t.rotationQuaternion = B.Quaternion.Identity();
   return t;
 });
