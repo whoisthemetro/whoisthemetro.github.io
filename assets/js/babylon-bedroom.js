@@ -831,102 +831,146 @@ function applyMood(m) {
 // =====================================================================
 // LIVE ENVIRONMENT — real day/night from your location, dynamic sky, astro, weather
 // =====================================================================
-const LAT = 33.9164, LNG = -118.3526;   // Hawthorne, CA — sun & moon are computed for exactly here
+const LAT = 33.9036, LNG = -118.3517;   // 11908 Truro Ave, Hawthorne CA 90250 — sun, moon & stars are computed for exactly here
 const weather = { clouds: 0, rain: 0 };
 let envAcc = 0;
 
-// astro ceiling — a real star projector for tonight's actual sky (ported from the
-// three.js world): 25 catalogue stars placed by sidereal time, the Big Dipper joined
-// up + named, the naked-eye planets from a pocket ephemeris, the moon with its true
-// phase. A fisheye look-up texture: zenith mid-ceiling, horizons at the walls. The
-// emissive paint feeds the glow layer, so only the stars glow — never the whole roof.
-const astroTex = new B.DynamicTexture("astroTex", { width: 640, height: 800 }, scene, true);
-astroTex.hasAlpha = true;
-const astroMat = new B.StandardMaterial("astroMat", scene);
-astroMat.diffuseColor = new B.Color3(0, 0, 0); astroMat.disableLighting = true;
-astroMat.diffuseTexture = astroTex; astroMat.emissiveTexture = astroTex; // emissive-only samples flat WHITE here — wire both
-astroMat.useAlphaFromDiffuseTexture = true; astroMat.transparencyMode = B.Material.MATERIAL_ALPHABLEND;
-astroMat.backFaceCulling = false; glowMats.push(astroMat);
-const astroPlane = B.MeshBuilder.CreatePlane("astroPlane", { width: W - 0.12, height: D - 0.12, sideOrientation: B.Mesh.DOUBLESIDE }, scene);
-astroPlane.rotation.x = Math.PI / 2;            // lie flat, readable looking up
-astroPlane.position.set(0, H - 0.02, 0);
-astroPlane.isPickable = false; astroPlane.setEnabled(false);
+// astro ceiling — tonight's REAL sky as glowing geometry. A flat painted texture reads
+// as a dim smear on a ceiling at this distance; emissive beads bloom through the glow
+// layer and read from across the room. Everything is placed by a fisheye look-up
+// projection (zenith mid-ceiling, horizon at the walls) for THIS address. The window
+// faces SOUTH (-z); facing it, west is +x — so a star due-south sits over the window,
+// a star due-north over the back wall. Dusk fades it in, dawn takes it back.
+const ASTRO_Y = H - 0.05, RX = (W - 0.5) / 2, RZ = (D - 0.5) / 2;
+const astroGrp = node("astroGrp", 0, ASTRO_Y, 0);
+astroGrp.setEnabled(false);
 
-function drawAstro() {
-  const g = astroTex.getContext(), cw = 640, ch = 800, cx = cw / 2, cy = ch / 2;
-  const Rx = cx * 0.94, Ry = cy * 0.94;
-  g.clearRect(0, 0, cw, ch);
-  const now = new Date();
-
-  // alt/az → ceiling spot: zenith center, horizon at the walls. az from south toward
-  // west; canvas top = north, right = west (matches how the sunlight already aims).
-  const spot = (p) => {
-    if (p.altitude < 0.035) return null;
-    const f = 1 - p.altitude / (Math.PI / 2);
-    return { x: cx + Math.sin(p.azimuth) * f * Rx, y: cy + Math.cos(p.azimuth) * f * Ry };
-  };
-  const dot = (s, r, tint, soft = 2.6) => {
-    const glow = g.createRadialGradient(s.x, s.y, 0, s.x, s.y, r * soft);
-    glow.addColorStop(0, tint);
-    glow.addColorStop(0.35, tint.startsWith("rgba") ? tint : tint + "99");
-    glow.addColorStop(1, "rgba(0,0,0,0)");
-    g.fillStyle = glow;
-    g.beginPath(); g.arc(s.x, s.y, r * soft, 0, 7); g.fill();
-  };
-  const label = (s, text, dy = 16) => {
-    g.fillStyle = "rgba(190,205,235,0.6)"; g.font = "11px Archivo, sans-serif"; g.textAlign = "center";
-    g.fillText(text, s.x, s.y + dy);
-  };
-
-  // cardinal letters around the rim, so you can orient yourself
-  g.fillStyle = "rgba(170,185,215,0.5)"; g.font = "13px Archivo, sans-serif"; g.textAlign = "center";
-  g.fillText("n", cx, 22); g.fillText("s", cx, ch - 12); g.fillText("w", cw - 14, cy + 4); g.fillText("e", 14, cy + 4);
-
-  // the stars — the dipper's seven are the catalogue tail
-  const spots = STARS.map(([name, ra, dec, mag, tint]) => {
-    const s = spot(getStarPosition(now, LAT, LNG, ra, dec));
-    if (s) dot(s, Math.max(1.6, 4.6 - mag * 1.1), tint);
-    return s;
-  });
-  for (const [i, name] of [[0, "sirius"], [2, "arcturus"], [3, "vega"], [10, "antares"], [17, "polaris"]]) {
-    if (spots[i]) label(spots[i], name);
-  }
-
-  // join the dipper: bowl, then the handle's long curve
-  const dip = spots.slice(18);
-  g.strokeStyle = "rgba(150,170,210,0.30)"; g.lineWidth = 1.2;
-  for (const [a, b] of [[0, 1], [1, 2], [2, 3], [3, 0], [3, 4], [4, 5], [5, 6]]) {
-    if (dip[a] && dip[b]) { g.beginPath(); g.moveTo(dip[a].x, dip[a].y); g.lineTo(dip[b].x, dip[b].y); g.stroke(); }
-  }
-  if (dip[3] && dip[4]) label({ x: (dip[3].x + dip[4].x) / 2, y: (dip[3].y + dip[4].y) / 2 }, "the big dipper", 24);
-
-  // wandering stars, named — the planets a toy projector never gets right
-  for (const p of getPlanetPositions(now, LAT, LNG)) {
-    const s = spot(p);
-    if (!s) continue;
-    dot(s, Math.max(2, 4.2 - p.mag * 0.9), p.tint);
-    label(s, p.name);
-  }
-
-  // the moon, with tonight's actual face
-  const ms = spot(getMoonPosition(now, LAT, LNG));
-  if (ms) {
-    const frac = getMoonIllumination(now).fraction;
-    dot(ms, 9, "rgba(235,240,250,0.9)", 2.0);
-    g.fillStyle = "rgba(232,238,250,0.95)"; g.beginPath(); g.arc(ms.x, ms.y, 9, 0, 7); g.fill();
-    g.fillStyle = "rgba(8,9,14,0.9)"; g.beginPath();
-    g.arc(ms.x + 18 * (1 - frac) * (frac < 0.5 ? 1 : -1) * 0.6, ms.y, 9, 0, 7); g.fill();
-    label(ms, "moon", 24);
-  }
-  astroTex.update(false);
+// az (from south, toward west) + alt → a local spot on the ceiling, null below horizon
+function skyXZ(p) {
+  if (p.altitude < 0.05) return null;
+  const f = 1 - p.altitude / (Math.PI / 2);     // 0 at zenith, 1 at the horizon
+  return { x: Math.sin(p.azimuth) * f * RX, z: -Math.cos(p.azimuth) * f * RZ };
+}
+function beadMat(name, hex, boost = 3) {
+  const m = new B.StandardMaterial(name, scene);
+  m.diffuseColor = new B.Color3(0, 0, 0); m.disableLighting = true;
+  // emissive deliberately runs HOT (>1). ACES tone-mapping + the glow layer + pipeline
+  // bloom (threshold 0.92) turn that into a bright, blooming point instead of a grey
+  // speck — clamping to 1 was exactly why the stars vanished into the ceiling.
+  const c = C(hex); m.emissiveColor = new B.Color3(c.r * boost, c.g * boost, c.b * boost);
+  m._base = m.emissiveColor.clone();
+  return m;
+}
+// little name tags that always face the camera (billboards), so the sky reads itself
+function makeTag(text, size = 26) {
+  const t = new B.DynamicTexture("tag_" + text, { width: 256, height: 64 }, scene, true);
+  const g = t.getContext(); g.clearRect(0, 0, 256, 64);
+  g.fillStyle = "rgba(206,218,242,0.95)"; g.font = "600 " + size + "px sans-serif"; g.textAlign = "center"; g.textBaseline = "middle";
+  g.fillText(text, 128, 36); t.update(false); t.hasAlpha = true;
+  const m = new B.StandardMaterial("tagM_" + text, scene);
+  m.diffuseColor = new B.Color3(0, 0, 0); m.disableLighting = true;
+  m.diffuseTexture = t; m.emissiveTexture = t; m.useAlphaFromDiffuseTexture = true;
+  m.transparencyMode = B.Material.MATERIAL_ALPHABLEND; m.backFaceCulling = false;
+  const aspect = 256 / 64, hgt = 0.11;
+  const p = B.MeshBuilder.CreatePlane("tag", { width: hgt * aspect, height: hgt }, scene);
+  p.material = m; p.parent = astroGrp; p.isPickable = false; p.billboardMode = B.Mesh.BILLBOARDMODE_ALL;
+  return p;
 }
 
-// dusk fades it in, dawn takes it back
+// the 25 catalogue stars — a glowing bead each, sized by magnitude
+const starBeads = STARS.map(([name, ra, dec, mag, tint], i) => {
+  const dia = Math.max(0.06, 0.2 - mag * 0.024);           // brighter stars = bigger orb (these read like the ceiling lamps)
+  const mult = Math.max(2.4, Math.min(5.5, 5.2 - mag * 0.5)); // hot, but keeps the spectral tint
+  const s = B.MeshBuilder.CreateSphere("astar" + i, { diameter: dia, segments: 10 }, scene);
+  s.material = beadMat("astarM" + i, parseInt(tint.slice(1), 16), mult); s.parent = astroGrp; s.isPickable = false;
+  return { mesh: s, ra, dec };
+});
+// the five named stars get a tag
+const NAMED = [[0, "sirius"], [2, "arcturus"], [3, "vega"], [10, "antares"], [17, "polaris"]];
+const starTags = NAMED.map(([i, nm]) => ({ i, tag: makeTag(nm, 22) }));
+
+// the naked-eye planets — fatter, hotter beads (recomputed each tick), each named
+const PLANET_NAMES = ["mercury", "venus", "mars", "jupiter", "saturn"];
+const planetBeads = PLANET_NAMES.map((nm, i) => {
+  const s = B.MeshBuilder.CreateSphere("aplanet" + i, { diameter: 0.15, segments: 14 }, scene);
+  s.material = beadMat("aplanetM" + i, 0xffffff, 4); s.parent = astroGrp; s.isPickable = false;
+  return { mesh: s, tag: makeTag(nm, 24) };
+});
+
+// the moon — a glowing disc, dimmed by tonight's illuminated fraction
+const moonBead = B.MeshBuilder.CreateSphere("amoon", { diameter: 0.3, segments: 18 }, scene);
+moonBead.material = beadMat("amoonM", 0xeef2fa, 1.1); moonBead.parent = astroGrp; moonBead.isPickable = false;
+const moonTag = makeTag("moon", 22);
+
+// the Big Dipper, joined with thin glowing tubes (bowl, then the handle's curve)
+const DIP_LINKS = [[0, 1], [1, 2], [2, 3], [3, 0], [3, 4], [4, 5], [5, 6]];
+const dipTubes = DIP_LINKS.map((_, i) => {
+  const t = B.MeshBuilder.CreateCylinder("adip" + i, { height: 1, diameter: 0.012, tessellation: 6 }, scene);
+  t.material = beadMat("adipM" + i, 0x9fb6e8, 4); t.parent = astroGrp; t.isPickable = false; t.rotationQuaternion = B.Quaternion.Identity();
+  return t;
+});
+const dipperTag = makeTag("the big dipper", 22);
+
+// cardinal tags pinned at the horizon ring — n over the back wall, s over the window
+const cardN = makeTag("n", 28); cardN.position.set(0, 0.02, RZ * 0.96);
+const cardS = makeTag("s", 28); cardS.position.set(0, 0.02, -RZ * 0.96);
+const cardW = makeTag("w", 28); cardW.position.set(RX * 0.96, 0.02, 0);
+const cardE = makeTag("e", 28); cardE.position.set(-RX * 0.96, 0.02, 0);
+
+// align a unit-tall cylinder to span from a to b (both local, y≈0)
+const _ay = B.Axis.Y;
+function aimTube(tube, a, b) {
+  const dir = b.subtract(a), len = dir.length();
+  if (len < 1e-4) { tube.setEnabled(false); return; }
+  tube.setEnabled(true);
+  tube.position.copyFrom(a.add(b).scale(0.5));
+  tube.scaling.set(1, len, 1);
+  const d = dir.scale(1 / len), axis = B.Vector3.Cross(_ay, d), al = axis.length();
+  if (al < 1e-5) tube.rotationQuaternion = B.Quaternion.Identity();
+  else tube.rotationQuaternion = B.Quaternion.RotationAxis(axis.scale(1 / al), Math.acos(Math.max(-1, Math.min(1, B.Vector3.Dot(_ay, d)))));
+}
+const _tmpA = new V3(), _tmpB = new V3();
+function placeTag(tag, x, y, z, on) { tag.setEnabled(on); if (on) tag.position.set(x, y, z); }
+
+// dusk fades it in, dawn takes it back; everything is re-placed for the live sky
 function updateAstro(sunAlt) {
   const k = Math.max(0, Math.min(1, (-sunAlt * 57.3 - 4) / 6));
-  astroMat.alpha = k * 0.92;
-  astroPlane.setEnabled(k > 0.02);
-  if (k > 0.02) drawAstro();
+  astroGrp.setEnabled(k > 0.02);
+  if (k <= 0.02) return;
+  const now = new Date();
+  const dipPos = [];   // the dipper's seven, in local coords (or null if down)
+
+  starBeads.forEach((b, i) => {
+    const p = skyXZ(getStarPosition(now, LAT, LNG, b.ra, b.dec));
+    b.mesh.setEnabled(!!p);
+    if (p) { b.mesh.position.set(p.x, 0, p.z); const e = b.mesh.material._base; b.mesh.material.emissiveColor.set(e.r * k, e.g * k, e.b * k); }
+    if (i >= 18) dipPos[i - 18] = p ? new V3(p.x, 0, p.z) : null;
+  });
+  starTags.forEach(({ i, tag }) => { const e = starBeads[i].mesh; placeTag(tag, e.position.x, -0.07, e.position.z, e.isEnabled()); });
+
+  DIP_LINKS.forEach(([a, c], i) => {
+    if (dipPos[a] && dipPos[c]) aimTube(dipTubes[i], dipPos[a], dipPos[c]);
+    else dipTubes[i].setEnabled(false);
+  });
+  if (dipPos[3] && dipPos[4]) placeTag(dipperTag, (dipPos[3].x + dipPos[4].x) / 2, -0.05, (dipPos[3].z + dipPos[4].z) / 2, true);
+  else dipperTag.setEnabled(false);
+
+  const planets = getPlanetPositions(now, LAT, LNG);
+  planetBeads.forEach((pb, i) => {
+    const p = skyXZ(planets[i]);
+    pb.mesh.setEnabled(!!p);
+    if (p) { pb.mesh.position.set(p.x, 0, p.z); const c = C(parseInt(planets[i].tint.slice(1), 16)), pm = 4.5 * k; pb.mesh.material.emissiveColor.set(c.r * pm, c.g * pm, c.b * pm); }
+    placeTag(pb.tag, p ? p.x : 0, -0.07, p ? p.z : 0, !!p);
+  });
+
+  const mpos = skyXZ(getMoonPosition(now, LAT, LNG));
+  moonBead.setEnabled(!!mpos);
+  if (mpos) {
+    moonBead.position.set(mpos.x, 0, mpos.z);
+    const frac = getMoonIllumination(now).fraction, g = (2.6 + 2.4 * frac) * k;
+    moonBead.material.emissiveColor.set(0.93 * g, 0.95 * g, 0.98 * g);
+  }
+  placeTag(moonTag, mpos ? mpos.x : 0, -0.12, mpos ? mpos.z : 0, !!mpos);
 }
 
 // the daylight driver — aims the sun/moon through the window and recolors everything
@@ -1781,7 +1825,9 @@ window.METRO_BJS = {
   setMood: (i) => { autoMode = false; moodIdx = i % MOODS.length; applyMood(MOODS[moodIdx]); },
   // preview a time of day (hours 0-23) without waiting for the real clock
   previewTime: (h, m = 30) => { autoMode = false; const d = new Date(); d.setHours(h, m, 0, 0); updateEnv(d); },
-  forceAstro: () => { astroPlane.setEnabled(true); astroMat.alpha = 0.92; drawAstro(); },
+  // freeze the room at night so the ceiling sky shows regardless of the real time of day
+  forceAstro: () => { autoMode = false; const d = new Date(); d.setHours(23, 30, 0, 0); updateEnv(d); },
+  get astroGrp() { return astroGrp; },
   goAuto: () => { autoMode = true; updateEnv(new Date()); },
   toggleEdit: (on) => toggleEdit(on), get editLayout() { return layoutObj(); },
   get notes() { return notes; }, openComposerAt: (wallId, u, v) => { const w = NOTE_WALLS[wallId]; openComposer(w, w.origin.add(w.uDir.scale(u)).add(w.vDir.scale(v))); },
