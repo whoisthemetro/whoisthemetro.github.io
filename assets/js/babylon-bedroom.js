@@ -1311,6 +1311,19 @@ const IMPORT_WALLS = {
   east: { origin: new V3(X, 0, ZF), uDir: new V3(0, 0, 1), vDir: new V3(0, 1, 0), normal: new V3(-1, 0, 0), w: D, h: H, voids: [{ u0: 5.0, u1: 6.2, v0: 0, v1: 2.2 }] }, // entry door
 };
 const importPlaced = { back: [], east: [], west: [] };
+const CORNER_M = 0.4; // keep notes/pics this far clear of the wall corners (room edges)
+// per-visitor manual repositions of imported wall photos/notes (id → {wall,u,v} in metres). read-only
+// import means this lives in localStorage, not Supabase — you rearrange your own view of the wall.
+const WALLPOS_KEY = "metro.wallpos";
+let wallPos = {}; try { wallPos = JSON.parse(localStorage.getItem(WALLPOS_KEY) || "{}"); } catch { }
+const wallPhotoCards = [];
+function saveWallPos() { try { localStorage.setItem(WALLPOS_KEY, JSON.stringify(wallPos)); } catch { } }
+// world position of a point (u,v) on a wall, raycast onto the real face so the depth matches bareWallSpot
+function wallFaceAt(w, wallId, u, v) {
+  const s = w.origin.add(w.uDir.scale(u)).add(w.vDir.scale(v));
+  const hit = scene.pickWithRay(new B.Ray(s.add(w.normal.scale(0.4)), w.normal.scale(-1), 0.8), mm => mm._wallId === wallId);
+  return (hit && hit.hit && hit.pickedPoint ? hit.pickedPoint : s).add(w.normal.scale(0.045));
+}
 function inVoid(w, u, v, m) { return (w.voids || []).some(z => u + m > z.u0 && u - m < z.u1 && v + m > z.v0 && v - m < z.v1); }
 // spiral from the intended (x,y) until the WHOLE note footprint sits on bare wall: every corner
 // ray must hit the wall mesh (no panel/door in front, no hole), clear of voids, de-overlapped.
@@ -1320,6 +1333,7 @@ function bareWallSpot(w, wallId, x, y, sz) {
   for (let i = 0; i < 240; i++) {
     const u = U0 + Math.cos(a) * r, v = V0 + Math.sin(a) * r; a += 1.15; r += 0.022;
     if (v < half + 0.08 || v > w.h - half - 0.08) continue;          // off floor/ceiling
+    if (u < half + CORNER_M || u > w.w - half - CORNER_M) continue;   // off the wall corners
     if (inVoid(w, u, v, half + 0.04)) continue;                       // off doorways
     const center = w.origin.add(w.uDir.scale(u)).add(w.vDir.scale(v));
     if (importPlaced[wallId].some(s => B.Vector3.Distance(s, center) < sz + 0.05)) continue; // de-overlap
@@ -1361,7 +1375,11 @@ function renderImportedNote(n) {
   const text = n.kind === "link" ? (n.text || n.url || "link ↗") : (n.text || "");
   if (!isPhoto && !text) return;
   const sz = isPhoto ? 0.3 : 0.2;
-  const pos = bareWallSpot(w, n.wall, n.x, n.y, sz); if (!pos) return; // no bare-wall spot → skip
+  const saved = n.id != null ? wallPos[n.id] : null;
+  let pos;
+  if (saved && saved.wall === n.wall) { pos = wallFaceAt(w, n.wall, saved.u, saved.v); importPlaced[n.wall].push(pos); }
+  else pos = bareWallSpot(w, n.wall, n.x, n.y, sz);
+  if (!pos) return; // no bare-wall spot → skip
   const mat = new B.StandardMaterial("inote", scene);
   if (isPhoto) {
     mat.disableLighting = true; mat.diffuseColor = new B.Color3(0, 0, 0); mat.emissiveColor = new B.Color3(1, 1, 1);
@@ -1376,12 +1394,14 @@ function renderImportedNote(n) {
   card.rotation = B.Vector3.RotationFromAxis(B.Vector3.Cross(w.vDir, w.normal), w.vDir, w.normal); card.computeWorldMatrix(true);
   if (n.rot) card.rotate(B.Axis.Z, n.rot, B.Space.LOCAL);
   card.receiveShadows = true;
+  // tag it so arrange mode (G) can grab and slide it along its wall
+  card._wallPhoto = { id: n.id, wallId: n.wall, w, sz }; wallPhotoCards.push(card);
 }
 async function importWallNotes() {
   const cfg = window.METRO_CONFIG;
   if (!cfg || !cfg.SUPABASE_URL || !cfg.SUPABASE_ANON_KEY) return;
   try {
-    const res = await fetch(`${cfg.SUPABASE_URL}/rest/v1/notes?select=wall,x,y,rot,text,color,kind,url,image_path&wall=in.(back,west,east)&order=created_at.asc&limit=2000`, { headers: { apikey: cfg.SUPABASE_ANON_KEY, Authorization: "Bearer " + cfg.SUPABASE_ANON_KEY } });
+    const res = await fetch(`${cfg.SUPABASE_URL}/rest/v1/notes?select=id,wall,x,y,rot,text,color,kind,url,image_path&wall=in.(back,west,east)&order=created_at.asc&limit=2000`, { headers: { apikey: cfg.SUPABASE_ANON_KEY, Authorization: "Bearer " + cfg.SUPABASE_ANON_KEY } });
     if (!res.ok) return;
     const rows = await res.json();
     const photoBase = cfg.SUPABASE_URL + "/storage/v1/object/public/photos/";
@@ -1469,6 +1489,7 @@ const DEFAULT_LAYOUT = {
   "guitar": { x: 1.61, y: 0.21, z: -2.65, ry: -0.6, s: 1 },
 };
 let editMode = false, selected = null, dragging = false, grabOff = { x: 0, z: 0 }, editables = [], editHL = null;
+let selWall = null, wallDragging = false; // wall photos slide along their wall, separate from the X/Z desk drag
 const editToggle = document.getElementById("edit-toggle"), editPanel = document.getElementById("editpanel");
 const editSel = document.getElementById("edit-sel"), editXform = document.getElementById("edit-xform");
 function meshesOf(node) { const cm = node.getChildMeshes ? node.getChildMeshes(false) : []; return cm.length ? cm : [node]; }
@@ -1513,27 +1534,61 @@ function selectEd(e) {
   else { editSel.textContent = "click an item to select"; editXform.textContent = ""; }
 }
 function updXformHud() { if (!selected) return; const t = nodeXform(selected.node); editXform.textContent = `x ${t.x}  y ${t.y}  z ${t.z}\nrot ${t.ry}  size ${t.s}`; }
+// --- wall photos: pick one, drag it along its wall, persist per-visitor ---
+function selectWall(mesh) {
+  if (selWall) editHL.removeMesh(selWall.card);
+  if (mesh) {
+    selectEd(null); // wall + desk selection are mutually exclusive
+    selWall = Object.assign({ card: mesh }, mesh._wallPhoto);
+    editHL.addMesh(mesh, B.Color3.FromHexString("#f5a623"));
+    editSel.textContent = "▸ wall photo"; updWallHud();
+  } else selWall = null;
+}
+function updWallHud() { if (!selWall) return; const w = selWall.w, rel = selWall.card.position.subtract(w.origin); editXform.textContent = `wall ${selWall.wallId}\nu ${B.Vector3.Dot(rel, w.uDir).toFixed(2)}  v ${B.Vector3.Dot(rel, w.vDir).toFixed(2)}`; }
+function dragWall() {
+  const w = selWall.w, half = selWall.sz / 2;
+  const pick = scene.pick(scene.pointerX, scene.pointerY, m => m._wallId === selWall.wallId); // only the wall — holes/blockers don't catch
+  if (!pick.hit || !pick.pickedPoint) return;
+  const rel = pick.pickedPoint.subtract(w.origin);
+  const u0 = B.Vector3.Dot(rel, w.uDir), v0 = B.Vector3.Dot(rel, w.vDir);
+  const u = Math.min(Math.max(u0, half + CORNER_M), w.w - half - CORNER_M);
+  const v = Math.min(Math.max(v0, half + 0.1), w.h - half - 0.1);
+  const pos = pick.pickedPoint.add(w.uDir.scale(u - u0)).add(w.vDir.scale(v - v0)).add(w.normal.scale(0.045));
+  selWall.card.position.set(pos.x, pos.y, pos.z); selWall._u = u; selWall._v = v; updWallHud();
+}
+function commitWallPos() {
+  if (!selWall || selWall.id == null || selWall._u == null) return;
+  wallPos[selWall.id] = { wall: selWall.wallId, u: +selWall._u.toFixed(3), v: +selWall._v.toFixed(3) }; saveWallPos(); flashHint("photo moved");
+}
 function planeHit(h) { const ray = scene.createPickingRay(scene.pointerX, scene.pointerY, B.Matrix.Identity(), camera); const t = (h - ray.origin.y) / ray.direction.y; if (t <= 0) return null; const p = ray.origin.add(ray.direction.scale(t)); return { x: p.x, z: p.z }; } // world x/z
 function setWorldXZ(n, wx, wz) { const y = n.position.y; if (n.parent && n.parent.getWorldMatrix) { const loc = B.Vector3.TransformCoordinates(new V3(wx, n.getAbsolutePosition().y, wz), B.Matrix.Invert(n.parent.computeWorldMatrix(true))); n.position.x = loc.x; n.position.z = loc.z; } else { n.position.x = wx; n.position.z = wz; } n.position.y = y; }
 function toggleEdit(on) {
   editMode = on; editToggle.classList.toggle("on", on); editPanel.classList.toggle("show", on);
   editToggle.textContent = on ? "✦ exit arrange" : "✦ arrange desk";
-  if (on) { engine.exitPointerlock?.(); camera.detachControl(); flashHint("arrange mode — click an item, drag to move"); } else { selectEd(null); camera.attachControl(canvas, true); }
+  if (on) { engine.exitPointerlock?.(); camera.detachControl(); flashHint("arrange mode — drag desk props or wall photos"); } else { selectEd(null); selectWall(null); camera.attachControl(canvas, true); }
 }
 function onEditPointer(pi) {
   if (!editMode) return;
   if (pi.type === B.PointerEventTypes.POINTERDOWN) {
-    const pick = scene.pick(scene.pointerX, scene.pointerY, m => !!m._editable);
-    if (pick.hit && pick.pickedMesh && pick.pickedMesh._editable) {
-      selectEd(pick.pickedMesh._editable);
+    const pick = scene.pick(scene.pointerX, scene.pointerY, m => !!m._editable || !!m._wallPhoto);
+    if (pick.hit && pick.pickedMesh && pick.pickedMesh._wallPhoto) {
+      selectWall(pick.pickedMesh); wallDragging = true;
+    } else if (pick.hit && pick.pickedMesh && pick.pickedMesh._editable) {
+      selectWall(null); selectEd(pick.pickedMesh._editable);
       const abs = selected.node.getAbsolutePosition(), hit = planeHit(abs.y);
       grabOff = hit ? { x: abs.x - hit.x, z: abs.z - hit.z } : { x: 0, z: 0 };
       dragging = true;
-    } else selectEd(null);
-  } else if (pi.type === B.PointerEventTypes.POINTERUP) { dragging = false; if (selected) saveLayout(); }
-  else if (pi.type === B.PointerEventTypes.POINTERMOVE && dragging && selected) {
-    const hit = planeHit(selected.node.getAbsolutePosition().y);
-    if (hit) { setWorldXZ(selected.node, hit.x + grabOff.x, hit.z + grabOff.z); updXformHud(); }
+    } else { selectEd(null); selectWall(null); }
+  } else if (pi.type === B.PointerEventTypes.POINTERUP) {
+    dragging = false;
+    if (wallDragging) { wallDragging = false; commitWallPos(); }
+    if (selected) saveLayout();
+  } else if (pi.type === B.PointerEventTypes.POINTERMOVE) {
+    if (wallDragging && selWall) dragWall();
+    else if (dragging && selected) {
+      const hit = planeHit(selected.node.getAbsolutePosition().y);
+      if (hit) { setWorldXZ(selected.node, hit.x + grabOff.x, hit.z + grabOff.z); updXformHud(); }
+    }
   }
 }
 function onEditKey(ev) {
