@@ -12,6 +12,7 @@
 
 import { createRadio, LA_STATIONS } from "./radio.js";
 import { getStarPosition, getPlanetPositions, getMoonPosition, getMoonIllumination, STARS } from "./astro.js";
+import { startPlanes } from "./planes.js";
 
 const B = window.BABYLON;
 const V3 = B.Vector3;
@@ -177,9 +178,17 @@ const skyTex = new B.DynamicTexture("sky", { width: 720, height: 280 }, scene, t
 skyTex.vScale = -1; skyTex.vOffset = 1;
 const skyStars = Array.from({ length: 90 }, () => ({ x: Math.random() * 720, y: Math.random() * 200, r: Math.random() }));
 const rnd = (i) => { const v = Math.abs(Math.sin(i * 127.1) * 43758.5453); return v - Math.floor(v); };
+// THE PLANE HUNT — a jet on the LAX approach crosses the glass; the window is a shooting
+// gallery. Real airplanes.live traffic drives the flyovers (planes.js); ambient fallback
+// when the API's down. State lives here; drawSky paints the jet, the render loop ticks it.
+const PLANE_DUR = 15;                 // seconds to cross the glass
+let planeT = -1, plane01 = null, planeDir = 1, planeShot = null; // -1 = no jet; plane01 0..1; shot = {x,y,age}
+let livePlanes = false, nextPlaneAt = 30 + Math.random() * 90, skyAcc = 0;
+let lastSky = null;                   // cached drawSky args so the render loop can repaint with the jet moving
 const TOWERS = [78, 64, 96, 58, 110, 72, 122, 66, 88, 96, 54];
 // sunAz/sunAlt/moonAlt in radians, frac = moon illumination, clouds 0..1
 function drawSky(sunAz, sunAlt, moonAlt, frac, clouds) {
+  lastSky = [sunAz, sunAlt, moonAlt, frac, clouds]; // so the render loop can repaint as the jet flies
   const c = skyTex.getContext(), w = 720, h = 280, aD = sunAlt * 180 / Math.PI;
   let top, bot;
   if (aD > 5) { top = "#7fb2e0"; bot = "#c8dcec"; }
@@ -214,8 +223,76 @@ function drawSky(sunAz, sunAlt, moonAlt, frac, clouds) {
   if (clouds > 0.1) { const dk = aD > 0 ? 225 : 38; for (let i = 0; i < clouds * 16; i++) { c.fillStyle = `rgba(${dk},${dk},${dk + 6},${0.1 + clouds * 0.16})`; c.beginPath(); c.ellipse(((i * 137) % 760) - 20, 20 + ((i * 71) % 140), 90 + (i * 31) % 70, 22 + (i * 13) % 16, 0, 0, 7); c.fill(); } }
   // moon with phase (when up and sky dark enough)
   if (moonAlt > 0 && aD < 2) { const mx = 200, my = 230 - (Math.min(moonAlt * 180 / Math.PI, 60) / 60) * 200, br = 0.55 + 0.45 * frac; c.fillStyle = `rgba(235,240,248,${br})`; c.beginPath(); c.arc(mx, my, 13, 0, 7); c.fill(); c.fillStyle = "rgba(10,15,31,.85)"; c.beginPath(); c.arc(mx + 26 * (1 - frac) * 0.6, my, 13, 0, 7); c.fill(); }
+  // ---- a jet on the LAX approach (and the long fall, if someone took the shot) ----
+  if (planeT >= 0) {
+    if (!planeShot) {
+      const { x: px, y: py } = jetXY(plane01, planeDir);
+      drawJet(c, px, py, planeDir, night, Math.floor(plane01 * 30) % 2 === 1);
+    } else {
+      const a = planeShot.age, fallT = Math.max(0, a - 0.25);
+      const jx = planeShot.x + planeDir * 30 * fallT, jy = planeShot.y + 170 * fallT * fallT;
+      c.fillStyle = "rgba(90,90,96,0.45)";
+      for (let i = 1; i <= 7; i++) { const tt = fallT * (i / 7), sx = planeShot.x + planeDir * 30 * tt, sy = planeShot.y + 170 * tt * tt; c.beginPath(); c.arc(sx, sy - 2, 1.5 + (fallT - tt) * 5, 0, 7); c.fill(); }
+      if (jy < 292) { drawJet(c, jx, jy, planeDir, night, false, fallT * 2.2); c.fillStyle = "rgba(255,120,30,0.8)"; c.beginPath(); c.arc(jx, jy, 2.6 + ((a * 40) % 2), 0, 7); c.fill(); }
+      if (a < 0.8) { const k = 1 - a / 0.8; c.fillStyle = `rgba(255,160,40,${0.85 * k})`; c.beginPath(); c.arc(planeShot.x, planeShot.y, 5 + a * 36, 0, 7); c.fill(); c.fillStyle = `rgba(255,238,190,${0.9 * k})`; c.beginPath(); c.arc(planeShot.x, planeShot.y, (5 + a * 36) * 0.45, 0, 7); c.fill(); }
+    }
+  }
   skyTex.update(false);
 }
+
+// jet path across the 720×280 sky canvas: arrivals sink left→right, departures climb right→left
+function jetXY(t, dir) {
+  return dir < 0 ? { x: 760 - t * 800, y: 120 - t * 74 } : { x: -40 + t * 800, y: 46 + t * 74 };
+}
+// an airliner in profile — nose along +x, ~28px long; mirrored for departures, tumbling when shot
+function drawJet(g, px, py, dir, night, strobe, tumble = 0) {
+  g.save();
+  g.translate(px, py); g.scale(dir < 0 ? -1 : 1, 1); g.rotate((dir < 0 ? -0.1 : 0.1) + tumble);
+  g.fillStyle = night ? "#c8ccd4" : "#e8ecf2";
+  g.beginPath(); g.moveTo(13.5, 0); g.quadraticCurveTo(13, -1.8, 9, -1.8); g.lineTo(-9, -1.8); g.lineTo(-13, -0.6); g.lineTo(-13, 0.6); g.lineTo(-9, 1.8); g.lineTo(10, 1.8); g.quadraticCurveTo(13, 1.6, 13.5, 0); g.closePath(); g.fill();
+  g.beginPath(); g.moveTo(-8.5, -1.2); g.lineTo(-12.2, -7.2); g.lineTo(-14.3, -7.2); g.lineTo(-12.8, -1.2); g.closePath(); g.fill(); // tail fin
+  g.beginPath(); g.moveTo(3.5, 0.8); g.lineTo(-4.5, 5.8); g.lineTo(-7.3, 5.8); g.lineTo(-0.5, 0.8); g.closePath(); g.fill(); // wing
+  g.fillStyle = night ? "#9aa0ac" : "#c4cad4"; g.fillRect(0.4, 2.7, 5, 2.3); g.fillStyle = "#1c2028"; g.fillRect(4.6, 2.8, 0.9, 2.1); // engine
+  g.fillStyle = night ? "rgba(255,228,160,0.85)" : "rgba(70,84,100,0.5)"; g.fillRect(-7.5, -0.95, 15.5, 0.85); // cabin
+  g.fillStyle = "#ff3434"; g.fillRect(-13.9, -8.4, 1.6, 1.6); // beacon
+  if (strobe) { g.fillStyle = "#fff"; g.fillRect(-2.4, 1.6, 2.2, 2.2); }
+  if (night) { g.fillStyle = "rgba(255,240,200,0.75)"; g.fillRect(13.5, 0.6, 9, 1.3); } // landing lights
+  g.restore();
+}
+function triggerPlane(dir) { if (planeT < 0) { planeDir = dir < 0 ? -1 : 1; planeT = 0; } }
+function planeUp() { return planeT >= 0 && !planeShot; }
+// (wx,wy) on the glass in WORLD space → sky-canvas pixels. The glass spans WIN.w×WIN.h
+// centred at (0, WIN.cy); canvas x grows the way the player sees right, y grows downward.
+function glassToCanvas(wx, wy) {
+  return { cx: (wx + WIN.w / 2) / WIN.w * 720, cy: (WIN.cy + WIN.h / 2 - wy) / WIN.h * 280 };
+}
+function shootAtGlass(wx, wy) {
+  if (planeT < 0 || plane01 == null || planeShot) return null;
+  const { cx, cy } = glassToCanvas(wx, wy), p = jetXY(plane01, planeDir);
+  if (Math.hypot(cx - p.x, cy - p.y) > 34) return "miss";   // generous aim window
+  planeShot = { x: p.x, y: p.y, age: 0 };
+  return "hit";
+}
+// the flight strip: who's up there, what they are, where they're going, how high
+const flightStripEl = document.getElementById("flight-strip");
+let flightStripTimer = null;
+function showFlightStrip(info) {
+  if (!flightStripEl || !info) return;
+  const esc = (s) => String(s).replace(/[<>&]/g, "");
+  flightStripEl.innerHTML =
+    `<span class="fs-plane">✈</span> <span class="fs-flight">${esc(info.flight || "")}</span>` +
+    (info.type ? ` <span class="fs-type">${esc(info.type)}</span>` : "") +
+    ` <span class="fs-label">${esc(info.label || "")}</span>` +
+    (info.alt ? ` <span class="fs-alt">${info.alt.toLocaleString()} ft</span>` : "");
+  flightStripEl.classList.add("show");
+  clearTimeout(flightStripTimer); flightStripTimer = setTimeout(() => flightStripEl.classList.remove("show"), 15000);
+}
+// real LAX traffic drives the flyovers; ambient planes fill in when the API is down
+startPlanes(
+  (info) => { triggerPlane(info && info.dir); showFlightStrip(info); },
+  (isLive) => { livePlanes = !!isLive; }
+);
+
 const rainTex = dyn("rain", 256, 256, (c, w, h) => {
   for (let i = 0; i < 46; i++) { const x = Math.random() * w, y = Math.random() * h, len = 18 + Math.random() * 60; const g = c.createLinearGradient(x, y, x, y + len); g.addColorStop(0, "rgba(200,220,240,0)"); g.addColorStop(.8, `rgba(200,220,240,${0.25 + Math.random() * 0.3})`); g.addColorStop(1, "rgba(230,240,250,.6)"); c.fillStyle = g; c.fillRect(x, y, 1.4, len); c.fillStyle = "rgba(220,235,250,.5)"; c.fillRect(x - 0.6, y + len, 2.6, 2.6); }
 });
@@ -272,7 +349,7 @@ box("winSill", WIN.w + 0.2, 0.04, 0.14, 0, 0.81, ZF + 0.07, frameMat, null, fals
 cyl("winRod", 0.014, 0.014, WIN.w + 0.7, 0, 2.6, ZF + 0.11, matte("rod", 0x4a443a), null, 8, false).rotation.z = Math.PI / 2;
 
 const skyMat = emis("skyMat", 0xffffff, { glow: false }); skyMat.emissiveTexture = skyTex; skyMat.emissiveColor = new B.Color3(0.5, 0.49, 0.48);
-const glass = plane("glass", WIN.w, WIN.h, skyMat); glass.position.set(0, 1.6, ZF + 0.01);
+const glass = plane("glass", WIN.w, WIN.h, skyMat); glass.position.set(0, 1.6, ZF + 0.01); glass._glass = true; glass.isPickable = true;
 const glassFront = plane("glassPane", WIN.w, WIN.h, glassMat("glassPane", 0x9fc0e0, 0.12, 0.04)); glassFront.position.set(0, 1.6, ZF + 0.015);
 
 const rainMat = emis("rainMat", 0xffffff, { glow: false, alpha: 0.0 }); rainMat.emissiveTexture = rainTex; rainMat.emissiveColor = new B.Color3(0.6, 0.7, 0.8); rainMat.alpha = 0; rainMat.useAlphaFromDiffuseTexture = false;
@@ -1167,6 +1244,22 @@ scene.onBeforeRenderObservable.add(() => {
   if (rainPane.isVisible) rainTex.vOffset -= dt * (weather.rain === 2 ? 0.5 : 0.25);
   drawMeter(T); clockAcc += dt; if (clockAcc > 1) { clockAcc = 0; drawClock(); }
   slide.acc += dt; if (slide.acc > slide.period) { slide.acc = 0; nextSlide(); } // advance the monitor slideshow
+  // jets on the LAX approach: advance the crossing (or the long fall), repaint the sky as it moves
+  if (planeT >= 0) {
+    if (planeShot) {
+      planeShot.age += dt;
+      const fallT = Math.max(0, planeShot.age - 0.25);
+      if (planeShot.y + 170 * fallT * fallT > 300 || planeShot.age > 6) { planeT = -1; plane01 = null; planeShot = null; }
+    } else {
+      planeT += dt; plane01 = planeT / PLANE_DUR;
+      if (plane01 >= 1) { planeT = -1; plane01 = null; }
+    }
+    skyAcc += dt; if (skyAcc > 0.08 && lastSky) { skyAcc = 0; drawSky(...lastSky); } // animate the jet
+    if (planeT < 0 && lastSky) drawSky(...lastSky);                                  // wipe the last frame
+  } else if (!livePlanes) {                 // no real traffic → ambient flyovers now and then
+    nextPlaneAt -= dt;
+    if (nextPlaneAt <= 0) { nextPlaneAt = 180 + Math.random() * 300; triggerPlane(Math.random() < 0.5 ? 1 : -1); }
+  }
   // lava blobs
   for (const b of blobs) { const k = Math.sin(T * b._speed + b._phase); b.position.y = 0.10 + (k * 0.5 + 0.5) * 0.085; b.position.x = Math.sin(T * b._speed * 0.7 + b._phase * 2) * 0.012; b.position.z = Math.cos(T * b._speed * 0.6 + b._phase) * 0.012; b.scaling.y = 1 + 0.35 * Math.sin(T * b._speed * 1.9 + b._phase); }
   lavaLight.intensity = 0.8 + 0.12 * Math.sin(T * 0.9);
@@ -1521,6 +1614,11 @@ scene.onPointerObservable.add((p) => {
   if (radTog && radTog.hit) { const on = laRadio.toggle(); flashHint(on ? radioLabel() : "📻 radio off"); return; } // power on/off
   const radScn = scene.pickWithRay(ray, (m) => !!m._radioScan);
   if (radScn && radScn.hit) { if (!laRadio.info().on) laRadio.power(true); else laRadio.scan(1); radioScanStatic(); flashHint(radioLabel()); return; } // scan the dial
+  const glassHit = scene.pickWithRay(ray, (m) => !!m._glass);
+  if (glassHit && glassHit.hit) {
+    if (planeUp()) { const r = shootAtGlass(glassHit.pickedPoint.x, glassHit.pickedPoint.y); flashHint(r === "hit" ? "🎯 splash — one down" : "missed — lead the target"); }
+    return; // the glass is solid; clicking it never falls through to notes/ball
+  }
   const wallHit = scene.pickWithRay(ray, (m) => !!m._noteWall);
   if (wallHit && wallHit.hit) { openComposer(wallHit.pickedMesh._noteWall, wallHit.pickedPoint); return; }
   const cat = scene.pickWithRay(ray, (m) => m.name.startsWith("cat"));
@@ -1906,6 +2004,9 @@ window.METRO_BJS = {
   get slide() { return { count: slide.urls.length, i: slide.i }; }, nextSlide: () => nextSlide(),
   playKey: (m) => playKey(m), strumGuitar: () => strumGuitar(), drum: (k) => drum(k),
   hitDumbek: () => hitDumbek(), get dumbekLoaded() { return dumbekBufs.filter(Boolean).length; }, get bongos() { return bongos; },
+  triggerPlane: (dir = 1) => triggerPlane(dir), get planeUp() { return planeUp(); }, get planeT() { return planeT; },
+  shootPlane: () => { if (plane01 == null) return null; const p = jetXY(plane01, planeDir); planeShot = { x: p.x, y: p.y, age: 0 }; return "hit"; },
+  showFlightStrip: (info) => showFlightStrip(info), get livePlanes() { return livePlanes; },
   placeBongos: (x, z, ry, t) => { if (!bongoPivot) return; bongoPivot.position.set(x, BONGO.y, z); bongoPivot.rotation.y = ry; bongos.scaling.setAll(t / bongos._naturalMax); bongos.position.set(0, 0, 0); bongos.computeWorldMatrix(true); const { min } = bongos.getHierarchyBoundingVectors(); bongos.position.y -= min.y - BONGO.y; },
   audioPeak: () => new Promise((res) => { const ac = ensureAudio(); const an = ac.createAnalyser(); an.fftSize = 2048; master.connect(an); const data = new Float32Array(an.fftSize); let peak = 0; const t0 = ac.currentTime; const iv = setInterval(() => { an.getFloatTimeDomainData(data); for (const v of data) peak = Math.max(peak, Math.abs(v)); if (ac.currentTime - t0 > 0.6) { clearInterval(iv); try { master.disconnect(an); } catch {} res(+peak.toFixed(3)); } }, 20); }),
   pickInstr: () => { const r = scene.pickWithRay(camera.getForwardRay(7), (m) => !!m._instr); return r && r.hit ? r.pickedMesh._instr.type + (r.pickedMesh._instr.drum ? ":" + r.pickedMesh._instr.drum : "") : null; },

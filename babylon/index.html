@@ -32,6 +32,13 @@
     padding: .5rem .9rem; border-radius: 999px; border: 1px solid #2a2a33; opacity: 0;
     transition: opacity .5s ease; backdrop-filter: blur(6px); pointer-events: none; white-space: nowrap; }
   #hint.show { opacity: 1; }
+  #flight-strip { position: fixed; top: 18px; left: 50%; transform: translate(-50%, -60px); z-index: 6;
+    background: #0c0e08; border: 1px solid #3a3a20; border-radius: 4px; padding: 9px 18px;
+    font-family: "SF Mono", Menlo, monospace; font-size: 13px; letter-spacing: .08em; color: #ffb000;
+    text-shadow: 0 0 8px rgba(255,176,0,.5); transition: transform .5s cubic-bezier(.2,.9,.3,1.1); pointer-events: none; }
+  #flight-strip.show { transform: translate(-50%, 0); }
+  #flight-strip .fs-plane { color: #e8e4da; } #flight-strip .fs-flight { font-weight: 700; }
+  #flight-strip .fs-type { color: #8a877e; } #flight-strip .fs-label { color: #54e08a; } #flight-strip .fs-alt { color: #8a877e; }
   #badge { position: fixed; left: 1rem; top: 1rem; z-index: 6; font-size: .58rem; letter-spacing: .2em;
     color: #6a6772; opacity: 0; transition: opacity .5s; }
   #badge.show { opacity: 1; }
@@ -94,6 +101,7 @@
   <div id="badge">BABYLON · PHASE 1 · BEDROOM</div>
   <div id="credits">3D models (CC0/CC-BY via Khronos &amp; Poly Pizza): BoomBox — Khronos · keyboard — A. Safayan · mouse — davis · mug — M. Fuchs · MIDI — G. Ibias · pedal — P. Simcoe · ultrawide — J-Toastie · tablet — Poly by Google · bongos — Poly by Google</div>
   <div id="hint"></div>
+  <div id="flight-strip"></div>
 
   <button id="edit-toggle">✦ arrange desk</button>
   <div id="editpanel">
