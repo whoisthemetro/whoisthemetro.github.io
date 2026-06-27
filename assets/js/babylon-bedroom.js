@@ -13,6 +13,11 @@
 import { createRadio, LA_STATIONS } from "./radio.js";
 import { getStarPosition, getPlanetPositions, getMoonPosition, getMoonIllumination, STARS } from "./astro.js";
 import { startPlanes } from "./planes.js";
+// the cat's needs/care brain — same data model + persistence as the live site.
+// we DON'T call store.init(): mode stays "local", so it uses the metro.catstate
+// localStorage path (+ BroadcastChannel) exactly like this room's notes do for now.
+// (if the room later goes online for notes, the cat upgrades to the shared one for free.)
+import { store } from "./store.js";
 
 const B = window.BABYLON;
 const V3 = B.Vector3;
@@ -54,7 +59,7 @@ ip.colorCurves = grade;
 
 const envTex = B.CubeTexture.CreateFromPrefilteredData("https://assets.babylonjs.com/environments/environmentSpecular.env", scene);
 scene.environmentTexture = envTex;
-scene.environmentIntensity = 0.16;
+scene.environmentIntensity = 0.5; // soft, even IBL fill so the room isn't carved into lit/dark walls
 
 // =====================================================================
 // helpers
@@ -200,43 +205,14 @@ function drawSky(sunAz, sunAlt, moonAlt, frac, clouds) {
   if (aD < -8 && clouds < 0.55) for (const s of skyStars) { c.fillStyle = `rgba(255,255,255,${(0.25 + s.r * 0.5) * (1 - clouds)})`; const sz = s.r > 0.8 ? 2 : 1.4; c.fillRect(s.x, s.y, sz, sz); }
   // night sky-glow band over downtown
   if (aD < -4) { const ng = c.createLinearGradient(0, 280, 0, 160); ng.addColorStop(0, "rgba(255,150,70,.4)"); ng.addColorStop(1, "rgba(255,150,70,0)"); c.fillStyle = ng; c.fillRect(0, 160, w, 120); }
-  // the sun, mapped from az/alt to the canvas
-  const azD = sunAz * 180 / Math.PI;
-  if (aD > -2 && Math.abs(azD) < 75) {
-    const sx = 360 + (azD / 60) * 320, sy = 250 - (Math.min(aD, 60) / 60) * 235;
-    const gl = c.createRadialGradient(sx, sy, 4, sx, sy, 130); gl.addColorStop(0, "rgba(255,247,224,.92)"); gl.addColorStop(.35, "rgba(255,220,150,.4)"); gl.addColorStop(1, "rgba(255,200,120,0)"); c.fillStyle = gl; c.fillRect(sx - 140, sy - 140, 280, 280);
-    if (aD > -1) { c.fillStyle = "#fff7e0"; c.beginPath(); c.arc(sx, sy, 16, 0, 7); c.fill(); }
-  }
-  // skyline (far ridge + downtown), day vs night palette
+  // (sun + moon orbs removed from the backdrop — they read as odd floating dots through the window)
+  // skyline removed — the city is now real 3D geometry outside the window (see loadCity). this
+  // canvas is just the far sky now (gradient + sun + moon + stars + clouds), pushed way back.
   const night = aD < -4;
-  c.fillStyle = night ? "rgba(12,14,22,.95)" : "rgba(70,60,80,.8)";
-  for (let i = 0; i < 26; i++) { const x = i * 30 - 12, bw = 20 + rnd(i) * 20, bh = 12 + rnd(i + 9) * 16; c.fillRect(x, h - bh, bw, bh); }
-  let x = 340;
-  for (let i = 0; i < TOWERS.length; i++) {
-    const bh = TOWERS[i], bw = 24 + rnd(i + 3) * 16, t = h - bh;
-    c.fillStyle = night ? "#0c0e16" : "rgba(70,80,95,.9)"; c.fillRect(x, t, bw, bh);
-    if (night) for (let k = 0; k < (bh * bw) / 48; k++) { const wr = rnd(i * 31 + k); if (wr < 0.5) { c.fillStyle = wr < 0.12 ? "rgba(170,210,255,.8)" : `rgba(255,${200 + wr * 40},130,${0.45 + wr * 0.4})`; c.fillRect(x + 3 + (k * 7) % (bw - 6), t + 6 + ((k * 11) % (bh - 10)), 1.8, 2.4); } }
-    if (bh === 122 && night) { c.fillStyle = "#ff2030"; c.fillRect(x + bw - 3, t - 3, 4, 4); }
-    x += bw + 4 + rnd(i + 7) * 12;
-  }
   // clouds
   if (clouds > 0.1) { const dk = aD > 0 ? 225 : 38; for (let i = 0; i < clouds * 16; i++) { c.fillStyle = `rgba(${dk},${dk},${dk + 6},${0.1 + clouds * 0.16})`; c.beginPath(); c.ellipse(((i * 137) % 760) - 20, 20 + ((i * 71) % 140), 90 + (i * 31) % 70, 22 + (i * 13) % 16, 0, 0, 7); c.fill(); } }
-  // moon with phase (when up and sky dark enough)
-  if (moonAlt > 0 && aD < 2) { const mx = 200, my = 230 - (Math.min(moonAlt * 180 / Math.PI, 60) / 60) * 200, br = 0.55 + 0.45 * frac; c.fillStyle = `rgba(235,240,248,${br})`; c.beginPath(); c.arc(mx, my, 13, 0, 7); c.fill(); c.fillStyle = "rgba(10,15,31,.85)"; c.beginPath(); c.arc(mx + 26 * (1 - frac) * 0.6, my, 13, 0, 7); c.fill(); }
-  // ---- a jet on the LAX approach (and the long fall, if someone took the shot) ----
-  if (planeT >= 0) {
-    if (!planeShot) {
-      const { x: px, y: py } = jetXY(plane01, planeDir);
-      drawJet(c, px, py, planeDir, night, Math.floor(plane01 * 30) % 2 === 1);
-    } else {
-      const a = planeShot.age, fallT = Math.max(0, a - 0.25);
-      const jx = planeShot.x + planeDir * 30 * fallT, jy = planeShot.y + 170 * fallT * fallT;
-      c.fillStyle = "rgba(90,90,96,0.45)";
-      for (let i = 1; i <= 7; i++) { const tt = fallT * (i / 7), sx = planeShot.x + planeDir * 30 * tt, sy = planeShot.y + 170 * tt * tt; c.beginPath(); c.arc(sx, sy - 2, 1.5 + (fallT - tt) * 5, 0, 7); c.fill(); }
-      if (jy < 292) { drawJet(c, jx, jy, planeDir, night, false, fallT * 2.2); c.fillStyle = "rgba(255,120,30,0.8)"; c.beginPath(); c.arc(jx, jy, 2.6 + ((a * 40) % 2), 0, 7); c.fill(); }
-      if (a < 0.8) { const k = 1 - a / 0.8; c.fillStyle = `rgba(255,160,40,${0.85 * k})`; c.beginPath(); c.arc(planeShot.x, planeShot.y, 5 + a * 36, 0, 7); c.fill(); c.fillStyle = `rgba(255,238,190,${0.9 * k})`; c.beginPath(); c.arc(planeShot.x, planeShot.y, (5 + a * 36) * 0.45, 0, 7); c.fill(); }
-    }
-  }
+  // (moon removed too — see above)
+  // (the LAX jet is being rebuilt as a real 3D plane outside — no longer painted on this backdrop)
   skyTex.update(false);
 }
 
@@ -261,6 +237,38 @@ function drawJet(g, px, py, dir, night, strobe, tumble = 0) {
 }
 function triggerPlane(dir) { if (planeT < 0) { planeDir = dir < 0 ? -1 : 1; planeT = 0; } }
 function planeUp() { return planeT >= 0 && !planeShot; }
+// THE 3D JET — a real plane.glb flies the LAX approach across the sky outside the window, driven by the same
+// plane01 (0..1) timing. Arrivals sink left→right; departures climb right→left. Click it to shoot it down.
+let plane3d = null, jetYaw = Math.PI / 2, jetParked = false; // jetYaw = the nose-along-travel heading you set in arrange mode
+const JET = { x: 26, y: 6, dy: 1.5, z: -22 }; // cross ±26 on x, base alt 6, ±1.5 climb/descent, 22 out (further back than before, still readable)
+function shootJet() { if (planeUp()) planeShot = { age: 0, t: plane01 }; } // freeze progress, then it falls
+function updatePlane3D() {
+  if (!plane3d || jetParked) return; // arrange mode is hand-posing it
+  if (planeT < 0 || plane01 == null) { if (plane3d.isEnabled()) plane3d.setEnabled(false); return; }
+  plane3d.setEnabled(true);
+  const t = planeShot ? planeShot.t : plane01;
+  let x = (2 * t - 1) * JET.x * planeDir;
+  let y = JET.y + (planeDir > 0 ? (1 - t) : t) * JET.dy; // arrivals descend, departures climb
+  let pitch = planeDir > 0 ? 0.06 : -0.06, roll = 0;
+  if (planeShot) { const a = planeShot.age; x += planeDir * 6 * a; y -= 9 * a * a; pitch = -1.0 - a * 0.6; roll = a * 2.2; } // tumble + fall
+  plane3d.position.set(x, y, JET.z);
+  plane3d.rotation.set(pitch, planeDir > 0 ? jetYaw : jetYaw + Math.PI, roll); // jetYaw set in arrange mode; departures face the opposite way
+}
+// when the live feed is quiet or down, conjure a plausible LAX movement AND its flight strip
+// (the real-feed path shows a strip; ambient used not to — so the window read as "no flights")
+const AMBIENT_FLIGHTS = [["AAL", "B738"], ["UAL", "A320"], ["DAL", "A321"], ["SWA", "B737"], ["SKW", "E75L"], ["ASA", "B739"], ["JBU", "A320"], ["FFT", "A20N"], ["NKS", "A21N"], ["HAL", "A332"]];
+function ambientFlyover() {
+  const dir = Math.random() < 0.55 ? 1 : -1; // 1 = arrival (sinks L→R), -1 = departure (climbs R→L)
+  const [code, type] = AMBIENT_FLIGHTS[Math.floor(Math.random() * AMBIENT_FLIGHTS.length)];
+  triggerPlane(dir);
+  showFlightStrip({
+    flight: code + (100 + Math.floor(Math.random() * 899)),
+    type,
+    alt: dir > 0 ? 1800 + Math.floor(Math.random() * 28) * 100 : 3500 + Math.floor(Math.random() * 45) * 100,
+    label: dir > 0 ? "ARRIVING LAX" : "DEPARTED LAX",
+    dir,
+  });
+}
 // (wx,wy) on the glass in WORLD space → sky-canvas pixels. The glass spans WIN.w×WIN.h
 // centred at (0, WIN.cy); canvas x grows the way the player sees right, y grows downward.
 function glassToCanvas(wx, wy) {
@@ -289,7 +297,7 @@ function showFlightStrip(info) {
 }
 // real LAX traffic drives the flyovers; ambient planes fill in when the API is down
 startPlanes(
-  (info) => { triggerPlane(info && info.dir); showFlightStrip(info); },
+  (info) => { triggerPlane(info && info.dir); showFlightStrip(info); nextPlaneAt = 180 + Math.random() * 300; }, // a real jet just crossed — push ambient out so they don't double up
   (isLive) => { livePlanes = !!isLive; }
 );
 
@@ -349,24 +357,77 @@ box("winSill", WIN.w + 0.2, 0.04, 0.14, 0, 0.81, ZF + 0.07, frameMat, null, fals
 cyl("winRod", 0.014, 0.014, WIN.w + 0.7, 0, 2.6, ZF + 0.11, matte("rod", 0x4a443a), null, 8, false).rotation.z = Math.PI / 2;
 
 const skyMat = emis("skyMat", 0xffffff, { glow: false }); skyMat.emissiveTexture = skyTex; skyMat.emissiveColor = new B.Color3(0.5, 0.49, 0.48);
-const glass = plane("glass", WIN.w, WIN.h, skyMat); glass.position.set(0, 1.6, ZF + 0.01); glass._glass = true; glass.isPickable = true;
-const glassFront = plane("glassPane", WIN.w, WIN.h, glassMat("glassPane", 0x9fc0e0, 0.12, 0.04)); glassFront.position.set(0, 1.6, ZF + 0.015);
+// THE SKY — a real gradient sky DOME (follows the camera) that tracks the day/night cycle: blue by day,
+// orange at the horizon toward the sun at dawn/dusk, dark with twinkling stars at night. The sun direction
+// + altitude come from the same SunCalc data that drives the room light (set each cycle in updateEnv).
+B.Effect.ShadersStore["skydomeVertexShader"] = `
+precision highp float;
+attribute vec3 position;
+uniform mat4 worldViewProjection;
+varying vec3 vDir;
+void main(){ vDir = position; gl_Position = worldViewProjection * vec4(position, 1.0); }`;
+B.Effect.ShadersStore["skydomeFragmentShader"] = `
+precision highp float;
+varying vec3 vDir;
+uniform vec3 sunDir; uniform float sunAlt; uniform vec3 moonDir; uniform float moonBright; uniform float cloudAmt; uniform float time;
+float h3(vec3 p){ p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+float h2(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float vn(vec2 p){ vec2 i = floor(p), f = fract(p); float a = h2(i), b = h2(i+vec2(1,0)), c = h2(i+vec2(0,1)), d = h2(i+vec2(1,1)); vec2 u = f*f*(3.0-2.0*f); return mix(mix(a,b,u.x), mix(c,d,u.x), u.y); }
+float fbm(vec2 p){ float s = 0.0, a = 0.5; for (int i = 0; i < 4; i++){ s += a*vn(p); p *= 2.02; a *= 0.5; } return s; }
+void main(){
+  vec3 dir = normalize(vDir);
+  float h = clamp(dir.y, -1.0, 1.0);
+  float dayF = smoothstep(-0.12, 0.12, sunAlt);                 // 0 night .. 1 day
+  vec3 zen = mix(vec3(0.01,0.02,0.06), vec3(0.17,0.40,0.75), dayF);
+  vec3 hor = mix(vec3(0.03,0.04,0.09), vec3(0.58,0.72,0.86), dayF);
+  vec3 col = mix(hor, zen, smoothstep(0.0, 0.45, h));
+  float sun = max(dot(dir, sunDir), 0.0);
+  float low = exp(-abs(sunAlt) * 6.0);                          // peaks at sunrise/sunset
+  col += vec3(1.0,0.45,0.15) * pow(sun, 2.0) * low * exp(-max(h,0.0) * 4.0) * 0.9; // warm horizon band toward the sun
+  float vis = smoothstep(-0.06, 0.02, sunAlt);
+  col += vec3(1.0,0.92,0.78) * pow(sun, 220.0) * vis;           // soft sun disc
+  col += vec3(1.0,0.85,0.6) * pow(sun, 8.0) * 0.22 * vis;       // halo
+  float md = max(dot(dir, moonDir), 0.0);                       // the moon, at the real lunar direction
+  col += vec3(0.86,0.89,0.96) * smoothstep(0.9990, 0.9994, md) * moonBright;
+  col += vec3(0.55,0.62,0.80) * pow(md, 40.0) * 0.12 * moonBright;
+  float night = 1.0 - dayF;
+  if (h > 0.02) { float s = h3(floor(dir * 220.0)); col += vec3(0.9,0.95,1.0) * step(0.992, s) * night * (0.6 + 0.4 * sin(time * 3.0 + s * 100.0)); } // stars
+  gl_FragColor = vec4(col, 1.0);
+}`;
+const skyDomeMat = new B.ShaderMaterial("skyDome", scene, { vertex: "skydome", fragment: "skydome" },
+  { attributes: ["position"], uniforms: ["worldViewProjection", "sunDir", "sunAlt", "moonDir", "moonBright", "cloudAmt", "time"] });
+skyDomeMat.backFaceCulling = false; skyDomeMat.disableDepthWrite = true; skyDomeMat.disableLighting = true;
+skyDomeMat.setVector3("sunDir", new B.Vector3(0, 0.4, -1).normalize()); skyDomeMat.setFloat("sunAlt", 0.4); skyDomeMat.setFloat("time", 0);
+skyDomeMat.setVector3("moonDir", new B.Vector3(0.3, 0.5, -0.8).normalize()); skyDomeMat.setFloat("moonBright", 0.8); skyDomeMat.setFloat("cloudAmt", 0.4);
+const skyDome = B.MeshBuilder.CreateSphere("skyDome", { diameter: 500, segments: 24 }, scene);
+skyDome.material = skyDomeMat; skyDome.infiniteDistance = true; skyDome.isPickable = false; skyDome.applyFog = false;
+// atmospheric fog — exponential, so the room (a few metres) stays crisp but the distant city fades into a
+// moody haze. fogColor is matched to the sky horizon each cycle (updateEnv) so the city melts into the sky.
+scene.fogMode = B.Scene.FOGMODE_EXP2; scene.fogDensity = 0.04; scene.fogColor = new B.Color3(0.07, 0.08, 0.12);
+// (no outdoor ground — so the city can be dragged down below the sightline and read as skyscrapers seen from up high)
+// the window pane (reflections) stays at the opening — and stays solid/clickable so notes/balls don't fall through
+const glassFront = plane("glassPane", WIN.w, WIN.h, glassMat("glassPane", 0x9fc0e0, 0.12, 0.04)); glassFront.position.set(0, 1.6, ZF + 0.015); glassFront._glass = true; glassFront.isPickable = true;
 
 const rainMat = emis("rainMat", 0xffffff, { glow: false, alpha: 0.0 }); rainMat.emissiveTexture = rainTex; rainMat.emissiveColor = new B.Color3(0.6, 0.7, 0.8); rainMat.alpha = 0; rainMat.useAlphaFromDiffuseTexture = false;
 const rainPane = plane("rain", WIN.w, WIN.h, rainMat); rainPane.position.set(0, 1.6, ZF + 0.02); rainPane.isVisible = false;
 
-// blinds — gathered to the left so the LA view shows
+// blinds — drawn closed across the window; the city peeks through the slat gaps (sells the window illusion)
 const blindsMat = new B.StandardMaterial("blindsMat", scene); blindsMat.diffuseTexture = blindsTex; blindsMat.diffuseTexture.hasAlpha = true; blindsMat.useAlphaFromDiffuseTexture = true; blindsMat.backFaceCulling = false; blindsMat.specularColor = new B.Color3(0, 0, 0);
-const blinds = plane("blinds", WIN.w - 0.06, WIN.h - 0.04, blindsMat); blinds.position.set(WIN.cx - (WIN.w - 0.06) / 2 + 0.42, 1.6, ZF + 0.045); blinds.scaling.x = 0.18;
+const blinds = plane("blinds", WIN.w - 0.06, WIN.h - 0.04, blindsMat); blinds.position.set(WIN.cx, 1.6, ZF + 0.045); blinds.scaling.x = 1;
 
 // blackout curtains — tied to the sides
 const curtMat = matte("curtain", 0x2b2620);
+const curtPivots = [];
 [-1, 1].forEach((side) => {
   const piv = node("curtPivot" + side, side * (WIN.w / 2 + 0.12), WIN.cy + 0.08, ZF + 0.10);
   box("curtain" + side, 1, WIN.h + 0.5, 0.05, -side * 0.5, 0, 0, curtMat, piv);
   for (let i = 1; i <= 4; i++) box("curtFold" + side + i, 0.022, WIN.h + 0.5, 0.064, -side * (i / 5), 0, 0.01, curtMat, piv, false);
   piv.scaling.x = 0.5; // open
+  piv.getChildMeshes().forEach((m) => { m._curtain = true; m.isPickable = true; }); // click to draw/open
+  curtPivots.push(piv);
 });
+// curtains gate the window light: open = full daylight; drawn = blackout, room falls dark (only interior glows remain)
+let curtainOpen = true, curtX = 0.5, curtMul = 1, sunBase = 1, winBase = 2.2, hemiBase = 0.45;
 
 // =====================================================================
 // ACOUSTIC PANELS — dark slabs with warm LED halo
@@ -458,9 +519,33 @@ box("deskTop", 1.9, 0.04, 0.78, 0, 0.72, 0, (() => { const m = new B.StandardMat
 // ultrawide monitor — it's ON, slideshowing the photos people pinned to the wall (see slide driver below)
 box("monBezel", 0.94, 0.41, 0.03, 0, 1.04, -0.21, matte("monBezel", 0x0c0d10), desk);
 const slideTex = new B.DynamicTexture("slide", { width: 2048, height: 868 }, scene, true); // 2x the old 1024×434 — sharper photos
-slideTex.uScale = -1; slideTex.uOffset = 1; slideTex.vScale = -1; slideTex.vOffset = 1; // monScreen is rotated 180°; un-rotate the image
+slideTex.uScale = 1; slideTex.uOffset = 0; slideTex.vScale = -1; slideTex.vOffset = 1; // painted onto the monitor asset's screen mesh (0–1 UVs); flip V for GL
 const slideMat = emis("slideMat", 0xffffff, { glow: false }); slideMat.emissiveTexture = slideTex; slideMat.emissiveColor = new B.Color3(0.42, 0.42, 0.42); // dimmer — was 0.62, the screen was washing out the desk
 const monScreen = plane("monScreen", 0.92, 0.39, slideMat); monScreen.parent = desk; monScreen.position.set(0, 1.04, -0.194); monScreen.rotation.y = Math.PI;
+const screenOffMat = emis("screenOff", 0x05070c, { glow: false }); screenOffMat.emissiveColor = new B.Color3(0.02, 0.025, 0.045); // the monitor's dark backdrop behind the YouTube overlay
+let monitorScreenMesh = null; // the asset's screen mesh — the YouTube iframe is matrix3d-glued onto it each frame
+// transport strip — one grabbable group (move/rotate/scale it in arrange mode); buttons are crosshair-clicked in play
+const ytCtl = node("ytCtl", 0.74, 0.98, -0.12, desk); ytCtl.rotation.x = -0.28;
+// clear, bold icons drawn as shapes (text glyphs were too faint): prev/next = triangle + bar, play = triangle, pause = two bars
+function drawIcon(c, w, h, type) {
+  c.fillStyle = "#000000"; c.fillRect(0, 0, w, h);                         // black button face
+  c.strokeStyle = "#ffffff"; c.lineWidth = 3; c.strokeRect(2, 2, w - 4, h - 4); // white outline so the square reads
+  c.fillStyle = "#ffffff";                                                 // white icon
+  if (type === "prev") { c.fillRect(13, 16, 7, 32); c.beginPath(); c.moveTo(52, 12); c.lineTo(24, 32); c.lineTo(52, 52); c.closePath(); c.fill(); }
+  else if (type === "next") { c.beginPath(); c.moveTo(12, 12); c.lineTo(40, 32); c.lineTo(12, 52); c.closePath(); c.fill(); c.fillRect(44, 16, 7, 32); }
+  else if (type === "play") { c.beginPath(); c.moveTo(20, 12); c.lineTo(54, 32); c.lineTo(20, 52); c.closePath(); c.fill(); }
+  else { c.fillRect(19, 14, 10, 36); c.fillRect(35, 14, 10, 36); }         // pause
+}
+let ytToggleTex = null;
+function ytBtn(type, x, action) {
+  const tex = dyn("ytbt_" + action, 64, 64, (c, w, h) => drawIcon(c, w, h, type));
+  if (action === "toggle") ytToggleTex = tex;
+  const mat = new B.StandardMaterial("ytbm_" + action, scene); // lit (not emissive) so the white doesn't bloom/wash out
+  mat.diffuseTexture = tex; mat.specularColor = new B.Color3(0, 0, 0); mat.emissiveColor = new B.Color3(0, 0, 0); // pure black face, white icon — lit by the room, no glow
+  const b = plane("ytbtn_" + action, 0.07, 0.07, mat, ytCtl); b.position.set(x, 0, 0); b._ytctl = action; b.isPickable = true;
+  return b;
+}
+ytBtn("prev", -0.08, "prev"); ytBtn("pause", 0, "toggle"); ytBtn("next", 0.08, "next");
 const dawTex = new B.DynamicTexture("daw", { width: 1024, height: 434 }, scene, false); // kept for the meter helper's sibling API; unused on screen
 // keyboard + trackball
 const kb = box("kb", 0.44, 0.012, 0.115, -0.04, 0.748, 0.13, matte("kb", 0xd9dbdd), desk, false); kb.rotation.x = -0.04;
@@ -646,7 +731,37 @@ function placeBoombox(x, y, z, ry, target) {
   const { min } = boombox.getHierarchyBoundingVectors(); // auto-rest the bottom on the rack top (world y 0.68)
   boombox.position.y += 0.68 - min.y;
 }
-let pbRef = null, apolloGLB = null;
+let pbRef = null, apolloGLB = null, pedalDS = null, pedalMT = null, pedalFZ = null;
+// load a single stompbox onto its own floor pivot (each pedal is independently movable/resizable in arrange)
+async function loadPedal(file, x, z, ry, target) {
+  try {
+    const p = await importGLB(file);
+    const piv = node("pedPiv_" + file.replace(/\W/g, "").slice(0, 8), x, 0, z); piv.rotation.y = ry;
+    p.parent = piv;
+    p.scaling.setAll(target / p._naturalMax);
+    p.rotation = new V3(0, 0, 0); p.position.set(0, 0, 0);
+    p.computeWorldMatrix(true);
+    const { min } = p.getHierarchyBoundingVectors();
+    p.position.y -= min.y; // rest it flat on the floor (pivot y0)
+    return piv;
+  } catch (e) { console.warn("pedal " + file + " failed", e); return null; }
+}
+// the Gibson Les Paul replaces the procedural Telecaster — parented to the `tele` node so it keeps the
+// editable slot AND the click-along-the-neck → pitch mapping (head=low … bridge=high in tele-local Y)
+async function loadGuitar() {
+  try {
+    const g = await importGLB("guitar_gibson_les_paul_standard.glb");
+    tele.getChildMeshes().forEach((m) => m.setEnabled(false)); // hide the procedural Tele (keep the node)
+    g.parent = tele;
+    g.scaling.setAll(0.98 / g._naturalMax);   // ~1 m guitar (its long axis is Z)
+    g.rotation = new V3(Math.PI / 2, 0, 0);   // stand it upright, body DOWN / headstock UP (long axis Z → vertical)
+    g.position.set(0, 0, 0);
+    g.computeWorldMatrix(true);
+    const { min } = g.getHierarchyBoundingVectors();
+    g.position.y -= min.y; // rest the lowest point on the floor (min.y is world; tele's small tilt is negligible)
+    g.getChildMeshes().forEach((m) => { m._guitar = true; m.isPickable = true; });
+  } catch (e) { console.warn("guitar GLB load failed — keeping procedural", e); }
+}
 async function importGLB(file) {
   const res = await B.SceneLoader.ImportMeshAsync("", "/assets/models/", file, scene);
   const root = res.meshes[0];
@@ -693,35 +808,157 @@ async function loadHeroProps() {
     console.warn("boombox load failed — keeping procedural radio", e);
     radio.getChildMeshes().forEach(m => { m._radioToggle = true; }); // fall back to the box radio as the toggle
   }
-  try { // realistic guitar pedals (Poly Pizza, CC-BY) on a board, replacing the procedural pedalboard
-    const base = await importGLB("pedal.glb");
-    const nm = base._naturalMax;
-    const c2 = base.clone("pedalB"), c3 = base.clone("pedalC");
-    [c2, c3].forEach(c => c.getChildMeshes().forEach(m => { m.receiveShadows = true; try { shadow.addShadowCaster(m); } catch { } }));
-    const pbNode = node("pedalsGLB", 1.52, 0, ZF + 1.02); pbNode.rotation.y = 0.3;
-    box("pbBoard", 0.5, 0.02, 0.22, 0, 0.01, 0, matte("pbBoard", 0x18191d), pbNode, false);
-    [[base, -0.15, 0.0], [c2, 0.0, 0.12], [c3, 0.15, -0.1]].forEach(([r, dx, ry]) => {
-      r.parent = pbNode; r.scaling.setAll(0.13 / nm); r.rotation = new V3(0, ry, 0); r.position.set(dx, 0.02, 0);
-      r.computeWorldMatrix(true); const { min } = r.getHierarchyBoundingVectors(); r.position.y += 0.02 - min.y;
-    });
-    pedalboard.setEnabled(false);
-    pbRef = pbNode;
-  } catch (e) { console.warn("pedals load failed — keeping procedural", e); }
+  // three real stompboxes (DS-2, Metal Zone, fuzz) replace the procedural pedalboard — each on its own
+  // pivot so you can move/resize them individually in arrange mode
+  pedalboard.setEnabled(false);
+  pedalDS = await loadPedal("boss_turbo_distortion_ds-2.glb", 1.28, ZF + 1.08, 0.3, 0.13);
+  pedalMT = await loadPedal("boss_metal_zone_mt2_-_guitar_pedal.glb", 1.5, ZF + 1.0, 0.3, 0.13);
+  pedalFZ = await loadPedal("guitar_fuzz_pedal.glb", 1.72, ZF + 1.06, 0.3, 0.15);
+  await loadGuitar();
   // the radio (boombox) now sits where the Apollo was — drop the rackmount EQ, hide the procedural Apollo
   scene.getMeshByName("apollo")?.setEnabled(false);
   scene.getMeshByName("apKnob")?.setEnabled(false);
   await loadDeskProps();
   await loadDumbek();
+  await loadMPC();
+  await loadCat();
+  initCatNeeds();
+  await loadCity();
+  await loadPlane();
+  await loadGodzilla();
+}
+
+// THE CITY — low-poly buildings outside the window (real 3D, original materials, replaces the painted skyline)
+let cityGLB = null, cityLight = null, cityShadow = null;
+async function loadCity() {
+  try {
+    const res = await B.SceneLoader.ImportMeshAsync("", "/assets/models/", "city.glb", scene);
+    const city = res.meshes[0];
+    const bb0 = city.getHierarchyBoundingVectors();
+    const nat = Math.max(bb0.max.x - bb0.min.x, bb0.max.y - bb0.min.y, bb0.max.z - bb0.min.z) / (city.scaling.x || 1);
+    city.scaling.setAll(46 / nat);          // span ~46 units across the window view
+    city.rotation = new V3(0, 0, 0);         // (flip to rotation.x = -PI/2 if the buildings import lying down)
+    city.position.set(0, 0, ZF - 22);        // out beyond the window
+    city.computeWorldMatrix(true);
+    const { min } = city.getHierarchyBoundingVectors();
+    city.position.y -= min.y;                // rest the city on the street (y 0)
+    city.position.y -= 8;                    // …then drop it well below the sightline so you look DOWN over the skyline (the intended look; nudge with −/= in arrange, it saves)
+    const cityMeshes = res.meshes.filter((m) => m.getTotalVertices && m.getTotalVertices() > 0);
+    res.meshes.forEach((m) => { m.isPickable = false; }); // keep the model's original materials untouched
+    // sun/moon light on the city — scoped to ONLY the city meshes so it never leaks into the room (directional
+    // lights aren't contained by walls), with a shadow map so the buildings cast soft shadows on each other.
+    cityLight = new B.DirectionalLight("cityLight", new V3(0.2, -0.8, 0.3).normalize(), scene);
+    cityLight.intensity = 0; cityLight.includedOnlyMeshes = cityMeshes; cityLight.position = new V3(0, 70, ZF - 22);
+    cityShadow = new B.ShadowGenerator(1024, cityLight);
+    cityShadow.usePercentageCloserFiltering = true; cityShadow.filteringQuality = B.ShadowGenerator.QUALITY_MEDIUM; cityShadow.bias = 0.0015; cityShadow.normalBias = 0.02;
+    cityMeshes.forEach((m) => { m.receiveShadows = true; cityShadow.addShadowCaster(m); });
+    cityGLB = city;
+  } catch (e) { console.warn("city load failed", e); }
+}
+
+// load the LAX jet (hidden until a flyover triggers); meshes tagged _jet so clicking the window can shoot it down
+async function loadPlane() {
+  try {
+    const res = await B.SceneLoader.ImportMeshAsync("", "/assets/models/", "plane.glb", scene);
+    const root = res.meshes[0], jetMeshes = root.getChildMeshes();
+    let bb = root.getHierarchyBoundingVectors();
+    const nat = Math.max(bb.max.x - bb.min.x, bb.max.y - bb.min.y, bb.max.z - bb.min.z) / (root.scaling.x || 1);
+    root.scaling.setAll(9 / nat); // ~9-unit airliner
+    root.computeWorldMatrix(true);
+    bb = root.getHierarchyBoundingVectors();
+    // this GLB has a big baked FBX offset, so wrap it in a pivot and shift the geometry onto the pivot's origin —
+    // then moving/rotating the pivot drives the jet predictably.
+    const ctr = bb.min.add(bb.max).scale(0.5);
+    const pivot = new B.TransformNode("jetPivot", scene);
+    root.position.copyFrom(ctr.scale(-1)); root.parent = pivot;
+    pivot.setEnabled(false);
+    res.meshes.forEach((m) => { m.isPickable = false; m.applyFog = false; });
+    jetMeshes.forEach((m) => { m._jet = true; m.isPickable = true; });
+    if (cityLight && cityLight.includedOnlyMeshes) cityLight.includedOnlyMeshes = cityLight.includedOnlyMeshes.concat(jetMeshes); // lit by the sun/moon like the city
+    plane3d = pivot; // updatePlane3D drives the pivot
+  } catch (e) { console.warn("plane load failed", e); }
+}
+
+// GODZILLA — towers among the city buildings outside the window. Same FBX-offset fix as the plane (pivot with
+// the geometry centered horizontally and feet on the ground). Lit by the sun/moon; arrange-able; slow idle sway.
+let godzilla = null, godzillaInner = null, gzMeshes = [], gzT = -1, nextGzAt = 25 + Math.random() * 35; // gzT: -1 idle; else seconds into the appearance
+async function loadGodzilla() {
+  try {
+    const res = await B.SceneLoader.ImportMeshAsync("", "/assets/models/", "godzilla.glb", scene);
+    const root = res.meshes[0], gz = root.getChildMeshes();
+    let bb = root.getHierarchyBoundingVectors();
+    const nat = Math.max(bb.max.x - bb.min.x, bb.max.y - bb.min.y, bb.max.z - bb.min.z) / (root.scaling.x || 1);
+    root.scaling.setAll(20 / nat); // ~20 units tall — towers over the skyline
+    root.computeWorldMatrix(true);
+    bb = root.getHierarchyBoundingVectors();
+    const cx = (bb.min.x + bb.max.x) / 2, cz = (bb.min.z + bb.max.z) / 2;
+    root.position.set(root.position.x - cx, root.position.y - bb.min.y, root.position.z - cz); // center horiz, feet at y0
+    const pivot = new B.TransformNode("gzPivot", scene);
+    root.parent = pivot;
+    pivot.position.set(-4, 0, -18); pivot.rotation.y = Math.PI; // looming in front of the skyline, facing the window (tune in arrange)
+    res.meshes.forEach((m) => { m.isPickable = false; });
+    gz.forEach((m) => { m.isPickable = true; });
+    if (cityLight && cityLight.includedOnlyMeshes) cityLight.includedOnlyMeshes = cityLight.includedOnlyMeshes.concat(gz); // lit like the city
+    sun.excludedMeshes = cityLight.includedOnlyMeshes.slice(); // exterior is lit by cityLight only — keep the room's directional sun off it (no double-lighting)
+    godzilla = pivot; godzillaInner = root; gzMeshes = gz;
+    pivot.setEnabled(false); // hidden until the timer brings it in
+  } catch (e) { console.warn("godzilla load failed", e); }
+}
+// Godzilla is a timed cameo: every so often it fades in, looms/sways for ~6s, then fades out.
+function updateGodzilla(dt) {
+  if (!godzilla) return;
+  if (editMode) { if (!godzilla.isEnabled()) godzilla.setEnabled(true); gzMeshes.forEach((m) => { m.visibility = 1; }); return; } // arrange: keep visible to edit
+  if (gzT < 0) { nextGzAt -= dt; if (nextGzAt <= 0) { gzT = 0; nextGzAt = 70 + Math.random() * 90; } else { if (godzilla.isEnabled()) godzilla.setEnabled(false); return; } }
+  gzT += dt;
+  const FADE = 4.5, HOLD = 6, TOTAL = FADE + HOLD + FADE; // slow 4.5s fade in/out around a 6s hold
+  let a = 1;
+  if (gzT < FADE) a = gzT / FADE;                       // fade in
+  else if (gzT < FADE + HOLD) a = 1;                    // do its thing for 6s
+  else if (gzT < TOTAL) a = 1 - (gzT - FADE - HOLD) / FADE; // fade out
+  else { gzT = -1; a = 0; }
+  const on = a > 0.002;
+  if (godzilla.isEnabled() !== on) godzilla.setEnabled(on);
+  if (on) { gzMeshes.forEach((m) => { m.visibility = a; }); godzillaInner.rotation.y = Math.sin(T * 0.5) * 0.06; } // fade + slow sway
+}
+
+// THE CAT, for real — a rigged PS1 low-poly cat (Sketchfab) rides the existing wander rig.
+// The procedural ginger tabby is hidden; the GLB is parented under catRig so updateCat's
+// glide/turn/dwell + the pet-for-hearts action all still drive it (it just doesn't trot/wag,
+// since this model ships no animation clips — it stands in bind pose).
+async function loadCat() {
+  try {
+    const cat = await importGLB("bicolor_cat.glb");
+    cat.parent = catRig;
+    cat.scaling.setAll(0.5 / cat._naturalMax);   // a house cat
+    cat.rotation = new V3(0, Math.PI / 2, 0);    // nose along catRig +x (the movement-forward axis)
+    cat.position.set(0, 0, 0);
+    cat.computeWorldMatrix(true);
+    const { min } = cat.getHierarchyBoundingVectors();
+    cat.position.y -= min.y;                      // rest paws on the floor (catRig local y0)
+    cat.getChildMeshes().forEach((m) => { m._cat = true; m.isPickable = true; }); // so the pet-for-hearts ray still finds it
+    catModel = cat; catBaseY = cat.position.y;    // updateCat adds a walk bob/waddle on top of this rest height
+    // this model ships ONE skinned clip ("Animation") — use it as the IDLE; the WALK is authored from the leg bones
+    catAnimIdle = scene.animationGroups.find((g) => g.name === "Animation");
+    if (catAnimIdle) { catAnimIdle.stop(); catAnimIdle.start(true, 0.5); } // loop at half speed = a calm idle
+    const skel = scene.skeletons.find((s) => s.bones.some((b) => b.name === "Wolf_l_FrontLeg_HipSHJnt_4"));
+    if (skel) { const by = (n) => skel.bones.find((b) => b.name === n); catWalkBones = { fl: by("Wolf_l_FrontLeg_HipSHJnt_4"), fr: by("Wolf_r_FrontLeg_HipSHJnt_10"), hl: by("Wolf_l_HindLeg_HipSHJnt_27"), hr: by("Wolf_r_HindLeg_HipSHJnt_33") }; }
+    // hide the procedural cat — same rig still drives position/rotation
+    catBody.setEnabled(false);
+    catHead.setEnabled(false);
+    scene.getMeshByName("catChest")?.setEnabled(false);
+    catLegs.forEach((l) => l.setEnabled(false));
+    tailSegs[0].setEnabled(false);               // disabling the root tail node hides the chained segments
+  } catch (e) { console.warn("cat GLB load failed — keeping procedural cat", e); }
 }
 
 // THE DUMBEK — a real hand drum (Poly Pizza "Bongos", Poly by Google, CC-BY) you can
 // walk up to and strike. It lives inside a pivot node (scale 1) so the hit-bounce can
 // squash it toward the floor without fighting the GLB's own fit scale.
 let bongos = null, bongoPivot = null, bongoSquash = null;
-const BONGO = { x: -1.95, y: 0, z: -1.5, ry: 0.55, target: 0.36 };
+const BONGO = { x: -1.95, y: 0, z: -1.5, ry: 0.55, target: 0.75 }; // conga stands ~0.75 m tall
 async function loadDumbek() {
   try {
-    bongos = await importGLB("bongos.glb");
+    bongos = await importGLB("conga.glb");
     // bongoPivot is the EDITABLE node (drag/rotate/resize in arrange mode); bongoSquash sits
     // under it and is the ONLY thing the hit-bounce touches (its .scaling.y, baseline 1), so
     // the bounce never fights a player-applied resize on the pivot.
@@ -729,11 +966,50 @@ async function loadDumbek() {
     bongoSquash = node("bongoSquash", 0, 0, 0, bongoPivot);
     bongos.parent = bongoSquash;
     bongos.scaling.setAll(BONGO.target / bongos._naturalMax);
-    bongos.rotation = new V3(0, 0, 0); bongos.position.set(0, 0, 0);
+    bongos.rotation = new V3(0, 0, 0); bongos.position.set(0, 0, 0); // this conga.glb is already Y-up — leave it upright (the old -90°X tipped it onto its side)
     bongos.computeWorldMatrix(true);
     const { min } = bongos.getHierarchyBoundingVectors();
     bongos.position.y -= min.y - BONGO.y; // rest the drum's bottom on the floor (squash compresses toward it)
   } catch (e) { console.warn("bongos (dumbek) load failed", e); }
+}
+
+// MPC TOUCH — a 16-pad drum machine (Sketchfab) you can place anywhere; the 4×4 pads are real meshes
+// (identified geometrically — generic names), each wired to an MPC-style synth voice and lit on strike.
+let mpc = null, mpcPivot = null; const mpcPads = []; const mpcFx = [];
+const MPC = { x: -1.08, z: -0.2, ry: 0.5, target: 0.55 }; // on the floor near the desk-left; move/tilt it in arrange
+// the 16 pad meshes, row-major back→front, left→right within each row (1.2-unit-scaled grid: cx[-0.50,-0.16], cz[-0.13,0.21])
+const MPC_PADS = [
+  "polySurface273_aiStandardSurface1_0", "polySurface274_aiStandardSurface1_0", "polySurface275_aiStandardSurface1_0", "polySurface276_aiStandardSurface1_0",
+  "polySurface272_aiStandardSurface1_0", "polySurface271_aiStandardSurface1_0", "polySurface270_aiStandardSurface1_0", "polySurface269_aiStandardSurface1_0",
+  "polySurface265_aiStandardSurface1_0", "polySurface266_aiStandardSurface1_0", "polySurface267_aiStandardSurface1_0", "polySurface268_aiStandardSurface1_0",
+  "polySurface264_aiStandardSurface1_0", "polySurface263_aiStandardSurface1_0", "polySurface262_aiStandardSurface1_0", "polySurface261_aiStandardSurface1_0",
+];
+const MPC_SOUNDS = [ // classic kit; the front row (last 4) holds the essentials kick/snare/hat/clap
+  "crash", "cowbell", "clave", "perc",
+  "tomL", "tomM", "tomH", "shaker",
+  "sub", "rim", "snare2", "hatO",
+  "kick", "snare", "hatC", "clap",
+];
+async function loadMPC() {
+  try {
+    mpc = await importGLB("mpc_touch.glb");
+    mpcPivot = node("mpcPivot", MPC.x, 0, MPC.z); mpcPivot.rotation.y = MPC.ry; // editable wrapper (drag/rotate/scale as one)
+    mpc.parent = mpcPivot;
+    mpc.scaling.setAll(MPC.target / mpc._naturalMax);
+    mpc.rotation = new V3(0, 0, 0); mpc.position.set(0, 0, 0);
+    mpc.computeWorldMatrix(true);
+    const { min } = mpc.getHierarchyBoundingVectors();
+    mpc.position.y -= min.y; // rest it flat on the floor
+    MPC_PADS.forEach((name, i) => {
+      const m = scene.getMeshByName(name); if (!m) return;
+      if (m.material) m.material = m.material.clone(name + "_m"); // independent material so each pad lights solo
+      const col = C([0xffae3b, 0x3bd6ff, 0xff5bb0, 0x6bff7a][Math.floor(i / 4)]); // a colour per row
+      m._mpcIdle = col.scale(0.05); m._mpcGlow = col;                 // faint backlight → bright flash on hit
+      if (m.material) m.material.emissiveColor = m._mpcIdle.clone();
+      m._instr = { type: "mpc", sound: MPC_SOUNDS[i], pad: m }; m.isPickable = true;
+      mpcPads.push(m);
+    });
+  } catch (e) { console.warn("mpc load failed", e); }
 }
 
 // realistic desk props (Poly Pizza CC-BY / Kenney CC0) — keyboard, computer, mug, lamp.
@@ -755,36 +1031,56 @@ async function loadDeskProps() {
       deskProps[key] = m;
     } catch (e) { console.warn("desk model " + file + " failed", e); }
   };
-  await place("kbapple.glb", "kb", 0.40, 0.12, 0.14, 0, ["kb", "kbTop"], 0, 0xcfd2d4); // Apple-aluminium recolour, typing area
-  await place("mouse.glb", "mouse", 0.11, 0.44, 0.16, 0, ["tbBase", "tbBall"], -Math.PI / 2); // lay it flat; replaces trackball
-  await place("mug2.glb", "mug", 0.1, -0.42, 0.28, 0, ["mug", "coffee"]); // better mug, front-left corner
+  await place("kbmagic.glb", "kb", 0.40, 0.12, 0.14, 0, ["kb", "kbTop"], 0); // Apple Magic Keyboard (already white) — no tint, typing area
+  await place("mouse2.glb", "mouse", 0.11, 0.44, 0.16, 0, ["tbBase", "tbBall"], -Math.PI / 2); // A4Tech Bloody V7 — original mouse size (0.11), laid flat; replaces trackball
+  await place("mug3.glb", "mug", 0.1, -0.42, 0.28, 0, ["mug", "coffee"]); // Blender mug, front-left corner
   await place("midi.glb", "midi", 0.5, 0.0, 0.33, 0, ["midiBody", "midiKeys"]); // MIDI controller at the front edge
+  await place("macstudio.glb", "mac", 0.22, 0.66, -0.18, 0, ["mac"]); // real Mac Studio replaces the silver box (the portable display rests on its top — see loadMonitors)
+  await place("clock.glb", "clock", 0.12, -0.58, -0.15, 0, ["clockBody", "clockFace"]); // alarm clock replaces the procedural digital clock
+  setupLiveClock(deskProps.clock); // hide its baked "04:32" and float the live Hawthorne/LA time over the display
   await loadMonitors();
-  // Mac Studio kept procedural (on the right) — no free Mac model, and the silver box reads more like a Studio than a generic PC tower
+}
+// the clock.glb ships a BAKED "04:32 AM" on its display; hide those digits and float a live-time quad
+// (drawClock → clockTex, refreshed each second, America/Los_Angeles = Hawthorne's timezone) over the screen.
+// NOTE: access the clock's meshes via getChildMeshes(), never scene.getMeshByName — the GLB's generic
+// "Object_N" names collide with the pedals/guitar GLBs.
+let clockLive = null; // the live-time quad — a STATIC, arrange-adjustable editable
+function setupLiveClock(clk) {
+  if (!clk) return;
+  const kids = clk.getChildMeshes();
+  const disp = kids.find((m) => m.material && m.material.name === "material");     // the baked digit display quad ("04:32")
+  const amSign = kids.find((m) => m.material && m.material.name === "alarm_sign"); // the bell + static AM/PM graphic
+  [disp, amSign].forEach((m) => { if (m) m.setEnabled(false); }); // remove the original baked numbers entirely
+  if (!disp) return;
+  disp.computeWorldMatrix(true);
+  const bb = disp.getBoundingInfo().boundingBox, wc = bb.centerWorld;
+  const wW = Math.max(bb.maximumWorld.x - bb.minimumWorld.x, 0.05), wH = Math.max(bb.maximumWorld.y - bb.minimumWorld.y, 0.02);
+  clockTex.uScale = -1; clockTex.uOffset = 1; clockTex.vScale = -1; clockTex.vOffset = 1; // flip U+V so the readout sits upright and un-mirrored on the +z-facing plane (plane stays uniform-scaled = arrange-safe)
+  const sm = emis("clkLive", 0x000000, { glow: false }); sm.diffuseTexture = clockTex; sm.emissiveTexture = clockTex; sm.emissiveColor = new B.Color3(1, 1, 1); sm.disableLighting = true; sm.backFaceCulling = false;
+  // STANDALONE quad — not parented/billboarded, so it stays put; geometry carries the aspect so uniform arrange-scaling is fine
+  const ov = B.MeshBuilder.CreatePlane("clockLiveFace", { width: wW, height: wH }, scene);
+  ov.material = sm; ov.isPickable = true;
+  ov.position.set(wc.x, wc.y, wc.z + 0.01);
+  ov.rotation.set(0, Math.PI, 0); // face the player (clock front = +z); nudge in arrange if needed
+  clockLive = ov;
 }
 
 // real monitor bodies (Poly Pizza, CC-BY) — keep the live screens by mapping the animated DAW/meter textures onto the models
 async function loadMonitors() {
-  try { // ultrawide: a flat widescreen TV body; overlay the live DAW plane on its panel
-    const tv = await importGLB("ultrawide.glb");
+  try { // ultrawide: widescreen monitor with desk mount; overlay the live DAW/slideshow plane on its panel
+    const tv = await importGLB("ultrawide2.glb");
     tv.parent = desk;
     tv.scaling.setAll(0.98 / tv._naturalMax); // already ~1.8:1 widescreen
     tv.rotation = new V3(0, -Math.PI / 2, 0); // turn the screen to face the player
     tv.position.set(0, 0.74, -0.2);
     tv.computeWorldMatrix(true);
-    let bb = tv.getHierarchyBoundingVectors();
+    const bb = tv.getHierarchyBoundingVectors();
     tv.position.y += 0.74 - bb.min.y; // rest the stand on the desk
-    tv.computeWorldMatrix(true);
-    bb = tv.getHierarchyBoundingVectors();
-    // the TV screen mesh has no usable UVs (and a plane parented to the GLB __root__ won't render the
-    // slideshow), so reuse the procedural monScreen — it's correctly oriented + already shows DynamicTextures.
-    // just slide it onto the TV's panel face, proud of the glass, and size it to fit.
-    const h = bb.max.y - bb.min.y, panelBot = bb.min.y + h * 0.24, top = bb.max.y - h * 0.06;
-    const sw = (bb.max.x - bb.min.x) * 0.9, sh = (top - panelBot) * 0.95;
-    const cx = (bb.min.x + bb.max.x) / 2, cy = (panelBot + top) / 2;
-    monScreen.scaling.set(sw / 0.92, sh / 0.39, 1);
-    monScreen.position.x = cx - desk.position.x; monScreen.position.y = cy - desk.position.y;
-    monScreen._panelZ = bb.max.z - desk.position.z; applyScreenDepth(); // sits `screenDepth` proud of the panel — tunable in arrange mode
+    // this asset's emissive screen quad ("Monitor Glow") has clean 0–1 UVs, so paint the live slideshow
+    // straight onto it — it fills the real screen exactly, no separate floating plane to align.
+    const screenMesh = tv.getChildMeshes().find(m => /glow/i.test(m.name)) || tv.getChildMeshes().find(m => /monitor/i.test(m.name));
+    if (screenMesh) { screenMesh.material = screenOffMat; screenMesh._ytscreen = true; screenMesh.isPickable = true; monitorScreenMesh = screenMesh; } // the YouTube overlay is glued onto this; click it to pause/play
+    monScreen.setEnabled(false); // retire the old floating plane
     scene.getMeshByName("monBezel")?.setEnabled(false);
     deskProps.ultrawide = tv;
   } catch (e) { console.warn("ultrawide failed — keeping procedural", e); }
@@ -793,10 +1089,12 @@ async function loadMonitors() {
     tab.parent = desk;
     tab.scaling.setAll(0.30 / tab._naturalMax);
     tab.rotation = new V3(Math.PI / 2 - 0.28, -0.35, 0); // stand it up + angle toward the person
-    tab.position.set(0.66, 0.835, -0.18); // sit it on the Mac Studio (right side)
+    // rest on the actual Mac Studio GLB top (its height differs from the old 0.835 box); fall back if the model didn't load
+    const macTop = deskProps.mac ? deskProps.mac.getHierarchyBoundingVectors().max.y : 0.835;
+    tab.position.set(0.66, macTop, -0.18); // sit it on the Mac Studio (right side)
     tab.computeWorldMatrix(true);
     const { min } = tab.getHierarchyBoundingVectors();
-    tab.position.y += 0.835 - min.y; // rest on the Mac top
+    tab.position.y += macTop - min.y; // rest on the Mac top
     scene.getMeshByName("pmBezel")?.setEnabled(false);
     pmScreen.setEnabled(false);
     deskProps.portable = tab;
@@ -816,6 +1114,7 @@ for (let i = 0; i < 5; i++) { const b = B.MeshBuilder.CreateSphere("blob" + i, {
 // =====================================================================
 // CAT CORNER — litter box, food/water bowls, treat jar
 // =====================================================================
+const careBowls = {};              // { food, water, litter } → { pivot, fill, ... }; the cat draws these down on its timers and you refill them
 const litter = node("litter", -2.28, 0, 2.85);
 const trayMat = matte("tray", 0x9aa0a4);
 box("litFloor", 0.52, 0.03, 0.4, 0, 0.015, 0, trayMat, litter, false);
@@ -824,19 +1123,29 @@ box("litFloor", 0.52, 0.03, 0.4, 0, 0.015, 0, trayMat, litter, false);
 const sandTex = dyn("sand", 128, 128, (c, w, h) => { c.fillStyle = "#cfc3a4"; c.fillRect(0, 0, w, h); for (let i = 0; i < 3000; i++) { c.fillStyle = `rgba(0,0,0,${Math.random() * 0.12})`; c.fillRect(Math.random() * w, Math.random() * h, 2, 2); } });
 const sandMat = new B.StandardMaterial("sandMat", scene); sandMat.diffuseTexture = sandTex; sandMat.emissiveColor = C(0x6b6048).scale(0.3); sandMat.specularColor = new B.Color3(0, 0, 0);
 const sand = B.MeshBuilder.CreateGround("sand", { width: 0.47, height: 0.35 }, scene); sand.material = sandMat; sand.parent = litter; sand.position.y = 0.045;
-function bowl(name, x, z, dishCol, fillMat) {
+// soiled clumps that surface as the box gets used (the sand darkens too) — see updateBowls()
+const litClumpMat = matte("litClump", 0x5a4f3a);
+const litClumps = [[0.13, 0.08], [-0.1, -0.06], [0.0, 0.13]].map(([x, z], i) => { const c = sph("litClump" + i, 0.05 + i * 0.006, x, 0.055, z, litClumpMat, litter, false); c.setEnabled(false); return c; });
+litter.getChildMeshes(false).forEach((m) => { m._careBowl = "litter"; m.isPickable = true; }); // click the box to clean it; the cat targets the `litter` node
+careBowls.litter = { pivot: litter, fill: sand, clumps: litClumps, kind: "litter" };
+function bowl(name, x, z, dishCol, fillMat, kind) {
   const g = node(name, x, 0, z);
   const dm = matte(name + "dish", dishCol); dm.emissiveColor = C(dishCol).scale(0.35);
-  cyl(name + "dish", 0.075, 0.06, 0.045, 0, 0.0225, 0, dm, g, 16, false);
-  cyl(name + "fill", 0.058, 0.05, 0.03, 0, 0.025, 0, fillMat, g, 16, false);
+  const dish = cyl(name + "dish", 0.075, 0.06, 0.045, 0, 0.0225, 0, dm, g, 16, false);
+  const fill = cyl(name + "fill", 0.058, 0.05, 0.03, 0, 0.025, 0, fillMat, g, 16, false);
+  fill._botY = 0.01; fill._h = 0.03;                                            // anchor the fill to the dish floor as it drains
+  [dish, fill].forEach((m) => { m._careBowl = kind; m.isPickable = true; });     // click to refill; the cat targets node g
+  careBowls[kind] = { pivot: g, fill, kind };
+  return g;
 }
 const foodFillTex = dyn("food", 64, 64, (c, w, h) => { c.fillStyle = "#6a4a26"; c.fillRect(0, 0, w, h); for (let i = 0; i < 240; i++) { c.fillStyle = "#8a6438"; c.beginPath(); c.arc(Math.random() * w, Math.random() * h, 2, 0, 7); c.fill(); } });
 const foodMat = new B.StandardMaterial("foodMat", scene); foodMat.diffuseTexture = foodFillTex; foodMat.emissiveColor = C(0x6a4a26).scale(0.3); foodMat.specularColor = new B.Color3(0, 0, 0);
 const waterMat = new B.PBRMetallicRoughnessMaterial("waterMat", scene); waterMat.baseColor = C(0x3a7ab8); waterMat.roughness = 0.1; waterMat.metallic = 0.1; waterMat.alpha = 0.85; waterMat.emissiveColor = C(0x2f6f9c).scale(0.3);
-bowl("foodBowl", 2.32, 0.75, 0x8a3324, foodMat); bowl("waterBowl", 2.32, 1.08, 0x46606e, waterMat);
-// treat jar on the sill
-cyl("treatJar", 0.035, 0.035, 0.09, 1.4, 0.905, ZF + 0.07, glassMat("treatJar", 0xd8e4ea, 0.4, 0.05), null, 12, false);
-cyl("treatKibble", 0.029, 0.029, 0.055, 1.4, 0.888, ZF + 0.07, matte("treatKibble", 0x7a5530), null, 12, false);
+bowl("foodBowl", 2.32, 0.75, 0x8a3324, foodMat, "food"); bowl("waterBowl", 2.32, 1.08, 0x46606e, waterMat, "water");
+// treat jar on the sill — click it (or press T) to toss the cat a treat
+const treatJar = cyl("treatJar", 0.035, 0.035, 0.09, 1.4, 0.905, ZF + 0.07, glassMat("treatJar", 0xd8e4ea, 0.4, 0.05), null, 12, false);
+const treatKibble = cyl("treatKibble", 0.029, 0.029, 0.055, 1.4, 0.888, ZF + 0.07, matte("treatKibble", 0x7a5530), null, 12, false);
+[treatJar, treatKibble].forEach((m) => { m._careBowl = "treat"; m.isPickable = true; });
 
 // =====================================================================
 // ERGO CHAIR (gas-lift, 5-star base) at the sweet spot
@@ -878,7 +1187,10 @@ const catLegs = [];
 // spots all sit in the open middle/back of the room — the front third (z < -1.9) is desk/drums/rack,
 // so the cat's straight-line trots between these never cross furniture. it's also clamped to the room each frame.
 const catSpots = [{ x: 0.2, z: SWEET.z, y: 0.51 }, { x: 1.6, z: 0.6, y: 0 }, { x: -1.4, z: 0.4, y: 0 }, { x: 1.7, z: 2.2, y: 0 }, { x: -1.4, z: 2.2, y: 0 }, { x: 0.3, z: 1.6, y: 0 }];
-let catState = { tx: 0.2, tz: SWEET.z + 0.3, ty: 0, yaw: Math.PI, baseY: 0, walking: false, dwell: 3 };
+let catState = { tx: 0.2, tz: SWEET.z + 0.3, ty: 0, yaw: Math.PI, baseY: 0, walking: false, dwell: 3, chore: null };
+let catModel = null, catBaseY = 0; // the GLB cat + its rested height, animated in updateCat
+let catAnimIdle = null, catWalkBones = null, catWalking = false; // the model's idle clip + the four hip bones the authored walk drives
+function swingBone(bn, tgt) { if (!bn) return; const prev = bn._sw || 0; bn.rotate(B.Axis.X, tgt - prev, B.Space.LOCAL); bn._sw = tgt; } // absolute swing via delta-rotation
 
 // hearts pool
 const heartTex = dyn("heart", 64, 64, (c, w, h) => { c.fillStyle = "#ff7a9a"; c.font = "44px serif"; c.textAlign = "center"; c.textBaseline = "middle"; c.fillText("♥", 32, 36); }, { flip: true });
@@ -887,20 +1199,85 @@ const hearts = [];
 function popHearts() { const p = catGrp.getAbsolutePosition(); for (let i = 0; i < 3; i++) { const h = B.MeshBuilder.CreatePlane("heart", { size: 0.1 }, scene); h.material = heartMat; h.billboardMode = B.Mesh.BILLBOARDMODE_ALL; h.position.set(p.x + (Math.random() - 0.5) * 0.2, catState.baseY + 0.3, p.z + (Math.random() - 0.5) * 0.2); h._life = 1.6; h._vx = (Math.random() - 0.5) * 0.1; hearts.push(h); } }
 
 // =====================================================================
+// THE CAT'S NEEDS — bowls it draws down on its own timers + a feeding
+// station you keep filled. The brain (timers, decay, persistence) is
+// store.js, identical to the live site; this is just the room-side body:
+// in-world bowls, a small HUD, and the cat walking over to act on them.
+// =====================================================================
+let catRaw = null;                 // last raw state from store (food/water/litter/timers)
+let catNeeds = store.decayCat(null); // derived: fed/hydrated/hungry/thirsty/bathroom/levels
+// the bowls + litter box are the existing CAT CORNER meshes (registered into `careBowls` up there);
+// here we just animate their levels from the cat's needs.
+
+// push the current need levels into the existing bowl/litter visuals (called on every state change)
+const SAND_CLEAN = new B.Color3(1, 1, 1), SAND_DIRTY = new B.Color3(0.52, 0.46, 0.34);
+function updateBowls() {
+  const drain = (b, lv) => { if (!b) return; const sy = 0.12 + Math.min(1, lv) * 0.88; b.fill.scaling.y = sy; b.fill.position.y = b.fill._botY + b.fill._h * sy / 2; b.fill.setEnabled(lv > 0.03); };
+  drain(careBowls.food, catNeeds.food); drain(careBowls.water, catNeeds.water);
+  const l = careBowls.litter;
+  if (l) { const lv = Math.min(1, catNeeds.litter); B.Color3.LerpToRef(SAND_CLEAN, SAND_DIRTY, lv, l.fill.material.diffuseColor); l.clumps.forEach((c, i) => c.setEnabled(lv > 0.35 + i * 0.22)); }
+}
+
+// HUD: fed / hydrated / (litter) / bowl-empty warnings — same read as main.js
+const catHud = document.getElementById("cat-hud");
+function updateCatHUD() {
+  if (!catHud) return;
+  const d = catNeeds, pct = (v) => `${Math.round(v * 100)}%`;
+  const well = (v) => v < 0.4 ? "crit" : v < 0.75 ? "low" : "";
+  const dirty = (v) => v > 0.85 ? "crit" : v > 0.6 ? "low" : "";
+  catHud.innerHTML =
+    `🐾 fed <span class="${well(d.fed)}">${pct(d.fed)}</span>` +
+    ` · hydrated <span class="${well(d.hydrated)}">${pct(d.hydrated)}</span>` +
+    (d.litter > 0.5 ? ` · litter <span class="${dirty(d.litter)}">${pct(d.litter)}</span>` : "") +
+    ((d.hungry && d.food <= 0.05) ? ` · <span class="crit">food bowl empty!</span>` : "") +
+    ((d.thirsty && d.water <= 0.05) ? ` · <span class="crit">water bowl empty!</span>` : "");
+}
+
+// fold a fresh raw state into the derived needs + refresh everything it drives
+function applyCatNeeds(s) {
+  if (!s) return; catRaw = s; catNeeds = store.decayCat(s); updateCatHUD(); updateBowls();
+}
+
+// human care: feed / water / clean / treat — thresholds match the three.js room
+async function handleCare(kind) {
+  const d = catNeeds;
+  try {
+    if (kind === "food") { if (d.food >= 0.6) return flashHint("the food bowl is still pretty full"); applyCatNeeds(await store.catCare("feed")); flashHint("you filled the food bowl 🐾"); }
+    else if (kind === "water") { if (d.water >= 0.7) return flashHint("the water's fine"); applyCatNeeds(await store.catCare("water")); flashHint("fresh water, poured"); }
+    else if (kind === "litter") { if (d.litter <= 0.15) return flashHint("the litter box is clean"); applyCatNeeds(await store.catCare("clean")); flashHint("litter box: spotless — you're a good person 🐾"); }
+    else if (kind === "treat") { const res = await store.catCare("treat"); if (res && res.ok === false) return flashHint("the cat is full of treats right now"); applyCatNeeds(res); lureCat(); flashHint("the cat is sprinting over 😻"); }
+  } catch (e) { flashHint("couldn't reach the cat's things — try again"); }
+}
+
+// drop a treat in front of the player and send the cat to it
+function lureCat() {
+  const dir = camera.getDirection(B.Axis.Z);
+  catState.tx = Math.max(-2.3, Math.min(2.3, camera.position.x + dir.x * 0.8));
+  catState.tz = Math.max(-3.0, Math.min(3.0, camera.position.z + dir.z * 0.8));
+  catState.ty = 0; catState.chore = null; catState.walking = true; catState.dwell = 0;
+}
+
+// =====================================================================
 // LIGHTS — outside sun raking through the glass, low fill, emissive points
 // =====================================================================
 const hemi = new B.HemisphericLight("hemi", new V3(0, 1, 0), scene);
 hemi.intensity = 0.32; hemi.diffuse = C(0x8a96a8); hemi.groundColor = C(0x2a241c);
 // golden-hour sun: az ~0.3 west, alt ~0.26 — position per world.js beam aiming
 const az = 0.3, alt = 0.26;
-const sun = new B.SpotLight("sun", new V3(Math.sin(az) * 10, WIN.cy + Math.tan(alt) * 10, ZF - 10), new V3(-Math.sin(az), -0.5, 1).normalize(), 1.3, 6, scene);
-sun.intensity = 3.4; sun.diffuse = C(0xfff0d8); sun.range = 80;
+// a DIRECTIONAL sun (parallel rays) so shadows run true like real sunlight — not fanned out from a spotlight
+const sun = new B.DirectionalLight("sun", new V3(-Math.sin(az) * Math.cos(alt), -Math.sin(alt), Math.cos(az) * Math.cos(alt)).normalize(), scene);
+sun.intensity = 3.4; sun.diffuse = C(0xfff0d8); sun.position = new V3(5, 8, -8); sun.autoUpdateExtends = true;
 const shadow = new B.ShadowGenerator(2048, sun);
-shadow.usePercentageCloserFiltering = true; shadow.filteringQuality = B.ShadowGenerator.QUALITY_HIGH; shadow.bias = 0.0011; shadow.normalBias = 0.02; shadow.darkness = 0.16;
-const windowLight = new B.PointLight("winLight", new V3(0, 1.6, ZF + 0.6), scene); windowLight.diffuse = C(0xffe9c0); windowLight.intensity = 2.2; windowLight.range = 3.8;
+shadow.usePercentageCloserFiltering = true; shadow.filteringQuality = B.ShadowGenerator.QUALITY_HIGH; shadow.bias = 0.0016; shadow.normalBias = 0.035; shadow.darkness = 0.6; // soft, light shadows — the blinds diffuse the sun so nothing is harshly cast
+const windowLight = new B.PointLight("winLight", new V3(0, 1.6, ZF + 0.6), scene); windowLight.diffuse = C(0xffe9c0); windowLight.intensity = 2.2; windowLight.range = 6.5; // reaches across the room so the spill fills it, not just the front
+windowLight.excludedMeshes = [ceil]; // don't blast a bright sun-spot onto the ceiling right above the desk
 const lavaLight = new B.PointLight("lavaLight", new V3(0, 0, 0), scene); lavaLight.parent = lava; lavaLight.position.set(0, 0.15, 0); lavaLight.diffuse = C(0xff8040); lavaLight.intensity = 0.85; lavaLight.range = 0.95;
 const neonLight = new B.PointLight("neonLight", new V3(0, 1.62, 0.4), scene); neonLight.parent = entry; neonLight.diffuse = C(0xff4d2e); neonLight.intensity = 1.3; neonLight.range = 1.7;
 const screenGlow = new B.PointLight("screenGlow", new V3(0, 1.19, 0.1), scene); screenGlow.parent = desk; screenGlow.position.set(0, 0.45, 0.1); screenGlow.diffuse = C(0x8fb6ff); screenGlow.intensity = 1.7; screenGlow.range = 1.7;
+// live monitor glow — the YouTube frame is a cross-origin iframe so its pixels can't be read;
+// these drive a believable TV-flicker stand-in (brightness swells, scene cuts, slow hue drift)
+const SG_BASE = screenGlow.intensity, SG_WARM = C(0xffb86c), SG_COOL = C(0x8cb6ff); // warm↔cool ends of the hue drift
+let sgLevel = 1, sgCut = 0, sgFlash = 0, sgHue = 0.7, sgHueT = 0.7; // smoothed level, cut timer, decaying flash, drifting hue
 
 // the bright sun disc outside, for the god-rays
 // a round, soft sun glow (was a hard square that read as an obvious light panel through the window)
@@ -910,6 +1287,7 @@ const clampSun = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const placeSun = (az2, alt2) => sunDisc.position.set(clampSun(Math.sin(az2) * 1.4, -1.1, 1.1), clampSun(1.0 + Math.tan(alt2) * 0.7, 1.05, 2.15), ZF + 0.05);
 const sunDisc = B.MeshBuilder.CreateDisc("sunDisc", { radius: 0.32, tessellation: 40 }, scene); placeSun(az, alt);
 const sunDiscMat = emis("sunDiscMat", 0xffffff, { glow: false }); sunDiscMat.emissiveTexture = sunGlowTex; sunDiscMat.emissiveColor = new B.Color3(1.35, 1.05, 0.72); sunDiscMat.alphaMode = B.Engine.ALPHA_ADD; sunDisc.material = sunDiscMat;
+sunDisc.setEnabled(false); // removed — the bright disc/god-rays read as a strange emitting light on the glass with the 3D city
 
 // ---- switchable lighting moods (press L to cycle) ----
 const MOODS = [
@@ -1082,8 +1460,9 @@ function updateEnv(date) {
   const useSun = sunAlt > -0.05;
   const az = Math.max(-0.9, Math.min(0.9, useSun ? sp.azimuth : mp.azimuth));
   const alt = Math.max(useSun ? sunAlt : moonAlt, 0.06);
-  sun.position.set(Math.sin(az) * 10, WIN.cy + Math.tan(alt) * 10, ZF - 10);
-  sun.setDirectionToTarget(new V3(0, 0.6, 0));
+  const skAlt = Math.max(sunAlt, 0.12), skd = Math.cos(skAlt); // keep the key light above the horizon so shadows stay sane at night
+  sun.direction.set(-Math.sin(sp.azimuth) * skd, -Math.sin(skAlt), Math.cos(sp.azimuth) * skd);
+  sun.position.copyFrom(sun.direction).scaleInPlace(-18); sun.position.y += 1; // shadow frustum sits up-sun of the room
   placeSun(az, alt); // clamped inside the window opening
   // phase → colors + (deliberately low-ambient) intensities, keeping light only from the window
   let beamC, beamI, winC, winI, hS, hG, hI, skyS, disc, lamp;
@@ -1093,13 +1472,28 @@ function updateEnv(date) {
   else { beamC = 0x7a7080; beamI = 0.08; winC = 0x8a7a9a; winI = 0.3; hS = 0x565e6e; hG = 0x241f18; hI = 0.07; skyS = 0.12; disc = [0.06, 0.07, 0.13]; lamp = 5; }
   const dim = Math.max(0.2, 1 - 0.6 * weather.clouds - (weather.rain ? 0.1 : 0));
   beamI *= dim; winI *= Math.max(0.4, 1 - 0.4 * weather.clouds);
-  sun.diffuse = C(beamC); sun.intensity = beamI;
-  windowLight.diffuse = C(winC); windowLight.intensity = winI;
-  hemi.diffuse = C(hS); hemi.groundColor = C(hG); hemi.intensity = hI;
+  sun.diffuse = C(beamC); sunBase = beamI * 0.35; // blinds absorb most of the direct sun → just a soft key
+  windowLight.diffuse = C(winC); winBase = winI * 1.3; // the soft daylight spilling in the window
+  hemi.diffuse = C(hS); hemi.groundColor = C(hG); hemiBase = hI * 2.2 + 0.2; // strong even ambient (intensities applied per-frame ×curtain factor)
   sunDiscMat.emissiveColor.set(disc[0], disc[1], disc[2]);
   skyMat.emissiveColor.set(0.6 * skyS, 0.59 * skyS, 0.58 * skyS);
   updateLamp(); // the room lamp is driven by the manual dimmer, not the day/night cycle
   ip.exposure = sunAlt > 0 ? 0.92 : sunAlt > -0.2 ? 0.95 : 1.04;
+  const cd = Math.cos(sunAlt), mcd = Math.cos(moonAlt); // aim the dome's sun + moon where they really are (your LA coords)
+  const sunV = new V3(Math.sin(sp.azimuth) * cd, Math.sin(sunAlt), -Math.cos(sp.azimuth) * cd).normalize();
+  const moonV = new V3(Math.sin(mp.azimuth) * mcd, Math.sin(moonAlt), -Math.cos(mp.azimuth) * mcd).normalize();
+  skyDomeMat.setVector3("sunDir", sunV); skyDomeMat.setFloat("sunAlt", sunAlt);
+  skyDomeMat.setVector3("moonDir", moonV); skyDomeMat.setFloat("moonBright", (moonAlt > 0 ? 1 : 0) * (0.4 + 0.6 * frac));
+  const fogDay = Math.max(0, Math.min(1, (sunAlt + 0.12) / 0.24)); // fog tracks the sky horizon so the city melts into it
+  scene.fogColor.set(0.07 + 0.51 * fogDay, 0.08 + 0.64 * fogDay, 0.12 + 0.74 * fogDay); // night = a visible blue-grey haze (city glow)
+  if (cityLight) { // light the city from whichever body is up; a bright-enough moon at night to cast soft shadows
+    const moonUp = sunAlt <= -0.05 && moonAlt > 0;
+    const bodyV = sunAlt > -0.05 ? sunV : (moonUp ? moonV : sunV);
+    cityLight.direction = bodyV.scale(-1); cityLight.position = bodyV.scale(80).add(new V3(0, 0, ZF - 22));
+    if (sunAlt > 0) { cityLight.diffuse = C(0xfff2da); cityLight.intensity = 1.4 + 1.6 * Math.sin(Math.min(sunAlt, 1.2)); }
+    else if (moonUp) { cityLight.diffuse = C(0xaec6ee); cityLight.intensity = 0.6 + 1.1 * frac; } // moonlight + shadows
+    else { cityLight.diffuse = C(0x8090a8); cityLight.intensity = 0.12; }
+  }
   drawSky(sp.azimuth, sunAlt, moonAlt, frac, weather.clouds);
   rainPane.isVisible = weather.rain > 0; rainMat.alpha = weather.rain > 0 ? 0.55 : 0;
   updateAstro(sunAlt);
@@ -1162,8 +1556,8 @@ pipeline.fxaaEnabled = true; pipeline.samples = 4; pipeline.bloomEnabled = true;
 pipeline.bloomThreshold = 0.92; pipeline.bloomWeight = 0.15;
 pipeline.imageProcessingEnabled = true; pipeline.imageProcessing.vignetteEnabled = true; pipeline.imageProcessing.vignetteWeight = 2.4; pipeline.imageProcessing.vignetteColor = new B.Color4(0, 0, 0, 0);
 pipeline.grainEnabled = true; pipeline.grain.intensity = 6; pipeline.grain.animated = true; pipeline.sharpenEnabled = true; pipeline.sharpen.edgeAmount = 0.16;
-try { if (B.SSAO2RenderingPipeline.IsSupported) { const ssao = new B.SSAO2RenderingPipeline("ssao", scene, { ssaoRatio: 0.75, blurRatio: 1 }, [camera]); ssao.radius = 0.5; ssao.totalStrength = 1.0; ssao.base = 0.12; ssao.samples = 16; ssao.expensiveBlur = true; } } catch (e) { console.warn("ssao", e); }
-try { const vls = new B.VolumetricLightScatteringPostProcess("godrays", 1.0, camera, sunDisc, 90, B.Texture.BILINEAR_SAMPLINGMODE, engine, false, scene); vls.exposure = 0.13; vls.decay = 0.96815; vls.weight = 0.28; vls.density = 0.9; } catch (e) { console.warn("godrays", e); }
+try { if (B.SSAO2RenderingPipeline.IsSupported) { const ssao = new B.SSAO2RenderingPipeline("ssao", scene, { ssaoRatio: 0.75, blurRatio: 1 }, [camera]); ssao.radius = 0.4; ssao.totalStrength = 0.65; ssao.base = 0.2; ssao.samples = 16; ssao.expensiveBlur = true; } } catch (e) { console.warn("ssao", e); } // softer AO so corners aren't blotchy
+// (god-rays removed — they targeted the disabled sun disc and did nothing but cost a pass)
 
 // =====================================================================
 // animated screens + clock
@@ -1246,20 +1640,20 @@ scene.onBeforeRenderObservable.add(() => {
   slide.acc += dt; if (slide.acc > slide.period) { slide.acc = 0; nextSlide(); } // advance the monitor slideshow
   // jets on the LAX approach: advance the crossing (or the long fall), repaint the sky as it moves
   if (planeT >= 0) {
-    if (planeShot) {
-      planeShot.age += dt;
-      const fallT = Math.max(0, planeShot.age - 0.25);
-      if (planeShot.y + 170 * fallT * fallT > 300 || planeShot.age > 6) { planeT = -1; plane01 = null; planeShot = null; }
-    } else {
-      planeT += dt; plane01 = planeT / PLANE_DUR;
-      if (plane01 >= 1) { planeT = -1; plane01 = null; }
-    }
-    skyAcc += dt; if (skyAcc > 0.08 && lastSky) { skyAcc = 0; drawSky(...lastSky); } // animate the jet
-    if (planeT < 0 && lastSky) drawSky(...lastSky);                                  // wipe the last frame
-  } else if (!livePlanes) {                 // no real traffic → ambient flyovers now and then
+    if (planeShot) { planeShot.age += dt; if (planeShot.age > 4.5) { planeT = -1; plane01 = null; planeShot = null; } } // it fell out of the sky
+    else { planeT += dt; plane01 = planeT / PLANE_DUR; if (plane01 >= 1) { planeT = -1; plane01 = null; } }
+  } else {                                  // between flyovers — keep ambient traffic (with a flight strip) filling any gap, even when the feed is "live" but quiet
     nextPlaneAt -= dt;
-    if (nextPlaneAt <= 0) { nextPlaneAt = 180 + Math.random() * 300; triggerPlane(Math.random() < 0.5 ? 1 : -1); }
+    if (nextPlaneAt <= 0) { nextPlaneAt = 180 + Math.random() * 300; ambientFlyover(); }
   }
+  updatePlane3D(); // position/hide the 3D jet
+  updateGodzilla(dt); // timed cameo: fade in, loom ~6s, fade out
+  // curtains: glide open/closed and gate the window light (drawn = blackout → room goes dark)
+  const ctX = curtainOpen ? 0.5 : 2.3, ctM = curtainOpen ? 1 : 0.12;
+  curtX += (ctX - curtX) * Math.min(1, dt * 3); curtMul += (ctM - curtMul) * Math.min(1, dt * 3);
+  curtPivots.forEach((p) => { p.scaling.x = curtX; });
+  sun.intensity = sunBase * curtMul; windowLight.intensity = winBase * curtMul;
+  hemi.intensity = hemiBase * (0.2 + 0.8 * curtMul); scene.environmentIntensity = 0.5 * (0.2 + 0.8 * curtMul);
   // lava blobs
   for (const b of blobs) { const k = Math.sin(T * b._speed + b._phase); b.position.y = 0.10 + (k * 0.5 + 0.5) * 0.085; b.position.x = Math.sin(T * b._speed * 0.7 + b._phase * 2) * 0.012; b.position.z = Math.cos(T * b._speed * 0.6 + b._phase) * 0.012; b.scaling.y = 1 + 0.35 * Math.sin(T * b._speed * 1.9 + b._phase); }
   lavaLight.intensity = 0.8 + 0.12 * Math.sin(T * 0.9);
@@ -1270,10 +1664,30 @@ scene.onBeforeRenderObservable.add(() => {
   // instrument feedback: strummed strings shiver, hit pads bob down then spring back
   if (strumFx > 0) { strumFx = Math.max(0, strumFx - dt); for (let i = 0; i < 3; i++) { const s = scene.getMeshByName("teleStr" + i); if (s) s.rotation.z = Math.sin(T * 90 + i) * strumFx * 0.12; } }
   if (keyFx > 0) { keyFx = Math.max(0, keyFx - dt); if (keyGlow) keyGlow.visibility = keyFx / 0.16; }
-  for (let i = btnFx.length - 1; i >= 0; i--) { const b = btnFx[i]; b.t -= dt; const k = Math.max(0, b.t / 0.22); if (b.cap) { b.cap.scaling.y = 1 + k; b.cap.material.emissiveColor = C(b.hue).scale(0.4 + 0.6 * k); } if (b.t <= 0) { if (b.cap) b.cap.scaling.y = 1; btnFx.splice(i, 1); } }
-  for (let i = drumFx.length - 1; i >= 0; i--) { const f = drumFx[i]; f.t -= dt; const k = Math.max(0, f.t / 0.12); if (f.node) f.node.scaling.y = 1 - k * 0.4; if (f.t <= 0) { if (f.node) f.node.scaling.y = 1; drumFx.splice(i, 1); } }
+  for (let i = btnFx.length - 1; i >= 0; i--) { const b = btnFx[i]; b.t -= dt; const k = Math.max(0, b.t / 0.22); const base = b.cap ? (b.cap._baseSY ?? 1) : 1; if (b.cap) { b.cap.scaling.y = base * (1 + k); b.cap.material.emissiveColor = C(b.hue).scale(0.4 + 0.6 * k); } if (b.t <= 0) { if (b.cap) b.cap.scaling.y = base; btnFx.splice(i, 1); } } // base = local scale after the cap is parented under the (scaled) controller
+  for (let i = drumFx.length - 1; i >= 0; i--) { const f = drumFx[i]; f.t -= dt; const k = Math.max(0, f.t / 0.12); if (f.node) f.node.scaling.y = 1 - k * (f.amt ?? 0.4); if (f.t <= 0) { if (f.node) f.node.scaling.y = 1; drumFx.splice(i, 1); } }
+  // MPC pads: flash bright on strike, fade back to the faint backlight
+  for (let i = mpcFx.length - 1; i >= 0; i--) { const f = mpcFx[i]; f.t -= dt; const k = Math.max(0, f.t / 0.18); const m = f.mesh; if (m && m.material && m._mpcGlow) B.Color3.LerpToRef(m._mpcIdle, m._mpcGlow, k, m.material.emissiveColor); if (f.t <= 0) { if (m && m.material && m._mpcIdle) m.material.emissiveColor.copyFrom(m._mpcIdle); mpcFx.splice(i, 1); } }
   // cat update
   updateCat(dt);
+  skyDomeMat.setFloat("time", T); // twinkle the stars
+  updateYTScreen(); // keep the YouTube overlay glued to the monitor
+  updateVideoAudio(dt); // playlist is the default audio; radio takes over when on
+  // live monitor glow: react like real TV light (can't sample the cross-origin video → simulate)
+  if (entered && !ytPaused) { // a paused screen holds a steady frame; a playing one flickers
+    let target = 1.0 + 0.30 * Math.sin(T * 0.5) + 0.16 * Math.sin(T * 1.7 + 1.3) + 0.07 * Math.sin(T * 6.0); // slow loudness + motion + fine flicker
+    sgCut -= dt;
+    if (sgCut <= 0) { sgCut = 0.7 + Math.random() * 3.5; sgFlash = Math.random() < 0.4 ? 0.5 + Math.random() * 0.8 : -Math.random() * 0.4; } // occasional cut/flash (scene change, explosion, fade-to-dark)
+    sgFlash *= Math.max(0, 1 - dt * 4); // flash decays fast
+    target = Math.min(1.9, Math.max(0.25, target + sgFlash));
+    sgLevel += (target - sgLevel) * Math.min(1, dt * 9);
+    sgHueT += (Math.random() - 0.5) * dt * 0.5; sgHueT = Math.min(0.95, Math.max(0.05, sgHueT)); // slow drift across TV palettes
+    sgHue += (sgHueT - sgHue) * Math.min(1, dt * 0.6);
+  } else {
+    sgLevel += (0.7 - sgLevel) * Math.min(1, dt * 3); // settle to a calm steady glow when paused
+  }
+  screenGlow.intensity = SG_BASE * sgLevel;
+  B.Color3.LerpToRef(SG_WARM, SG_COOL, sgHue, screenGlow.diffuse); // warm scenes ↔ cool night scenes
   // hearts
   for (let i = hearts.length - 1; i >= 0; i--) { const h = hearts[i]; h._life -= dt; if (h._life <= 0) { h.dispose(); hearts.splice(i, 1); continue; } h.position.y += dt * 0.35; h.position.x += h._vx * dt; h.material.alpha = Math.min(1, h._life / 0.8); }
   // pin the eye height — collisions can only push horizontally, never lift you
@@ -1284,9 +1698,20 @@ function updateCat(dt) {
   const cs = catState;
   if (cs.walking) {
     const dx = cs.tx - catGrp.position.x, dz = cs.tz - catGrp.position.z; const dist = Math.hypot(dx, dz);
-    if (dist < 0.06) { cs.walking = false; cs.dwell = 4 + Math.random() * 10; }
+    if (dist < 0.06) {
+      cs.walking = false;
+      if (cs.chore) { doChore(cs.chore); cs.chore = null; cs.dwell = 2.5 + Math.random() * 2; } // pause to eat / drink / dig
+      else cs.dwell = 4 + Math.random() * 10;
+    }
     else { const want = Math.atan2(dx, dz); let dy = want - cs.yaw; while (dy > Math.PI) dy -= 2 * Math.PI; while (dy < -Math.PI) dy += 2 * Math.PI; cs.yaw += dy * Math.min(1, dt * 6); const spd = 0.5; catGrp.position.x += (dx / dist) * spd * dt; catGrp.position.z += (dz / dist) * spd * dt; }
-  } else { cs.dwell -= dt; if (cs.dwell <= 0) { const spot = catSpots[Math.floor(Math.random() * catSpots.length)]; cs.tx = spot.x; cs.tz = spot.z; cs.ty = spot.y; cs.walking = true; } }
+  } else {
+    cs.dwell -= dt;
+    if (cs.dwell <= 0) {
+      const chore = pickChore(); // a due need wins over an idle wander — the cat goes to take care of itself
+      if (chore) { const t = choreTarget(chore.kind); cs.chore = chore.action; cs.tx = t.x; cs.tz = t.z; cs.ty = 0; cs.walking = true; }
+      else { cs.chore = null; const spot = catSpots[Math.floor(Math.random() * catSpots.length)]; cs.tx = spot.x; cs.tz = spot.z; cs.ty = spot.y; cs.walking = true; }
+    }
+  }
   cs.baseY += (cs.ty - cs.baseY) * Math.min(1, dt * 5);
   // never let the cat leave the room (or tunnel a wall on a long lerp)
   catGrp.position.x = Math.max(-2.35, Math.min(2.35, catGrp.position.x));
@@ -1299,6 +1724,41 @@ function updateCat(dt) {
   const sway = Math.sin(T * (cs.walking ? 6 : 1.6)); tailSegs[0].rotation.x = sway * 0.35; tailSegs[1].rotation.x = sway * 0.30; tailSegs[2].rotation.x = sway * 0.25;
   // legs trot
   catLegs.forEach((leg, i) => { leg.rotation.x = cs.walking ? Math.sin(T * 8 + (i % 2 ? Math.PI : 0)) * 0.5 : 0; });
+  // the model's idle clip plays at rest; an authored leg gait drives the bones while moving
+  if (catModel) {
+    catModel.position.y = catBaseY + (cs.walking ? Math.abs(Math.sin(T * 10)) * 0.02 : 0); // a little trot-bob while walking; the idle clip handles the resting motion
+    catModel.rotation.z = cs.walking ? Math.sin(T * 10) * 0.05 : 0;                        // gentle waddle (rotation.y holds the facing)
+  }
+  if (catWalkBones) {
+    if (cs.walking && !catWalking) { catWalking = true; if (catAnimIdle) catAnimIdle.stop(); for (const k in catWalkBones) if (catWalkBones[k]) catWalkBones[k]._sw = 0; } // hand the legs to the gait
+    else if (!cs.walking && catWalking) { catWalking = false; if (catAnimIdle) catAnimIdle.start(true, 0.5); }                                                            // hand them back to the idle clip
+    if (catWalking) { const amp = 0.5, sp = 11, a = Math.sin(T * sp) * amp, c = Math.sin(T * sp + Math.PI) * amp; swingBone(catWalkBones.fl, a); swingBone(catWalkBones.hr, a); swingBone(catWalkBones.fr, c); swingBone(catWalkBones.hl, c); } // diagonal trot: FL+HR ↔ FR+HL
+  }
+}
+
+// which need (if any) is due AND serviceable right now — eat/drink only when the bowl
+// has something in it (an empty bowl is left alone; fed/hydrated drain — "the room let it down")
+function pickChore() {
+  const d = catNeeds;
+  if (d.hungry && d.food > 0.05) return { action: "eat", kind: "food" };
+  if (d.thirsty && d.water > 0.05) return { action: "drink", kind: "water" };
+  if (d.bathroom) return { action: "bathroom", kind: "litter" };
+  return null;
+}
+// stand ~0.4 m off the bowl toward room-center so the cat faces it instead of standing in it
+function choreTarget(kind) {
+  const b = careBowls[kind]; const p = b ? b.pivot.position : { x: 0.2, z: 0 };
+  const dx = 0.2 - p.x, len = Math.abs(dx) || 1;
+  return { x: p.x + (dx / len) * 0.4, z: p.z };
+}
+// the cat acts on its bowl — store.catCare draws the level down + reschedules the timer,
+// which flows back through onCatState → applyCatNeeds → the bowl visual drops
+function doChore(action) {
+  store.catCare(action).then((res) => {
+    if (!res) return;
+    applyCatNeeds(res);
+    if (res.ok === false && (action === "eat" || action === "drink")) flashHint("the cat sniffs an empty bowl…");
+  }).catch(() => {});
 }
 
 // =====================================================================
@@ -1332,11 +1792,12 @@ function throwBall() {
 // plucked guitar, an FM Rhodes for the keys, and synthesised drums, all
 // through a shared reverb.) the context is built lazily on the first click.
 // =====================================================================
-let AC = null, master = null, verbSend = null, chorusIn = null;
+let AC = null, master = null, verbSend = null, chorusIn = null, cityVolGain = null;
+let videoVol = 0.85, radioVol = 0.9, cityVol = 0.6; // per-source volume sliders (0..1), persisted
 function ensureAudio() {
   if (AC) { if (AC.state === "suspended") AC.resume(); return AC; }
   AC = new (window.AudioContext || window.webkitAudioContext)();
-  master = AC.createGain(); master.gain.value = 0.5;
+  master = AC.createGain(); master.gain.value = 0.7;
   const comp = AC.createDynamicsCompressor(); comp.threshold.value = -16; comp.ratio.value = 3; comp.attack.value = 0.003; comp.release.value = 0.25;
   master.connect(comp); comp.connect(AC.destination);
   const verb = AC.createConvolver(); verb.buffer = makeImpulse(2.0, 2.4);
@@ -1354,7 +1815,21 @@ function ensureAudio() {
   });
   cOut.connect(master); cOut.connect(verbSend); // chorus gets a reverb tail too
   loadDumbekSamples(); // start pulling the dumbek samples in the background on this first gesture
+  startCityAmbience();  // the city outside, heard muffled through the glass
   return AC;
+}
+// a synthesized "sound of the city" bed — distant traffic rumble, lowpassed so it reads as through-the-window,
+// with a slow swell so it ebbs and flows. no audio files (matches the scene's all-synth audio).
+function startCityAmbience() {
+  const src = noiseBuf(3); src.loop = true;
+  const hp = AC.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 70;
+  const lp = AC.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 360; lp.Q.value = 0.4; // muffled, distant
+  const swell = AC.createGain(); swell.gain.value = 0.1;           // base bed (the LFO swells this)
+  cityVolGain = AC.createGain(); cityVolGain.gain.value = cityVol;  // the city volume slider
+  src.connect(hp); hp.connect(lp); lp.connect(swell); swell.connect(cityVolGain); cityVolGain.connect(master);
+  const lfo = AC.createOscillator(); lfo.type = "sine"; lfo.frequency.value = 0.05; // ~20s traffic swell
+  const lg = AC.createGain(); lg.gain.value = 0.04; lfo.connect(lg); lg.connect(swell.gain); lfo.start();
+  src.start();
 }
 function makeImpulse(dur, decay) {
   const rate = AC.sampleRate, len = Math.floor(rate * dur), buf = AC.createBuffer(2, len, rate);
@@ -1414,6 +1889,31 @@ function drum(kind) {
   else if (kind === "snare") { const nz = noiseBuf(0.2), hp = ac.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 1400; const g = ac.createGain(); g.gain.setValueAtTime(0.7, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.17); nz.connect(hp); hp.connect(g); out(g, 0.22); nz.start(t); const o = ac.createOscillator(); o.type = "triangle"; o.frequency.setValueAtTime(185, t); const og = ac.createGain(); og.gain.setValueAtTime(0.45, t); og.gain.exponentialRampToValueAtTime(0.001, t + 0.11); o.connect(og); out(og, 0.1); o.start(t); o.stop(t + 0.12); }
   else if (kind === "hat") { const nz = noiseBuf(0.07), hp = ac.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 8000; const g = ac.createGain(); g.gain.setValueAtTime(0.32, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.05); nz.connect(hp); hp.connect(g); out(g, 0.05); nz.start(t); }
   else { const f = kind === "tom1" ? 210 : kind === "tom2" ? 160 : 120; const o = ac.createOscillator(); o.type = "sine"; o.frequency.setValueAtTime(f * 1.4, t); o.frequency.exponentialRampToValueAtTime(f, t + 0.18); const g = ac.createGain(); g.gain.setValueAtTime(0.75, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.3); o.connect(g); out(g, 0.16); o.start(t); o.stop(t + 0.32); }
+}
+// MPC-style drum-machine voices (punchy 808/909-ish, all synth) — one per pad
+function mpcVoice(sound, vel = 1) {
+  const ac = ensureAudio(), t = ac.currentTime, V = vel;
+  const tone = (type, f0, f1, dur, g0, wet) => { const o = ac.createOscillator(); o.type = type; o.frequency.setValueAtTime(f0, t); if (f1 != null) o.frequency.exponentialRampToValueAtTime(Math.max(1, f1), t + dur * 0.6); const g = ac.createGain(); g.gain.setValueAtTime(g0 * V, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur); o.connect(g); out(g, wet); o.start(t); o.stop(t + dur + 0.02); };
+  const nz = (dur, type, freq, Q, g0, wet) => { const s = noiseBuf(dur), f = ac.createBiquadFilter(); f.type = type; f.frequency.value = freq; if (Q) f.Q.value = Q; const g = ac.createGain(); g.gain.setValueAtTime(g0 * V, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur); s.connect(f); f.connect(g); out(g, wet); s.start(t); };
+  switch (sound) {
+    case "kick": tone("sine", 160, 45, 0.26, 1.0, 0.05); break;
+    case "sub": tone("sine", 110, 38, 0.44, 1.0, 0.04); break;
+    case "snare": nz(0.18, "highpass", 1500, 0.7, 0.7, 0.2); tone("triangle", 185, null, 0.12, 0.45, 0.1); break;
+    case "snare2": nz(0.12, "highpass", 2200, 0.7, 0.6, 0.18); tone("triangle", 240, null, 0.09, 0.35, 0.08); break;
+    case "rim": tone("square", 440, null, 0.03, 0.5, 0.12); nz(0.03, "bandpass", 1700, 6, 0.3, 0.1); break;
+    case "clap": [0, 0.012, 0.024, 0.05].forEach(d => { const s = noiseBuf(0.12), f = ac.createBiquadFilter(); f.type = "bandpass"; f.frequency.value = 1100; f.Q.value = 1.5; const g = ac.createGain(); g.gain.setValueAtTime(0, t + d); g.gain.linearRampToValueAtTime(0.5 * V, t + d + 0.001); g.gain.exponentialRampToValueAtTime(0.001, t + d + 0.1); s.connect(f); f.connect(g); out(g, 0.22); s.start(t + d); }); break;
+    case "hatC": nz(0.045, "highpass", 8500, 0, 0.32, 0.04); break;
+    case "hatO": nz(0.28, "highpass", 8000, 0, 0.26, 0.06); break;
+    case "tomL": tone("sine", 150, 95, 0.3, 0.8, 0.16); break;
+    case "tomM": tone("sine", 210, 135, 0.26, 0.8, 0.16); break;
+    case "tomH": tone("sine", 290, 190, 0.22, 0.8, 0.14); break;
+    case "cowbell": tone("square", 540, null, 0.18, 0.3, 0.1); tone("square", 800, null, 0.18, 0.25, 0.1); break;
+    case "clave": tone("sine", 1180, null, 0.05, 0.6, 0.12); break;
+    case "shaker": nz(0.06, "highpass", 6000, 0, 0.25, 0.05); break;
+    case "crash": nz(0.7, "highpass", 6000, 0, 0.4, 0.3); nz(0.7, "bandpass", 9000, 0.5, 0.25, 0.3); break;
+    case "perc": tone("triangle", 520, 300, 0.14, 0.45, 0.14); break;
+    default: tone("sine", 160, 45, 0.26, 1.0, 0.05);
+  }
 }
 // THE DUMBEK — a goblet/hand drum voiced by the user's OWN 77 sample hits (recorded
 // Aug 2015). 48k mono one-shots, lazy-loaded into AudioBuffers; a random one per strike,
@@ -1488,7 +1988,7 @@ function drawScaleScreen() {
   scaleScreenTex.update(false);
 }
 const btnFx = [];
-function flashBtn(cap, hue) { if (!cap) return; cap.material.emissiveColor = C(hue); cap.scaling.y = 2.0; btnFx.push({ cap, hue, t: 0.22 }); }
+function flashBtn(cap, hue) { if (!cap) return; if (cap._baseSY == null) cap._baseSY = cap.scaling.y; cap.material.emissiveColor = C(hue); cap.scaling.y = cap._baseSY * 2.0; btnFx.push({ cap, hue, t: 0.22 }); }
 function setupInstruments() {
   const tag = (mesh, info) => { if (mesh) mesh._instr = info; };
   // guitar: click anywhere along the Tele — position picks the note (carry the node for the math)
@@ -1497,6 +1997,12 @@ function setupInstruments() {
   // pads/knobs on the top panel). pitch by where you click left→right; the pressed key lights up.
   const midiRoot = deskProps.midi;
   if (midiRoot) {
+    const midiExtras = []; // the procedural overlays (screen, buttons, key pad) — parented to the controller below so arrange-mode moves the whole unit
+    // the overlay coords below are hand-calibrated for the controller's DEFAULT placement; if a saved layout
+    // already moved it, measure/place/parent at default first, then restore — otherwise the buttons bake in
+    // at the old default spot and end up detached from the moved controller.
+    const midiSaved = nodeXform(midiRoot);
+    if (DEFAULT_LAYOUT.midi) { applyXform(midiRoot, DEFAULT_LAYOUT.midi); midiRoot.computeWorldMatrix(true); midiRoot.getChildMeshes(false).forEach((m) => m.computeWorldMatrix(true)); }
     const bb = midiRoot.getHierarchyBoundingVectors();
     // measured WHITE-KEY span on midi.glb (the front strip that reaches the front edge) — NOT the
     // full unit width: the left ~7cm is the screen/pads/knobs, no keys there. first white key = first note.
@@ -1511,6 +2017,7 @@ function setupInstruments() {
     keyGlow = B.MeshBuilder.CreatePlane("keyGlow", { width: (x1 - x0) / 14, height: zF - zB, sideOrientation: B.Mesh.DOUBLESIDE }, scene);
     keyGlow.rotation.x = Math.PI / 2; keyGlow.position.set((x0 + x1) / 2, yT + 0.0006, (zB + zF) / 2);
     keyGlow.material = emis("keyGlowMat", 0xffe9a8, { add: true, alpha: 0.85 }); keyGlow.visibility = 0; keyGlow.isPickable = false;
+    midiExtras.push(pad, keyGlow);
     // SCREEN: replace the GLB's baked red "0" with a live scale-number readout (a DynamicTexture
     // as emissive — the only kind that renders self-lit in this scene). sxc carries the screen
     // centre x down to the buttons so they line up under it.
@@ -1527,7 +2034,7 @@ function setupInstruments() {
       // here; emissive-only samples as flat white in this pipeline (the known gotcha).
       const sm = emis("scaleScrM", 0xffffff, { glow: false }); sm.emissiveTexture = scaleScreenTex; sm.diffuseTexture = scaleScreenTex; sm.emissiveColor = new B.Color3(1, 1, 1);
       const sQuad = plane("scaleScreen", sw, sd, sm); sQuad.rotation.x = Math.PI / 2; // flat, faces up; reads upright for the player out front
-      sQuad.position.set(sxc, sb.maximumWorld.y + 0.0008, sz); sQuad.isPickable = false;
+      sQuad.position.set(sxc, sb.maximumWorld.y + 0.0008, sz); sQuad.isPickable = false; midiExtras.push(sQuad);
       drawScaleScreen();
     }
     // FOUR BUTTONS under the screen: scale −/+ (amber) then octave −/+ (cyan). left = down, right = up.
@@ -1538,10 +2045,16 @@ function setupInstruments() {
       const ppad = B.MeshBuilder.CreatePlane(name + "Pad", { width: 0.03, height: 0.026, sideOrientation: B.Mesh.DOUBLESIDE }, scene);
       ppad.rotation.x = Math.PI / 2; ppad.position.set(bx, 0.667, bz); ppad.visibility = 0; ppad.isPickable = true;
       ppad._instr = { type: "btn", action, cap, hue: hex };
+      midiExtras.push(cap, ppad);
     };
     const amber = 0xffae3b, cyan = 0x3bd6ff, lx = sxc - 0.018, rx = sxc + 0.018; // a pair straddling the screen centre
     mkBtn("scDn", lx, -2.352, amber, "scaleDown"); mkBtn("scUp", rx, -2.352, amber, "scaleUp");
     mkBtn("ocDn", lx, -2.322, cyan, "octDown");  mkBtn("ocUp", rx, -2.322, cyan, "octUp");
+    // parent every overlay to the controller so arrange-mode grabs/moves the WHOLE unit (screen + buttons + keys).
+    // setParent preserves world transform; _baseSY caches each cap's post-parent local scale for the press-bounce.
+    const midiEd = editables.find((e) => e.name === "midi");
+    midiExtras.forEach((m) => { if (!m) return; m.setParent(midiRoot); m._baseSY = m.scaling.y; if (midiEd && m !== keyGlow) { m._editable = midiEd; m.isPickable = true; } }); // keyGlow stays unpickable so it never blocks a key/button click in play mode
+    applyXform(midiRoot, midiSaved); midiRoot.computeWorldMatrix(true); // back to the player's saved spot — the now-parented overlays follow it as one unit
   } else {
     tag(scene.getMeshByName("midiKeys"), { type: "key" }); // fallback to the procedural keybed if the GLB failed to load
   }
@@ -1587,7 +2100,8 @@ function playInstrument(pick) {
     }
     guitarNote(frac);
   } else if (info.type === "drum") { drum(info.drum); if (info.pad) drumFx.push({ node: info.pad, t: 0.12 }); }
-  else if (info.type === "dumbek") { hitDumbek(); if (info.pad) drumFx.push({ node: info.pad, t: 0.12 }); }
+  else if (info.type === "dumbek") { hitDumbek(); if (info.pad) drumFx.push({ node: info.pad, t: 0.12, amt: 0.05 }); } // subtle 5% squash — a full drum compressing 40% looked rubbery
+  else if (info.type === "mpc") { mpcVoice(info.sound); if (info.pad) mpcFx.push({ mesh: info.pad, t: 0.18 }); } // play the voice + flash the pad
 }
 
 let lightDrag = null;
@@ -1614,16 +2128,42 @@ scene.onPointerObservable.add((p) => {
   if (radTog && radTog.hit) { const on = laRadio.toggle(); flashHint(on ? radioLabel() : "📻 radio off"); return; } // power on/off
   const radScn = scene.pickWithRay(ray, (m) => !!m._radioScan);
   if (radScn && radScn.hit) { if (!laRadio.info().on) laRadio.power(true); else laRadio.scan(1); radioScanStatic(); flashHint(radioLabel()); return; } // scan the dial
+  const cu = scene.pickWithRay(ray, (m) => !!m._curtain);
+  if (cu && cu.hit) { curtainOpen = !curtainOpen; flashHint(curtainOpen ? "🪟 curtains open" : "🌑 curtains drawn"); return; }
   const glassHit = scene.pickWithRay(ray, (m) => !!m._glass);
-  if (glassHit && glassHit.hit) {
-    if (planeUp()) { const r = shootAtGlass(glassHit.pickedPoint.x, glassHit.pickedPoint.y); flashHint(r === "hit" ? "🎯 splash — one down" : "missed — lead the target"); }
-    return; // the glass is solid; clicking it never falls through to notes/ball
+  if (glassHit && glassHit.hit) { // the window is solid — but if a jet's up, a shot through the glass can down it
+    if (planeUp()) { const jr = scene.pickWithRay(camera.getForwardRay(220), (m) => !!m._jet); if (jr && jr.hit) { shootJet(); flashHint("🎯 splash — one down"); } else flashHint("missed — lead the target"); }
+    return;
   }
+  const pv = scene.pickWithRay(ray, (m) => !!m._preview);
+  if (pv && pv.hit) { openPreview(pv.pickedMesh._preview); return; } // click an existing note/photo → enlarge it
   const wallHit = scene.pickWithRay(ray, (m) => !!m._noteWall);
   if (wallHit && wallHit.hit) { openComposer(wallHit.pickedMesh._noteWall, wallHit.pickedPoint); return; }
-  const cat = scene.pickWithRay(ray, (m) => m.name.startsWith("cat"));
-  if (cat && cat.hit) popHearts(); else throwBall();
+  const yc = scene.pickWithRay(ray, (m) => !!m._ytctl);
+  if (yc && yc.hit) { ytControl(yc.pickedMesh._ytctl); return; } // transport buttons under the monitor
+  const ytHit = scene.pickWithRay(ray, (m) => !!m._ytscreen);
+  if (ytHit && ytHit.hit) { ytToggle(); return; } // click the monitor to pause/resume the playlist
+  const bowl = scene.pickWithRay(ray, (m) => !!m._careBowl);
+  if (bowl && bowl.hit) { handleCare(bowl.pickedMesh._careBowl); return; } // click food/water/litter to take care of it
+  const cat = scene.pickWithRay(ray, (m) => m.name.startsWith("cat") || m._cat);
+  if (cat && cat.hit) { petCat(); return; }
+  throwBall();
 });
+
+// petting bumps the shared pets count + pops hearts (the achievement at 15 still lives in store)
+function petCat() {
+  popHearts();
+  store.catCare("pet").then((res) => { if (res) { applyCatNeeds(res); flashHint(`purrrr — petted ${res.pets || catNeeds.pets} times`); } }).catch(() => flashHint("purrrr"));
+}
+
+// pull the cat's current state, keep it live, and re-derive the timers every minute
+// (no passive decay — this just re-checks whether a meal/litter timer has come due)
+async function initCatNeeds() {
+  try { applyCatNeeds(await store.getCatState()); }
+  catch (e) { applyCatNeeds({ food: 1, water: 1, litter: 0, pets: 0, updated_at: new Date().toISOString() }); }
+  store.onCatState(applyCatNeeds);
+  setInterval(() => { if (catRaw) applyCatNeeds(catRaw); }, 60000);
+}
 
 // =====================================================================
 // boot
@@ -1720,11 +2260,9 @@ function renderImportedNote(n) {
   if (!pos) return; // no bare-wall spot → skip
   const mat = new B.StandardMaterial("inote", scene);
   if (isPhoto) {
-    mat.disableLighting = true; mat.diffuseColor = new B.Color3(0, 0, 0); mat.emissiveColor = new B.Color3(1, 1, 1);
-    // start with a flat-diffuse fallback (renders immediately); swap to the contrasty self-lit DynamicTexture once decoded
-    mat.diffuseTexture = new B.Texture(n._imageUrl, scene); mat.disableLighting = false; mat.emissiveColor = new B.Color3(0.4, 0.4, 0.4);
-    photoTexture(n._imageUrl, (dt) => { if (dt) { mat.emissiveTexture = dt; mat.diffuseTexture = dt; mat.disableLighting = true; mat.emissiveColor = new B.Color3(1, 1, 1); } });
-  } else { const col = (n.color && n.color[0] === "#") ? n.color : "#f4ecc8"; mat.diffuseTexture = noteTexture(text, col); mat.emissiveColor = B.Color3.FromHexString(col).scale(0.15); }
+    mat.diffuseTexture = new B.Texture(n._imageUrl, scene); mat.emissiveTexture = mat.diffuseTexture; mat.emissiveColor = new B.Color3(0.18, 0.18, 0.18); // faint self-light: readable at night, no full glow
+    photoTexture(n._imageUrl, (dt) => { if (dt) { mat.diffuseTexture = dt; mat.emissiveTexture = dt; } });
+  } else { const col = (n.color && n.color[0] === "#") ? n.color : "#f4ecc8"; mat.diffuseTexture = noteTexture(text, col); mat.emissiveColor = B.Color3.FromHexString(col).scale(0.12); }
   mat.specularColor = new B.Color3(0.04, 0.04, 0.04); mat.backFaceCulling = false;
   const card = B.MeshBuilder.CreatePlane("note", { size: sz, sideOrientation: B.Mesh.DOUBLESIDE }, scene);
   card.material = mat;
@@ -1734,6 +2272,7 @@ function renderImportedNote(n) {
   card.receiveShadows = true;
   // tag it so arrange mode (G) can grab and slide it along its wall
   card._wallPhoto = { id: n.id, wallId: n.wall, w, sz }; wallPhotoCards.push(card);
+  card._preview = isPhoto ? { type: "photo", url: n._imageUrl } : { type: "note", text: n.text, color: (n.color && n.color[0] === "#") ? n.color : "#f4ecc8" }; // click to enlarge
 }
 async function importWallNotes() {
   const cfg = window.METRO_CONFIG;
@@ -1749,6 +2288,17 @@ async function importWallNotes() {
   } catch (e) { console.warn("wall notes fetch failed", e); }
 }
 const composerEl = document.getElementById("composer"), noteTextEl = document.getElementById("note-text");
+// click an existing note/photo to preview it enlarged
+const previewEl = document.getElementById("preview"), previewBody = document.getElementById("preview-body");
+function openPreview(p) {
+  if (!previewEl || !p) return;
+  if (p.type === "photo") previewBody.innerHTML = `<img src="${p.url}" alt="">`;
+  else previewBody.innerHTML = `<div class="note-card" style="background:${p.color || "#f4ecc8"}">${String(p.text || "").replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c]))}</div>`;
+  previewEl.classList.add("show"); engine.exitPointerlock?.(); camera.detachControl();
+}
+function closePreview() { if (previewEl && previewEl.classList.contains("show")) { previewEl.classList.remove("show"); camera.attachControl(canvas, true); } }
+previewEl?.addEventListener("click", closePreview);
+window.addEventListener("keydown", (e) => { if (e.code === "Escape") closePreview(); });
 function noteTexture(text, color) {
   return dyn("note" + Math.round(Math.abs(Math.sin(text.length * 9.1)) * 1e6), 256, 256, (c, w, h) => {
     c.fillStyle = color; c.fillRect(0, 0, w, h);
@@ -1765,7 +2315,7 @@ function renderNote(note) {
   // diffuse texture (samples reliably) + a tint of the note's own colour as emissive, so it
   // reads as a colour card even on a dark wall and the text shows clearly under light
   const mat = new B.StandardMaterial("noteMat", scene); mat.diffuseTexture = noteTexture(note.text, note.color);
-  mat.specularColor = new B.Color3(0.04, 0.04, 0.04); mat.emissiveColor = B.Color3.FromHexString(note.color).scale(0.15); mat.backFaceCulling = false;
+  mat.specularColor = new B.Color3(0.04, 0.04, 0.04); mat.emissiveColor = B.Color3.FromHexString(note.color).scale(0.12); mat.backFaceCulling = false; // faint self-light, no glow
   const card = B.MeshBuilder.CreatePlane("note", { size: 0.19, sideOrientation: B.Mesh.DOUBLESIDE }, scene);
   card.material = mat;
   const p = wall.origin.add(wall.uDir.scale(note.u)).add(wall.vDir.scale(note.v)).add(wall.normal.scale(0.09)); // proud of the inner wall face (wall is 0.12 thick)
@@ -1774,6 +2324,7 @@ function renderNote(note) {
   card.computeWorldMatrix(true);
   if (note.tilt) card.rotate(B.Axis.Z, note.tilt, B.Space.LOCAL); // slight stuck-on tilt
   card.receiveShadows = true; note._mesh = card;
+  card._preview = { type: "note", text: note.text, color: note.color }; // click to enlarge
 }
 function deoverlap(wall, u, v) {
   let a = 0, r = 0;
@@ -1811,18 +2362,20 @@ function setupNotes() {
 // DESK ARRANGE MODE — drag props on the desk; persists to localStorage and
 // exports a layout you paste back so it gets baked in permanently.
 // =====================================================================
-const LS_KEY = "metro.desk.layout";
+const LS_KEY = "metro.desk.layout.v2"; // bumped after the GLB swap — old saved layouts held stale per-model scales
 // baked-in arrangement (your "copy layout"); localStorage overrides this per-visitor
 const DEFAULT_LAYOUT = {
-  "monitor": { x: 0, y: 0.749, z: -0.2, ry: -1.571, s: 0.543 },
+  // mouse: keep the baked position/rotation but DROP the old `s` — the swapped GLB sizes itself
+  //   from its own placement scale (target/_naturalMax) for a sane real-world size.
+  // monitor: no baked entry — its loadMonitors placement (rest-on-desk + live-screen fit) governs;
+  //   the new desk-mount model is centered and self-rests, so a baked y here only sank it into the desk.
   "external-monitor": { x: 0.74, y: 0.979, z: -0.18, ry: -0.35, s: 0.004 },
   "keyboard": { x: -0.02, y: 0.751, z: 0.25, ry: 0, s: 0.181 },
-  "mouse": { x: 0.31, y: 0.74, z: 0.2, ry: 0, s: 1.104 },
+  "mouse": { x: 0.31, y: 0.74, z: 0.2, ry: 0 },
   "midi": { x: -0.03, y: 0.63, z: 0.478, ry: 0, s: 0.004 },
   "mixer": { x: -0.02, y: 0.74, z: 0.01, ry: 0, s: 1 },
   "mug": { x: 0.45, y: 0.779, z: -0.02, ry: 0, s: 0.004 },
-  "clock": { x: -0.75, y: 0.775, z: -0.15, ry: 0.35, s: 1 },
-  "mac": { x: 0.73, y: 0.787, z: -0.18, ry: 0, s: 1 },
+  // mac + clock: no baked entry — their GLB placement (position, rest-on-desk, and scale) governs.
   "pedalboard": { x: 1.46, y: 0, z: -2.38, ry: 2.6, s: 1 },
   "guitar": { x: 1.61, y: 0.21, z: -2.65, ry: -0.6, s: 1 },
   "dumbek": { x: -1.72, y: 0, z: -1.84, ry: 0.55, s: 1 },
@@ -1832,8 +2385,8 @@ let selWall = null, wallDragging = false; // wall photos slide along their wall,
 const editToggle = document.getElementById("edit-toggle"), editPanel = document.getElementById("editpanel");
 const editSel = document.getElementById("edit-sel"), editXform = document.getElementById("edit-xform");
 function meshesOf(node) { const cm = node.getChildMeshes ? node.getChildMeshes(false) : []; return cm.length ? cm : [node]; }
-function nodeXform(n) { return { x: +n.position.x.toFixed(3), y: +n.position.y.toFixed(3), z: +n.position.z.toFixed(3), ry: +n.rotation.y.toFixed(3), s: +n.scaling.x.toFixed(3) }; }
-function applyXform(n, t) { n.position.set(t.x, t.y, t.z); n.rotation.y = t.ry; if (t.s) n.scaling.setAll(t.s); }
+function nodeXform(n) { return { x: +n.position.x.toFixed(3), y: +n.position.y.toFixed(3), z: +n.position.z.toFixed(3), rx: +n.rotation.x.toFixed(3), ry: +n.rotation.y.toFixed(3), rz: +n.rotation.z.toFixed(3), s: +n.scaling.x.toFixed(3) }; }
+function applyXform(n, t) { n.position.set(t.x, t.y, t.z); n.rotation.y = t.ry; if (t.rx != null) n.rotation.x = t.rx; if (t.rz != null) n.rotation.z = t.rz; if (t.s) n.scaling.setAll(t.s); } // only touch rx/rz when the layout actually has them, so older ry-only saves keep each item's baked load-time tilt (e.g. the city)
 function layoutObj() { const o = {}; editables.forEach(e => o[e.name] = nodeXform(e.node)); return o; }
 function saveLayout() { try { localStorage.setItem(LS_KEY, JSON.stringify(layoutObj())); } catch { } }
 function setupEditor() {
@@ -1842,28 +2395,42 @@ function setupEditor() {
   editables = [
     { name: "monitor", node: deskProps.ultrawide }, { name: "external-monitor", node: deskProps.portable },
     { name: "keyboard", node: deskProps.kb }, { name: "mouse", node: deskProps.mouse }, { name: "midi", node: deskProps.midi },
-    { name: "mixer", node: mixer }, { name: "mug", node: deskProps.mug }, { name: "clock", node: clockBody }, { name: "mac", node: scene.getMeshByName("mac") },
-    { name: "pedalboard", node: pbRef }, { name: "guitar", node: tele }, // floor items (world space)
+    { name: "mixer", node: mixer }, { name: "mug", node: deskProps.mug }, { name: "clock", node: deskProps.clock || clockBody }, { name: "clock-display", node: clockLive }, { name: "mac", node: deskProps.mac || scene.getMeshByName("mac") },
+    { name: "transport", node: ytCtl }, // the ◀◀ ❚❚ ▶▶ strip — grab/rotate/scale it wherever you want
+    { name: "pedal-ds2", node: pedalDS }, { name: "pedal-mt2", node: pedalMT }, { name: "pedal-fuzz", node: pedalFZ }, // three stompboxes, each resizable on its own
+    { name: "guitar", node: tele }, // floor items (world space)
     { name: "dumbek", node: bongoPivot }, // the hand drum — drags on the floor like the pedalboard
+    { name: "mpc", node: mpcPivot }, // the MPC drum machine — drag/rotate/scale; pads stay playable
+    { name: "city", node: cityGLB, outdoor: true }, // the whole city, draggable outside the room (no room-clamp)
+    { name: "plane", node: plane3d, outdoor: true, jet: true }, // park + rotate the jet to set its flight heading
+    { name: "godzilla", node: godzilla, outdoor: true }, // move/rotate/scale the king of the monsters
   ].filter(e => e.node);
   editables.forEach(e => meshesOf(e.node).forEach(m => { m._editable = e; m.isPickable = true; }));
   editHL = new B.HighlightLayer("editHL", scene);
   let saved = {}; try { saved = JSON.parse(localStorage.getItem(LS_KEY) || "{}"); } catch { }
-  const layout = Object.assign({}, DEFAULT_LAYOUT, saved); // saved (localStorage) overrides the baked default
-  editables.forEach(e => { if (layout[e.name]) applyXform(e.node, layout[e.name]); });
+  editables.forEach(e => { if (DEFAULT_LAYOUT[e.name]) applyXform(e.node, DEFAULT_LAYOUT[e.name]); }); // factory defaults first…
+  editables.forEach(e => { e.home = nodeXform(e.node); });                                             // …captured as each item's reset target (R)
+  editables.forEach(e => { if (saved[e.name]) applyXform(e.node, saved[e.name]); });                   // …then your saved layout wins
+  const planeEd = editables.find(e => e.jet); if (planeEd) jetYaw = planeEd.node.rotation.y;            // restore the saved jet heading for flights
   editToggle.addEventListener("click", () => toggleEdit(!editMode));
   document.getElementById("edit-copy").addEventListener("click", () => { const t = JSON.stringify(layoutObj(), null, 2); navigator.clipboard?.writeText(t).then(() => flashHint("layout copied — paste it to me to bake in")); console.log("DESK LAYOUT:\n" + t); });
   document.getElementById("edit-reset").addEventListener("click", () => { try { localStorage.removeItem(LS_KEY); } catch { } location.reload(); });
   document.getElementById("edit-done").addEventListener("click", () => toggleEdit(false));
   // screen photo grade + how far the slideshow plane sits off the glass
-  const fxC = document.getElementById("fx-contrast"), fxS = document.getElementById("fx-shadows"), fxD = document.getElementById("fx-depth");
-  try { const sv = JSON.parse(localStorage.getItem(SCREEN_FX_KEY) || "{}"); if (sv.contrast != null) photoFx.contrast = sv.contrast; if (sv.shadows != null) photoFx.shadows = sv.shadows; if (sv.depth != null) screenDepth = sv.depth; } catch { }
-  if (fxC) fxC.value = photoFx.contrast; if (fxS) fxS.value = photoFx.shadows; if (fxD) fxD.value = screenDepth;
+  const fxC = document.getElementById("fx-contrast"), fxS = document.getElementById("fx-shadows"), fxD = document.getElementById("fx-depth"), fxF = document.getElementById("fx-fog");
+  const fxVV = document.getElementById("fx-vvol"), fxRV = document.getElementById("fx-rvol"), fxCV = document.getElementById("fx-cvol");
+  try { const sv = JSON.parse(localStorage.getItem(SCREEN_FX_KEY) || "{}"); if (sv.contrast != null) photoFx.contrast = sv.contrast; if (sv.shadows != null) photoFx.shadows = sv.shadows; if (sv.depth != null) screenDepth = sv.depth; if (sv.fog != null) scene.fogDensity = sv.fog; if (sv.vvol != null) videoVol = sv.vvol; if (sv.rvol != null) radioVol = sv.rvol; if (sv.cvol != null) cityVol = sv.cvol; } catch { }
+  if (fxC) fxC.value = photoFx.contrast; if (fxS) fxS.value = photoFx.shadows; if (fxD) fxD.value = screenDepth; if (fxF) fxF.value = scene.fogDensity;
+  if (fxVV) fxVV.value = videoVol; if (fxRV) fxRV.value = radioVol; if (fxCV) fxCV.value = cityVol;
   applyScreenDepth(); regrade();
-  const saveFx = () => { try { localStorage.setItem(SCREEN_FX_KEY, JSON.stringify({ contrast: photoFx.contrast, shadows: photoFx.shadows, depth: screenDepth })); } catch { } };
+  const saveFx = () => { try { localStorage.setItem(SCREEN_FX_KEY, JSON.stringify({ contrast: photoFx.contrast, shadows: photoFx.shadows, depth: screenDepth, fog: scene.fogDensity, vvol: videoVol, rvol: radioVol, cvol: cityVol })); } catch { } };
   fxC?.addEventListener("input", () => { photoFx.contrast = +fxC.value; regrade(); saveFx(); });
   fxS?.addEventListener("input", () => { photoFx.shadows = +fxS.value; regrade(); saveFx(); });
   fxD?.addEventListener("input", () => { screenDepth = +fxD.value; applyScreenDepth(); saveFx(); });
+  fxF?.addEventListener("input", () => { scene.fogDensity = +fxF.value; saveFx(); });
+  fxVV?.addEventListener("input", () => { videoVol = +fxVV.value; saveFx(); });                                   // video: picked up by updateVideoAudio
+  fxRV?.addEventListener("input", () => { radioVol = +fxRV.value; laRadio.setGain(radioVol); saveFx(); });          // radio stream volume
+  fxCV?.addEventListener("input", () => { cityVol = +fxCV.value; if (cityVolGain) cityVolGain.gain.value = cityVol; saveFx(); }); // city ambience
   window.addEventListener("keydown", onEditKey);
   scene.onPointerObservable.add(onEditPointer);
 }
@@ -1873,7 +2440,7 @@ function selectEd(e) {
   if (e) { meshesOf(e.node).forEach(m => editHL.addMesh(m, B.Color3.FromHexString("#2dd4bf"))); editSel.textContent = "▸ " + e.name; updXformHud(); }
   else { editSel.textContent = "click an item to select"; editXform.textContent = ""; }
 }
-function updXformHud() { if (!selected) return; const t = nodeXform(selected.node); editXform.textContent = `x ${t.x}  y ${t.y}  z ${t.z}\nrot ${t.ry}  size ${t.s}`; }
+function updXformHud() { if (!selected) return; const t = nodeXform(selected.node); editXform.textContent = `x ${t.x}  y ${t.y}  z ${t.z}\nrot  x ${t.rx}  y ${t.ry}  z ${t.rz}\nsize ${t.s}`; }
 // --- wall photos: pick one, drag it along its wall, persist per-visitor ---
 function selectWall(mesh) {
   if (selWall) editHL.removeMesh(selWall.card);
@@ -1905,7 +2472,15 @@ function setWorldXZ(n, wx, wz) { const y = n.position.y; if (n.parent && n.paren
 function toggleEdit(on) {
   editMode = on; editToggle.classList.toggle("on", on); editPanel.classList.toggle("show", on);
   editToggle.textContent = on ? "✦ exit arrange" : "✦ arrange desk";
-  if (on) { engine.exitPointerlock?.(); camera.detachControl(); flashHint("arrange mode — drag desk props or wall photos"); } else { selectEd(null); selectWall(null); camera.attachControl(canvas, true); }
+  if (on) {
+    engine.exitPointerlock?.(); camera.detachControl();
+    jetParked = true; if (plane3d) { plane3d.setEnabled(true); plane3d.position.set(-6, 3, -9); } // park the jet in view so you can orient it
+    blinds.setEnabled(false); // open the blinds so you can see what you're arranging
+    flashHint("arrange — drag to move · [ ] yaw · ; ' pitch · K L roll · − = height · , . size · R reset");
+  } else {
+    selectEd(null); selectWall(null); camera.attachControl(canvas, true);
+    jetParked = false; blinds.setEnabled(true); // restore the closed blinds
+  }
 }
 function onEditPointer(pi) {
   if (!editMode) return;
@@ -1927,7 +2502,11 @@ function onEditPointer(pi) {
     if (wallDragging && selWall) dragWall();
     else if (dragging && selected) {
       const hit = planeHit(selected.node.getAbsolutePosition().y);
-      if (hit) { setWorldXZ(selected.node, hit.x + grabOff.x, hit.z + grabOff.z); updXformHud(); }
+      if (hit) {
+        let wx = hit.x + grabOff.x, wz = hit.z + grabOff.z;
+        if (!selected.outdoor) { wx = Math.max(-2.3, Math.min(2.3, wx)); wz = Math.max(-3.0, Math.min(3.0, wz)); } // clamp indoor props in reach; outdoor scenery (city) roams free
+        setWorldXZ(selected.node, wx, wz); updXformHud();
+      }
     }
   }
 }
@@ -1935,28 +2514,32 @@ function onEditKey(ev) {
   if (composerOpen) return;
   if (ev.code === "KeyG") { toggleEdit(!editMode); ev.preventDefault(); return; }
   if (!editMode || !selected) return;
-  const n = selected.node, f = ev.shiftKey ? 0.2 : 1, st = 0.01 * f, rt = 0.05 * f, sc = 0.02 * f; let ok = true;
+  const n = selected.node, f = ev.shiftKey ? 0.2 : 1, st = (selected.outdoor ? 0.5 : 0.01) * f, rt = 0.05 * f, scf = ev.shiftKey ? 1.01 : 1.06; let ok = true; // outdoor scenery (city) moves in coarse steps
   switch (ev.code) {
     case "ArrowUp": n.position.z -= st; break; case "ArrowDown": n.position.z += st; break;
     case "ArrowLeft": n.position.x -= st; break; case "ArrowRight": n.position.x += st; break;
-    case "BracketLeft": n.rotation.y -= rt; break; case "BracketRight": n.rotation.y += rt; break;
+    case "BracketLeft": n.rotation.y -= rt; break; case "BracketRight": n.rotation.y += rt; break; // yaw (Y)
+    case "Semicolon": n.rotation.x -= rt; break; case "Quote": n.rotation.x += rt; break;         // pitch (X) — tip forward/back
+    case "KeyK": n.rotation.z -= rt; break; case "KeyL": n.rotation.z += rt; break;               // roll (Z) — stand it up off its side
     case "Minus": n.position.y -= st; break; case "Equal": n.position.y += st; break;
-    case "Comma": n.scaling.setAll(Math.max(0.05, n.scaling.x - sc)); break; case "Period": n.scaling.setAll(n.scaling.x + sc); break;
+    // resize is MULTIPLICATIVE — works regardless of a GLB's tiny/huge fit-scale (the old fixed ±0.02 step broke this)
+    case "Comma": n.scaling.scaleInPlace(1 / scf); break; case "Period": n.scaling.scaleInPlace(scf); break;
+    case "KeyR": applyXform(n, selected.home); break; // reset the selected item to its default position/rotation/size
     default: ok = false;
   }
-  if (ok) { ev.preventDefault(); updXformHud(); saveLayout(); }
+  if (ok) { if (selected.jet) jetYaw = n.rotation.y; ev.preventDefault(); updXformHud(); saveLayout(); } // remember the jet's heading for flights
 }
 
 window.addEventListener("resize", () => engine.resize());
 engine.runRenderLoop(() => scene.render());
 setProg(72, "almost…");
-scene.whenReadyAsync().then(async () => { setProg(82, "loading models…"); await loadHeroProps(); setupEditor(); setupNotes(); setupInstruments(); laRadio.init(); laRadio.setGain(1); setProg(90, "physics…"); await initPhysics(); setProg(100, "enter ▸"); enterBtn.disabled = false; });
+scene.whenReadyAsync().then(async () => { setProg(82, "loading models…"); await loadHeroProps(); setupEditor(); setupNotes(); setupInstruments(); laRadio.init(); laRadio.setGain(radioVol); setProg(90, "physics…"); await initPhysics(); setProg(100, "enter ▸"); enterBtn.disabled = false; });
 
 let entered = false;
 function enter() {
   if (entered) return; entered = true;
-  gate.classList.add("gone"); badge.classList.add("show"); document.getElementById("credits")?.classList.add("show"); editToggle.classList.add("show");
-  hint.textContent = "WASD move · click: guitar / keys / drums · the boombox = radio on/off (knob scans) · wall = note · panel by the door = light · G arrange · L lighting";
+  gate.classList.add("gone"); badge.classList.add("show"); editToggle.classList.add("show"); catHud?.classList.add("show"); // credits stay on the intro only
+  hint.textContent = "WASD move · click: guitar / keys / drums · click the cat to pet, the bowls to feed/water/clean · T treat · boombox = radio · wall = note · G arrange · L lighting";
   hint.classList.add("show"); setTimeout(() => hint.classList.remove("show"), 7000);
   canvas.focus(); engine.enterPointerlock();
   try { ensureAudio(); } catch (e) { /* audio is best-effort */ } // build the audio context on this user gesture
@@ -1966,8 +2549,103 @@ enterBtn.addEventListener("click", enter);
 const crosshairEl = document.getElementById("crosshair");
 document.addEventListener("pointerlockchange", () => crosshairEl?.classList.toggle("show", !!document.pointerLockElement));
 
+// =====================================================================
+// THE COMPUTER SCREEN — a YouTube playlist as a live overlay glued onto
+// the monitor's screen mesh. YouTube embeds are sandboxed iframes WebGL
+// can't sample, so we can't texture it; instead we CSS-matrix3d an iframe
+// onto the screen quad each frame. Click the screen to pause/resume. The
+// boombox radio gates the audio: on -> sound, off -> muted (always playing).
+// =====================================================================
+// the rotation: a mix of playlists + a single video. one is picked at random on load, and it swaps to
+// another random one whenever the current source ends — plus a slow periodic swap so it keeps rotating.
+const YT_SOURCES = [
+  { list: "PLJ7Ne8dn6p-0FeE4MY8sJifEqbUTxLeXm" },
+];
+const ytEl = document.getElementById("ytscreen");
+let ytPlayer = null, ytReady = false, ytPaused = false, ytCurrent = null;
+const ytPick = () => { let s; do { s = YT_SOURCES[Math.floor(Math.random() * YT_SOURCES.length)]; } while (YT_SOURCES.length > 1 && s === ytCurrent); return s; };
+function ytLoadSource(s) { ytCurrent = s; if (s.list) ytPlayer.loadPlaylist({ listType: "playlist", list: s.list }); else ytPlayer.loadVideoById(s.video); } // playing resumes muted/volume per updateVideoAudio
+function ytSwap() { if (ytReady && !ytPaused) ytLoadSource(ytPick()); }
+function makeYT() {
+  if (!window.YT || !window.YT.Player || !document.getElementById("ytplayer")) return;
+  ytCurrent = ytPick();
+  const vars = { autoplay: 1, mute: 1, controls: 0, modestbranding: 1, rel: 0, playsinline: 1, fs: 0, disablekb: 1 };
+  if (ytCurrent.list) { vars.listType = "playlist"; vars.list = ytCurrent.list; }
+  const cfg = { width: "640", height: "360", playerVars: vars, events: {
+    onReady: (e) => { ytReady = true; e.target.mute(); e.target.playVideo(); setInterval(ytSwap, (6 + Math.random() * 4) * 60000); }, // periodic random swap every ~6–10 min
+    onStateChange: (e) => { if (e.data === YT.PlayerState.ENDED) ytSwap(); }, // source ended → next random one
+    onError: (e) => { if (ytCurrent && ytCurrent.list) { try { ytPlayer.nextVideo(); } catch { ytSwap(); } } else ytSwap(); }, // age-gated / embedding-disabled / unavailable → skip it
+  } };
+  if (!ytCurrent.list) cfg.videoId = ytCurrent.video;
+  ytPlayer = new YT.Player("ytplayer", cfg);
+}
+if (window.YT && window.YT.Player) makeYT();
+else { const prev = window.onYouTubeIframeAPIReady; window.onYouTubeIframeAPIReady = () => { try { prev && prev(); } catch {} makeYT(); }; }
+function ytControl(a) {
+  if (!ytReady) return;
+  if (a === "toggle") return ytToggle();
+  const list = ytCurrent && ytCurrent.list;
+  if (a === "next") { if (list) { try { ytPlayer.nextVideo(); } catch { ytSwap(); } } else ytSwap(); flashHint("⏭ next"); }
+  else if (a === "prev") { if (list) { try { ytPlayer.previousVideo(); } catch { ytSwap(); } } else ytSwap(); flashHint("⏮ previous"); }
+}
+function ytToggle() {
+  if (!ytReady) return;
+  ytPaused = !ytPaused;
+  if (ytPaused) { ytPlayer.pauseVideo(); flashHint("⏸ screen paused"); } else { ytPlayer.playVideo(); flashHint("▶ playing"); }
+  if (ytToggleTex) { drawIcon(ytToggleTex.getContext(), 64, 64, ytPaused ? "play" : "pause"); ytToggleTex.update(false); } // swap the play/pause icon
+}
+// --- planar homography (unit rect -> screen quad) as a CSS matrix3d ---
+function ytAdj(m) { return [m[4]*m[8]-m[5]*m[7], m[2]*m[7]-m[1]*m[8], m[1]*m[5]-m[2]*m[4], m[5]*m[6]-m[3]*m[8], m[0]*m[8]-m[2]*m[6], m[2]*m[3]-m[0]*m[5], m[3]*m[7]-m[4]*m[6], m[1]*m[6]-m[0]*m[7], m[0]*m[4]-m[1]*m[3]]; }
+function ytMM(a, b) { const r = []; for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) { let s = 0; for (let k = 0; k < 3; k++) s += a[3*i+k]*b[3*k+j]; r[3*i+j] = s; } return r; }
+function ytMV(m, v) { return [m[0]*v[0]+m[1]*v[1]+m[2]*v[2], m[3]*v[0]+m[4]*v[1]+m[5]*v[2], m[6]*v[0]+m[7]*v[1]+m[8]*v[2]]; }
+function ytBasis(x1, y1, x2, y2, x3, y3, x4, y4) { const m = [x1, x2, x3, y1, y2, y3, 1, 1, 1]; const v = ytMV(ytAdj(m), [x4, y4, 1]); return ytMM(m, [v[0],0,0, 0,v[1],0, 0,0,v[2]]); }
+function ytQuad(w, h, p) { // p = [TLx,TLy, TRx,TRy, BLx,BLy, BRx,BRy]
+  const s = ytBasis(0,0, w,0, 0,h, w,h), d = ytBasis(p[0],p[1], p[2],p[3], p[4],p[5], p[6],p[7]);
+  const t = ytMM(d, ytAdj(s)); for (let i = 0; i < 9; i++) t[i] /= t[8];
+  return "matrix3d(" + [t[0],t[3],0,t[6], t[1],t[4],0,t[7], 0,0,1,0, t[2],t[5],0,t[8]].join(",") + ")";
+}
+const YT_W = 640, YT_H = 360;
+function ytCornersLocal(mesh) { // 4 corners of the thin screen face, in mesh-local space
+  const bb = mesh.getBoundingInfo().boundingBox, mn = bb.minimum, mx = bb.maximum;
+  const lo = [mn.x, mn.y, mn.z], hi = [mx.x, mx.y, mx.z], mid = [(mn.x+mx.x)/2, (mn.y+mx.y)/2, (mn.z+mx.z)/2];
+  const ex = [hi[0]-lo[0], hi[1]-lo[1], hi[2]-lo[2]], t = ex.indexOf(Math.min(ex[0], ex[1], ex[2])), a = [0,1,2].filter(i => i !== t);
+  return [[0,0],[1,0],[0,1],[1,1]].map(([u, v]) => { const p = mid.slice(); p[a[0]] = u ? hi[a[0]] : lo[a[0]]; p[a[1]] = v ? hi[a[1]] : lo[a[1]]; return new V3(p[0], p[1], p[2]); });
+}
+function updateYTScreen() {
+  if (!ytEl) return;
+  if (!entered || editMode || composerOpen || !monitorScreenMesh) { ytEl.style.display = "none"; return; }
+  const wm = monitorScreenMesh.getWorldMatrix(), vm = camera.getViewMatrix(), tm = scene.getTransformMatrix();
+  const vp = new B.Viewport(0, 0, engine.getRenderWidth(), engine.getRenderHeight());
+  const pts = [];
+  for (const c of ytCornersLocal(monitorScreenMesh)) {
+    const w = B.Vector3.TransformCoordinates(c, wm);
+    if (B.Vector3.TransformCoordinates(w, vm).z >= -0.05) { ytEl.style.display = "none"; return; } // a corner is behind the camera (right-handed scene: in front = negative view-space z)
+    const sp = B.Vector3.Project(w, B.Matrix.Identity(), tm, vp); pts.push({ x: sp.x, y: sp.y });
+  }
+  pts.sort((a, b) => a.y - b.y);
+  const top = pts.slice(0, 2).sort((a, b) => a.x - b.x), bot = pts.slice(2).sort((a, b) => a.x - b.x);
+  const sx = (canvas.clientWidth || 1) / (engine.getRenderWidth() || 1), sy = (canvas.clientHeight || 1) / (engine.getRenderHeight() || 1);
+  const P = [top[0].x*sx, top[0].y*sy, top[1].x*sx, top[1].y*sy, bot[0].x*sx, bot[0].y*sy, bot[1].x*sx, bot[1].y*sy];
+  ytEl.style.display = "block";
+  ytEl.style.transform = ytQuad(YT_W, YT_H, P);
+}
+// the playlist is the room's default audio; the boombox radio takes over when it's on, and the playlist
+// fades back when the radio's off. runs every frame (not gated by whether the overlay is on-screen).
+let ytVol = 0; // current youtube volume 0..100, eased toward the target
+function updateVideoAudio(dt) {
+  if (!entered || !ytReady || ytPaused) return;
+  const target = laRadio.info().on ? 0 : videoVol * 100; // radio on → silence the video; radio off → play it at the video-volume setting
+  ytVol += (target - ytVol) * Math.min(1, dt * 1.6); // ~1s fade
+  if (ytVol <= 1) { if (!ytPlayer.isMuted()) ytPlayer.mute(); }
+  else { if (ytPlayer.isMuted()) ytPlayer.unMute(); ytPlayer.setVolume(Math.round(ytVol)); }
+}
+
 // press L to cycle the lighting mood (golden hour → midday → studio → night/neon)
 function flashHint(t) { hint.textContent = t; hint.classList.add("show"); clearTimeout(flashHint._t); flashHint._t = setTimeout(() => hint.classList.remove("show"), 2400); }
+window.addEventListener("keydown", (e) => {
+  if (composerOpen || editMode || e.code !== "KeyT") return;
+  handleCare("treat"); // toss the cat a treat (store caps it at 6 per 6h)
+});
 window.addEventListener("keydown", (e) => {
   if (composerOpen || e.code !== "KeyL") return;
   moodIdx = moodIdx + 1 >= MOODS.length ? -1 : moodIdx + 1;
@@ -1983,6 +2661,19 @@ window.METRO_BJS = {
   // freeze the room at night so the ceiling sky shows regardless of the real time of day
   forceAstro: () => { autoMode = false; const d = new Date(); d.setHours(23, 30, 0, 0); updateEnv(d); },
   get astroGrp() { return astroGrp; },
+  get catState() { return catState; }, // debug: poke .walking / .tx / .tz to test the cat's idle↔walk
+  get catModel() { return catModel; },
+  get catNeeds() { return catNeeds; }, get catRaw() { return catRaw; },
+  care: (kind) => handleCare(kind), pet: () => petCat(), // drive care from the console
+  // force a need due NOW (kind: hungry|thirsty|bathroom) so you can watch the cat go act on it.
+  // persists to the same localStorage key store.js reads, so the cat's own catCare("eat"/…) succeeds.
+  forceNeed: (kind) => {
+    const k = kind === "hungry" ? "hungry_at" : kind === "thirsty" ? "thirsty_at" : "bathroom_at";
+    let s = {}; try { s = JSON.parse(localStorage.getItem("metro.catstate") || "{}"); } catch (e) {}
+    s = { food: 1, water: 1, litter: 0, pets: 0, treats: [], ...s, [k]: new Date(Date.now() - 60000).toISOString() };
+    try { localStorage.setItem("metro.catstate", JSON.stringify(s)); } catch (e) {}
+    applyCatNeeds(s); catState.dwell = 0; return catNeeds;
+  },
   goAuto: () => { autoMode = true; updateEnv(new Date()); },
   toggleEdit: (on) => toggleEdit(on), get editLayout() { return layoutObj(); },
   get notes() { return notes; }, openComposerAt: (wallId, u, v) => { const w = NOTE_WALLS[wallId]; openComposer(w, w.origin.add(w.uDir.scale(u)).add(w.vDir.scale(v))); },
@@ -2004,8 +2695,10 @@ window.METRO_BJS = {
   get slide() { return { count: slide.urls.length, i: slide.i }; }, nextSlide: () => nextSlide(),
   playKey: (m) => playKey(m), strumGuitar: () => strumGuitar(), drum: (k) => drum(k),
   hitDumbek: () => hitDumbek(), get dumbekLoaded() { return dumbekBufs.filter(Boolean).length; }, get bongos() { return bongos; },
-  triggerPlane: (dir = 1) => triggerPlane(dir), get planeUp() { return planeUp(); }, get planeT() { return planeT; },
-  shootPlane: () => { if (plane01 == null) return null; const p = jetXY(plane01, planeDir); planeShot = { x: p.x, y: p.y, age: 0 }; return "hit"; },
+  triggerPlane: (dir = 1) => triggerPlane(dir), get planeUp() { return planeUp(); }, get planeT() { return planeT; }, get plane3d() { return plane3d; },
+  godzillaNow: () => { gzT = 0; }, // bring Godzilla in now
+  setCurtains: (o) => { curtainOpen = !!o; }, // open/draw the curtains
+  shootPlane: () => { if (!planeUp()) return null; shootJet(); return "hit"; },
   showFlightStrip: (info) => showFlightStrip(info), get livePlanes() { return livePlanes; },
   placeBongos: (x, z, ry, t) => { if (!bongoPivot) return; bongoPivot.position.set(x, BONGO.y, z); bongoPivot.rotation.y = ry; bongos.scaling.setAll(t / bongos._naturalMax); bongos.position.set(0, 0, 0); bongos.computeWorldMatrix(true); const { min } = bongos.getHierarchyBoundingVectors(); bongos.position.y -= min.y - BONGO.y; },
   audioPeak: () => new Promise((res) => { const ac = ensureAudio(); const an = ac.createAnalyser(); an.fftSize = 2048; master.connect(an); const data = new Float32Array(an.fftSize); let peak = 0; const t0 = ac.currentTime; const iv = setInterval(() => { an.getFloatTimeDomainData(data); for (const v of data) peak = Math.max(peak, Math.abs(v)); if (ac.currentTime - t0 > 0.6) { clearInterval(iv); try { master.disconnect(an); } catch {} res(+peak.toFixed(3)); } }, 20); }),

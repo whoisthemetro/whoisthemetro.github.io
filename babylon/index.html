@@ -42,9 +42,20 @@
   #badge { position: fixed; left: 1rem; top: 1rem; z-index: 6; font-size: .58rem; letter-spacing: .2em;
     color: #6a6772; opacity: 0; transition: opacity .5s; }
   #badge.show { opacity: 1; }
-  #credits { position: fixed; right: 1rem; bottom: .6rem; z-index: 6; font-size: .5rem; letter-spacing: .08em;
-    color: #56535c; opacity: 0; transition: opacity .5s; max-width: 60vw; text-align: right; }
-  #credits.show { opacity: 1; }
+  /* cat wellbeing — fed / hydrated / litter, in the top-right */
+  #cat-hud { position: fixed; right: 1rem; top: 1rem; z-index: 6; font-size: .6rem; letter-spacing: .12em;
+    color: #b8b4be; background: rgba(8,8,11,.5); padding: .45rem .8rem; border-radius: 999px;
+    border: 1px solid #2a2a33; backdrop-filter: blur(6px); opacity: 0; transition: opacity .5s;
+    pointer-events: none; white-space: nowrap; }
+  #cat-hud.show { opacity: 1; }
+  #cat-hud .low { color: #e8c061; } #cat-hud .crit { color: #e87a7a; }
+  /* credits live on the intro (inside #gate) — small print along the bottom, gone once you enter */
+  #credits { position: fixed; left: 50%; bottom: .7rem; transform: translateX(-50%); z-index: 11; font-size: .5rem;
+    letter-spacing: .08em; color: #56535c; max-width: 92vw; text-align: center; line-height: 1.5; }
+  /* the YouTube playlist, glued onto the monitor screen via matrix3d each frame (see babylon-bedroom.js) */
+  #ytscreen { position: fixed; left: 0; top: 0; width: 640px; height: 360px; transform-origin: 0 0; z-index: 2;
+    display: none; pointer-events: none; overflow: hidden; background: #000; }
+  #ytscreen iframe, #ytplayer { width: 100%; height: 100%; border: 0; display: block; }
   #crosshair { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 5;
     width: 7px; height: 7px; border-radius: 50%; background: rgba(255,255,255,.55);
     box-shadow: 0 0 2px 1px rgba(0,0,0,.55); opacity: 0; transition: opacity .15s; pointer-events: none; }
@@ -92,14 +103,23 @@
   #composer button.act { font: inherit; font-size: .62rem; letter-spacing: .14em; cursor: pointer;
     padding: .5rem 1rem; color: #eee; background: #1f1f29; border: 1px solid #3a3a44; border-radius: 7px; }
   #composer button.act.post { border-color: #2dd4bf; color: #8fe0c4; }
+  #preview { position: fixed; inset: 0; z-index: 12; display: none; place-items: center;
+    background: rgba(4,4,7,.86); cursor: zoom-out; backdrop-filter: blur(3px); }
+  #preview.show { display: grid; }
+  #preview-body img { max-width: 84vw; max-height: 84vh; border: 4px solid #15151c;
+    box-shadow: 0 12px 64px rgba(0,0,0,.65); }
+  #preview-body .note-card { max-width: 60vw; padding: 1.8rem 2.1rem; border-radius: 4px;
+    font: 600 1.05rem/1.5 ui-monospace, "SFMono-Regular", monospace; color: #23201a;
+    white-space: pre-wrap; box-shadow: 0 12px 64px rgba(0,0,0,.65); }
 </style>
 </head>
 <body>
   <canvas id="stage" tabindex="0"></canvas>
+  <div id="ytscreen"><div id="ytplayer"></div></div>
 
   <div id="crosshair"></div>
   <div id="badge">BABYLON · PHASE 1 · BEDROOM</div>
-  <div id="credits">3D models (CC0/CC-BY via Khronos &amp; Poly Pizza): BoomBox — Khronos · keyboard — A. Safayan · mouse — davis · mug — M. Fuchs · MIDI — G. Ibias · pedal — P. Simcoe · ultrawide — J-Toastie · tablet — Poly by Google · bongos — Poly by Google</div>
+  <div id="cat-hud"></div>
   <div id="hint"></div>
   <div id="flight-strip"></div>
 
@@ -108,12 +128,18 @@
     <h2>ARRANGE DESK</h2>
     <div id="edit-sel">click an item to select</div>
     <div id="edit-xform"></div>
-    <div class="keys">drag = move on desk · [ ] = rotate · −/= = height<br>, . = size · ↑↓←→ = nudge · Shift = fine</div>
+    <div class="keys">drag = move on desk · [ ] = rotate · −/= = height<br>, . = size · ↑↓←→ = nudge · Shift = fine · R = reset item</div>
     <div id="screenfx">
       <div class="fxh">SCREEN PHOTOS</div>
       <div class="fxrow"><label>contrast</label><input id="fx-contrast" type="range" min="0.6" max="1.6" step="0.02" value="1.08"></div>
       <div class="fxrow"><label>shadows</label><input id="fx-shadows" type="range" min="-0.5" max="0.5" step="0.02" value="-0.4"></div>
       <div class="fxrow"><label>screen out</label><input id="fx-depth" type="range" min="0" max="0.05" step="0.002" value="0"></div>
+      <div class="fxh" style="margin-top:.5rem">OUTSIDE</div>
+      <div class="fxrow"><label>fog</label><input id="fx-fog" type="range" min="0" max="0.12" step="0.002" value="0.04"></div>
+      <div class="fxh" style="margin-top:.5rem">AUDIO</div>
+      <div class="fxrow"><label>video</label><input id="fx-vvol" type="range" min="0" max="1" step="0.02" value="0.85"></div>
+      <div class="fxrow"><label>radio</label><input id="fx-rvol" type="range" min="0" max="1" step="0.02" value="0.9"></div>
+      <div class="fxrow"><label>city</label><input id="fx-cvol" type="range" min="0" max="1" step="0.02" value="0.6"></div>
     </div>
     <button id="edit-copy">copy layout</button>
     <button id="edit-reset">reset</button>
@@ -135,6 +161,8 @@
     </div>
   </div>
 
+  <div id="preview"><div id="preview-body"></div></div>
+
   <div id="gate">
     <div class="card">
       <h1>THE METRO</h1>
@@ -142,6 +170,7 @@
       <button id="enter-btn" disabled>loading…</button>
       <div id="loadbar"><i></i></div>
     </div>
+    <div id="credits">3D models — BoomBox, MIDI, pedal, tablet, bongos (CC0/CC-BY · Khronos &amp; Poly Pizza) · Mac Studio, monitor, keyboard, mouse, mug, clock, cat, 737, Godzilla, city (Sketchfab · CC-BY)</div>
   </div>
 
   <!-- Babylon 9.x from the official CDN (UMD globals). no bundler — matches the site's no-build rule. -->
@@ -150,6 +179,8 @@
   <script src="https://cdn.babylonjs.com/babylon.js"></script>
   <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
   <script src="https://cdn.babylonjs.com/havok/HavokPhysics_umd.js"></script>
+  <!-- YouTube IFrame Player API — drives the playlist on the computer screen -->
+  <script src="https://www.youtube.com/iframe_api"></script>
 
   <!-- Supabase keys (public anon key) so the room can read the real wall notes -->
   <script src="../assets/js/config.js"></script>
