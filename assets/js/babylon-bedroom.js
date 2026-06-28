@@ -821,7 +821,9 @@ async function loadHeroProps() {
   await loadDeskProps();
   await loadDumbek();
   await loadMPC();
-  await loadCat();
+  // await loadCat(); // (the bicolor_cat.glb is kept in /assets/models for later, but the
+  // procedural ginger tabby is the room's cat — cuter, and it actually trots/wags. To bring
+  // the model back, un-comment this; loadCat() hides the procedural one and rides the same rig.)
   initCatNeeds();
   await loadCity();
   await loadPlane();
@@ -1161,8 +1163,78 @@ for (let i = 0; i < 5; i++) { const a = i / 5 * 2 * Math.PI; box("carm" + i, 0.3
 // ACCESSORIES — gold record (east wall), plant (sill), yarn (cat area)
 // =====================================================================
 // (gold record + plant removed per request)
-const yarn = node("yarn", -1.85, 0.05, 2.6);
-sph("yarnBall", 0.1, 0, 0, 0, matte("yarn", 0xc23b4e), yarn);
+// the cat's toy — a ball of red yarn (a core sphere wound with two crossed loops). click it
+// and it skitters across the floor; the cat drops what it's doing and chases it down (see pokeYarn/updateYarn).
+const yarn = node("yarn", 0.8, 0, 1.2); // out in the open floor — not jammed in the back-left corner by the litter box
+const yarnBall = sph("yarnBall", 0.08, 0, 0.04, 0, matte("yarn", 0xc23b4e), yarn);
+[0.5, 1.9].forEach((rx, i) => { const ring = B.MeshBuilder.CreateTorus("yarnRing" + i, { diameter: 0.092, thickness: 0.012, tessellation: 14 }, scene); ring.material = matte("yarnRing" + i, 0xd8556a); ring.parent = yarn; ring.position.y = 0.04; ring.rotation.x = rx; });
+yarn.getChildMeshes().forEach((m) => { m._toy = true; m.isPickable = true; }); // the crosshair can poke it to send the cat chasing
+
+// the litter box is a no-go for toys — a skittering ball used to roll into it and get stuck
+// (you can't fish it out). treat it as a solid box: rolling/flying toys bounce off the nearest wall.
+const LITTER_BOX = { minX: -2.56, maxX: -2.0, minZ: 2.62, maxZ: 3.08 };
+function keepOutOfLitter(pos, vel) {
+  const b = LITTER_BOX;
+  if (pos.x <= b.minX || pos.x >= b.maxX || pos.z <= b.minZ || pos.z >= b.maxZ) return;
+  const dl = pos.x - b.minX, dr = b.maxX - pos.x, dn = pos.z - b.minZ, df = b.maxZ - pos.z, m = Math.min(dl, dr, dn, df);
+  if (m === dl) { pos.x = b.minX; if (vel) vel.x = -Math.abs(vel.x) * 0.5; }
+  else if (m === dr) { pos.x = b.maxX; if (vel) vel.x = Math.abs(vel.x) * 0.5; }
+  else if (m === dn) { pos.z = b.minZ; if (vel) vel.z = -Math.abs(vel.z) * 0.5; }
+  else { pos.z = b.maxZ; if (vel) vel.z = Math.abs(vel.z) * 0.5; }
+}
+
+// THE FETCH TOY — a felt mouse. click it to pick it up; click again to toss it in an arc.
+// the cat scampers after where it lands, carries it back in its mouth, and drops it at your
+// feet so you can throw again. (ported from the three.js room's fetch mechanic.)
+const TOY_REST_Y = 0.04;
+const toyNode = node("mouseToy", 0.6, TOY_REST_Y, 1.6);
+const toyGrey = matte("toyGrey", 0x9aa0a8); toyGrey.emissiveColor = C(0x33373d); // a soft self-glow so it's spottable on a dark floor
+const toyPink = matte("toyPink", 0xe79bab); toyPink.emissiveColor = C(0x4e2530);
+const toyBody = sph("toyBody", 0.08, 0, 0, 0, toyGrey, toyNode); toyBody.scaling.set(1.6, 0.9, 0.95);
+[-1, 1].forEach((s) => { const ear = sph("toyEar" + s, 0.04, 0.028, 0.03, s * 0.026, toyPink, toyNode, false); ear.scaling.set(0.4, 1, 1); });
+sph("toyNose", 0.018, 0.066, -0.002, 0, toyPink, toyNode, false);
+const toyTail = cyl("toyTail", 0.008, 0.002, 0.13, -0.085, 0.004, 0, toyPink, toyNode, 5, false); toyTail.rotation.z = Math.PI / 2 - 0.3;
+toyNode.getChildMeshes().forEach((m) => { m._fetchToy = true; m.isPickable = true; });
+const toy = { phase: "rest", x: 0.6, z: 1.6, y: TOY_REST_Y, vx: 0, vy: 0, vz: 0, spin: 0, faceYaw: 0 };
+const TOYBB = { minX: -2.3, maxX: 2.3, minZ: -2.9, maxZ: 3.0 }; // keep throws inside the bedroom
+
+function grabToy() { toy.phase = "held"; flashHint("you scooped up the mouse — click to throw it 🐭"); }
+function throwToy() {
+  const d = camera.getForwardRay().direction; // true forward (scene is right-handed; getDirection(Z) points backward)
+  toy.vx = d.x * 3.0; toy.vz = d.z * 3.0; toy.vy = 2.7;        // a gentle underarm arc
+  toy.phase = "fly"; toy.spin = 0; toy.faceYaw = Math.atan2(d.x, d.z);
+}
+function dropToy(dx, dz) {                                      // cat sets it down — at your feet, or at a given spot (patience timeout)
+  if (dx != null) { toy.x = dx; toy.z = dz; }
+  else { const d = camera.getForwardRay().direction; toy.x = camera.position.x + d.x * 0.6; toy.z = camera.position.z + d.z * 0.6; }
+  toy.x = Math.max(TOYBB.minX, Math.min(TOYBB.maxX, toy.x)); toy.z = Math.max(TOYBB.minZ, Math.min(TOYBB.maxZ, toy.z));
+  toy.y = TOY_REST_Y; toy.phase = "rest"; toy.vx = toy.vy = toy.vz = 0;
+  keepOutOfLitter(toy, null);
+  flashHint("the cat dropped the mouse — throw it again 🐭"); catVoice("chirp");
+}
+function startFetch() {                                         // toy just landed — send the cat (unless it's mid-need)
+  if (catState.chore && catState.chore !== "play") return;     // busy eating/drinking/digging — leave it as a grabbable rest
+  yarnActive = false;                                           // a thrown mouse trumps the yarn
+  toy.phase = "claimed"; catState.chore = "fetch_go"; catState.tx = toy.x; catState.tz = toy.z; catState.ty = 0; catState.walking = true; catState.dwell = 0;
+}
+// the cat's mouth in world space (head forward + up a little); forward = (sin yaw, cos yaw)
+function catMouth() { const f = catState.yaw; return { x: catGrp.position.x + Math.sin(f) * 0.18, y: catGrp.position.y + 0.18, z: catGrp.position.z + Math.cos(f) * 0.18 }; }
+function updateFetchToy(dt) {
+  if (toy.phase === "held") {
+    const d = camera.getForwardRay().direction; // true forward (scene is right-handed; getDirection(Z) points backward)
+    toy.x = camera.position.x + d.x * 0.5; toy.z = camera.position.z + d.z * 0.5; toy.y = 1.02 + Math.sin(T * 3) * 0.02; toy.faceYaw = Math.atan2(d.x, d.z);
+  } else if (toy.phase === "fly") {
+    toy.vy -= 9.0 * dt; toy.x += toy.vx * dt; toy.y += toy.vy * dt; toy.z += toy.vz * dt; toy.spin += dt * 12;
+    if (toy.x < TOYBB.minX) { toy.x = TOYBB.minX; toy.vx = 0; } if (toy.x > TOYBB.maxX) { toy.x = TOYBB.maxX; toy.vx = 0; }
+    if (toy.z < TOYBB.minZ) { toy.z = TOYBB.minZ; toy.vz = 0; } if (toy.z > TOYBB.maxZ) { toy.z = TOYBB.maxZ; toy.vz = 0; }
+    keepOutOfLitter(toy, toy._vproxy || (toy._vproxy = { get x() { return toy.vx; }, set x(v) { toy.vx = v; }, get z() { return toy.vz; }, set z(v) { toy.vz = v; } }));
+    if (toy.y <= TOY_REST_Y) { toy.y = TOY_REST_Y; toy.phase = "rest"; toy.vx = toy.vy = toy.vz = 0; startFetch(); } // landed → cat fetches
+  } else if (toy.phase === "carry") {
+    const mp = catMouth(); toy.x = mp.x; toy.y = mp.y; toy.z = mp.z; toy.faceYaw = catState.yaw;
+  }
+  toyNode.position.set(toy.x, toy.y, toy.z);
+  toyNode.rotation.set(toy.phase === "fly" ? toy.spin : 0, toy.faceYaw + Math.PI / 2, 0);
+}
 
 // =====================================================================
 // THE CAT — ginger tabby, stays "Lambert" (matte, no glow), wanders + purrs
@@ -1189,6 +1261,9 @@ const catLegs = [];
 const catSpots = [{ x: 0.2, z: SWEET.z, y: 0.51 }, { x: 1.6, z: 0.6, y: 0 }, { x: -1.4, z: 0.4, y: 0 }, { x: 1.7, z: 2.2, y: 0 }, { x: -1.4, z: 2.2, y: 0 }, { x: 0.3, z: 1.6, y: 0 }];
 let catState = { tx: 0.2, tz: SWEET.z + 0.3, ty: 0, yaw: Math.PI, baseY: 0, walking: false, dwell: 3, chore: null };
 let catModel = null, catBaseY = 0; // the GLB cat + its rested height, animated in updateCat
+// yarn-toy state: when active the cat abandons its wander/chores to chase the rolling ball
+let yarnActive = false, yarnBats = 0; const yarnVel = { x: 0, z: 0 };
+let catMeowTimer = 45 + Math.random() * 105; // the cat meows to itself now and then (same cadence as the three.js room)
 let catAnimIdle = null, catWalkBones = null, catWalking = false; // the model's idle clip + the four hip bones the authored walk drives
 function swingBone(bn, tgt) { if (!bn) return; const prev = bn._sw || 0; bn.rotate(B.Axis.X, tgt - prev, B.Space.LOCAL); bn._sw = tgt; } // absolute swing via delta-rotation
 
@@ -1251,7 +1326,7 @@ async function handleCare(kind) {
 
 // drop a treat in front of the player and send the cat to it
 function lureCat() {
-  const dir = camera.getDirection(B.Axis.Z);
+  const dir = camera.getForwardRay().direction; // true forward (scene is right-handed; getDirection(Z) points backward)
   catState.tx = Math.max(-2.3, Math.min(2.3, camera.position.x + dir.x * 0.8));
   catState.tz = Math.max(-3.0, Math.min(3.0, camera.position.z + dir.z * 0.8));
   catState.ty = 0; catState.chore = null; catState.walking = true; catState.dwell = 0;
@@ -1670,6 +1745,7 @@ scene.onBeforeRenderObservable.add(() => {
   for (let i = mpcFx.length - 1; i >= 0; i--) { const f = mpcFx[i]; f.t -= dt; const k = Math.max(0, f.t / 0.18); const m = f.mesh; if (m && m.material && m._mpcGlow) B.Color3.LerpToRef(m._mpcIdle, m._mpcGlow, k, m.material.emissiveColor); if (f.t <= 0) { if (m && m.material && m._mpcIdle) m.material.emissiveColor.copyFrom(m._mpcIdle); mpcFx.splice(i, 1); } }
   // cat update
   updateCat(dt);
+  updateFetchToy(dt); // the felt mouse: held / thrown / carried back by the cat
   skyDomeMat.setFloat("time", T); // twinkle the stars
   updateYTScreen(); // keep the YouTube overlay glued to the monitor
   updateVideoAudio(dt); // playlist is the default audio; radio takes over when on
@@ -1696,14 +1772,26 @@ scene.onBeforeRenderObservable.add(() => {
 
 function updateCat(dt) {
   const cs = catState;
+  updateYarn(dt);                                                    // roll the toy; if play is on, glue the cat's target to it
+  catMeowTimer -= dt; if (catMeowTimer <= 0) { catMeowTimer = 45 + Math.random() * 105; catVoice("chirp"); } // the occasional idle meow
+  if (cs.chore === "fetch_back") { // carry the mouse back to wherever you've wandered — but don't chase forever
+    cs.tx = camera.position.x; cs.tz = camera.position.z;
+    cs.carryT = (cs.carryT || 0) + dt;
+    if (cs.carryT > 5) { dropToy(catGrp.position.x, catGrp.position.z); cs.chore = null; cs.walking = false; cs.dwell = 2 + Math.random() * 3; } // gave up chasing you — sets it down where it stands
+  }
+  const brisk = cs.chore === "play" || cs.chore === "fetch_go" || cs.chore === "fetch_back"; // scamper, don't stroll
   if (cs.walking) {
     const dx = cs.tx - catGrp.position.x, dz = cs.tz - catGrp.position.z; const dist = Math.hypot(dx, dz);
-    if (dist < 0.06) {
+    const reach = cs.chore === "fetch_back" ? 0.7 : (brisk ? 0.16 : 0.06); // drop the mouse a step away from you, not on your shoes
+    if (dist < reach) {
       cs.walking = false;
-      if (cs.chore) { doChore(cs.chore); cs.chore = null; cs.dwell = 2.5 + Math.random() * 2; } // pause to eat / drink / dig
+      if (cs.chore === "play") { batYarn(); }                        // swat the ball — it skitters off and the chase resets
+      else if (cs.chore === "fetch_go") { toy.phase = "carry"; cs.chore = "fetch_back"; cs.carryT = 0; cs.walking = true; cs.dwell = 0; catVoice("chirp"); } // grab it in the mouth, trot back
+      else if (cs.chore === "fetch_back") { dropToy(); cs.chore = null; cs.dwell = 2 + Math.random() * 3; } // set it down for another throw
+      else if (cs.chore) { doChore(cs.chore); cs.chore = null; cs.dwell = 2.5 + Math.random() * 2; } // pause to eat / drink / dig
       else cs.dwell = 4 + Math.random() * 10;
     }
-    else { const want = Math.atan2(dx, dz); let dy = want - cs.yaw; while (dy > Math.PI) dy -= 2 * Math.PI; while (dy < -Math.PI) dy += 2 * Math.PI; cs.yaw += dy * Math.min(1, dt * 6); const spd = 0.5; catGrp.position.x += (dx / dist) * spd * dt; catGrp.position.z += (dz / dist) * spd * dt; }
+    else { const want = Math.atan2(dx, dz); let dy = want - cs.yaw; while (dy > Math.PI) dy -= 2 * Math.PI; while (dy < -Math.PI) dy += 2 * Math.PI; cs.yaw += dy * Math.min(1, dt * 6); const spd = brisk ? 0.85 : 0.5; catGrp.position.x += (dx / dist) * spd * dt; catGrp.position.z += (dz / dist) * spd * dt; } // a pounce/scamper is faster than a stroll
   } else {
     cs.dwell -= dt;
     if (cs.dwell <= 0) {
@@ -1733,6 +1821,89 @@ function updateCat(dt) {
     if (cs.walking && !catWalking) { catWalking = true; if (catAnimIdle) catAnimIdle.stop(); for (const k in catWalkBones) if (catWalkBones[k]) catWalkBones[k]._sw = 0; } // hand the legs to the gait
     else if (!cs.walking && catWalking) { catWalking = false; if (catAnimIdle) catAnimIdle.start(true, 0.5); }                                                            // hand them back to the idle clip
     if (catWalking) { const amp = 0.5, sp = 11, a = Math.sin(T * sp) * amp, c = Math.sin(T * sp + Math.PI) * amp; swingBone(catWalkBones.fl, a); swingBone(catWalkBones.hr, a); swingBone(catWalkBones.fr, c); swingBone(catWalkBones.hl, c); } // diagonal trot: FL+HR ↔ FR+HL
+  }
+}
+
+// poke the yarn (player clicked it): give it a skitter in a random-ish direction and send
+// the cat after it. needs are paused while playing — the player asked for play.
+function pokeYarn(awayFrom) {
+  if (toy.phase === "carry") dropToy(catGrp.position.x, catGrp.position.z); // drop the mouse first — can't carry it AND chase the yarn
+  else if (toy.phase === "claimed") toy.phase = "rest";                    // abandon an un-fetched mouse cleanly (stays grabbable)
+  const a = awayFrom ? Math.atan2(yarn.position.x - awayFrom.x, yarn.position.z - awayFrom.z) + (Math.random() - 0.5) * 1.2 : Math.random() * Math.PI * 2;
+  const spd = 1.3 + Math.random() * 0.7;
+  yarnVel.x = Math.sin(a) * spd; yarnVel.z = Math.cos(a) * spd; aimYarnInward();
+  yarnActive = true; yarnBats = 4 + Math.floor(Math.random() * 3);   // how many swats before the cat gets bored
+  catState.chore = "play"; catState.tx = yarn.position.x; catState.tz = yarn.position.z; catState.ty = 0; catState.walking = true; catState.dwell = 0;
+  catVoice("chirp");
+}
+// keep a skitter pointed into the open room when the ball is near a wall, so it can't keep wedging into a corner
+function aimYarnInward() {
+  const m = 0.7;
+  if (yarn.position.x < -2.3 + m && yarnVel.x < 0) yarnVel.x = Math.abs(yarnVel.x);
+  if (yarn.position.x > 2.3 - m && yarnVel.x > 0) yarnVel.x = -Math.abs(yarnVel.x);
+  if (yarn.position.z < -2.9 + m && yarnVel.z < 0) yarnVel.z = Math.abs(yarnVel.z);
+  if (yarn.position.z > 3.0 - m && yarnVel.z > 0) yarnVel.z = -Math.abs(yarnVel.z);
+}
+// the cat caught up and swatted it: a heart, a chirp, and the ball rolls off again (until it's bored)
+function batYarn() {
+  popHearts(); catVoice("chirp"); yarnBats--;
+  if (yarnBats > 0) { const a = Math.atan2(yarn.position.x - catGrp.position.x, yarn.position.z - catGrp.position.z) + (Math.random() - 0.5); const spd = 1.0 + Math.random() * 0.9; yarnVel.x = Math.sin(a) * spd; yarnVel.z = Math.cos(a) * spd; aimYarnInward(); catState.chore = "play"; catState.walking = true; catState.dwell = 0; }
+  else { yarnActive = false; catState.chore = null; catState.dwell = 2 + Math.random() * 3; } // done playing — back to wandering
+}
+// roll the yarn under its own momentum (linear friction, bounces off the room bounds) and keep
+// the chasing cat's target glued to it
+function updateYarn(dt) {
+  if (yarnVel.x || yarnVel.z) {
+    yarn.position.x += yarnVel.x * dt; yarn.position.z += yarnVel.z * dt;
+    if (yarn.position.x < -2.3) { yarn.position.x = -2.3; yarnVel.x = Math.abs(yarnVel.x) * 0.5; }
+    if (yarn.position.x > 2.3) { yarn.position.x = 2.3; yarnVel.x = -Math.abs(yarnVel.x) * 0.5; }
+    if (yarn.position.z < -2.9) { yarn.position.z = -2.9; yarnVel.z = Math.abs(yarnVel.z) * 0.5; }
+    if (yarn.position.z > 3.0) { yarn.position.z = 3.0; yarnVel.z = -Math.abs(yarnVel.z) * 0.5; }
+    keepOutOfLitter(yarn.position, yarnVel); // never let it roll into the litter box
+    yarnBall.rotation.x += yarnVel.z * dt * 9; yarnBall.rotation.z -= yarnVel.x * dt * 9; // looks like it's rolling
+    const fr = Math.max(0, 1 - dt * 3.2); yarnVel.x *= fr; yarnVel.z *= fr;
+    if (Math.hypot(yarnVel.x, yarnVel.z) < 0.04) { yarnVel.x = 0; yarnVel.z = 0; }
+  }
+  if (yarnActive && catState.chore === "play") { catState.tx = yarn.position.x; catState.tz = yarn.position.z; catState.walking = true; }
+}
+// the cat's voice — the SAME meow/purr the three.js room uses: the real recorded clips
+// (assets/audio/cat-meow.mp3 / cat-purr.mp3) reshaped per-play so no two are identical.
+// loaded into the room's own AC; a synth covers until they decode (and forever if fetch fails).
+let catMeowBuf = null, catPurrBuf = null, catSamplesLoading = false;
+async function loadCatSamples() {
+  if (catSamplesLoading || !AC) return; catSamplesLoading = true;
+  const decode = (arr) => new Promise((ok, no) => AC.decodeAudioData(arr, ok, no)); // callback form for Safari
+  try { catMeowBuf = await decode(await fetch("/assets/audio/cat-meow.mp3").then(r => r.arrayBuffer())); } catch (e) { /* synth covers */ }
+  try { catPurrBuf = await decode(await fetch("/assets/audio/cat-purr.mp3").then(r => r.arrayBuffer())); } catch (e) { /* synth covers */ }
+}
+// play a reshaped clip (rate = pitch+length together), dry to master + a touch of room reverb. ported from ambience.playSample.
+function playCatSample(buf, { rate = 1, gain = 0.5, attack = 0.01, release = 0.08, dur = null, offset = 0 } = {}) {
+  if (!AC || !buf) return; const t = AC.currentTime;
+  const src = AC.createBufferSource(); src.buffer = buf; src.playbackRate.value = rate;
+  const g = AC.createGain(); src.connect(g); g.connect(master);
+  if (verbSend) { const sg = AC.createGain(); sg.gain.value = 0.12; g.connect(sg); sg.connect(verbSend); }
+  const play = dur != null ? dur : buf.duration / rate - offset, rel = Math.min(release, play * 0.5);
+  g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(gain, t + attack);
+  g.gain.setValueAtTime(gain, t + Math.max(attack, play - rel)); g.gain.exponentialRampToValueAtTime(0.0001, t + play);
+  src.start(t, offset); src.stop(t + play + 0.05);
+}
+function catVoice(kind) {
+  if (!AC || !master) return; const t = AC.currentTime;
+  if (kind === "purr") {
+    if (catPurrBuf) { const offset = 0.6 + Math.random() * 1.2, rate = 0.9 + Math.random() * 0.18; const dur = Math.min(2.0, (catPurrBuf.duration - offset - 0.1) / rate); return playCatSample(catPurrBuf, { rate, gain: 0.5 + Math.random() * 0.12, attack: 0.14, release: 0.3, dur, offset }); }
+    const o = AC.createOscillator(); o.type = "sawtooth"; o.frequency.value = 55; // synth fallback
+    const lp = AC.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 320;
+    const g = AC.createGain(); g.gain.value = 0.0001;
+    const trem = AC.createOscillator(); trem.type = "sine"; trem.frequency.value = 26; const tg = AC.createGain(); tg.gain.value = 0.05; trem.connect(tg); tg.connect(g.gain);
+    o.connect(lp); lp.connect(g); g.connect(master);
+    g.gain.linearRampToValueAtTime(0.07, t + 0.18); g.gain.setValueAtTime(0.07, t + 0.95); g.gain.linearRampToValueAtTime(0, t + 1.35);
+    o.start(t); trem.start(t); o.stop(t + 1.4); trem.stop(t + 1.4);
+  } else { // chirp / meow — the everyday-meow shapes from ambience.meow() (no dur cap → the whole clip plays, never cut short)
+    if (catMeowBuf) { const rates = [0.85, 0.95, 1.0, 1.08, 1.2]; const r = rates[Math.floor(Math.random() * rates.length)]; return playCatSample(catMeowBuf, { rate: r * (0.96 + Math.random() * 0.08), gain: 0.4 + Math.random() * 0.1, attack: 0.008, release: 0.12 }); }
+    const o = AC.createOscillator(); o.type = "triangle"; const g = AC.createGain(); g.gain.value = 0.0001; o.connect(g); g.connect(master); // synth fallback
+    o.frequency.setValueAtTime(720, t); o.frequency.exponentialRampToValueAtTime(1120, t + 0.07); o.frequency.exponentialRampToValueAtTime(540, t + 0.22);
+    g.gain.linearRampToValueAtTime(0.11, t + 0.03); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.28);
+    o.start(t); o.stop(t + 0.3);
   }
 }
 
@@ -1779,7 +1950,7 @@ function throwBall() {
   if (!physicsReady || thrown > 40) return;
   const col = throwColors[thrown % throwColors.length];
   const s = B.MeshBuilder.CreateSphere("thrown" + thrown, { diameter: 0.12, segments: 16 }, scene);
-  const dir = camera.getDirection(B.Axis.Z);
+  const dir = camera.getForwardRay().direction; // true forward (scene is right-handed; getDirection(Z) points backward)
   s.position.copyFrom(camera.position).addInPlace(dir.scale(0.4));
   const m = metal("thrownM" + thrown, col, 0.2, 0.25); m.emissiveColor = C(col).scale(0.25); s.material = m; s.receiveShadows = true; shadow.addShadowCaster(s);
   const agg = new B.PhysicsAggregate(s, B.PhysicsShapeType.SPHERE, { mass: 0.6, restitution: 0.72, friction: 0.5 }, scene);
@@ -1815,6 +1986,7 @@ function ensureAudio() {
   });
   cOut.connect(master); cOut.connect(verbSend); // chorus gets a reverb tail too
   loadDumbekSamples(); // start pulling the dumbek samples in the background on this first gesture
+  loadCatSamples();    // and the cat's real meow + purr
   startCityAmbience();  // the city outside, heard muffled through the glass
   return AC;
 }
@@ -2119,6 +2291,7 @@ scene.onPointerObservable.add((p) => {
   }
   if (p.type !== B.PointerEventTypes.POINTERDOWN) return;
   if (!engine.isPointerLock) { engine.enterPointerlock(); return; }
+  if (toy.phase === "held") { throwToy(); return; } // holding the mouse → any click throws it
   const lc = scene.pickWithRay(camera.getForwardRay(3.5), (m) => !!m._lightCtrl);
   if (lc && lc.hit) { lightDrag = lc.pickedMesh._lightCtrl; camera.detachControl(); return; } // grab the dimmer/hue
   const ray = camera.getForwardRay(7);
@@ -2147,12 +2320,16 @@ scene.onPointerObservable.add((p) => {
   if (bowl && bowl.hit) { handleCare(bowl.pickedMesh._careBowl); return; } // click food/water/litter to take care of it
   const cat = scene.pickWithRay(ray, (m) => m.name.startsWith("cat") || m._cat);
   if (cat && cat.hit) { petCat(); return; }
+  const ft = scene.pickWithRay(ray, (m) => !!m._fetchToy);
+  if (ft && ft.hit && toy.phase === "rest") { grabToy(); return; } // pick up the felt mouse
+  const ytoy = scene.pickWithRay(ray, (m) => !!m._toy);
+  if (ytoy && ytoy.hit) { pokeYarn(camera.position); flashHint("you flicked the yarn — here it goes 🧶"); return; } // skitter it; the cat gives chase
   throwBall();
 });
 
 // petting bumps the shared pets count + pops hearts (the achievement at 15 still lives in store)
 function petCat() {
-  popHearts();
+  popHearts(); catVoice("purr"); if (Math.random() < 0.35) setTimeout(() => catVoice("chirp"), 250); // a purr, sometimes a happy meow too
   store.catCare("pet").then((res) => { if (res) { applyCatNeeds(res); flashHint(`purrrr — petted ${res.pets || catNeeds.pets} times`); } }).catch(() => flashHint("purrrr"));
 }
 
@@ -2539,7 +2716,7 @@ let entered = false;
 function enter() {
   if (entered) return; entered = true;
   gate.classList.add("gone"); badge.classList.add("show"); editToggle.classList.add("show"); catHud?.classList.add("show"); // credits stay on the intro only
-  hint.textContent = "WASD move · click: guitar / keys / drums · click the cat to pet, the bowls to feed/water/clean · T treat · boombox = radio · wall = note · G arrange · L lighting";
+  hint.textContent = "WASD move · click: guitar / keys / drums · pet the cat, flick the yarn to chase, grab+throw the mouse to fetch, the bowls to feed/water/clean · T treat · boombox = radio · wall = note · G arrange · L lighting";
   hint.classList.add("show"); setTimeout(() => hint.classList.remove("show"), 7000);
   canvas.focus(); engine.enterPointerlock();
   try { ensureAudio(); } catch (e) { /* audio is best-effort */ } // build the audio context on this user gesture
@@ -2665,6 +2842,8 @@ window.METRO_BJS = {
   get catModel() { return catModel; },
   get catNeeds() { return catNeeds; }, get catRaw() { return catRaw; },
   care: (kind) => handleCare(kind), pet: () => petCat(), // drive care from the console
+  poke: () => pokeYarn(camera.position), catVoice, // toss the yarn / test the cat's voice
+  grabToy, throwToy, toy, // pick up / throw the felt mouse (cat fetches it back)
   // force a need due NOW (kind: hungry|thirsty|bathroom) so you can watch the cat go act on it.
   // persists to the same localStorage key store.js reads, so the cat's own catCare("eat"/…) succeeds.
   forceNeed: (kind) => {
