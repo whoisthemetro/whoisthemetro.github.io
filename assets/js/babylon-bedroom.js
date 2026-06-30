@@ -580,15 +580,25 @@ const projScreenMat = new B.StandardMaterial("projScreenMat", scene);
 projScreenMat.diffuseColor = C(0xeceae4); projScreenMat.emissiveColor = C(0x1c1c1e); projScreenMat.specularColor = new B.Color3(0.02, 0.02, 0.02); projScreenMat.backFaceCulling = false; // matte screen; emissive bumped when a video plays later
 const projScreen = plane("projScreen", PROJ.w, PROJ.h, projScreenMat); projScreen.parent = projAnchor; projScreen.position.set(0, -PROJ.h / 2, 0);
 const projBar = box("projBar", PROJ.w + 0.05, 0.045, 0.05, 0, -PROJ.h, 0, matte("projBarM", 0x26262b), projAnchor, false); // weighted bottom bar
-[scene.getMeshByName("projHousing"), projScreen, projBar].forEach((m) => { if (m) { m._projector = true; m.isPickable = true; } }); // click any of it to toggle
-let projDown = false, projT = 0, prevCurtains = true; // projT 0 = rolled up, 1 = fully down
+[scene.getMeshByName("projHousing"), projBar].forEach((m) => { if (m) { m._projector = true; m.isPickable = true; } }); // housing + weighted bar: roll the screen up/down
+projScreen._projVideo = true; projScreen.isPickable = true; // the screen surface itself: tap to play / pause the video
+let projDown = false, projT = 0, prevCurtains = true, projWantPlay = false; // projT 0 = rolled up, 1 = fully down; projWantPlay = user pressed play
 // toggling the screen also works the curtains: down → close them (remembering their state); up → restore it
 function setProjector(down) {
   if (down === projDown) return;
   projDown = down;
+  projWantPlay = false; // always comes down (and rolls up) paused — you tap the screen to start it
   if (down) { prevCurtains = curtainOpen; if (curtainOpen) { curtainOpen = false; sunRays(); } }
   else if (curtainOpen !== prevCurtains) { curtainOpen = prevCurtains; sunRays(); }
-  flashHint(down ? "📽 screen down" : "screen up");
+  flashHint(down ? "📽 screen down — tap it to play" : "screen up");
+}
+// tap the screen surface to start/stop the video. play within the gesture so iOS lets it through.
+function projVideoToggle() {
+  if (!projDown) { setProjector(true); return; } // tapping where the rolled-up screen would be just brings it down
+  if (!projReady) { flashHint("loading video…"); return; }
+  projWantPlay = !projWantPlay;
+  if (projWantPlay) { projPlayer.playVideo(); projPlaying = true; } else { projPlayer.pauseVideo(); projPlaying = false; }
+  flashHint(projWantPlay ? "▶ playing" : "❚❚ paused");
 }
 function updateProjector(dt) {
   const target = projDown ? 1 : 0;
@@ -2587,8 +2597,12 @@ function setupInstruments() {
     const zF = bb.max.z, zB = zF - 0.085;                // the white keys live in the front ~8.5cm
     const yT = 0.656;                                    // a hair above the white keytops (~0.653)
     const strip = { x0, x1, z0: zB, z1: zF };
-    const pad = B.MeshBuilder.CreatePlane("midiKeyPad", { width: x1 - x0, height: zF - zB, sideOrientation: B.Mesh.DOUBLESIDE }, scene);
-    pad.rotation.x = Math.PI / 2; pad.position.set((x0 + x1) / 2, yT, (zB + zF) / 2);
+    // the pick PAD is much bigger than the visible keys so it's an easy tap target on mobile (the keybed is a thin
+    // sliver from across the room). it reaches toward the player, where aimed taps tend to land short; the note
+    // MAPPING still uses `strip` (the real key span) and clamps, so an off-key tap just plays the nearest note.
+    const padW = (x1 - x0) * 1.12, keyD = zF - zB, padD = keyD * 3.4;
+    const pad = B.MeshBuilder.CreatePlane("midiKeyPad", { width: padW, height: padD, sideOrientation: B.Mesh.DOUBLESIDE }, scene);
+    pad.rotation.x = Math.PI / 2; pad.position.set((x0 + x1) / 2, yT, zF - keyD / 2 + (padD - keyD) / 2); // grow forward (toward +z / the player)
     pad.visibility = 0; pad.isPickable = true; pad._instr = { type: "key", strip };
     // the light-up: a warm additive quad one key wide, parked over the pressed key, faded by keyFx
     keyGlow = B.MeshBuilder.CreatePlane("keyGlow", { width: (x1 - x0) / 14, height: zF - zB, sideOrientation: B.Mesh.DOUBLESIDE }, scene);
@@ -2730,8 +2744,10 @@ function doScenePick() {
   if (ytHit && ytHit.hit) { ytToggle(); return; } // click the monitor to pause/resume the playlist
   const fanHit = scene.pickWithRay(ray, (m) => !!m._fan);
   if (fanHit && fanHit.hit) { fanOn = !fanOn; flashHint(fanOn ? "🌀 fan on" : "fan off"); return; } // click the ceiling fan to start/stop it
+  const projVid = scene.pickWithRay(ray, (m) => !!m._projVideo);
+  if (projVid && projVid.hit) { projVideoToggle(); return; } // tap the screen surface → play / pause the video
   const projHit = scene.pickWithRay(ray, (m) => !!m._projector);
-  if (projHit && projHit.hit) { setProjector(!projDown); return; } // roll the projector screen (also closes/restores the curtains)
+  if (projHit && projHit.hit) { setProjector(!projDown); return; } // tap the housing/bar → roll the screen up/down (+ curtains)
   const bowl = scene.pickWithRay(ray, (m) => !!m._careBowl);
   if (bowl && bowl.hit) { handleCare(bowl.pickedMesh._careBowl); return; } // click food/water/litter to take care of it
   const cat = scene.pickWithRay(ray, (m) => m.name.startsWith("cat") || m._cat);
@@ -3063,7 +3079,7 @@ const DEFAULT_LAYOUT = {
   "mpc": { x: 0.798, y: 0.75, z: -2.693, rx: 0, ry: -0.35, rz: 0, s: 1 },
   "door": { x: 2.5, y: 0, z: 2.62, rx: 0, ry: 0, rz: 0, s: 0.74 },
   "city": { x: 0, y: -9, z: -18.8, rx: 0, ry: 0, rz: 0, s: 8.014 },
-  "plane": { x: -6, y: 3, z: -9, rx: 0.06, ry: 21.921, rz: 0, s: 1 },
+  "plane": { x: -6, y: 3, z: -9, rx: 0.06, ry: -1.571, rz: 0, s: 1 }, // ry = jetYaw: nose along +x travel (was 21.921 ≈ sideways). flip to +1.571 if it flies tail-first.
   "godzilla": { x: -25, y: -29, z: -73.5, rx: 0, ry: 0.442, rz: 0, s: 3.604 },
 };
 let editMode = false, selected = null, dragging = false, grabOff = { x: 0, z: 0 }, editables = [], editHL = null;
@@ -3371,7 +3387,8 @@ function updateProjScreen() {
   if (!projEl) return;
   const show = entered && !editMode && !composerOpen && projT > 0.5;
   if (!show) { projEl.style.display = "none"; if (projReady && projPlaying) { projPlayer.pauseVideo(); projPlaying = false; } return; }
-  if (projReady && !projPlaying) { projPlayer.playVideo(); projPlaying = true; }
+  // no autoplay — only play if the user tapped the screen (projWantPlay); keep the player in sync either way
+  if (projReady) { if (projWantPlay && !projPlaying) { projPlayer.playVideo(); projPlaying = true; } else if (!projWantPlay && projPlaying) { projPlayer.pauseVideo(); projPlaying = false; } }
   const wm = projScreen.getWorldMatrix(), vm = camera.getViewMatrix(), tm = scene.getTransformMatrix();
   const vp = new B.Viewport(0, 0, engine.getRenderWidth(), engine.getRenderHeight());
   const pts = [];
