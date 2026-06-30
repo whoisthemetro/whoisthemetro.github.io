@@ -37,8 +37,12 @@ const WIN = { w: 3.6, h: 1.4, cx: 0, cy: 1.6 };
 // =====================================================================
 // engine + scene (right-handed so three.js coords/rotations port literally)
 // =====================================================================
-const engine = new B.Engine(canvas, true, { preserveDrawingBuffer: true, stencil: true, antialias: true, powerPreference: "high-performance" });
-engine.setHardwareScalingLevel(1 / Math.min(window.devicePixelRatio || 1, 2));
+// "(pointer: coarse)" = the PRIMARY pointer is touch → a phone/tablet (weaker GPU). we render lighter
+// there (no supersample, trimmed post FX, wider FOV) and it also gates the touch controls further down.
+const IS_TOUCH = matchMedia("(pointer: coarse)").matches;
+const engine = new B.Engine(canvas, true, { preserveDrawingBuffer: true, stencil: true, antialias: !IS_TOUCH, powerPreference: "high-performance" });
+// desktop supersamples (dpr up to 2×); mobile renders ~1:1 so a phone GPU isn't pushing 4× the pixels.
+engine.setHardwareScalingLevel(IS_TOUCH ? 1.2 : 1 / Math.min(window.devicePixelRatio || 1, 2));
 const scene = new B.Scene(engine);
 scene.useRightHandedSystem = true;
 scene.clearColor = B.Color3.FromHexString("#07080b").toColor4(1);
@@ -1673,8 +1677,8 @@ let godrays = null; // the VolumetricLightScattering post-process (created after
 // visible wash over the window (low = see the city through it); exposure/density/decay shape the shafts (sliders).
 function sunRays() {
   const e = sunDiscMat.emissiveColor, lum = (e.r + e.g + e.b) / 3;
-  const df = Math.max(0, Math.min(1, (lum - 0.15) / 0.9)); // 0 night .. 1 full day
-  rayEmitter.setEnabled(df > 0.03 && curtainOpen);
+  const df = Math.max(0, Math.min(1, (lum - 0.5) / 0.5)); // 0 at night AND under moonlight .. 1 full day (no moon shafts)
+  rayEmitter.setEnabled(df > 0.03 && curtainOpen && !IS_TOUCH); // mobile has no god-ray pass → hide the emitter's window wash too
   rayEmitterMat.emissiveColor.copyFrom(e); rayEmitterMat.alpha = raysOpacity;
   if (godrays) { godrays.exposure = raysExposure * df; godrays.density = raysDensity; godrays.decay = raysDecay; }
 }
@@ -1938,9 +1942,7 @@ camera.keysUp = [87, 38]; camera.keysDown = [83, 40]; camera.keysLeft = [65, 37]
 // =====================================================================
 // MOBILE CONTROLS — left joystick to walk, drag to look, tap to interact (matches the three.js room).
 // =====================================================================
-// "(pointer: coarse)" = the PRIMARY pointer is touch (a phone/tablet) — stays false on a
-// mouse-primary laptop even if it also has a touchscreen, so we don't break desktop click-to-pick.
-const IS_TOUCH = matchMedia("(pointer: coarse)").matches;
+// IS_TOUCH (primary pointer = touch) is computed at the top with the engine setup.
 const joy = { x: 0, y: 0 };
 let tapPick = null; // {x,y} while a tap is being resolved (touch); else null → use the crosshair/forward ray
 function castRay(reach) { if (tapPick) { const r = scene.createPickingRay(tapPick.x, tapPick.y, B.Matrix.Identity(), camera); r.length = reach; return r; } return camera.getForwardRay(reach); }
@@ -1970,7 +1972,9 @@ if (IS_TOUCH) {
   });
   const lookEnd = (e) => {
     if (!look || e.pointerId !== look.id) return;
-    if (entered && !editMode && !composerOpen && !pcOpen && performance.now() - look.t < 350 && look.moved < 14) { tapPick = { x: e.clientX, y: e.clientY }; try { doScenePick(); } catch (err) { } tapPick = null; }
+    // a finger "tap" jitters more than a mouse click — be forgiving (≤22px of drift, ≤400ms) so taps on
+    // the instruments/cat/notes actually register instead of being mistaken for a look-drag.
+    if (entered && !editMode && !composerOpen && !pcOpen && performance.now() - look.t < 400 && look.moved < 22) { ensureAudio(); tapPick = { x: e.clientX, y: e.clientY }; try { doScenePick(); } catch (err) { } tapPick = null; }
     look = null;
   };
   canvas.addEventListener("pointerup", lookEnd); canvas.addEventListener("pointercancel", lookEnd);
@@ -1980,18 +1984,31 @@ if (IS_TOUCH) {
 camera.checkCollisions = true; camera.applyGravity = false;
 // slimmer 0.3 bubble so you can step right up to the desk instead of being held back.
 camera.ellipsoid = new V3(0.3, 0.9, 0.3); camera.ellipsoidOffset = new V3(0, -0.72, 0);
+// FOV fit: Babylon's default vertical-fixed FOV squeezes the HORIZONTAL view to a zoomed-in sliver on a
+// tall portrait phone — that's why everything (monitor, transport buttons, the city) reads "too big /
+// stretched" on mobile. on portrait we widen it so the horizontal framing (~64°) looks like the desktop;
+// landscape/desktop keep the tuned 1.18. recomputed on every resize/orientation change.
+function fitFov() {
+  const a = engine.getRenderWidth() / Math.max(1, engine.getRenderHeight());
+  if (a >= 1) { camera.fov = 1.18; return; }
+  const HFOV = 1.12; // target horizontal field of view in portrait
+  camera.fov = Math.min(1.95, 2 * Math.atan(Math.tan(HFOV / 2) / a));
+}
+fitFov();
 // post pipeline, now that the camera exists
 pipeline = new B.DefaultRenderingPipeline("pipeline", true, scene, [camera]);
 pipeline.fxaaEnabled = true; pipeline.samples = 4; pipeline.bloomEnabled = true; pipeline.bloomThreshold = 0.85; pipeline.bloomWeight = 0.4; pipeline.bloomKernel = 64; pipeline.bloomScale = 0.6;
 pipeline.bloomThreshold = 0.92; pipeline.bloomWeight = 0.15;
 pipeline.imageProcessingEnabled = true; pipeline.imageProcessing.vignetteEnabled = true; pipeline.imageProcessing.vignetteWeight = 2.4; pipeline.imageProcessing.vignetteColor = new B.Color4(0, 0, 0, 0);
 pipeline.grainEnabled = true; pipeline.grain.intensity = 6; pipeline.grain.animated = true; pipeline.sharpenEnabled = true; pipeline.sharpen.edgeAmount = 0.16;
-try { if (B.SSAO2RenderingPipeline.IsSupported) { const ssao = new B.SSAO2RenderingPipeline("ssao", scene, { ssaoRatio: 0.75, blurRatio: 1 }, [camera]); ssao.radius = 0.4; ssao.totalStrength = 0.65; ssao.base = 0.2; ssao.samples = 16; ssao.expensiveBlur = true; } } catch (e) { console.warn("ssao", e); } // softer AO so corners aren't blotchy
+try { if (!IS_TOUCH && B.SSAO2RenderingPipeline.IsSupported) { const ssao = new B.SSAO2RenderingPipeline("ssao", scene, { ssaoRatio: 0.75, blurRatio: 1 }, [camera]); ssao.radius = 0.4; ssao.totalStrength = 0.65; ssao.base = 0.2; ssao.samples = 16; ssao.expensiveBlur = true; } } catch (e) { console.warn("ssao", e); } // softer AO so corners aren't blotchy (skipped on mobile — too costly)
 // GOD-RAYS — VolumetricLightScattering off the window sun disc. it renders the disc bright and
 // everything else black, then radial-blurs outward from the disc → real light shafts. the BLINDS
 // stay as occluders (they chop it into slats); the GLASS + rain are excluded so light passes
 // through them. exposure rides the day/night cycle in updateEnv (0 at night). one extra pass.
-try {
+// skipped on mobile entirely — the 80-sample volumetric pass is the single most expensive thing in the
+// scene, and on a phone GPU it tanks the framerate. (rayEmitter wash is also hidden on mobile in sunRays.)
+if (!IS_TOUCH) try {
   godrays = new B.VolumetricLightScatteringPostProcess("godrays", 1.0, camera, rayEmitter, 80, B.Texture.BILINEAR_SAMPLINGMODE, engine, false, scene);
   godrays.exposure = raysExposure; godrays.decay = raysDecay; godrays.weight = 0.5; godrays.density = raysDensity;
   godrays.excludedMeshes = [glassFront, rainPane]; // light passes through the glass; blinds/frame/walls stay as occluders
@@ -3195,7 +3212,12 @@ function onEditKey(ev) {
   if (ok) { if (selected.jet) jetYaw = n.rotation.y; ev.preventDefault(); updXformHud(); saveLayout(); } // remember the jet's heading for flights
 }
 
-window.addEventListener("resize", () => engine.resize());
+// resize the engine AND re-fit the FOV. iOS Safari fires these as the address bar shows/hides and on
+// rotation — without it the drawing buffer goes stale and the whole scene looks stretched.
+const onViewportResize = () => { engine.resize(); fitFov(); };
+window.addEventListener("resize", onViewportResize);
+window.addEventListener("orientationchange", onViewportResize);
+if (window.visualViewport) window.visualViewport.addEventListener("resize", onViewportResize);
 engine.runRenderLoop(() => scene.render());
 setProg(72, "almost…");
 scene.whenReadyAsync().then(async () => { setProg(82, "loading models…"); await loadHeroProps(); setupEditor(); setupNotes(); setupPC(); setupInstruments(); laRadio.init(); laRadio.volume(radioVol); setProg(90, "physics…"); await initPhysics(); setProg(100, "enter ▸"); enterBtn.disabled = false; });
