@@ -2597,12 +2597,15 @@ function setupInstruments() {
     const zF = bb.max.z, zB = zF - 0.085;                // the white keys live in the front ~8.5cm
     const yT = 0.656;                                    // a hair above the white keytops (~0.653)
     const strip = { x0, x1, z0: zB, z1: zF };
-    // the pick PAD is much bigger than the visible keys so it's an easy tap target on mobile (the keybed is a thin
-    // sliver from across the room). it reaches toward the player, where aimed taps tend to land short; the note
-    // MAPPING still uses `strip` (the real key span) and clamps, so an off-key tap just plays the nearest note.
-    const padW = (x1 - x0) * 1.12, keyD = zF - zB, padD = keyD * 3.4;
+    // the pick PAD is bigger than the visible keys so it's an easier tap target on mobile (the keybed is a thin
+    // sliver from across the room). it grows BACKWARD into the controller body (−z), NOT toward the player — the
+    // typing keyboard sits right in front, so reaching forward would steal its taps. note MAPPING still uses
+    // `strip` (the real key span) and clamps, so an off-key tap plays the nearest note.
+    const padW = (x1 - x0) * 1.1, keyD = zF - zB;
+    const padBack = Math.max(bb.min.z, zF - keyD * 3); // back edge: into the body, capped at the unit's back
+    const padD = zF - padBack;                          // FRONT stays at the keys (zF) — never overlaps the typing keyboard
     const pad = B.MeshBuilder.CreatePlane("midiKeyPad", { width: padW, height: padD, sideOrientation: B.Mesh.DOUBLESIDE }, scene);
-    pad.rotation.x = Math.PI / 2; pad.position.set((x0 + x1) / 2, yT, zF - keyD / 2 + (padD - keyD) / 2); // grow forward (toward +z / the player)
+    pad.rotation.x = Math.PI / 2; pad.position.set((x0 + x1) / 2, yT, (zF + padBack) / 2);
     pad.visibility = 0; pad.isPickable = true; pad._instr = { type: "key", strip };
     // the light-up: a warm additive quad one key wide, parked over the pressed key, faded by keyFx
     keyGlow = B.MeshBuilder.CreatePlane("keyGlow", { width: (x1 - x0) / 14, height: zF - zB, sideOrientation: B.Mesh.DOUBLESIDE }, scene);
@@ -2612,13 +2615,13 @@ function setupInstruments() {
     // SCREEN: replace the GLB's baked red "0" with a live scale-number readout (a DynamicTexture
     // as emissive — the only kind that renders self-lit in this scene). sxc carries the screen
     // centre x down to the buttons so they line up under it.
-    let sxc = -0.02;
+    let sxc = -0.02, sz = bb.min.z + 0.05; // screen centre x/z — carried down to the buttons so they sit under it AND move with the controller (fallback near the back of the unit)
     const scr = scene.getMeshByName("screen");
     if (scr) {
       scene.getMeshByName("0")?.setEnabled(false); // hide the static digit; we draw our own
       const sb = scr.getBoundingInfo().boundingBox;
       sxc = (sb.minimumWorld.x + sb.maximumWorld.x) / 2;
-      const sz = (sb.minimumWorld.z + sb.maximumWorld.z) / 2;
+      sz = (sb.minimumWorld.z + sb.maximumWorld.z) / 2;
       const sw = (sb.maximumWorld.x - sb.minimumWorld.x) * 0.92, sd = (sb.maximumWorld.z - sb.minimumWorld.z) * 0.92;
       scaleScreenTex = new B.DynamicTexture("scaleScr", { width: 64, height: 48 }, scene, false);
       // the wall-photo recipe: a DynamicTexture wired to BOTH diffuse + emissive renders self-lit
@@ -2639,8 +2642,11 @@ function setupInstruments() {
       midiExtras.push(cap, ppad);
     };
     const amber = 0xffae3b, cyan = 0x3bd6ff, lx = sxc - 0.018, rx = sxc + 0.018; // a pair straddling the screen centre
-    mkBtn("scDn", lx, -2.352, amber, "scaleDown"); mkBtn("scUp", rx, -2.352, amber, "scaleUp");
-    mkBtn("ocDn", lx, -2.322, cyan, "octDown");  mkBtn("ocUp", rx, -2.322, cyan, "octUp");
+    // z relative to the SCREEN (sz) so the buttons live on the panel and move with the controller — was hardcoded
+    // to the old default world-z, which left them stranded when the MIDI was rearranged.
+    const scaleZ = sz - 0.015, octZ = sz + 0.015;
+    mkBtn("scDn", lx, scaleZ, amber, "scaleDown"); mkBtn("scUp", rx, scaleZ, amber, "scaleUp");
+    mkBtn("ocDn", lx, octZ, cyan, "octDown");  mkBtn("ocUp", rx, octZ, cyan, "octUp");
     // parent every overlay to the controller so arrange-mode grabs/moves the WHOLE unit (screen + buttons + keys).
     // setParent preserves world transform; _baseSY caches each cap's post-parent local scale for the press-bounce.
     const midiEd = editables.find((e) => e.name === "midi");
@@ -2725,6 +2731,13 @@ function doScenePick() {
   if (radTog && radTog.hit) { const on = laRadio.toggle(); flashHint(on ? radioLabel() : "📻 radio off"); return; } // power on/off
   const radScn = scene.pickWithRay(ray, (m) => !!m._radioScan);
   if (radScn && radScn.hit) { if (!laRadio.info().on) laRadio.power(true); else laRadio.scan(1); radioScanStatic(); flashHint(radioLabel()); return; } // scan the dial
+  // PROJECTOR first — when it's down its screen sits in front of the window, so it must out-rank the
+  // curtain/glass picks behind it (otherwise tapping the screen toggled the curtains / hit the glass and
+  // the video never played). when it's up the screen is disabled, so this falls through harmlessly.
+  const projVid = scene.pickWithRay(ray, (m) => !!m._projVideo);
+  if (projVid && projVid.hit) { projVideoToggle(); return; } // tap the screen surface → play / pause the video
+  const projHit = scene.pickWithRay(ray, (m) => !!m._projector);
+  if (projHit && projHit.hit) { setProjector(!projDown); return; } // tap the housing/bar → roll the screen up/down (+ curtains)
   const cu = scene.pickWithRay(ray, (m) => !!m._curtain);
   if (cu && cu.hit) { curtainOpen = !curtainOpen; sunRays(); flashHint(curtainOpen ? "🪟 curtains open" : "🌑 curtains drawn"); return; }
   const glassHit = scene.pickWithRay(ray, (m) => !!m._glass);
@@ -2744,10 +2757,6 @@ function doScenePick() {
   if (ytHit && ytHit.hit) { ytToggle(); return; } // click the monitor to pause/resume the playlist
   const fanHit = scene.pickWithRay(ray, (m) => !!m._fan);
   if (fanHit && fanHit.hit) { fanOn = !fanOn; flashHint(fanOn ? "🌀 fan on" : "fan off"); return; } // click the ceiling fan to start/stop it
-  const projVid = scene.pickWithRay(ray, (m) => !!m._projVideo);
-  if (projVid && projVid.hit) { projVideoToggle(); return; } // tap the screen surface → play / pause the video
-  const projHit = scene.pickWithRay(ray, (m) => !!m._projector);
-  if (projHit && projHit.hit) { setProjector(!projDown); return; } // tap the housing/bar → roll the screen up/down (+ curtains)
   const bowl = scene.pickWithRay(ray, (m) => !!m._careBowl);
   if (bowl && bowl.hit) { handleCare(bowl.pickedMesh._careBowl); return; } // click food/water/litter to take care of it
   const cat = scene.pickWithRay(ray, (m) => m.name.startsWith("cat") || m._cat);
