@@ -647,6 +647,7 @@ function ytBtn(type, x, action) {
   return b;
 }
 ytBtn("prev", -0.08, "prev"); ytBtn("pause", 0, "toggle"); ytBtn("next", 0.08, "next");
+ytCtl.setEnabled(false); // retired — the monitor now uses YouTube's OWN control bar (makeYT controls:1); no floating strip
 const dawTex = new B.DynamicTexture("daw", { width: 1024, height: 434 }, scene, false); // kept for the meter helper's sibling API; unused on screen
 // keyboard + trackball
 const kb = box("kb", 0.44, 0.012, 0.115, -0.04, 0.748, 0.13, matte("kb", 0xd9dbdd), desk, false); kb.rotation.x = -0.04;
@@ -2751,10 +2752,15 @@ function doScenePick() {
   if (pv && pv.hit) { openPreview(pv.pickedMesh._preview); return; } // click an existing note/photo → enlarge it
   const pcHit = scene.pickWithRay(ray, (m) => !!m._pc);
   if (pcHit && pcHit.hit) { openPC(); return; } // click the Mac Studio = boot the computer terminal (messages / links / video)
-  const yc = scene.pickWithRay(ray, (m) => !!m._ytctl);
-  if (yc && yc.hit) { ytControl(yc.pickedMesh._ytctl); return; } // transport buttons under the monitor
   const ytHit = scene.pickWithRay(ray, (m) => !!m._ytscreen);
-  if (ytHit && ytHit.hit) { ytToggle(); return; } // click the monitor to pause/resume the playlist
+  if (ytHit && ytHit.hit) {
+    // the monitor carries YouTube's OWN control bar now. on desktop the pointer is locked (no cursor to
+    // click it), so release the lock — the cursor appears over the player; click the room to walk again.
+    // on touch the iframe catches the tap directly (pointer-events:auto), so this is just a fallback.
+    if (!IS_TOUCH && engine.isPointerLock) { engine.exitPointerlock(); flashHint("use the player ▸ click the room to walk again"); }
+    else ytToggle();
+    return;
+  }
   const fanHit = scene.pickWithRay(ray, (m) => !!m._fan);
   if (fanHit && fanHit.hit) { fanOn = !fanOn; flashHint(fanOn ? "🌀 fan on" : "fan off"); return; } // click the ceiling fan to start/stop it
   const bowl = scene.pickWithRay(ray, (m) => !!m._careBowl);
@@ -3107,7 +3113,7 @@ function setupEditor() {
     { name: "monitor", node: deskProps.ultrawide }, { name: "external-monitor", node: deskProps.portable },
     { name: "keyboard", node: deskProps.kb }, { name: "mouse", node: deskProps.mouse }, { name: "midi", node: deskProps.midi },
     { name: "mixer", node: mixer }, { name: "mug", node: deskProps.mug }, { name: "clock", node: deskProps.clock || clockBody }, { name: "clock-display", node: clockLive }, { name: "mac", node: deskProps.mac || scene.getMeshByName("mac") },
-    { name: "transport", node: ytCtl }, // the ◀◀ ❚❚ ▶▶ strip — grab/rotate/scale it wherever you want
+    // (the ◀◀ ❚❚ ▶▶ strip is retired — YouTube's own controls live on the monitor now)
     { name: "pedal-ds2", node: pedalDS }, { name: "pedal-mt2", node: pedalMT }, { name: "pedal-fuzz", node: pedalFZ }, // three stompboxes, each resizable on its own
     { name: "guitar", node: tele }, // floor items (world space)
     { name: "dumbek", node: bongoPivot }, // the hand drum — drags on the floor like the pedalboard
@@ -3294,11 +3300,15 @@ function ytSwap() { if (ytReady && !ytPaused) ytLoadSource(ytPick()); }
 function makeYT() {
   if (!window.YT || !window.YT.Player || !document.getElementById("ytplayer")) return;
   ytCurrent = ytPick();
-  const vars = { autoplay: 0, mute: 1, controls: 0, modestbranding: 1, rel: 0, playsinline: 1, fs: 0, disablekb: 1 }; // autoplay OFF — cued, waiting for the user to press play
+  const vars = { autoplay: 0, mute: 1, controls: 1, modestbranding: 1, rel: 0, playsinline: 1, fs: 1, disablekb: 1 }; // YouTube's OWN controls ON (play/scrub/volume/fullscreen right on the monitor); disablekb so it won't grab WASD
   if (ytCurrent.list) { vars.listType = "playlist"; vars.list = ytCurrent.list; }
   const cfg = { width: "640", height: "360", playerVars: vars, events: {
     onReady: (e) => { ytReady = true; e.target.mute(); if (ytToggleTex) { drawIcon(ytToggleTex.getContext(), 64, 64, "play"); ytToggleTex.update(false); } setInterval(ytSwap, (6 + Math.random() * 4) * 60000); }, // cued + paused; the transport button shows ▶. periodic swap only kicks in once you've pressed play (ytSwap guards on !ytPaused)
-    onStateChange: (e) => { if (e.data === YT.PlayerState.ENDED) ytSwap(); }, // source ended → next random one
+    onStateChange: (e) => { // keep ytPaused in sync with the native controls so the room audio routing stays right
+      if (e.data === YT.PlayerState.PLAYING) ytPaused = false;
+      else if (e.data === YT.PlayerState.PAUSED) ytPaused = true;
+      if (e.data === YT.PlayerState.ENDED) ytSwap();
+    },
     onError: (e) => { if (ytCurrent && ytCurrent.list) { try { ytPlayer.nextVideo(); } catch { ytSwap(); } } else ytSwap(); }, // age-gated / embedding-disabled / unavailable → skip it
   } };
   if (!ytCurrent.list) cfg.videoId = ytCurrent.video;
@@ -3356,6 +3366,7 @@ function updateYTScreen() {
   const sx = (canvas.clientWidth || 1) / (engine.getRenderWidth() || 1), sy = (canvas.clientHeight || 1) / (engine.getRenderHeight() || 1);
   const P = [top[0].x*sx, top[0].y*sy, top[1].x*sx, top[1].y*sy, bot[0].x*sx, bot[0].y*sy, bot[1].x*sx, bot[1].y*sy];
   ytEl.style.display = "block";
+  ytEl.style.pointerEvents = "auto"; // let taps/clicks reach YouTube's own control bar (the iframe maps clicks through the matrix3d)
   ytEl.style.transform = ytQuad(YT_W, YT_H, P);
 }
 // the playlist is the room's default audio; the boombox radio takes over when it's on, and the playlist
