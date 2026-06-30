@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
+<title>THE METRO — bedroom (Babylon)</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; background: #0a0a0c; overflow: hidden;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; color: #e9e6df; }
+  #stage { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; outline: none; }
+
+  /* enter gate — same ritual as the three.js world */
+  #gate { position: fixed; inset: 0; display: grid; place-items: center; z-index: 10;
+    background: radial-gradient(120% 100% at 50% 30%, #15151c 0%, #060608 70%); transition: opacity .8s ease; }
+  #gate.gone { opacity: 0; pointer-events: none; }
+  #gate .card { text-align: center; max-width: 30rem; padding: 2rem; }
+  #gate h1 { font-size: 1.05rem; letter-spacing: .42em; margin: 0 0 .2rem; text-indent: .42em;
+    color: #ff3bd0; text-shadow: 0 0 22px rgba(255,59,208,.55); }
+  #gate .sub { font-size: .72rem; letter-spacing: .28em; color: #7d7a86; margin-bottom: 1.8rem; text-indent: .28em; }
+  #enter-btn { font: inherit; font-size: .8rem; letter-spacing: .26em; text-indent: .26em;
+    padding: .85rem 2.2rem; color: #eee; background: #16161e; cursor: pointer;
+    border: 1px solid #34343f; border-radius: 999px; transition: all .2s ease; }
+  #enter-btn:hover { background: #20202b; border-color: #ff3bd0; box-shadow: 0 0 26px rgba(255,59,208,.25); }
+  #enter-btn:disabled { opacity: .5; cursor: progress; }
+  #loadbar { width: 14rem; height: 2px; background: #26262e; margin: 1.4rem auto 0; border-radius: 2px; overflow: hidden; }
+  #loadbar > i { display: block; height: 100%; width: 0%; background: #ff3bd0; transition: width .25s ease; }
+
+  /* in-world hint */
+  #hint { position: fixed; left: 50%; bottom: 1.4rem; transform: translateX(-50%); z-index: 6;
+    font-size: .64rem; letter-spacing: .18em; color: #aaa6b0; background: rgba(8,8,11,.55);
+    padding: .5rem .9rem; border-radius: 999px; border: 1px solid #2a2a33; opacity: 0;
+    transition: opacity .5s ease; backdrop-filter: blur(6px); pointer-events: none; white-space: nowrap; }
+  #hint.show { opacity: 1; }
+  #flight-strip { position: fixed; top: 18px; left: 50%; transform: translate(-50%, -60px); z-index: 6;
+    background: #0c0e08; border: 1px solid #3a3a20; border-radius: 4px; padding: 9px 18px;
+    font-family: "SF Mono", Menlo, monospace; font-size: 13px; letter-spacing: .08em; color: #ffb000;
+    text-shadow: 0 0 8px rgba(255,176,0,.5); transition: transform .5s cubic-bezier(.2,.9,.3,1.1); pointer-events: none; }
+  #flight-strip.show { transform: translate(-50%, 0); }
+  #flight-strip .fs-plane { color: #e8e4da; } #flight-strip .fs-flight { font-weight: 700; }
+  #flight-strip .fs-type { color: #8a877e; } #flight-strip .fs-label { color: #54e08a; } #flight-strip .fs-alt { color: #8a877e; }
+  #badge { position: fixed; left: 1rem; top: 1rem; z-index: 6; font-size: .58rem; letter-spacing: .2em;
+    color: #6a6772; opacity: 0; transition: opacity .5s; }
+  #badge.show { opacity: 1; }
+  /* cat wellbeing — fed / hydrated / litter, in the top-right */
+  #cat-hud { position: fixed; right: 1rem; top: 1rem; z-index: 6; font-size: .6rem; letter-spacing: .12em;
+    color: #b8b4be; background: rgba(8,8,11,.5); padding: .45rem .8rem; border-radius: 999px;
+    border: 1px solid #2a2a33; backdrop-filter: blur(6px); opacity: 0; transition: opacity .5s;
+    pointer-events: none; white-space: nowrap; }
+  #cat-hud.show { opacity: 1; }
+  #cat-hud .low { color: #e8c061; } #cat-hud .crit { color: #e87a7a; }
+  /* credits live on the intro (inside #gate) — small print along the bottom, gone once you enter */
+  #credits { position: fixed; left: 50%; bottom: .7rem; transform: translateX(-50%); z-index: 11; font-size: .5rem;
+    letter-spacing: .08em; color: #56535c; max-width: 92vw; text-align: center; line-height: 1.5; }
+  /* the YouTube playlist, glued onto the monitor screen via matrix3d each frame (see babylon-bedroom.js) */
+  #ytscreen, #projscreen { position: fixed; left: 0; top: 0; width: 640px; height: 360px; transform-origin: 0 0; z-index: 2;
+    display: none; pointer-events: none; overflow: hidden; background: #000; }
+  #ytscreen iframe, #ytplayer, #projscreen iframe, #projplayer { width: 100%; height: 100%; border: 0; display: block; }
+  #crosshair { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 5;
+    width: 7px; height: 7px; border-radius: 50%; background: rgba(255,255,255,.55);
+    box-shadow: 0 0 2px 1px rgba(0,0,0,.55); opacity: 0; transition: opacity .15s; pointer-events: none; }
+  #crosshair.show { opacity: 1; }
+
+  /* desk arrange / edit mode */
+  #editpanel { position: fixed; left: 1rem; top: 2.6rem; z-index: 8; width: 16rem;
+    background: rgba(10,10,14,.86); border: 1px solid #34343f; border-radius: 10px; padding: .8rem .9rem;
+    font-size: .64rem; letter-spacing: .04em; color: #cfcdd6; display: none; backdrop-filter: blur(8px); }
+  #editpanel.show { display: block; }
+  #editpanel h2 { margin: 0 0 .5rem; font-size: .66rem; letter-spacing: .22em; color: #ff3bd0; }
+  #edit-sel { color: #8fe0c4; font-size: .72rem; margin-bottom: .35rem; }
+  #edit-xform { color: #9a97a2; font-size: .58rem; margin-bottom: .5rem; white-space: pre; }
+  #editpanel .keys { color: #76737e; font-size: .54rem; line-height: 1.5; margin-bottom: .6rem; }
+  #editpanel button { font: inherit; font-size: .58rem; letter-spacing: .12em; cursor: pointer;
+    padding: .45rem .6rem; margin: 0 .3rem .2rem 0; color: #eee; background: #1a1a22;
+    border: 1px solid #3a3a44; border-radius: 6px; transition: all .15s; }
+  #editpanel button:hover { background: #24242e; border-color: #ff3bd0; }
+  #edit-copy { border-color: #2dd4bf !important; }
+  #screenfx { border-top: 1px solid #2a2a33; margin: .55rem 0 .6rem; padding-top: .55rem; }
+  #screenfx .fxh { color: #ff3bd0; font-size: .54rem; letter-spacing: .2em; margin-bottom: .35rem; }
+  #screenfx .fxrow { display: flex; align-items: center; gap: .5rem; margin: .28rem 0; }
+  #screenfx label { width: 4.6rem; color: #8fe0c4; font-size: .54rem; letter-spacing: .08em; }
+  #screenfx input[type=range] { flex: 1; accent-color: #2dd4bf; height: 2px; }
+  #edit-toggle { position: fixed; left: 1rem; bottom: .6rem; z-index: 8; font: inherit; font-size: .56rem;
+    letter-spacing: .14em; cursor: pointer; padding: .5rem .8rem; color: #cfcdd6; background: rgba(10,10,14,.7);
+    border: 1px solid #34343f; border-radius: 999px; opacity: 0; transition: opacity .5s; }
+  #edit-toggle.show { opacity: 1; }
+  #edit-toggle.on { color: #ff3bd0; border-color: #ff3bd0; }
+
+  /* note composer */
+  #composer { position: fixed; inset: 0; z-index: 11; display: none; place-items: center;
+    background: rgba(4,4,6,.55); backdrop-filter: blur(3px); }
+  #composer.show { display: grid; }
+  #composer .card { width: 20rem; max-width: 88vw; background: #14141b; border: 1px solid #34343f;
+    border-radius: 12px; padding: 1.1rem 1.2rem; box-shadow: 0 18px 60px rgba(0,0,0,.6); }
+  #composer h2 { margin: 0 0 .6rem; font-size: .66rem; letter-spacing: .22em; color: #ff3bd0; }
+  #note-text { width: 100%; box-sizing: border-box; height: 5rem; resize: none; font: inherit; font-size: .8rem;
+    color: #1a1a1a; background: #f4ecc8; border: none; border-radius: 6px; padding: .6rem .7rem; }
+  #note-colors { display: flex; gap: .5rem; margin: .7rem 0; }
+  #note-colors button { width: 1.5rem; height: 1.5rem; border-radius: 50%; border: 2px solid transparent; cursor: pointer; padding: 0; }
+  #note-colors button.sel { border-color: #fff; }
+  #composer .row { display: flex; justify-content: space-between; align-items: center; gap: .6rem; }
+  #composer .row .left { font-size: .54rem; color: #76737e; }
+  #composer button.act { font: inherit; font-size: .62rem; letter-spacing: .14em; cursor: pointer;
+    padding: .5rem 1rem; color: #eee; background: #1f1f29; border: 1px solid #3a3a44; border-radius: 7px; }
+  #composer button.act.post { border-color: #2dd4bf; color: #8fe0c4; }
+  #preview { position: fixed; inset: 0; z-index: 12; display: none; place-items: center;
+    background: rgba(4,4,7,.86); cursor: zoom-out; backdrop-filter: blur(3px); }
+  #preview.show { display: grid; }
+  #preview-body img { max-width: 84vw; max-height: 84vh; border: 4px solid #15151c;
+    box-shadow: 0 12px 64px rgba(0,0,0,.65); }
+  #preview-body .note-card { max-width: 60vw; padding: 1.8rem 2.1rem; border-radius: 4px;
+    font: 600 1.05rem/1.5 ui-monospace, "SFMono-Regular", monospace; color: #23201a;
+    white-space: pre-wrap; box-shadow: 0 12px 64px rgba(0,0,0,.65); }
+
+  /* THE COMPUTER — a matrix-style terminal for messages + links */
+  #pc { position: fixed; inset: 0; z-index: 13; display: none; background: #000; overflow: hidden; }
+  #pc.show { display: block; }
+  #pc-rain { position: absolute; inset: 0; width: 100%; height: 100%; opacity: .5; }
+  #pc .pc-crt { position: absolute; inset: 0; display: grid; place-items: center;
+    background: radial-gradient(ellipse at center, rgba(0,40,0,.12) 0%, rgba(0,0,0,.86) 100%); }
+  #pc .pc-crt::after { content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: repeating-linear-gradient(0deg, rgba(0,0,0,0), rgba(0,0,0,0) 2px, rgba(0,0,0,.22) 3px, rgba(0,0,0,0) 4px); }
+  #pc .pc-term { position: relative; width: 34rem; max-width: 92vw; min-height: 18rem;
+    background: rgba(0,12,2,.82); border: 1px solid #00ff41; border-radius: 6px;
+    box-shadow: 0 0 40px rgba(0,255,65,.22), inset 0 0 30px rgba(0,255,65,.06);
+    padding: 1rem 1.2rem 1.2rem; color: #00ff41; font: .8rem/1.5 ui-monospace, "SFMono-Regular", monospace;
+    text-shadow: 0 0 6px rgba(0,255,65,.55); }
+  #pc .pc-top { display: flex; align-items: center; gap: .5rem; font-size: .58rem; letter-spacing: .14em;
+    border-bottom: 1px solid rgba(0,255,65,.3); padding-bottom: .5rem; margin-bottom: .7rem; }
+  #pc .pc-dot { width: .5rem; height: .5rem; border-radius: 50%; background: #00ff41; box-shadow: 0 0 8px #00ff41; animation: pcblink 1.4s steps(2) infinite; }
+  #pc .pc-x { margin-left: auto; font: inherit; font-size: .56rem; background: none; border: 1px solid rgba(0,255,65,.4); color: #00ff41; padding: .2rem .5rem; border-radius: 4px; cursor: pointer; }
+  #pc .pc-x:hover { background: rgba(0,255,65,.12); }
+  #pc .pc-boot { white-space: pre-wrap; font-size: .6rem; color: #5fff8f; opacity: .85; min-height: 1rem; margin-bottom: .5rem; }
+  #pc .pc-view.hidden { display: none; }
+  #pc .pc-prompt { font-size: .66rem; margin-bottom: .8rem; color: #9bffba; }
+  #pc .pc-opt { display: block; width: 100%; text-align: left; font: inherit; background: none;
+    border: 1px solid transparent; color: #00ff41; padding: .55rem .6rem; margin: .15rem 0; cursor: pointer; border-radius: 4px;
+    text-shadow: 0 0 6px rgba(0,255,65,.55); transition: all .1s; }
+  #pc .pc-opt:hover { border-color: #00ff41; background: rgba(0,255,65,.1); padding-left: 1rem; }
+  #pc textarea, #pc input { width: 100%; box-sizing: border-box; background: rgba(0,20,4,.6);
+    border: 1px solid rgba(0,255,65,.4); color: #aaffc0; font: inherit; font-size: .76rem; padding: .5rem .6rem;
+    border-radius: 4px; margin-bottom: .55rem; outline: none; text-shadow: 0 0 4px rgba(0,255,65,.5); }
+  #pc textarea { height: 5rem; resize: none; }
+  #pc textarea:focus, #pc input:focus { border-color: #00ff41; box-shadow: 0 0 12px rgba(0,255,65,.3); }
+  #pc input::placeholder, #pc textarea::placeholder { color: rgba(0,255,65,.4); }
+  #pc .pc-actions { display: flex; justify-content: space-between; gap: .6rem; margin-top: .3rem; }
+  #pc .pc-back, #pc .pc-send { font: inherit; font-size: .64rem; letter-spacing: .1em; cursor: pointer;
+    background: none; border: 1px solid #00ff41; color: #00ff41; padding: .45rem .9rem; border-radius: 4px;
+    text-shadow: 0 0 6px rgba(0,255,65,.55); }
+  #pc .pc-send:hover, #pc .pc-back:hover { background: rgba(0,255,65,.15); }
+  #pc .pc-status { min-height: 1rem; margin-top: .7rem; font-size: .62rem; color: #9bffba; }
+  @keyframes pcblink { 50% { opacity: .2; } }
+</style>
+</head>
+<body>
+  <canvas id="stage" tabindex="0"></canvas>
+  <div id="ytscreen"><div id="ytplayer"></div></div>
+  <div id="projscreen"><div id="projplayer"></div></div>
+
+  <div id="crosshair"></div>
+  <div id="badge">BABYLON · PHASE 1 · BEDROOM</div>
+  <div id="cat-hud"></div>
+  <div id="hint"></div>
+  <div id="flight-strip"></div>
+
+  <button id="edit-toggle">✦ arrange desk</button>
+  <div id="editpanel">
+    <h2>ARRANGE DESK</h2>
+    <div id="edit-sel">click an item to select</div>
+    <div id="edit-xform"></div>
+    <div class="keys">drag = move on desk · [ ] = rotate · −/= = height<br>, . = size · ↑↓←→ = nudge · Shift = fine · R = reset item</div>
+    <div id="screenfx">
+      <div class="fxh">SCREEN PHOTOS</div>
+      <div class="fxrow"><label>contrast</label><input id="fx-contrast" type="range" min="0.6" max="1.6" step="0.02" value="1.08"></div>
+      <div class="fxrow"><label>shadows</label><input id="fx-shadows" type="range" min="-0.5" max="0.5" step="0.02" value="-0.4"></div>
+      <div class="fxrow"><label>screen out</label><input id="fx-depth" type="range" min="0" max="0.05" step="0.002" value="0"></div>
+      <div class="fxh" style="margin-top:.5rem">OUTSIDE</div>
+      <div class="fxrow"><label>fog</label><input id="fx-fog" type="range" min="0" max="0.3" step="0.005" value="0.13"></div>
+      <div class="fxh" style="margin-top:.5rem">GOD-RAYS</div>
+      <div class="fxrow"><label>opacity</label><input id="fx-ropac" type="range" min="0" max="0.5" step="0.01" value="0.1"></div>
+      <div class="fxrow"><label>exposure</label><input id="fx-rexp" type="range" min="0" max="1" step="0.02" value="0.42"></div>
+      <div class="fxrow"><label>density</label><input id="fx-rdens" type="range" min="0.5" max="1" step="0.01" value="0.95"></div>
+      <div class="fxrow"><label>decay</label><input id="fx-rdecay" type="range" min="0.9" max="0.99" step="0.002" value="0.965"></div>
+      <div class="fxh" style="margin-top:.5rem">AUDIO</div>
+      <div class="fxrow"><label>video</label><input id="fx-vvol" type="range" min="0" max="1" step="0.02" value="0.85"></div>
+      <div class="fxrow"><label>radio</label><input id="fx-rvol" type="range" min="0" max="1" step="0.02" value="0.9"></div>
+      <div class="fxrow"><label>city</label><input id="fx-cvol" type="range" min="0" max="1" step="0.02" value="0.6"></div>
+    </div>
+    <button id="edit-copy">copy layout</button>
+    <button id="edit-reset">reset</button>
+    <button id="edit-done">done (G)</button>
+  </div>
+
+  <div id="composer">
+    <div class="card">
+      <h2>POST A NOTE</h2>
+      <textarea id="note-text" maxlength="180" placeholder="leave something on the wall…"></textarea>
+      <div id="note-colors"></div>
+      <div class="row">
+        <span class="left">it stays on the wall</span>
+        <span>
+          <button class="act" id="note-cancel">cancel</button>
+          <button class="act post" id="note-post">post</button>
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <div id="pc">
+    <canvas id="pc-rain"></canvas>
+    <div class="pc-crt">
+      <div class="pc-term">
+        <div class="pc-top"><span class="pc-dot"></span> METRO//TERMINAL — secure uplink <button id="pc-x" class="pc-x">[ESC] exit</button></div>
+        <div id="pc-boot" class="pc-boot"></div>
+        <div id="pc-menu" class="pc-view">
+          <div class="pc-prompt">root@metro:~$ select a channel_</div>
+          <button class="pc-opt" data-go="msg">&gt; LEAVE A MESSAGE</button>
+          <button class="pc-opt" data-go="link">&gt; TRANSMIT A LINK</button>
+          <button class="pc-opt" data-go="video">&gt; TOGGLE BROADCAST // video</button>
+        </div>
+        <div id="pc-msg" class="pc-view hidden">
+          <div class="pc-prompt">&gt; compose // posts to the wall</div>
+          <textarea id="pc-msg-text" maxlength="180" placeholder="type your message…"></textarea>
+          <div class="pc-actions"><button class="pc-back" data-back>&lt; back</button><button id="pc-msg-send" class="pc-send">[ TRANSMIT ]</button></div>
+        </div>
+        <div id="pc-link" class="pc-view hidden">
+          <div class="pc-prompt">&gt; transmit link // http(s) only</div>
+          <input id="pc-link-url" placeholder="https://…">
+          <input id="pc-link-title" maxlength="60" placeholder="label (optional)">
+          <div class="pc-actions"><button class="pc-back" data-back>&lt; back</button><button id="pc-link-send" class="pc-send">[ TRANSMIT ]</button></div>
+        </div>
+        <div id="pc-status" class="pc-status"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="preview"><div id="preview-body"></div></div>
+
+  <div id="gate">
+    <div class="card">
+      <h1>THE METRO</h1>
+      <div class="sub">bedroom — rebuilt in babylon</div>
+      <button id="enter-btn" disabled>loading…</button>
+      <div id="loadbar"><i></i></div>
+    </div>
+    <div id="credits">3D models — BoomBox, MIDI, pedal, tablet, bongos (CC0/CC-BY · Khronos &amp; Poly Pizza) · Mac Studio, monitor, keyboard, mouse, mug, clock, cat, 737, Godzilla, city (Sketchfab · CC-BY)</div>
+  </div>
+
+  <!-- Babylon 9.x from the official CDN (UMD globals). no bundler — matches the site's no-build rule. -->
+  <script src="https://cdn.jsdelivr.net/npm/earcut@2.2.4/dist/earcut.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/suncalc@1.9.0/suncalc.js"></script>
+  <script src="https://cdn.babylonjs.com/babylon.js"></script>
+  <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
+  <script src="https://cdn.babylonjs.com/havok/HavokPhysics_umd.js"></script>
+  <!-- YouTube IFrame Player API — drives the playlist on the computer screen -->
+  <script src="https://www.youtube.com/iframe_api"></script>
+
+  <!-- Supabase keys (public anon key) so the room can read the real wall notes -->
+  <script src="../assets/js/config.js"></script>
+  <script type="module" src="../assets/js/babylon-bedroom.js"></script>
+</body>
+</html>
