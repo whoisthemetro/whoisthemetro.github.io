@@ -3035,7 +3035,9 @@ function setupPC() {
 // DESK ARRANGE MODE — drag props on the desk; persists to localStorage and
 // exports a layout you paste back so it gets baked in permanently.
 // =====================================================================
-const LS_KEY = "metro.desk.layout.v2"; // bumped after the GLB swap — old saved layouts held stale per-model scales
+const LS_KEY = "metro.desk.layout.v3"; // bumped 06-29: a stale v2 save on a device (esp. mobile) was overriding the
+// freshly-baked DEFAULT_LAYOUT, so the MPC/Godzilla/etc. showed in their old spots. v3 starts clean → everyone gets
+// the baked desktop layout until they arrange their own. (desktop's old v2 is abandoned but DEFAULT now == that layout.)
 // baked-in arrangement (your "copy layout"); localStorage overrides this per-visitor
 // the user's own "copy layout" from desktop, baked in 06-29 so EVERY device (mobile included) matches —
 // previously these lived only in the desktop browser's localStorage, so phones fell back to stale spots
