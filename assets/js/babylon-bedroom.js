@@ -3094,7 +3094,7 @@ const DEFAULT_LAYOUT = {
   "mpc": { x: 0.798, y: 0.75, z: -2.693, rx: 0, ry: -0.35, rz: 0, s: 1 },
   "door": { x: 2.5, y: 0, z: 2.62, rx: 0, ry: 0, rz: 0, s: 0.74 },
   "city": { x: 0, y: -9, z: -18.8, rx: 0, ry: 0, rz: 0, s: 8.014 },
-  "plane": { x: -6, y: 3, z: -9, rx: 0.06, ry: -1.571, rz: 0, s: 1 }, // ry = jetYaw: nose along +x travel (was 21.921 ≈ sideways). flip to +1.571 if it flies tail-first.
+  "plane": { x: -6, y: 3, z: -9, rx: 0.06, ry: 0, rz: 0, s: 1 }, // ry = jetYaw: model's nose runs along local X (−π/2 flew it sideways), so 0 = nose along +x travel. flip to π (3.1416) if it flies tail-first.
   "godzilla": { x: -25, y: -29, z: -73.5, rx: 0, ry: 0.442, rz: 0, s: 3.604 },
 };
 let editMode = false, selected = null, dragging = false, grabOff = { x: 0, z: 0 }, editables = [], editHL = null;
