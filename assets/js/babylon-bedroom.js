@@ -1935,6 +1935,46 @@ camera.setTarget(new V3(0, EYE_H, ZF));
 camera.attachControl(canvas, true);
 camera.minZ = 0.05; camera.fov = 1.18; camera.speed = 0.20; camera.inertia = 0.72; camera.angularSensibility = 2400;
 camera.keysUp = [87, 38]; camera.keysDown = [83, 40]; camera.keysLeft = [65, 37]; camera.keysRight = [68, 39];
+// =====================================================================
+// MOBILE CONTROLS — left joystick to walk, drag to look, tap to interact (matches the three.js room).
+// =====================================================================
+// "(pointer: coarse)" = the PRIMARY pointer is touch (a phone/tablet) — stays false on a
+// mouse-primary laptop even if it also has a touchscreen, so we don't break desktop click-to-pick.
+const IS_TOUCH = matchMedia("(pointer: coarse)").matches;
+const joy = { x: 0, y: 0 };
+let tapPick = null; // {x,y} while a tap is being resolved (touch); else null → use the crosshair/forward ray
+function castRay(reach) { if (tapPick) { const r = scene.createPickingRay(tapPick.x, tapPick.y, B.Matrix.Identity(), camera); r.length = reach; return r; } return camera.getForwardRay(reach); }
+if (IS_TOUCH) {
+  // Babylon's built-in touch input only yaws + drives forward on drag — NO pitch. drop it and
+  // roll our own drag-look (yaw + pitch), exactly like the three.js controls.js. pointer-lock /
+  // mouse-look stay untouched for any desktop-with-touch hybrid.
+  try { camera.inputs.removeByType("FreeCameraTouchInput"); } catch { }
+  const joyEl = document.getElementById("joystick"), nub = document.getElementById("joystick-nub");
+  if (joyEl) {
+    joyEl.classList.add("show");
+    let jp = null;
+    joyEl.addEventListener("pointerdown", (e) => { jp = e.pointerId; joyEl.setPointerCapture(e.pointerId); e.preventDefault(); });
+    joyEl.addEventListener("pointermove", (e) => { if (e.pointerId !== jp) return; const r = joyEl.getBoundingClientRect(); const dx = (e.clientX - (r.left + r.width / 2)) / (r.width / 2), dy = (e.clientY - (r.top + r.height / 2)) / (r.height / 2); const len = Math.hypot(dx, dy) || 1, s = len > 1 ? 1 / len : 1; joy.x = dx * s; joy.y = dy * s; if (nub) nub.style.transform = `translate(calc(-50% + ${joy.x * 33}px), calc(-50% + ${joy.y * 33}px))`; });
+    const jend = (e) => { if (e.pointerId !== jp) return; jp = null; joy.x = joy.y = 0; if (nub) nub.style.transform = "translate(-50%,-50%)"; };
+    joyEl.addEventListener("pointerup", jend); joyEl.addEventListener("pointercancel", jend);
+  }
+  // drag anywhere on the canvas = look (yaw + pitch). a quick, near-still touch = interact at that point.
+  const LOOK_K = 0.005, PITCH_MAX = 1.3;
+  let look = null;
+  canvas.addEventListener("pointerdown", (e) => { look = { id: e.pointerId, x: e.clientX, y: e.clientY, t: performance.now(), moved: 0 }; });
+  canvas.addEventListener("pointermove", (e) => {
+    if (!look || e.pointerId !== look.id) return;
+    const dx = e.clientX - look.x, dy = e.clientY - look.y; look.x = e.clientX; look.y = e.clientY; look.moved += Math.abs(dx) + Math.abs(dy);
+    camera.rotation.y -= dx * LOOK_K; // drag right → look right (RH: +y yaws left, so subtract)
+    camera.rotation.x = Math.max(-PITCH_MAX, Math.min(PITCH_MAX, camera.rotation.x - dy * LOOK_K)); // drag down → look down
+  });
+  const lookEnd = (e) => {
+    if (!look || e.pointerId !== look.id) return;
+    if (entered && !editMode && !composerOpen && !pcOpen && performance.now() - look.t < 350 && look.moved < 14) { tapPick = { x: e.clientX, y: e.clientY }; try { doScenePick(); } catch (err) { } tapPick = null; }
+    look = null;
+  };
+  canvas.addEventListener("pointerup", lookEnd); canvas.addEventListener("pointercancel", lookEnd);
+}
 // FIXED eye height — no gravity. the flat floor doesn't need it, and gravity+ellipsoid
 // was making the camera CLIMB while walking (1.50 → 1.79). collisions stay on for walls/furniture.
 camera.checkCollisions = true; camera.applyGravity = false;
@@ -2101,6 +2141,19 @@ scene.onBeforeRenderObservable.add(() => {
   B.Color3.LerpToRef(SG_WARM, SG_COOL, sgHue, screenGlow.diffuse); // warm scenes ↔ cool night scenes
   // hearts
   for (let i = hearts.length - 1; i >= 0; i--) { const h = hearts[i]; h._life -= dt; if (h._life <= 0) { h.dispose(); hearts.splice(i, 1); continue; } h.position.y += dt * 0.35; h.position.x += h._vx * dt; h.material.alpha = Math.min(1, h._life / 0.8); }
+  // mobile joystick walk: feed the camera's OWN move pipeline (cameraDirection) so we inherit
+  // its wall collisions + inertia exactly like WASD. getForwardRay is the true forward in this
+  // right-handed scene (camera.getDirection(Z) / view-local +Z both point BACKWARD here).
+  if (IS_TOUCH && (joy.x || joy.y)) {
+    const sp = (camera._computeLocalCameraSpeed ? camera._computeLocalCameraSpeed() : camera.speed);
+    const fwd = camera.getForwardRay().direction; fwd.y = 0;
+    if (fwd.lengthSquared() > 1e-4) {
+      fwd.normalize();
+      const right = B.Vector3.Cross(fwd, B.Axis.Y); right.normalize(); // screen-right
+      const disp = fwd.scale(-joy.y * sp).add(right.scale(joy.x * sp)); // stick up (joy.y<0) → forward
+      camera.cameraDirection.addInPlace(disp);
+    }
+  }
   // pin the eye height — collisions can only push horizontally, never lift you
   if (scene.activeCamera) scene.activeCamera.position.y = EYE_H;
 });
@@ -2625,12 +2678,16 @@ scene.onPointerObservable.add((p) => {
     if (p.type === B.PointerEventTypes.POINTERUP) { lightDrag = null; camera.attachControl(canvas, true); persistFx(); return; } // remember the room light you dialed
   }
   if (p.type !== B.PointerEventTypes.POINTERDOWN) return;
+  if (IS_TOUCH) return; // touch: picks fire on a TAP (custom handler), look via drag, move via the joystick
   if (!engine.isPointerLock) { engine.enterPointerlock(); return; }
+  doScenePick();
+});
+// the whole click→interact sequence, shared by the desktop crosshair AND the mobile tap (castRay picks the ray)
+function doScenePick() {
   if (vacHeld) { setVacuuming(false); return; } // a click while vacuuming stands it back in the corner
   if (toy.phase === "held") { throwToy(); return; } // holding the mouse → any click throws it
-  const lc = scene.pickWithRay(camera.getForwardRay(4.2), (m) => !!m._lightCtrl);
-  if (lc && lc.hit) { lightDrag = lc.pickedMesh._lightCtrl; camera.detachControl(); return; } // grab the dimmer/hue
-  const ray = camera.getForwardRay(7);
+  if (!IS_TOUCH) { const lc = scene.pickWithRay(castRay(4.2), (m) => !!m._lightCtrl); if (lc && lc.hit) { lightDrag = lc.pickedMesh._lightCtrl; camera.detachControl(); return; } } // grab the dimmer/hue (desktop drag)
+  const ray = castRay(7);
   const instr = scene.pickWithRay(ray, (m) => !!m._instr);
   if (instr && instr.hit) { playInstrument(instr); return; } // play the guitar / keys / drums
   const radTog = scene.pickWithRay(ray, (m) => !!m._radioToggle);
@@ -2641,7 +2698,7 @@ scene.onPointerObservable.add((p) => {
   if (cu && cu.hit) { curtainOpen = !curtainOpen; sunRays(); flashHint(curtainOpen ? "🪟 curtains open" : "🌑 curtains drawn"); return; }
   const glassHit = scene.pickWithRay(ray, (m) => !!m._glass);
   if (glassHit && glassHit.hit) { // the window is solid — but if a jet's up, a shot through the glass can down it
-    if (planeUp()) { const jr = scene.pickWithRay(camera.getForwardRay(220), (m) => !!m._jet); if (jr && jr.hit) { shootJet(); flashHint("🎯 splash — one down"); } else flashHint("missed — lead the target"); }
+    if (planeUp()) { const jr = scene.pickWithRay(castRay(220), (m) => !!m._jet); if (jr && jr.hit) { shootJet(); flashHint("🎯 splash — one down"); } else flashHint("missed — lead the target"); }
     return;
   }
   const lk = scene.pickWithRay(ray, (m) => !!m._link);
@@ -2676,7 +2733,7 @@ scene.onPointerObservable.add((p) => {
     openComposer(wallHit.pickedMesh._noteWall, wallHit.pickedPoint); return;
   }
   throwBall();
-});
+}
 
 // petting bumps the shared pets count + pops hearts (the achievement at 15 still lives in store)
 function petCat() {
@@ -3147,7 +3204,7 @@ let entered = false;
 function enter() {
   if (entered) return; entered = true;
   gate.classList.add("gone"); badge.classList.add("show"); editToggle.classList.add("show"); catHud?.classList.add("show"); // credits stay on the intro only
-  hint.textContent = "WASD move · click: guitar / keys / drums · pet the cat, flick the yarn to chase, grab+throw the mouse to fetch, the bowls to feed/water/clean · grab the vacuum to clean the floor · T treat · boombox = radio · Mac Studio = computer (messages/links) · monitor = play/pause video · wall = note · G arrange · L lighting";
+  hint.textContent = (IS_TOUCH ? "left stick to walk · drag to look · tap things to use them" : "WASD move · click") + " · guitar / keys / drums · pet the cat, flick the yarn to chase, grab+throw the mouse to fetch, the bowls to feed/water/clean · grab the vacuum to clean the floor · T treat · boombox = radio · Mac Studio = computer (messages/links) · monitor = play/pause video · wall = note · G arrange · L lighting";
   hint.classList.add("show"); setTimeout(() => hint.classList.remove("show"), 7000);
   canvas.focus(); engine.enterPointerlock();
   try { ensureAudio(); } catch (e) { /* audio is best-effort */ } // build the audio context on this user gesture
