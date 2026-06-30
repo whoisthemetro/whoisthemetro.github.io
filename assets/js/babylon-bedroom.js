@@ -3037,21 +3037,32 @@ function setupPC() {
 // =====================================================================
 const LS_KEY = "metro.desk.layout.v2"; // bumped after the GLB swap — old saved layouts held stale per-model scales
 // baked-in arrangement (your "copy layout"); localStorage overrides this per-visitor
+// the user's own "copy layout" from desktop, baked in 06-29 so EVERY device (mobile included) matches —
+// previously these lived only in the desktop browser's localStorage, so phones fell back to stale spots
+// (MIDI in the wrong place, oversized transport strip, Godzilla/city in their un-arranged positions).
+// localStorage still overrides this per-visitor; re-paste a fresh "copy layout" here to update the floor.
 const DEFAULT_LAYOUT = {
-  // mouse: keep the baked position/rotation but DROP the old `s` — the swapped GLB sizes itself
-  //   from its own placement scale (target/_naturalMax) for a sane real-world size.
-  // monitor: no baked entry — its loadMonitors placement (rest-on-desk + live-screen fit) governs;
-  //   the new desk-mount model is centered and self-rests, so a baked y here only sank it into the desk.
-  "external-monitor": { x: 0.74, y: 0.979, z: -0.18, ry: -0.35, s: 0.004 },
-  "keyboard": { x: -0.02, y: 0.751, z: 0.25, ry: 0, s: 0.181 },
-  "mouse": { x: 0.31, y: 0.74, z: 0.2, ry: 0 },
-  "midi": { x: -0.03, y: 0.63, z: 0.478, ry: 0, s: 0.004 },
-  "mixer": { x: -0.02, y: 0.74, z: 0.01, ry: 0, s: 1 },
-  "mug": { x: 0.45, y: 0.779, z: -0.02, ry: 0, s: 0.004 },
-  // mac + clock: no baked entry — their GLB placement (position, rest-on-desk, and scale) governs.
-  "pedalboard": { x: 1.46, y: 0, z: -2.38, ry: 2.6, s: 1 },
-  "guitar": { x: 1.61, y: 0.21, z: -2.65, ry: -0.6, s: 1 },
-  "dumbek": { x: -1.72, y: 0, z: -1.84, ry: 0.55, s: 1 },
+  "monitor": { x: -0.008, y: 1.019, z: -0.29, rx: 0, ry: -1.571, rz: 0, s: 1.267 },
+  "external-monitor": { x: 0.71, y: 0.989, z: -0.222, rx: 1.55, ry: -0.35, rz: -0.05, s: 0.004 },
+  "keyboard": { x: -0.03, y: 0.751, z: 0.25, rx: 0, ry: 0, rz: 0, s: 0.076 },
+  "mouse": { x: 0.26, y: 0.74, z: 0.241, rx: 0, ry: -2.9, rz: 0, s: 0.013 },
+  "midi": { x: -0.03, y: 0.74, z: -0.012, rx: 0, ry: 0, rz: 0, s: 0.004 },
+  "mixer": { x: -0.57, y: 0.74, z: 0.07, rx: 0, ry: 0.35, rz: 0, s: 1 },
+  "mug": { x: 0.45, y: 0.779, z: -0.02, rx: 0, ry: 0, rz: 0, s: 0.004 },
+  "clock": { x: -0.73, y: 0.732, z: -0.15, rx: 0, ry: 0.4, rz: 0, s: 0.057 },
+  "clock-display": { x: -0.526, y: 0.787, z: -2.953, rx: 0, ry: 3.542, rz: 0, s: 1.419 },
+  "mac": { x: 0.71, y: 0.797, z: -0.26, rx: 0, ry: 0, rz: 0, s: 0.112 },
+  "transport": { x: 0.708, y: 0.98, z: -0.21, rx: 0, ry: -0.3, rz: 0, s: 0.665 },
+  "pedal-ds2": { x: 1.29, y: 0, z: -2.349, rx: 0, ry: 0, rz: 0, s: 1 },
+  "pedal-mt2": { x: 1.434, y: -0.02, z: -2.256, rx: -1.05, ry: 0.3, rz: 0, s: 1 },
+  "pedal-fuzz": { x: 1.57, y: 0, z: -2.27, rx: 0, ry: -0.2, rz: 0, s: 0.84 },
+  "guitar": { x: 1.71, y: 0.17, z: -2.51, rx: 0.05, ry: -3.05, rz: 0.3, s: 1 },
+  "dumbek": { x: -2.257, y: 0, z: -1.56, rx: 0, ry: 0.55, rz: 0, s: 1 },
+  "mpc": { x: 0.798, y: 0.75, z: -2.693, rx: 0, ry: -0.35, rz: 0, s: 1 },
+  "door": { x: 2.5, y: 0, z: 2.62, rx: 0, ry: 0, rz: 0, s: 0.74 },
+  "city": { x: 0, y: -9, z: -18.8, rx: 0, ry: 0, rz: 0, s: 8.014 },
+  "plane": { x: -6, y: 3, z: -9, rx: 0.06, ry: 21.921, rz: 0, s: 1 },
+  "godzilla": { x: -25, y: -29, z: -73.5, rx: 0, ry: 0.442, rz: 0, s: 3.604 },
 };
 let editMode = false, selected = null, dragging = false, grabOff = { x: 0, z: 0 }, editables = [], editHL = null;
 let selWall = null, wallDragging = false; // wall photos slide along their wall, separate from the X/Z desk drag
