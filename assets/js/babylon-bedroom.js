@@ -602,7 +602,13 @@ function projVideoToggle() {
 }
 function updateProjector(dt) {
   const target = projDown ? 1 : 0;
-  if (projT === target) { projScreen.setEnabled(projT > 0.01); projBar.setEnabled(projT > 0.01); return; }
+  // at rest, still pin the geometry to projT so a rolled-up screen is COLLAPSED at the ceiling (not left
+  // hanging at full size). otherwise its invisible full-height quad keeps a pickable hitbox down over the
+  // desk, and a click near the desk would drop the screen. (picks below also gate on isEnabled.)
+  if (projT === target) {
+    projScreen.scaling.y = Math.max(0.001, projT); projScreen.position.y = -(PROJ.h * projT) / 2; projBar.position.y = -PROJ.h * projT;
+    projScreen.setEnabled(projT > 0.01); projBar.setEnabled(projT > 0.01); return;
+  }
   projT = Math.max(0, Math.min(1, projT + Math.sign(target - projT) * dt * 1.1)); // ~0.9s travel
   projScreen.scaling.y = Math.max(0.001, projT); projScreen.position.y = -(PROJ.h * projT) / 2; // top stays at the anchor; it unrolls downward
   projBar.position.y = -PROJ.h * projT;
@@ -1647,13 +1653,13 @@ const az = 0.3, alt = 0.26;
 const sun = new B.DirectionalLight("sun", new V3(-Math.sin(az) * Math.cos(alt), -Math.sin(alt), Math.cos(az) * Math.cos(alt)).normalize(), scene);
 sun.intensity = 3.4; sun.diffuse = C(0xfff0d8); sun.position = new V3(5, 8, -8); sun.autoUpdateExtends = true;
 const shadow = new B.ShadowGenerator(2048, sun);
-shadow.usePercentageCloserFiltering = true; shadow.filteringQuality = B.ShadowGenerator.QUALITY_HIGH; shadow.bias = 0.0016; shadow.normalBias = 0.035; shadow.darkness = 0.6; // soft, light shadows — the blinds diffuse the sun so nothing is harshly cast
+shadow.usePercentageCloserFiltering = true; shadow.filteringQuality = B.ShadowGenerator.QUALITY_HIGH; shadow.bias = 0.0016; shadow.normalBias = 0.035; shadow.darkness = 0.32; // let the shadow actually read (was 0.6 = barely there → the room looked flat); the PCF blur keeps the edge soft
 // the CEILING LIGHT casts real shadows now — a downward SpotLight at the fixture (a spot, not the
 // point lamp, because spots cast a clean single shadow map). intensity rides the dimmer (updateLamp).
 const lampSpot = new B.SpotLight("lampSpot", new V3(0, H - 0.45, 0.4), new V3(0, -1, 0), 2.5, 1.2, scene); // from just under the fan's bulbs, shining down
 lampSpot.diffuse = C(0xffe2b8); lampSpot.intensity = 0; lampSpot.range = 7; lampSpot.shadowMinZ = 0.2; lampSpot.shadowMaxZ = 6;
 const lampShadow = new B.ShadowGenerator(1024, lampSpot);
-lampShadow.usePercentageCloserFiltering = true; lampShadow.filteringQuality = B.ShadowGenerator.QUALITY_MEDIUM; lampShadow.bias = 0.002; lampShadow.normalBias = 0.03; lampShadow.darkness = 0.45;
+lampShadow.usePercentageCloserFiltering = true; lampShadow.filteringQuality = B.ShadowGenerator.QUALITY_MEDIUM; lampShadow.bias = 0.002; lampShadow.normalBias = 0.03; lampShadow.darkness = 0.3;
 const windowLight = new B.PointLight("winLight", new V3(0, 1.6, ZF + 0.6), scene); windowLight.diffuse = C(0xffe9c0); windowLight.intensity = 2.2; windowLight.range = 6.5; // reaches across the room so the spill fills it, not just the front
 windowLight.excludedMeshes = [ceil]; // don't blast a bright sun-spot onto the ceiling right above the desk
 const lavaLight = new B.PointLight("lavaLight", new V3(0, 0, 0), scene); lavaLight.parent = lava; lavaLight.position.set(0, 0.15, 0); lavaLight.diffuse = C(0xff8040); lavaLight.intensity = 0.85; lavaLight.range = 0.95;
@@ -1877,9 +1883,9 @@ function updateEnv(date) {
   else { beamC = 0x7a7080; beamI = 0.08; winC = 0x8a7a9a; winI = 0.3; hS = 0x565e6e; hG = 0x241f18; hI = 0.07; skyS = 0.12; disc = [0.06, 0.07, 0.13]; lamp = 5; }
   const dim = Math.max(0.2, 1 - 0.6 * weather.clouds - (weather.rain ? 0.1 : 0));
   beamI *= dim; winI *= Math.max(0.4, 1 - 0.4 * weather.clouds);
-  sun.diffuse = C(beamC); sunBase = beamI * 0.35; // blinds absorb most of the direct sun → just a soft key
-  windowLight.diffuse = C(winC); winBase = winI * 1.3; // the soft daylight spilling in the window
-  hemi.diffuse = C(hS); hemi.groundColor = C(hG); hemiBase = hI * 2.2 + 0.2; // strong even ambient (intensities applied per-frame ×curtain factor)
+  sun.diffuse = C(beamC); sunBase = beamI * 0.55; // the sun is the KEY that casts the room's shadows — give it real authority (was 0.35, too weak → flat)
+  windowLight.diffuse = C(winC); winBase = winI * 0.95; // the soft daylight spill; pulled back so it fills without washing the shadows out (was 1.3)
+  hemi.diffuse = C(hS); hemi.groundColor = C(hG); hemiBase = hI * 2.2 + 0.12; // even ambient, lower floor so shadowed sides stay darker (was +0.2)
   sunDiscMat.emissiveColor.set(disc[0], disc[1], disc[2]); sunRays();
   skyMat.emissiveColor.set(0.6 * skyS, 0.59 * skyS, 0.58 * skyS);
   updateLamp(); // the room lamp is driven by the manual dimmer, not the day/night cycle
@@ -2012,7 +2018,7 @@ pipeline.fxaaEnabled = true; pipeline.samples = 4; pipeline.bloomEnabled = true;
 pipeline.bloomThreshold = 0.92; pipeline.bloomWeight = 0.15;
 pipeline.imageProcessingEnabled = true; pipeline.imageProcessing.vignetteEnabled = true; pipeline.imageProcessing.vignetteWeight = 2.4; pipeline.imageProcessing.vignetteColor = new B.Color4(0, 0, 0, 0);
 pipeline.grainEnabled = true; pipeline.grain.intensity = 6; pipeline.grain.animated = true; pipeline.sharpenEnabled = true; pipeline.sharpen.edgeAmount = 0.16;
-try { if (!IS_TOUCH && B.SSAO2RenderingPipeline.IsSupported) { const ssao = new B.SSAO2RenderingPipeline("ssao", scene, { ssaoRatio: 0.75, blurRatio: 1 }, [camera]); ssao.radius = 0.4; ssao.totalStrength = 0.65; ssao.base = 0.2; ssao.samples = 16; ssao.expensiveBlur = true; } } catch (e) { console.warn("ssao", e); } // softer AO so corners aren't blotchy (skipped on mobile — too costly)
+try { if (!IS_TOUCH && B.SSAO2RenderingPipeline.IsSupported) { const ssao = new B.SSAO2RenderingPipeline("ssao", scene, { ssaoRatio: 0.75, blurRatio: 1 }, [camera]); ssao.radius = 0.5; ssao.totalStrength = 1.0; ssao.base = 0.1; ssao.samples = 16; ssao.expensiveBlur = true; } } catch (e) { console.warn("ssao", e); } // grounding AO: stronger + a lower floor (was 0.65/0.2) so contacts and creases actually darken — the flat look was mostly missing occlusion. still blur-softened so it doesn't go blotchy. (skipped on mobile — too costly)
 // GOD-RAYS — VolumetricLightScattering off the window sun disc. it renders the disc bright and
 // everything else black, then radial-blurs outward from the disc → real light shafts. the BLINDS
 // stay as occluders (they chop it into slats); the GLASS + rain are excluded so light passes
@@ -2120,7 +2126,7 @@ scene.onBeforeRenderObservable.add(() => {
   curtX += (ctX - curtX) * Math.min(1, dt * 3); curtMul += (ctM - curtMul) * Math.min(1, dt * 3);
   curtPivots.forEach((p) => { p.scaling.x = curtX; });
   sun.intensity = sunBase * curtMul; windowLight.intensity = winBase * curtMul;
-  hemi.intensity = hemiBase * (0.2 + 0.8 * curtMul); scene.environmentIntensity = 0.5 * (0.2 + 0.8 * curtMul);
+  hemi.intensity = hemiBase * (0.2 + 0.8 * curtMul); scene.environmentIntensity = 0.42 * (0.2 + 0.8 * curtMul); // IBL fill pulled back a touch so the sun's shadows have contrast to sit against
   // lava blobs
   for (const b of blobs) { const k = Math.sin(T * b._speed + b._phase); b.position.y = 0.10 + (k * 0.5 + 0.5) * 0.085; b.position.x = Math.sin(T * b._speed * 0.7 + b._phase * 2) * 0.012; b.position.z = Math.cos(T * b._speed * 0.6 + b._phase) * 0.012; b.scaling.y = 1 + 0.35 * Math.sin(T * b._speed * 1.9 + b._phase); }
   lavaLight.intensity = 0.8 + 0.12 * Math.sin(T * 0.9);
@@ -2735,9 +2741,9 @@ function doScenePick() {
   // PROJECTOR first — when it's down its screen sits in front of the window, so it must out-rank the
   // curtain/glass picks behind it (otherwise tapping the screen toggled the curtains / hit the glass and
   // the video never played). when it's up the screen is disabled, so this falls through harmlessly.
-  const projVid = scene.pickWithRay(ray, (m) => !!m._projVideo);
+  const projVid = scene.pickWithRay(ray, (m) => !!m._projVideo && m.isEnabled());
   if (projVid && projVid.hit) { projVideoToggle(); return; } // tap the screen surface → play / pause the video
-  const projHit = scene.pickWithRay(ray, (m) => !!m._projector);
+  const projHit = scene.pickWithRay(ray, (m) => !!m._projector && m.isEnabled());
   if (projHit && projHit.hit) { setProjector(!projDown); return; } // tap the housing/bar → roll the screen up/down (+ curtains)
   const cu = scene.pickWithRay(ray, (m) => !!m._curtain);
   if (cu && cu.hit) { curtainOpen = !curtainOpen; sunRays(); flashHint(curtainOpen ? "🪟 curtains open" : "🌑 curtains drawn"); return; }
@@ -2754,11 +2760,14 @@ function doScenePick() {
   if (pcHit && pcHit.hit) { openPC(); return; } // click the Mac Studio = boot the computer terminal (messages / links / video)
   const ytHit = scene.pickWithRay(ray, (m) => !!m._ytscreen);
   if (ytHit && ytHit.hit) {
-    // the monitor carries YouTube's OWN control bar now. on desktop the pointer is locked (no cursor to
-    // click it), so release the lock — the cursor appears over the player; click the room to walk again.
-    // on touch the iframe catches the tap directly (pointer-events:auto), so this is just a fallback.
-    if (!IS_TOUCH && engine.isPointerLock) { engine.exitPointerlock(); flashHint("use the player ▸ click the room to walk again"); }
-    else ytToggle();
+    // the monitor carries YouTube's OWN control bar. on desktop the pointer is locked (no cursor to
+    // click it), so one click on the screen: starts the video if it was paused, then releases the lock so
+    // the cursor lands on the player — scrub / volume / fullscreen with YouTube's own controls. click the
+    // room to walk again. on touch the iframe catches the tap directly (pointer-events:auto) → fallback.
+    if (!IS_TOUCH && engine.isPointerLock) {
+      if (ytReady && ytPaused) ytToggle();   // kick it into play on the first click
+      engine.exitPointerlock(); flashHint("▶ use the player ▸ click the room to walk again");
+    } else ytToggle();
     return;
   }
   const fanHit = scene.pickWithRay(ray, (m) => !!m._fan);
@@ -3078,7 +3087,7 @@ const DEFAULT_LAYOUT = {
   "monitor": { x: -0.008, y: 1.019, z: -0.29, rx: 0, ry: -1.571, rz: 0, s: 1.267 },
   "external-monitor": { x: 0.71, y: 0.989, z: -0.222, rx: 1.55, ry: -0.35, rz: -0.05, s: 0.004 },
   "keyboard": { x: -0.03, y: 0.751, z: 0.25, rx: 0, ry: 0, rz: 0, s: 0.076 },
-  "mouse": { x: 0.26, y: 0.74, z: 0.241, rx: 0, ry: -2.9, rz: 0, s: 0.013 },
+  "mouse": { x: 0.26, y: 0.74, z: 0.241, rx: 0, ry: -6.2, rz: 0, s: 0.013 },
   "midi": { x: -0.03, y: 0.74, z: -0.012, rx: 0, ry: 0, rz: 0, s: 0.004 },
   "mixer": { x: -0.57, y: 0.74, z: 0.07, rx: 0, ry: 0.35, rz: 0, s: 1 },
   "mug": { x: 0.45, y: 0.779, z: -0.02, rx: 0, ry: 0, rz: 0, s: 0.004 },
@@ -3092,7 +3101,7 @@ const DEFAULT_LAYOUT = {
   "guitar": { x: 1.71, y: 0.17, z: -2.51, rx: 0.05, ry: -3.05, rz: 0.3, s: 1 },
   "dumbek": { x: -2.257, y: 0, z: -1.56, rx: 0, ry: 0.55, rz: 0, s: 1 },
   "mpc": { x: 0.798, y: 0.75, z: -2.693, rx: 0, ry: -0.35, rz: 0, s: 1 },
-  "door": { x: 2.5, y: 0, z: 2.62, rx: 0, ry: 0, rz: 0, s: 0.74 },
+  "door": { x: 2.589, y: 0, z: 2.621, rx: 0, ry: 0, rz: 0, s: 0.74 },
   "city": { x: 0, y: -9, z: -18.8, rx: 0, ry: 0, rz: 0, s: 8.014 },
   "plane": { x: -6, y: 3, z: -9, rx: 0.06, ry: 0, rz: 0, s: 1 }, // ry = jetYaw: model's nose runs along local X (−π/2 flew it sideways), so 0 = nose along +x travel. flip to π (3.1416) if it flies tail-first.
   "godzilla": { x: -25, y: -29, z: -73.5, rx: 0, ry: 0.442, rz: 0, s: 3.604 },
@@ -3278,7 +3287,13 @@ function enter() {
 enterBtn.addEventListener("click", enter);
 // crosshair: visible only while looking around (pointer-locked), hidden in menus/arrange/composer
 const crosshairEl = document.getElementById("crosshair");
-document.addEventListener("pointerlockchange", () => crosshairEl?.classList.toggle("show", !!document.pointerLockElement));
+document.addEventListener("pointerlockchange", () => {
+  const locked = !!document.pointerLockElement;
+  crosshairEl?.classList.toggle("show", locked);
+  // re-acquiring the lock = "back to walking." pull keyboard focus off the YouTube iframe (which swallows
+  // WASD while you're using its controls) and back onto the canvas, or you'd stay frozen in place.
+  if (locked) canvas.focus();
+});
 
 // =====================================================================
 // THE COMPUTER SCREEN — a YouTube playlist as a live overlay glued onto
