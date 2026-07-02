@@ -16,6 +16,12 @@ whoisthemetro.com (GitHub Pages, custom domain via `CNAME`). The
 [CHANGELOG](CHANGELOG.md) is the running history — each line went live the
 day it says it did.
 
+There's also a **[work-in-progress preview](https://whoisthemetro.com/wip/)**
+at `/wip` — the bedroom rebuilt from scratch in Babylon.js (PBR lighting,
+god-rays, real 3D models, physics). It's a complete, playable snapshot of a
+paused experiment: the main site stays on three.js for now, and the full
+migration lives on the `babylon-migration` branch for a later date.
+
 The site runs in two modes:
 
 - **Connected** — wired to a Supabase backend, the wall is shared and
