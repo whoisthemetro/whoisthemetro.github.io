@@ -1494,6 +1494,10 @@ export function buildWorld() {
   // an acoustic slab hangs where it stood (see PANEL_DEFS), and the
   // freed corner holds the e-kit.
   const entryDoor = door(0.86, 2.03, X - 0.035, 2.3, -Math.PI / 2, false, true);  // handle on the left
+  // the bedroom door goes somewhere now — whoisthemetro.com/mixandmaster.
+  // tag every part (leaf, jambs, knob) so a click anywhere on it counts;
+  // main.js catches userData.mixDoor and walks you through.
+  entryDoor.traverse((o) => { o.userData.mixDoor = true; });
 
   /* --- the electronic drum kit, west-front corner ---
      an 80s Simmons: black hexagonal pads on a tubular rack, heads
@@ -3590,31 +3594,32 @@ export function buildWorld() {
     sand.material.color.setScalar(1 - dirty * 0.35);
   }
 
-  /* --- METRO neon, on the bedroom door (the one light that stays) --- */
+  /* --- METRO: MIX & MASTER neon, on the bedroom door (the one light that
+     stays) — the door is the portal to the mix & master site now --- */
   const neonCanvas = document.createElement("canvas");
-  neonCanvas.width = 512; neonCanvas.height = 128;
+  neonCanvas.width = 1024; neonCanvas.height = 160;
   const neonTex = new THREE.CanvasTexture(neonCanvas);
   neonTex.colorSpace = THREE.SRGBColorSpace;
   function drawNeon() {
     const g = neonCanvas.getContext("2d");
-    g.clearRect(0, 0, 512, 128);
-    g.font = "500 84px 'Six Caps', sans-serif";
+    g.clearRect(0, 0, 1024, 160);
+    g.font = "500 88px 'Six Caps', sans-serif";
     g.textAlign = "center"; g.textBaseline = "middle";
-    g.letterSpacing = "14px";
+    g.letterSpacing = "8px";
     g.shadowColor = "#ff4d2e"; g.shadowBlur = 16;
     g.strokeStyle = "#ff6a4a"; g.lineWidth = 3;
-    g.strokeText("METRO", 256, 66);
+    g.strokeText("METRO: MIX & MASTER", 512, 82);
     g.shadowBlur = 0;
     g.fillStyle = "#fff1ec";
-    g.fillText("METRO", 256, 66);
+    g.fillText("METRO: MIX & MASTER", 512, 82);
     neonTex.needsUpdate = true;
   }
   drawNeon();
   if (document.fonts?.ready) document.fonts.ready.then(drawNeon);
-  const plaque = box(0.68, 0.19, 0.012, lam(0x141518));
+  const plaque = box(0.80, 0.16, 0.012, lam(0x141518));
   plaque.position.set(0, 1.62, 0.062);
   entryDoor.add(plaque);
-  const neon = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.155), new THREE.MeshBasicMaterial({
+  const neon = new THREE.Mesh(new THREE.PlaneGeometry(0.76, 0.119), new THREE.MeshBasicMaterial({
     map: neonTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
   }));
   neon.position.set(0, 1.62, 0.075);

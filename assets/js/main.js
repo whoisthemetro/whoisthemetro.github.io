@@ -1000,6 +1000,10 @@ controls.onAction((ndcX, ndcY) => {
   } else if (hit.object.userData.toy && toy.phase === "rest" && !toy.claimed && hit.distance < 2.6) {
     grabToy();
     aItem("toy");
+  } else if (hit.object.userData.mixDoor && hit.distance < 3) {
+    // the bedroom door leads out to the mix & master site — walk through it
+    toast("through the door…");
+    fadeTo(() => { location.href = "/mixandmaster/"; });
   } else if (hit.object.userData.closet && hit.distance < 3) {
     const open = world.toggleCloset();
     presence.sendAct({ kind: "closet", open });
@@ -1227,6 +1231,9 @@ setInterval(() => {
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.toy && toy.phase === "rest" && !toy.claimed && hit.distance < 2.6) {
     aimTip.textContent = `${TAP} to pick up the toy`;
+    aimTip.classList.add("show");
+  } else if (hit && hit.object.userData.mixDoor && hit.distance < 3) {
+    aimTip.textContent = `${TAP} — step out · MIX & MASTER`;
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.closet && hit.distance < 3) {
     aimTip.textContent = world.closetOpen() ? `${TAP} to close the closet` : `${TAP} to open the closet`;
