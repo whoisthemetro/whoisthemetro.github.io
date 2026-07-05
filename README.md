@@ -43,7 +43,9 @@ portals:
   guitar, a drum kit, a mixer, light dimmer, a radio tuned to live Sveriges
   Radio streams, a cat with a real metabolism, LA weather and live LAX
   flyovers out the window, and **METRO OS** on the desk computer (rooms,
-  private messages to metro, and a self-playing music player).
+  private messages to metro, and a self-playing music player). The bedroom
+  door — under its METRO: MIX & MASTER neon — steps out to the
+  [mix & master site](https://whoisthemetro.com/mixandmaster/).
 - **METRO'S ARCADE** — behind the closet. Real cabinets including a full
   DOOM (self-hosted js-dos bundle) plus original arcade games, some 2-player
   in lockstep over the network.
