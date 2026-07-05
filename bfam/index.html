@@ -98,8 +98,15 @@
       to   { opacity: 1; transform: translate(-50%, 0); }
     }
 
-    @media (max-height: 640px), (max-width: 420px) {
-      .player-card { transform: translate(-50%, -50%) scale(0.82); }
+    @media (max-width: 600px), (max-height: 520px) {
+      .player-card {
+        padding: 10px 12px 8px;
+        border-radius: 14px;
+      }
+      .player-card .eyebrow {
+        margin-bottom: 8px;
+        font-size: 9px;
+      }
       .brand h1 { font-size: 20px; }
     }
   </style>
@@ -115,8 +122,29 @@
 
   <main class="player-card">
     <div class="eyebrow">New Album</div>
-    <iframe style="border: 0; width: 350px; height: 470px;" src="https://bandcamp.com/EmbeddedPlayer/album=1287212939/size=large/bgcol=181a1b/linkcol=056cc4/tracklist=false/transparent=true/" seamless><a href="https://wearebfam.bandcamp.com/album/disoriented">Disoriented by BFAM</a></iframe>
+    <div id="player"></div>
   </main>
+
+  <script>
+    // Compact Bandcamp player on small screens, full-size artwork player otherwise
+    (function () {
+      const mq = window.matchMedia('(max-width: 600px), (max-height: 520px)');
+      const holder = document.getElementById('player');
+      const base = 'https://bandcamp.com/EmbeddedPlayer/album=1287212939/size=large/bgcol=181a1b/linkcol=056cc4/tracklist=false/transparent=true/';
+      const fallback = '<a href="https://wearebfam.bandcamp.com/album/disoriented">Disoriented by BFAM</a>';
+      let mode = '';
+      function render() {
+        const next = mq.matches ? 'compact' : 'full';
+        if (next === mode) return;
+        mode = next;
+        holder.innerHTML = next === 'compact'
+          ? '<iframe style="border: 0; width: 76vw; max-width: 330px; height: 120px;" src="' + base + 'artwork=small/" seamless>' + fallback + '</iframe>'
+          : '<iframe style="border: 0; width: 350px; height: 470px;" src="' + base + '" seamless>' + fallback + '</iframe>';
+      }
+      mq.addEventListener('change', render);
+      render();
+    })();
+  </script>
 
   <div class="hint">Drag to explore &middot; scroll to zoom</div>
 
