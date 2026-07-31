@@ -1,0 +1,124 @@
+/* ============================================================
+   THE STUDIO — the flat layer on top of the room
+   ============================================================ */
+
+:root {
+  --ink: #e6ecf3;
+  --dim: #7b8794;
+  --hot: #ff4d2e;
+  --mint: #7ef5e0;
+  --amber: #ffb347;
+  --bg: #07090b;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0; padding: 0; height: 100%;
+  background: var(--bg); color: var(--ink);
+  font-family: Archivo, Helvetica, Arial, sans-serif;
+  overflow: hidden;
+  -webkit-user-select: none; user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+
+/* ---------- the door ---------- */
+
+.overlay {
+  position: fixed; inset: 0; z-index: 40;
+  display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(circle at 50% 45%, #11161d 0%, #07090b 70%);
+  opacity: 0; pointer-events: none;
+  transition: opacity .5s ease;
+}
+.overlay.show { opacity: 1; pointer-events: auto; }
+
+.card { max-width: 520px; padding: 0 28px; text-align: center; }
+
+.card h1 {
+  margin: 0; font-size: clamp(38px, 9vw, 72px); font-weight: 800; letter-spacing: .06em;
+}
+.card .tag {
+  margin: 6px 0 22px; color: var(--mint); letter-spacing: .22em;
+  text-transform: uppercase; font-size: 12px; font-weight: 600;
+}
+.card .body { color: var(--dim); line-height: 1.65; font-size: 15px; margin: 0 0 30px; }
+
+#enter-btn {
+  appearance: none; border: 0; cursor: pointer;
+  padding: 15px 46px; border-radius: 999px;
+  background: var(--hot); color: #0b0d10;
+  font: 800 15px/1 Archivo, sans-serif; letter-spacing: .16em;
+  transition: transform .15s ease, box-shadow .15s ease;
+  box-shadow: 0 0 0 rgba(255, 77, 46, 0);
+}
+#enter-btn:hover { transform: translateY(-2px); box-shadow: 0 10px 34px rgba(255, 77, 46, .32); }
+#enter-btn:active { transform: translateY(0); }
+
+.card .fine { margin-top: 22px; color: #56606c; font-size: 12px; letter-spacing: .04em; }
+.card .fine .k { color: var(--dim); }
+
+/* ---------- hud ---------- */
+
+#hud {
+  position: fixed; inset: 0; z-index: 20;
+  pointer-events: none;                 /* the room is underneath and wants the clicks */
+  font-size: 12px; letter-spacing: .08em;
+}
+
+#topbar {
+  position: absolute; top: 16px; left: 18px;
+  color: var(--dim); text-transform: uppercase; font-weight: 600;
+}
+#topbar .sep { opacity: .4; margin: 0 6px; }
+#clock.ok { color: var(--mint); }
+#clock.warn { color: var(--hot); }
+
+#transport {
+  position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 20px; border-radius: 999px;
+  background: rgba(10, 13, 17, .72);
+  border: 1px solid #1b222a;
+  backdrop-filter: blur(8px);
+  white-space: nowrap;
+}
+#transport .lab { color: #4d5763; font-size: 10px; letter-spacing: .18em; margin-left: 8px; }
+#transport #bpm, #transport #swing { color: var(--ink); font-weight: 800; font-variant-numeric: tabular-nums; }
+#playstate { color: #4d5763; font-weight: 800; letter-spacing: .16em; }
+#playstate.on { color: var(--mint); }
+
+#hint {
+  position: fixed; bottom: 74px; left: 50%; transform: translateX(-50%);
+  z-index: 21; color: #4d5763; font-size: 11px; letter-spacing: .05em;
+  text-align: center; pointer-events: none;
+  transition: opacity .3s ease; opacity: 1;
+}
+#hint b { color: var(--dim); font-weight: 800; }
+#hint.hide { opacity: 0; }
+
+#crosshair {
+  position: fixed; top: 50%; left: 50%; z-index: 22;
+  width: 7px; height: 7px; margin: -3.5px 0 0 -3.5px;
+  border-radius: 50%; background: rgba(230, 236, 243, .5);
+  box-shadow: 0 0 0 1.5px rgba(0, 0, 0, .45);
+  pointer-events: none; transition: opacity .2s ease;
+}
+#crosshair.hide { opacity: 0; }
+
+#toast {
+  position: fixed; top: 58px; left: 50%; transform: translate(-50%, -8px);
+  z-index: 30; padding: 10px 20px; border-radius: 999px;
+  background: rgba(10, 13, 17, .9); border: 1px solid #232b34;
+  color: var(--ink); font-size: 12px; letter-spacing: .06em;
+  opacity: 0; pointer-events: none;
+  transition: opacity .3s ease, transform .3s ease;
+}
+#toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+@media (pointer: coarse) {
+  #hint { display: none; }
+  #crosshair.hide { opacity: .35; }     /* no pointer lock on touch — keep the dot */
+}

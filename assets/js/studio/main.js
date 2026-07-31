@@ -1,0 +1,260 @@
+/* ============================================================
+   THE STUDIO — boot and glue
+
+   Order of operations matters here. Audio can't exist before a real
+   click (browsers won't allow it), and the transport can't exist before
+   the clock has been checked, and we mustn't invent a transport at all
+   if there's already a room playing. So: click, then sync, then ask the
+   room what's going on, and only start something new if nobody answers.
+   ============================================================ */
+
+import * as THREE from "three";
+import { store } from "../store.js";
+import { getIdentity } from "../util.js";
+import { clock } from "./clock.js";
+import { net } from "./net.js";
+import * as A from "./audio.js";
+import {
+  state, act, bindDevices, seedTransport, mergeRemote, snapshot, adoptSnapshot,
+  startScheduler, playhead, applyMixer, STEPS,
+} from "./devices.js";
+import { hitPanel } from "./panels.js";
+import { buildRoom } from "./room.js";
+import { makeControls } from "./controls.js";
+
+const me = getIdentity();
+// the stored uid identifies the *person* and is shared across their tabs. as a
+// network address that's wrong: two windows of one browser would each see the
+// other's messages carrying their own uid, discard them as self-chatter, and
+// sit there in silence. so the wire gets a per-tab address. it doubles as the
+// tiebreak for simultaneous edits, which needs to be unique per client anyway.
+const netId = me.uid + "." + Math.random().toString(36).slice(2, 7);
+const $ = (id) => document.getElementById(id);
+
+/* ---------- three ---------- */
+
+const canvas = $("scene");
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+
+const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.05, 120);
+const room = buildRoom();
+const controls = makeControls(camera, canvas, room.clampWalk);
+
+addEventListener("resize", () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+/* ---------- state plumbing ---------- */
+
+bindDevices({
+  uid: netId,
+  onLocalEdit: (id, data) => net.pushPatch(id, data),
+  onStateChange: (id) => {
+    room.markDirty(id);
+    if (id === "mixer" || id === "*" || id === "xport") applyMixer();
+    if (id === "xport" || id === "*") paintTransport();
+  },
+});
+
+net.onPatch((id, data) => { mergeRemote(id, data); });
+net.onWant((uid) => net.sendSnapshot(uid, snapshot()));
+net.onSnapshot((snap) => {
+  if (adopted) return;          // first answer wins; later ones are just echoes
+  adopted = true;
+  adoptSnapshot(snap);
+  applyMixer();
+  say("joined the session in progress");
+});
+net.onPose((uid, p) => {
+  const peer = net.peers().get(uid);
+  room.setGhost(uid, p, peer ? new THREE.Color(peer.color).getHex() : 0x7ef5e0);
+});
+net.onPeers((peers) => {
+  room.dropGhosts(new Set(peers.keys()));
+  paintPeers();
+});
+
+let adopted = false;
+
+/* ---------- pointing at things ---------- */
+
+const ray = new THREE.Raycaster();
+const centre = new THREE.Vector2(0, 0);
+const REACH = 5.5;
+let dragging = null;    // { kind, type } while a fader is held
+
+function aim() {
+  ray.setFromCamera(centre, camera);
+  const hits = ray.intersectObjects(room.screens, false);
+  if (!hits.length || hits[0].distance > REACH) return null;
+  const h = hits[0];
+  return { kind: h.object.userData.kind, uv: h.uv, distance: h.distance };
+}
+
+function apply(kind, hit) {
+  if (!hit || hit.type === "none") return;
+  if (hit.type === "step") act.toggleStep(hit.id, hit.row, hit.step);
+  else if (hit.type === "mute") act.toggleMute(hit.id);
+  else if (hit.type === "clip") act.launchClip(hit.index);
+  else if (hit.type === "chmute") act.setChannel(hit.name, "mute", !state.dev.mixer.ch[hit.name].mute);
+  else if (hit.type === "chgain") act.setChannel(hit.name, "gain", hit.value);
+  else if (hit.type === "fx") act.setParam("mixer", hit.key, hit.value);
+}
+
+canvas.addEventListener("mousedown", (e) => {
+  if (e.button !== 0) return;
+  if (!controls.locked()) { controls.lock(); return; }
+  const a = aim();
+  if (!a) return;
+  const hit = hitPanel(a.kind, a.uv.x, a.uv.y);
+  apply(a.kind, hit);
+  // faders keep tracking while the button is down — anything else is a
+  // single press and shouldn't repeat
+  if (hit.type === "chgain" || hit.type === "fx") dragging = { kind: a.kind };
+});
+addEventListener("mouseup", () => { dragging = null; });
+
+// touch: tap the middle of the screen to press whatever you're facing
+canvas.addEventListener("touchend", (e) => {
+  if (e.changedTouches.length !== 1) return;
+  const t = e.changedTouches[0];
+  if (Math.abs(t.clientX - innerWidth / 2) > innerWidth * 0.22) return;
+  const a = aim();
+  if (a) apply(a.kind, hitPanel(a.kind, a.uv.x, a.uv.y));
+}, { passive: true });
+
+/* ---------- keys ---------- */
+
+addEventListener("keydown", (e) => {
+  if (e.target && /INPUT|TEXTAREA/.test(e.target.tagName)) return;
+  if (e.code === "Space") { e.preventDefault(); act.togglePlay(); }
+  else if (e.code === "BracketLeft") act.setBpm(state.xport.bpm - 2);
+  else if (e.code === "BracketRight") act.setBpm(state.xport.bpm + 2);
+  else if (e.code === "KeyG") act.setSwing(state.xport.swing > 0.02 ? 0 : 0.14);
+  else if (e.code === "Digit1") act.setParam("arp", "scale", cycle(["minor", "major", "dorian", "pentatonic"], state.dev.arp.scale));
+  else if (e.code === "Digit2") act.setParam("arp", "wave", cycle(A.WAVES, state.dev.arp.wave));
+});
+
+const cycle = (list, cur) => list[(list.indexOf(cur) + 1) % list.length];
+
+/* ---------- hud ---------- */
+
+function paintTransport() {
+  $("bpm").textContent = state.xport.bpm;
+  $("playstate").textContent = state.xport.playing ? "PLAYING" : "STOPPED";
+  $("playstate").className = state.xport.playing ? "on" : "";
+  $("swing").textContent = Math.round(state.xport.swing * 100) + "%";
+}
+
+function paintPeers() {
+  const n = net.count();
+  $("peers").textContent = n === 1 ? "you're the only one here" : `${n} in the room`;
+}
+
+function paintClock() {
+  const c = clock.info();
+  const el = $("clock");
+  if (c.source === "server") { el.textContent = `synced ±${Math.round(c.rtt / 2)}ms`; el.className = "ok"; }
+  else if (store.mode !== "supabase") { el.textContent = "local mode"; el.className = "ok"; }
+  else { el.textContent = "clock not synced"; el.className = "warn"; }
+}
+
+let sayTimer = null;
+function say(msg, ms = 3000) {
+  const el = $("toast");
+  el.textContent = msg;
+  el.classList.add("show");
+  clearTimeout(sayTimer);
+  sayTimer = setTimeout(() => el.classList.remove("show"), ms);
+}
+
+document.addEventListener("studio-lock", (e) => {
+  $("hint").classList.toggle("hide", e.detail);
+  $("crosshair").classList.toggle("hide", !e.detail);
+});
+
+/* ---------- the loop ---------- */
+
+let last = performance.now();
+function frame(now) {
+  requestAnimationFrame(frame);
+  const dt = Math.min((now - last) / 1000, 0.1);
+  last = now;
+
+  controls.update(dt);
+
+  if (dragging && controls.locked()) {
+    const a = aim();
+    if (a && a.kind === dragging.kind) {
+      const hit = hitPanel(a.kind, a.uv.x, a.uv.y);
+      if (hit.type === "chgain" || hit.type === "fx") apply(a.kind, hit);
+    }
+  }
+
+  room.update(dt, playhead());
+  renderer.render(room.scene, camera);
+}
+
+/* ---------- entering ---------- */
+
+async function enter() {
+  $("intro").classList.remove("show");
+
+  // the room comes up first and connects second. a cold load has to fetch the
+  // supabase client off a CDN and then sync the clock, and staring at a black
+  // screen for three seconds is a worse first impression than walking into a
+  // room that's still deciding what's playing.
+  A.initAudio();                       // must ride the click that got us here
+  applyMixer();
+  startScheduler();
+  paintTransport();
+  controls.lock();
+  requestAnimationFrame(frame);
+
+  try {
+    await store.init();
+    await clock.start();
+  } catch (e) {
+    // no backend is a worse room, not a broken one — you still get to play
+    console.warn("studio: no backend, running solo —", e);
+  }
+  paintClock();
+  setInterval(paintClock, 8000);
+
+  try {
+    await net.join({ ...me, uid: netId }, () => controls.pose());
+  } catch (e) {
+    console.warn("studio: couldn't join the channel —", e);
+  }
+  paintPeers();
+
+  // give the room a moment to answer "what's playing?". if nobody does, we're
+  // the first one in and it's on us to start something.
+  setTimeout(() => {
+    if (adopted) return;
+    adopted = true;
+    seedTransport();
+    applyMixer();
+    net.pushPatch("xport", state.xport);
+    net.pushPatch("drums", state.dev.drums);
+    net.pushPatch("clips", state.dev.clips);
+    room.markDirty("*");
+    say("you opened the room — it's yours to start");
+  }, 1300);
+}
+
+$("enter-btn").addEventListener("click", enter, { once: true });
+
+// a quiet hand to the console for smoke tests, same habit as the main site
+window.STUDIO_DEBUG = {
+  state, act, clock, net, room, controls, camera, renderer, THREE,
+  playhead, STEPS, hitPanel, aim, netId,
+};

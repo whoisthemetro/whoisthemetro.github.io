@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<script>
+  ["gesturestart", "gesturechange", "gestureend"].forEach((g) =>
+    document.addEventListener(g, (e) => e.preventDefault(), { passive: false }));
+</script>
+<title>THE STUDIO — everyone on the same bar</title>
+<meta name="description" content="A shared music room. Four machines, one clock, everybody in time.">
+<meta property="og:title" content="THE STUDIO">
+<meta property="og:description" content="Walk in. The loop is already running. Everyone hears the same bar.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2307090b'/%3E%3Crect x='7' y='13' width='4' height='6' fill='%23ff4d2e'/%3E%3Crect x='14' y='9' width='4' height='14' fill='%235db8ff'/%3E%3Crect x='21' y='15' width='4' height='4' fill='%237ef5e0'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/css/studio.css">
+<script src="../assets/js/config.js"></script>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+
+<canvas id="scene"></canvas>
+
+<div id="crosshair" class="hide"></div>
+
+<!-- ====== the door ====== -->
+<div id="intro" class="overlay show">
+  <div class="card">
+    <h1>THE&nbsp;STUDIO</h1>
+    <p class="tag">everyone on the same bar</p>
+    <p class="body">
+      Four machines standing in a ring. Whatever is playing when you walk in
+      is what everyone else is hearing, on the same beat, wherever they are.
+      Touch anything — it changes for all of us.
+    </p>
+    <button id="enter-btn">STEP IN</button>
+    <p class="fine">headphones help · <span class="k">WASD</span> walk · <span class="k">click</span> a machine</p>
+  </div>
+</div>
+
+<!-- ====== hud ====== -->
+<div id="hud">
+  <div id="topbar">
+    <span id="peers">…</span>
+    <span class="sep">·</span>
+    <span id="clock">…</span>
+  </div>
+  <div id="transport">
+    <span id="playstate">…</span>
+    <span class="lab">BPM</span><span id="bpm">…</span>
+    <span class="lab">SWING</span><span id="swing">…</span>
+  </div>
+</div>
+
+<div id="hint">
+  <b>WASD</b> walk &nbsp; <b>mouse</b> look &nbsp; <b>click</b> a cell &nbsp;
+  <b>space</b> play/stop &nbsp; <b>[ ]</b> tempo &nbsp; <b>G</b> swing &nbsp;
+  <b>1</b> scale &nbsp; <b>2</b> wave &nbsp; <b>esc</b> release the mouse
+</div>
+
+<div id="toast"></div>
+
+<script type="module" src="../assets/js/studio/main.js"></script>
+</body>
+</html>
