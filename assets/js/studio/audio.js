@@ -252,48 +252,134 @@ export function drum(name, at, vel = 1, out = null) {
 
 /* ---------- pitched voices ---------- */
 
-export const WAVES = ["sawtooth", "square", "triangle", "sine"];
+export const VOICES = ["saw", "square", "pluck", "pad", "bell", "bass", "organ", "fm"];
+export const VOICE_LABEL = {
+  saw: "SAW", square: "SQUARE", pluck: "PLUCK", pad: "PAD",
+  bell: "BELL", bass: "BASS", organ: "ORGAN", fm: "FM",
+};
+// a pad stacks three oscillators and an organ stacks four, so without a trim
+// per voice, switching timbre mid-jam doubles the level and ducks the drums
+// through the compressor. this keeps them roughly matched by ear.
+const TRIM = { saw: 1, square: 0.9, pluck: 1.1, pad: 0.62, bell: 0.85, bass: 1.1, organ: 0.6, fm: 0.9 };
 
 export const midiToHz = (m) => 440 * Math.pow(2, (m - 69) / 12);
+
+export const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+export const noteName = (midi) => NOTE_NAMES[((midi % 12) + 12) % 12] + (Math.floor(midi / 12) - 1);
+
+function osc(type, hz, detune = 0) {
+  const o = ctx.createOscillator();
+  o.type = type;
+  o.frequency.value = hz;
+  o.detune.value = detune;
+  return o;
+}
+
+// a lowpass that opens on the attack and shuts on the decay. this one curve is
+// most of what separates "a synth" from "a beep".
+function sweep(f, at, span, cutoff, res, open, close) {
+  f.type = "lowpass";
+  f.Q.value = Math.max(0.0001, res);
+  f.frequency.setValueAtTime(Math.min(cutoff * open, 16000), at);
+  f.frequency.exponentialRampToValueAtTime(Math.max(cutoff, 80), at + Math.max(Math.min(span * close, 0.6), 0.01));
+}
 
 // one note, scheduled. `dur` is in seconds and includes the release.
 export function note(midi, at, dur = 0.3, opts = {}) {
   if (!ctx) return;
-  const {
-    wave = "sawtooth", cutoff = 2200, res = 6, level = 0.22,
-    detune = 8, sub = false, out = null,
-  } = opts;
+  const { voice = "saw", cutoff = 1800, res = 6, level = 0.2, out = null } = opts;
   const dest = (out || channel("arp")).input;
   const hz = midiToHz(midi);
 
   const f = ctx.createBiquadFilter();
-  f.type = "lowpass";
-  f.Q.value = res;
-  // a filter that opens and shuts with the note is the difference between
-  // "a synth" and "a beep"
-  f.frequency.setValueAtTime(Math.min(cutoff * 2.4, 15000), at);
-  f.frequency.exponentialRampToValueAtTime(Math.max(cutoff, 90), at + Math.min(dur * 0.6, 0.28));
-
   const g = ctx.createGain();
-  const atk = Math.min(0.012, dur * 0.2);
-  env(g, at, level, atk, Math.max(dur - atk, 0.05));
+  const parts = [];    // { node, gain? } — these feed the filter
+  const aux = [];      // modulators: started and stopped, but not heard directly
 
-  const oscs = [];
-  for (const cents of [-detune, detune]) {
-    const o = ctx.createOscillator();
-    o.type = wave;
-    o.frequency.value = hz;
-    o.detune.value = cents;
-    oscs.push(o);
+  let atk = Math.min(0.012, dur * 0.2);
+  let dec = Math.max(dur - atk, 0.05);
+  let tail = 0.15;
+
+  if (voice === "saw") {
+    parts.push({ node: osc("sawtooth", hz, -8) }, { node: osc("sawtooth", hz, 8) });
+    sweep(f, at, dur, cutoff, res, 2.4, 0.6);
+
+  } else if (voice === "square") {
+    parts.push({ node: osc("square", hz, -6) }, { node: osc("square", hz, 6) });
+    sweep(f, at, dur, cutoff * 0.9, res, 2.0, 0.5);
+
+  } else if (voice === "pluck") {
+    // the filter slams shut faster than the amp does. that mismatch is what
+    // reads as "plucked" rather than "faded out".
+    parts.push({ node: osc("sawtooth", hz, -4) }, { node: osc("sawtooth", hz, 4) });
+    sweep(f, at, dur, cutoff, Math.max(res, 9), 5.0, 0.14);
+    atk = 0.002;
+    dec = Math.min(dur, 0.36);
+
+  } else if (voice === "pad") {
+    parts.push({ node: osc("sawtooth", hz, -14) }, { node: osc("sawtooth", hz, 14) },
+               { node: osc("sawtooth", hz / 2), gain: 0.7 });
+    sweep(f, at, dur, cutoff * 0.8, Math.min(res, 4), 1.5, 1.0);
+    atk = Math.max(dur * 0.4, 0.09);   // slow in — a pad that starts instantly is a stab
+    dec = Math.max(dur, 0.55);
+    tail = 0.5;
+
+  } else if (voice === "bell" || voice === "fm") {
+    // FM. the modulator's depth decays, so the tone starts bright and clangy
+    // and settles toward a sine — which is what a struck thing does.
+    const bell = voice === "bell";
+    const carrier = osc("sine", hz);
+    const mod = osc("sine", hz * (bell ? 3.53 : 2));   // inharmonic ratio = metallic
+    const depth = ctx.createGain();
+    const index = hz * (bell ? 5 : 2.2);
+    depth.gain.setValueAtTime(index, at);
+    depth.gain.exponentialRampToValueAtTime(Math.max(index * 0.02, 1), at + Math.min(dur * 1.2, 1.1));
+    mod.connect(depth);
+    depth.connect(carrier.frequency);
+    aux.push(mod);
+    parts.push({ node: carrier });
+    f.type = "lowpass";
+    f.frequency.value = 15000;          // FM makes its own brightness; stay out of the way
+    f.Q.value = 0.4;
+    if (bell) { atk = 0.003; dec = Math.max(dur * 1.7, 0.7); tail = 0.4; }
+
+  } else if (voice === "bass") {
+    parts.push({ node: osc("sawtooth", hz, -5) }, { node: osc("sawtooth", hz, 5) },
+               { node: osc("sine", hz / 2), gain: 0.95 });
+    sweep(f, at, dur, Math.min(cutoff, 1500), Math.max(res, 7), 3.0, 0.3);
+    atk = 0.004;
+
+  } else if (voice === "organ") {
+    // drawbars: fundamental, octave, twelfth, double octave. no filter movement
+    // and no detune — an organ is steady, and the steadiness is the character.
+    [[1, 1], [2, 0.5], [3, 0.3], [4, 0.18]].forEach(([mul, amp]) =>
+      parts.push({ node: osc("sine", hz * mul), gain: amp }));
+    f.type = "lowpass";
+    f.frequency.value = Math.min(cutoff * 3, 14000);
+    f.Q.value = 0.5;
+    atk = 0.008;
+    tail = 0.08;
   }
-  if (sub) {
-    const o = ctx.createOscillator();
-    o.type = "sine";
-    o.frequency.value = hz / 2;
-    oscs.push(o);
+
+  env(g, at, level * (TRIM[voice] || 1), atk, dec);
+  const stopAt = at + atk + dec + tail + 0.1;
+
+  for (const p of parts) {
+    if (p.gain != null) {
+      const pg = ctx.createGain();
+      pg.gain.value = p.gain;
+      p.node.connect(pg);
+      pg.connect(f);
+    } else {
+      p.node.connect(f);
+    }
+    p.node.start(at);
+    p.node.stop(stopAt);
   }
-  for (const o of oscs) { o.connect(f); o.start(at); o.stop(at + dur + 0.1); }
-  f.connect(g); g.connect(dest);
+  for (const a of aux) { a.start(at); a.stop(stopAt); }
+
+  f.connect(g);
+  g.connect(dest);
 }
 
 /* ---------- scales ---------- */

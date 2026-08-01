@@ -7,10 +7,13 @@
    reason to do it this way: the exact same hit test works for a mouse
    today and for a controller ray in a headset later. Nothing about the
    interaction knows or cares which one it's talking to.
+
+   Every draggable control is a "slider" with one shared shape, so that
+   grabbing one can latch onto it by identity. See sliderValue().
    ============================================================ */
 
-import { state, STEPS, CLIP_SLOTS } from "./devices.js";
-import { DRUM_ROWS, SCALES, WAVES } from "./audio.js";
+import { state, STEPS, CLIP_SLOTS, arpMidi } from "./devices.js";
+import { DRUM_ROWS, SCALES, VOICES, VOICE_LABEL, noteName } from "./audio.js";
 
 export const PANEL_W = 1024;
 export const PANEL_H = 512;
@@ -57,6 +60,67 @@ function label(g, text, x, y, size, color, align = "left") {
   g.fillText(text, x, y);
 }
 
+const clamp01 = (v) => Math.max(0, Math.min(1, v));
+
+/* ============================================================
+   sliders
+
+   One shape for every draggable control on every machine:
+     { type:"slider", dev, ch?, key, value }
+   The (dev, ch, key) triple names the control; `value` is only the
+   reading at the moment you touched it. Because the name is separable
+   from the reading, main.js can hold onto the name for the length of a
+   drag and keep asking for new readings — which is what stops your hand
+   drifting a few pixels up from silently grabbing the fader above.
+   ============================================================ */
+
+// lo/hi, and whether it should travel by ear rather than by number
+const RANGE = {
+  "mixer.gain":      { lo: 0,   hi: 1 },
+  "mixer.cutoff":    { lo: 240, hi: 18000, log: true },
+  "mixer.delaySend": { lo: 0,   hi: 0.6 },
+  "mixer.reverb":    { lo: 0,   hi: 1 },
+  "mixer.master":    { lo: 0,   hi: 1 },
+  "arp.cutoff":      { lo: 180, hi: 12000, log: true },
+  "arp.res":         { lo: 0.5, hi: 18 },
+  "arp.gate":        { lo: 0.1, hi: 1.6 },
+};
+
+const rangeOf = (h) => RANGE[`${h.dev}.${h.key}`];
+
+// a filter swept linearly in hertz spends its top half doing nothing audible,
+// so cutoffs travel logarithmically. everything else is honest and linear.
+function toFrac(h, v) {
+  const r = rangeOf(h);
+  if (!r) return 0;
+  return clamp01(r.log ? Math.log(v / r.lo) / Math.log(r.hi / r.lo) : (v - r.lo) / (r.hi - r.lo));
+}
+function fromFrac(h, f) {
+  const r = rangeOf(h);
+  if (!r) return 0;
+  f = clamp01(f);
+  return r.log ? r.lo * Math.pow(r.hi / r.lo, f) : r.lo + (r.hi - r.lo) * f;
+}
+
+// current reading of a named control, straight off the shared state
+function readValue(h) {
+  const d = state.dev[h.dev];
+  if (!d) return 0;
+  return h.ch ? d.ch[h.ch][h.key] : d[h.key];
+}
+
+function drawBar(g, x, y, w, h, frac, color) {
+  g.fillStyle = C.slot;
+  rr(g, x, y, w, h, h / 2); g.fill();
+  g.fillStyle = color;
+  rr(g, x, y, Math.max(h, w * clamp01(frac)), h, h / 2); g.fill();
+  // the handle, so it reads as draggable rather than as a progress bar
+  g.fillStyle = C.text;
+  g.beginPath();
+  g.arc(x + Math.max(h / 2, w * clamp01(frac)), y + h / 2, h * 0.42, 0, Math.PI * 2);
+  g.fill();
+}
+
 /* ---------- header, shared by every device ---------- */
 
 function drawHead(g, kind, extra = "") {
@@ -88,21 +152,28 @@ function hitHead(kind, px, py) {
 
 /* ---------- a step grid (drums and sequencer share it) ---------- */
 
+const GUT = 132;   // label gutter down the left of every grid
+
+function gridBox(kind) {
+  const top = PANEL_H * HEAD;
+  if (kind === "arp") {
+    const L = arpLayout();
+    return { x: GUT, y: L.gy, w: PANEL_W - GUT - 18, h: L.gh };
+  }
+  const y = top + 14;
+  return { x: GUT, y, w: PANEL_W - GUT - 18, h: PANEL_H - y - 16 };
+}
+
 function drawGrid(g, kind, rows, rowLabels, playStep) {
-  const top = drawHead(g, kind, kind === "arp"
-    ? `${state.dev.arp.scale.toUpperCase()}  ·  ${state.dev.arp.wave.slice(0, 3).toUpperCase()}`
-    : "");
-  const gut = 132;                              // label gutter on the left
-  const gx = gut, gy = top + 14;
-  const gw = PANEL_W - gut - 18, gh = PANEL_H - gy - 16;
-  const cw = gw / STEPS, chh = gh / rows;
+  const B = gridBox(kind);
+  const cw = B.w / STEPS, chh = B.h / rows;
   const grid = state.dev[kind].grid;
   const accent = ACCENT[kind];
 
   for (let r = 0; r < rows; r++) {
-    label(g, rowLabels[r], gut - 14, gy + chh * (r + 0.5), 17, C.dim, "right");
+    label(g, rowLabels[r], GUT - 14, B.y + chh * (r + 0.5), kind === "arp" ? 15 : 17, C.dim, "right");
     for (let s = 0; s < STEPS; s++) {
-      const x = gx + s * cw + 3, y = gy + r * chh + 3;
+      const x = B.x + s * cw + 3, y = B.y + r * chh + 3;
       const w = cw - 6, h = chh - 6;
       const on = grid[r][s];
       // every fourth step sits a shade brighter so you can find the beat
@@ -120,23 +191,121 @@ function drawGrid(g, kind, rows, rowLabels, playStep) {
   // the playhead — a column wash rather than a line, so it reads at a distance
   if (playStep >= 0) {
     g.fillStyle = "rgba(255,255,255,0.10)";
-    g.fillRect(gx + playStep * cw, gy - 8, cw, gh + 8);
+    g.fillRect(B.x + playStep * cw, B.y - 8, cw, B.h + 8);
     g.fillStyle = accent;
-    g.fillRect(gx + playStep * cw + 3, gy - 8, cw - 6, 4);
+    g.fillRect(B.x + playStep * cw + 3, B.y - 8, cw - 6, 4);
   }
 }
 
 function hitGrid(kind, rows, px, py) {
   const head = hitHead(kind, px, py);
   if (head) return head;
-  const top = PANEL_H * HEAD;
-  const gut = 132, gy = top + 14;
-  const gw = PANEL_W - gut - 18, gh = PANEL_H - gy - 16;
-  if (px < gut) return { type: "none" };
-  const s = Math.floor((px - gut) / (gw / STEPS));
-  const r = Math.floor((py - gy) / (gh / rows));
+  const B = gridBox(kind);
+  if (px < B.x) return { type: "none" };
+  const s = Math.floor((px - B.x) / (B.w / STEPS));
+  const r = Math.floor((py - B.y) / (B.h / rows));
   if (s < 0 || s >= STEPS || r < 0 || r >= rows) return { type: "none" };
   return { type: "step", id: kind, row: r, step: s };
+}
+
+/* ---------- the sequencer's control strip ---------- */
+
+// four things you cycle and three you sweep. deliberately the shortlist: this
+// is a machine you reach past someone else to touch mid-loop, not a plugin.
+const ARP_BTNS = [
+  { key: "voice", label: "VOICE" },
+  { key: "scale", label: "SCALE" },
+  { key: "root",  label: "KEY" },
+  { key: "oct",   label: "OCT" },
+];
+const ARP_SLIDERS = [
+  { key: "cutoff", label: "CUTOFF" },
+  { key: "res",    label: "RESO" },
+  { key: "gate",   label: "LENGTH" },
+];
+
+const STRIP_H = 158;
+
+function arpLayout() {
+  const top = PANEL_H * HEAD;
+  const stripTop = PANEL_H - STRIP_H;
+  const gy = top + 12;
+  const gh = stripTop - gy - 10;
+  const pad = 16, gap = 10;
+  const btnY = stripTop + 6, btnH = 54;
+  const slY = btnY + btnH + 12, slH = 62;
+  const btnW = (PANEL_W - pad * 2 - gap * 3) / ARP_BTNS.length;
+  const slW = (PANEL_W - pad * 2 - gap * 2) / ARP_SLIDERS.length;
+  return { top, stripTop, gy, gh, pad, gap, btnY, btnH, slY, slH, btnW, slW };
+}
+
+const arpBtnRect = (L, i) => ({ x: L.pad + i * (L.btnW + L.gap), y: L.btnY, w: L.btnW, h: L.btnH });
+// the bar is inset from its cell so the labels have somewhere to live
+const arpSlRect = (L, i) => ({ x: L.pad + i * (L.slW + L.gap), y: L.slY, w: L.slW, h: L.slH });
+const arpBarRect = (L, i) => {
+  const r = arpSlRect(L, i);
+  return { x: r.x + 14, y: r.y + 30, w: r.w - 28, h: 22 };
+};
+
+function arpBtnValue(key) {
+  const a = state.dev.arp;
+  if (key === "voice") return VOICE_LABEL[a.voice] || a.voice.toUpperCase();
+  if (key === "scale") return a.scale.toUpperCase();
+  if (key === "root")  return noteName(a.root).replace(/-?\d+$/, "");
+  if (key === "oct")   return (a.oct > 0 ? "+" : "") + a.oct;
+  return "";
+}
+
+function fmtSlider(key, v) {
+  if (key === "cutoff") return v >= 1000 ? (v / 1000).toFixed(1) + "k" : Math.round(v) + "";
+  if (key === "res")    return v.toFixed(1);
+  if (key === "gate")   return Math.round(v * 100) + "%";
+  return "";
+}
+
+function drawArpStrip(g) {
+  const L = arpLayout();
+  g.fillStyle = C.head;
+  g.fillRect(0, L.stripTop, PANEL_W, STRIP_H);
+  g.fillStyle = "rgba(126,200,255,0.30)";
+  g.fillRect(0, L.stripTop, PANEL_W, 2);
+
+  for (let i = 0; i < ARP_BTNS.length; i++) {
+    const b = ARP_BTNS[i], r = arpBtnRect(L, i);
+    g.fillStyle = C.btn;
+    rr(g, r.x, r.y, r.w, r.h, 9); g.fill();
+    label(g, b.label, r.x + r.w / 2, r.y + 16, 14, C.dim, "center");
+    label(g, arpBtnValue(b.key), r.x + r.w / 2, r.y + 37, 24, C.text, "center");
+  }
+
+  for (let i = 0; i < ARP_SLIDERS.length; i++) {
+    const s = ARP_SLIDERS[i];
+    const r = arpSlRect(L, i), bar = arpBarRect(L, i);
+    const h = { dev: "arp", key: s.key };
+    const v = readValue(h);
+    label(g, s.label, r.x + 14, r.y + 14, 14, C.dim);
+    label(g, fmtSlider(s.key, v), r.x + r.w - 14, r.y + 14, 15, C.cool, "right");
+    drawBar(g, bar.x, bar.y, bar.w, bar.h, toFrac(h, v), C.cool);
+  }
+}
+
+function hitArpStrip(px, py) {
+  const L = arpLayout();
+  if (py < L.stripTop) return null;
+  for (let i = 0; i < ARP_BTNS.length; i++) {
+    const r = arpBtnRect(L, i);
+    if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) {
+      return { type: "cycle", dev: "arp", key: ARP_BTNS[i].key };
+    }
+  }
+  for (let i = 0; i < ARP_SLIDERS.length; i++) {
+    const r = arpSlRect(L, i);
+    if (px < r.x || px > r.x + r.w) continue;
+    const bar = arpBarRect(L, i);
+    const h = { dev: "arp", key: ARP_SLIDERS[i].key };
+    return { type: "slider", ...h, value: fromFrac(h, (px - bar.x) / bar.w) };
+  }
+  return { type: "none" };
 }
 
 /* ---------- clip launcher ---------- */
@@ -195,12 +364,11 @@ function hitClips(px, py) {
 
 /* ---------- mixer ---------- */
 
-// [key, label, min, max] — the four that are worth reaching for mid-jam
-const FX = [
-  ["cutoff",    "FILTER",  240,  18000],
-  ["delaySend", "DELAY",   0,    0.6],
-  ["reverb",    "REVERB",  0,    1],
-  ["master",    "MASTER",  0,    1],
+const FX_ROWS = [
+  { key: "cutoff",    label: "FILTER" },
+  { key: "delaySend", label: "DELAY" },
+  { key: "reverb",    label: "REVERB" },
+  { key: "master",    label: "MASTER" },
 ];
 const CH_NAMES = ["drums", "arp", "clips"];
 const CH_LABEL = { drums: "DRUMS", arp: "SEQ", clips: "CLIPS" };
@@ -213,43 +381,28 @@ function mixerLayout() {
   return { top, chTop, chH, chGap, fxTop, fxH, fxGap, x: 132, w: PANEL_W - 132 - 96 };
 }
 
-function drawBar(g, x, y, w, h, frac, color) {
-  g.fillStyle = C.slot;
-  rr(g, x, y, w, h, h / 2); g.fill();
-  g.fillStyle = color;
-  rr(g, x, y, Math.max(h, w * frac), h, h / 2); g.fill();
-  // the handle, so it reads as draggable rather than as a progress bar
-  g.fillStyle = C.text;
-  g.beginPath();
-  g.arc(x + Math.max(h / 2, w * frac), y + h / 2, h * 0.42, 0, Math.PI * 2);
-  g.fill();
-}
-
 function drawMixer(g) {
   drawHead(g, "mixer");
   const L = mixerLayout();
-  const m = state.dev.mixer;
 
   for (let i = 0; i < CH_NAMES.length; i++) {
     const name = CH_NAMES[i];
     const y = L.chTop + i * (L.chH + L.chGap);
+    const h = { dev: "mixer", ch: name, key: "gain" };
     label(g, CH_LABEL[name], L.x - 16, y + L.chH / 2, 20, C.dim, "right");
-    drawBar(g, L.x, y + 10, L.w, L.chH - 20, m.ch[name].gain, ACCENT[name]);
+    drawBar(g, L.x, y + 10, L.w, L.chH - 20, toFrac(h, readValue(h)), ACCENT[name]);
     const bw = 74, bx = PANEL_W - bw - 18;
-    g.fillStyle = m.ch[name].mute ? C.hot : C.btn;
+    const muted = state.dev.mixer.ch[name].mute;
+    g.fillStyle = muted ? C.hot : C.btn;
     rr(g, bx, y + 6, bw, L.chH - 12, 7); g.fill();
-    label(g, "M", bx + bw / 2, y + L.chH / 2, 20, m.ch[name].mute ? "#0b0d10" : C.dim, "center");
+    label(g, "M", bx + bw / 2, y + L.chH / 2, 20, muted ? "#0b0d10" : C.dim, "center");
   }
 
-  for (let i = 0; i < FX.length; i++) {
-    const [key, name, lo, hi] = FX[i];
+  for (let i = 0; i < FX_ROWS.length; i++) {
     const y = L.fxTop + i * (L.fxH + L.fxGap);
-    label(g, name, L.x - 16, y + L.fxH / 2, 18, C.dim, "right");
-    // the filter sweeps by ear, not by hertz — log scale or the top half is dead
-    const frac = key === "cutoff"
-      ? Math.log(m[key] / lo) / Math.log(hi / lo)
-      : (m[key] - lo) / (hi - lo);
-    drawBar(g, L.x, y + 9, L.w, L.fxH - 18, Math.max(0, Math.min(1, frac)), C.amber);
+    const h = { dev: "mixer", key: FX_ROWS[i].key };
+    label(g, FX_ROWS[i].label, L.x - 16, y + L.fxH / 2, 18, C.dim, "right");
+    drawBar(g, L.x, y + 9, L.w, L.fxH - 18, toFrac(h, readValue(h)), C.amber);
   }
 }
 
@@ -263,16 +416,14 @@ function hitMixer(px, py) {
     if (py < y || py > y + L.chH) continue;
     const bw = 74, bx = PANEL_W - bw - 18;
     if (px >= bx) return { type: "chmute", name: CH_NAMES[i] };
-    const f = Math.max(0, Math.min(1, (px - L.x) / L.w));
-    return { type: "chgain", name: CH_NAMES[i], value: f };
+    const h = { dev: "mixer", ch: CH_NAMES[i], key: "gain" };
+    return { type: "slider", ...h, value: fromFrac(h, (px - L.x) / L.w) };
   }
-  for (let i = 0; i < FX.length; i++) {
-    const [key, , lo, hi] = FX[i];
+  for (let i = 0; i < FX_ROWS.length; i++) {
     const y = L.fxTop + i * (L.fxH + L.fxGap);
     if (py < y || py > y + L.fxH) continue;
-    const f = Math.max(0, Math.min(1, (px - L.x) / L.w));
-    const value = key === "cutoff" ? lo * Math.pow(hi / lo, f) : lo + (hi - lo) * f;
-    return { type: "fx", key, value };
+    const h = { dev: "mixer", key: FX_ROWS[i].key };
+    return { type: "slider", ...h, value: fromFrac(h, (px - L.x) / L.w) };
   }
   return { type: "none" };
 }
@@ -282,15 +433,18 @@ function hitMixer(px, py) {
 export function drawPanel(kind, g, playStep) {
   g.fillStyle = C.panel;
   g.fillRect(0, 0, PANEL_W, PANEL_H);
-  if (kind === "drums") drawGrid(g, "drums", DRUM_ROWS.length, DRUM_ROWS.map(n => n.toUpperCase()), playStep);
-  else if (kind === "arp") {
-    const s = SCALES[state.dev.arp.scale] || SCALES.minor;
-    // top row is the highest degree, so the grid reads like a piano roll
-    const names = Array.from({ length: 8 }, (_, i) => "·" + (8 - i));
+  if (kind === "drums") {
+    drawHead(g, "drums");
+    drawGrid(g, "drums", DRUM_ROWS.length, DRUM_ROWS.map(n => n.toUpperCase()), playStep);
+  } else if (kind === "arp") {
+    const a = state.dev.arp;
+    drawHead(g, "arp", `${VOICE_LABEL[a.voice] || ""} · ${a.scale.toUpperCase()}`);
+    // rows are labelled with the note they will actually play, so the grid can
+    // never disagree with what comes out of it when you change key or scale
+    const names = Array.from({ length: 8 }, (_, i) => noteName(arpMidi(7 - i)));
     drawGrid(g, "arp", 8, names, playStep);
-    void s;
-  }
-  else if (kind === "clips") drawClips(g, playStep);
+    drawArpStrip(g);
+  } else if (kind === "clips") drawClips(g, playStep);
   else if (kind === "mixer") drawMixer(g);
 }
 
@@ -299,10 +453,31 @@ export function drawPanel(kind, g, playStep) {
 export function hitPanel(kind, u, v) {
   const px = u * PANEL_W, py = (1 - v) * PANEL_H;
   if (kind === "drums") return hitGrid("drums", DRUM_ROWS.length, px, py);
-  if (kind === "arp")   return hitGrid("arp", 8, px, py);
+  if (kind === "arp")   return hitArpStrip(px, py) || hitGrid("arp", 8, px, py);
   if (kind === "clips") return hitClips(px, py);
   if (kind === "mixer") return hitMixer(px, py);
   return { type: "none" };
 }
 
-export const CYCLE = { SCALES: Object.keys(SCALES), WAVES };
+// Re-read a *named* slider at a new horizontal position, ignoring the vertical
+// entirely. This is what makes a drag stick: once you've grabbed a fader, only
+// how far across you are matters, so sliding your hand up onto the next row
+// can't quietly hand you a different control. Returns null if the control
+// doesn't live on this panel.
+export function sliderValue(kind, h, u) {
+  if (!h || h.type !== "slider") return null;
+  const px = u * PANEL_W;
+  if (kind === "mixer" && h.dev === "mixer") {
+    const L = mixerLayout();
+    return fromFrac(h, (px - L.x) / L.w);
+  }
+  if (kind === "arp" && h.dev === "arp") {
+    const i = ARP_SLIDERS.findIndex(s => s.key === h.key);
+    if (i < 0) return null;
+    const bar = arpBarRect(arpLayout(), i);
+    return fromFrac(h, (px - bar.x) / bar.w);
+  }
+  return null;
+}
+
+export const CYCLE = { SCALES: Object.keys(SCALES), VOICES };

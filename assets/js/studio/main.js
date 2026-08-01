@@ -16,9 +16,9 @@ import { net } from "./net.js";
 import * as A from "./audio.js";
 import {
   state, act, bindDevices, seedTransport, mergeRemote, snapshot, adoptSnapshot,
-  startScheduler, playhead, applyMixer, STEPS,
+  startScheduler, playhead, applyMixer, arpMidi, STEPS,
 } from "./devices.js";
-import { hitPanel } from "./panels.js";
+import { hitPanel, sliderValue } from "./panels.js";
 import { buildRoom } from "./room.js";
 import { makeControls } from "./controls.js";
 
@@ -99,14 +99,39 @@ function aim() {
   return { kind: h.object.userData.kind, uv: h.uv, distance: h.distance };
 }
 
+function applySlider(h) {
+  if (h.ch) act.setChannel(h.ch, h.key, h.value);
+  else act.setParam(h.dev, h.key, h.value);
+}
+
+const SCALE_NAMES = Object.keys(A.SCALES);
+const ROOT_LO = 40;   // the key button walks one octave and wraps
+
+function applyCycle(h) {
+  const a = state.dev.arp;
+  if (h.key === "voice") act.setParam("arp", "voice", cycle(A.VOICES, a.voice));
+  else if (h.key === "scale") act.setParam("arp", "scale", cycle(SCALE_NAMES, a.scale));
+  else if (h.key === "root") act.setParam("arp", "root", ROOT_LO + (((a.root - ROOT_LO) + 1) % 12));
+  else if (h.key === "oct") act.setParam("arp", "oct", a.oct >= 2 ? -1 : a.oct + 1);
+}
+
+// one step of a held drag. only the horizontal position is asked for, and only
+// of the control we already grabbed — which is the whole fix for faders
+// stealing each other when your hand drifts a row up or down.
+function dragStep(u) {
+  if (!dragging) return;
+  const v = sliderValue(dragging.kind, dragging.slider, u);
+  if (v != null) applySlider({ ...dragging.slider, value: v });
+}
+
 function apply(kind, hit) {
   if (!hit || hit.type === "none") return;
   if (hit.type === "step") act.toggleStep(hit.id, hit.row, hit.step);
   else if (hit.type === "mute") act.toggleMute(hit.id);
   else if (hit.type === "clip") act.launchClip(hit.index);
   else if (hit.type === "chmute") act.setChannel(hit.name, "mute", !state.dev.mixer.ch[hit.name].mute);
-  else if (hit.type === "chgain") act.setChannel(hit.name, "gain", hit.value);
-  else if (hit.type === "fx") act.setParam("mixer", hit.key, hit.value);
+  else if (hit.type === "slider") applySlider(hit);
+  else if (hit.type === "cycle") applyCycle(hit);
 }
 
 canvas.addEventListener("mousedown", (e) => {
@@ -117,8 +142,9 @@ canvas.addEventListener("mousedown", (e) => {
   const hit = hitPanel(a.kind, a.uv.x, a.uv.y);
   apply(a.kind, hit);
   // faders keep tracking while the button is down — anything else is a
-  // single press and shouldn't repeat
-  if (hit.type === "chgain" || hit.type === "fx") dragging = { kind: a.kind };
+  // single press and shouldn't repeat. we latch onto *which* fader, not just
+  // which panel, so the rest of the drag can't wander onto its neighbour.
+  if (hit.type === "slider") dragging = { kind: a.kind, slider: hit };
 });
 addEventListener("mouseup", () => { dragging = null; });
 
@@ -139,8 +165,10 @@ addEventListener("keydown", (e) => {
   else if (e.code === "BracketLeft") act.setBpm(state.xport.bpm - 2);
   else if (e.code === "BracketRight") act.setBpm(state.xport.bpm + 2);
   else if (e.code === "KeyG") act.setSwing(state.xport.swing > 0.02 ? 0 : 0.14);
-  else if (e.code === "Digit1") act.setParam("arp", "scale", cycle(["minor", "major", "dorian", "pentatonic"], state.dev.arp.scale));
-  else if (e.code === "Digit2") act.setParam("arp", "wave", cycle(A.WAVES, state.dev.arp.wave));
+  else if (e.code === "Digit1") applyCycle({ key: "scale" });
+  else if (e.code === "Digit2") applyCycle({ key: "voice" });
+  else if (e.code === "Digit3") applyCycle({ key: "root" });
+  else if (e.code === "Digit4") applyCycle({ key: "oct" });
 });
 
 const cycle = (list, cur) => list[(list.indexOf(cur) + 1) % list.length];
@@ -192,11 +220,11 @@ function frame(now) {
   controls.update(dt);
 
   if (dragging && controls.locked()) {
+    // drifting off the row, off the end of the bar, or off the panel entirely
+    // all do the sensible thing: hold, or keep tracking the fader you are
+    // actually holding. one slider at a time, always.
     const a = aim();
-    if (a && a.kind === dragging.kind) {
-      const hit = hitPanel(a.kind, a.uv.x, a.uv.y);
-      if (hit.type === "chgain" || hit.type === "fx") apply(a.kind, hit);
-    }
+    if (a && a.kind === dragging.kind) dragStep(a.uv.x);
   }
 
   room.update(dt, playhead());
@@ -256,5 +284,7 @@ $("enter-btn").addEventListener("click", enter, { once: true });
 // a quiet hand to the console for smoke tests, same habit as the main site
 window.STUDIO_DEBUG = {
   state, act, clock, net, room, controls, camera, renderer, THREE,
-  playhead, STEPS, hitPanel, aim, netId,
+  playhead, STEPS, hitPanel, sliderValue, aim, netId, dragStep, apply, audio: A, arpMidi,
+  beginDrag: (kind, hit) => { dragging = { kind, slider: hit }; },
+  endDrag: () => { dragging = null; },
 };

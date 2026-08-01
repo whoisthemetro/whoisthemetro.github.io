@@ -60,6 +60,34 @@ Two consequences worth knowing:
 - Launching a clip names the exact absolute step it lands on, so every browser
   commits to the same bar even if the message arrives late.
 
+## The sequencer
+
+Eight voices, all synthesised on the spot: SAW, SQUARE, PLUCK, PAD, BELL, BASS,
+ORGAN, FM. They're built differently rather than being one oscillator with the
+waveform swapped — PLUCK slams its filter shut faster than its amp decays, BELL
+and FM run a modulator whose depth decays, ORGAN stacks four drawbar sines and
+never moves its filter. Each carries a level trim so switching timbre mid-loop
+doesn't duck the drums through the compressor.
+
+Four buttons and three sliders on the panel: VOICE, SCALE, KEY, OCT, then
+CUTOFF, RESO, LENGTH. Keys `1`–`4` cycle the same four. The grid's row labels
+are the notes those rows will actually play, derived from the same function the
+scheduler uses — so the grid can never disagree with what you hear when someone
+changes key underneath you.
+
+## Sliders latch
+
+Grabbing a fader latches onto *that control*, not onto the panel. For the rest
+of the drag only the horizontal position is read. Slide your hand up onto the
+next row, off the end of the bar, or off the panel entirely and it keeps
+tracking the fader you're actually holding — one slider at a time, always.
+
+That's why `hitPanel` returns sliders as `{type:"slider", dev, ch?, key, value}`:
+the `(dev, ch, key)` triple *names* the control and `value` is only the reading
+at the instant you touched it. Because the name is separable from the reading,
+`sliderValue()` can be asked for a fresh reading of a known control at a new
+horizontal position, which is exactly what a held drag needs.
+
 ## Conflicts
 
 Every device carries a `(version, author)` pair. Higher version wins; a tie goes
@@ -105,3 +133,13 @@ talking to — adding WebXR should mean touching `controls.js` and nothing else.
 - Clip patterns can be launched but not yet edited in-world (`act.setClipNote`
   exists and syncs; nothing calls it from the UI).
 - No voice chat — the main world has walkie-talkie, this room doesn't yet.
+- One global room, no room codes. Everyone who opens `/studio/` lands in the
+  same session. Nothing is written to the database, so when the last person
+  leaves, the room empties and the next visitor seeds it fresh.
+
+## Testing note
+
+`config.js` **assigns** `window.METRO_CONFIG`, so a puppeteer
+`evaluateOnNewDocument` that sets it to `{}` gets overwritten by the real keys
+and the test quietly runs against the live room. To genuinely force local mode,
+intercept the request for `/assets/js/config.js` and serve an empty config.

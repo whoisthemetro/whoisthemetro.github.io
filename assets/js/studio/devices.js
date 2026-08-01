@@ -43,8 +43,8 @@ export const state = {
   xport: { epoch: 0, bpm: 112, playing: true, swing: 0.12, v: 0, by: "" },
   dev: {
     drums: { v: 0, by: "", grid: grid(A.DRUM_ROWS.length), mute: false },
-    arp:   { v: 0, by: "", grid: grid(8), root: 45, scale: "minor", wave: "sawtooth",
-             cutoff: 1800, gate: 0.6, mute: false },
+    arp:   { v: 0, by: "", grid: grid(8), root: 45, oct: 0, scale: "minor", voice: "saw",
+             cutoff: 1800, res: 6, gate: 0.6, mute: false },
     clips: { v: 0, by: "", active: -1, queued: -1, atStep: -1,
              slots: Array.from({ length: CLIP_SLOTS }, () => null), mute: false },
     mixer: { v: 0, by: "",
@@ -61,6 +61,14 @@ export function bindDevices({ uid, onLocalEdit, onStateChange }) {
   myUid = uid;
   push = onLocalEdit || (() => {});
   onChange = onStateChange || (() => {});
+}
+
+// what note a sequencer row actually plays, given the current key and octave.
+// the panel draws its row labels from this too, so the grid can never disagree
+// with what you hear.
+export function arpMidi(degree) {
+  const a = state.dev.arp;
+  return A.degreeToMidi(degree, a.root + (a.oct || 0) * 12, a.scale);
 }
 
 /* ---------- clips ---------- */
@@ -252,8 +260,8 @@ function fireStep(abs, at) {
       if (!ar.grid[r][pos]) continue;
       // the grid is drawn with low notes at the bottom, so flip the row index
       const degree = (ar.grid.length - 1) - r;
-      A.note(A.degreeToMidi(degree, ar.root, ar.scale), at, dur, {
-        wave: ar.wave, cutoff: ar.cutoff, level: 0.18, out: A.channel("arp"),
+      A.note(arpMidi(degree), at, dur, {
+        voice: ar.voice, cutoff: ar.cutoff, res: ar.res, level: 0.18, out: A.channel("arp"),
       });
     }
   }
@@ -264,8 +272,7 @@ function fireStep(abs, at) {
     const deg = slot && slot.notes ? slot.notes[pos] : null;
     if (deg != null) {
       A.note(A.degreeToMidi(deg, ar.root - 12, ar.scale), at, (stepMs / 1000) * 0.9, {
-        wave: "square", cutoff: 900, res: 9, level: 0.20, sub: true, detune: 4,
-        out: A.channel("clips"),
+        voice: "bass", cutoff: 900, res: 9, level: 0.20, out: A.channel("clips"),
       });
     }
   }
