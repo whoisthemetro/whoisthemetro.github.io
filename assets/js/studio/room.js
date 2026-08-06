@@ -141,6 +141,61 @@ export function buildRoom() {
     bodies.push({ x, z });
   });
 
+  /* ---------- the way home ---------- */
+
+  // a freestanding doorframe on the empty diagonal between the drums and the
+  // mixer, spilling warm bedroom light into a cold blue room. there's no wall
+  // here — it's a door the way the studio is a room: because we say so.
+  // click it or just walk through it and you're back in the bedroom.
+  const doorHits = [];
+  const doorPos = { x: 5.2, z: -5.2 };
+  const homeDoor = new THREE.Group();
+  const jambMat = new THREE.MeshStandardMaterial({ color: 0x3a2e24, roughness: 0.8 });
+  for (const sd of [-1, 1]) {
+    const jamb = new THREE.Mesh(new THREE.BoxGeometry(0.12, 2.24, 0.12), jambMat);
+    jamb.position.set(sd * 0.55, 1.12, 0);
+    jamb.castShadow = true;
+    homeDoor.add(jamb);
+  }
+  const lintel = new THREE.Mesh(new THREE.BoxGeometry(1.22, 0.12, 0.12), jambMat);
+  lintel.position.y = 2.3;
+  lintel.castShadow = true;
+  homeDoor.add(lintel);
+  // the glow of the room you came from
+  const leaf = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.98, 2.18),
+    new THREE.MeshBasicMaterial({ color: 0xffd9a0, transparent: true, opacity: 0.85, side: THREE.DoubleSide, toneMapped: false })
+  );
+  leaf.position.y = 1.09;
+  homeDoor.add(leaf);
+  const doorGlow = new THREE.PointLight(0xffc37a, 2.8, 7, 2);
+  doorGlow.position.set(0, 1.4, 0.8);
+  homeDoor.add(doorGlow);
+  // nameplate over the lintel, same idea as the machines'
+  const nc = document.createElement("canvas");
+  nc.width = 256; nc.height = 44;
+  const ng = nc.getContext("2d");
+  ng.fillStyle = "#07090b"; ng.fillRect(0, 0, 256, 44);
+  ng.fillStyle = "#ffd9a0";
+  ng.font = "800 24px Archivo, sans-serif";
+  ng.textAlign = "center"; ng.textBaseline = "middle";
+  ng.fillText("THE BEDROOM", 128, 24);
+  const plateTex = new THREE.CanvasTexture(nc);
+  plateTex.colorSpace = THREE.SRGBColorSpace;
+  const plate = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.1, 0.19),
+    new THREE.MeshBasicMaterial({ map: plateTex, toneMapped: false })
+  );
+  plate.position.y = 2.52;
+  homeDoor.add(plate);
+  homeDoor.traverse((o) => { o.userData.exit = true; });
+  doorHits.push(...homeDoor.children.filter((o) => o.isMesh));
+  homeDoor.position.set(doorPos.x, 0, doorPos.z);
+  homeDoor.lookAt(0, 0, 0);
+  scene.add(homeDoor);
+
+  let doorT = 0;   // breathing glow
+
   /* ---------- the downbeat ---------- */
 
   // one ring on the floor that flashes on the "one". it is the only thing in
@@ -218,6 +273,12 @@ export function buildRoom() {
     pulse.material.opacity = 0.05 + pulseT * 0.5;
     pulse.scale.setScalar(1 + (1 - pulseT) * 0.05);
 
+    // the door breathes like a lit room behind it
+    doorT += dt;
+    const breathe = 0.5 + 0.5 * Math.sin(doorT * 1.4);
+    leaf.material.opacity = 0.72 + breathe * 0.2;
+    doorGlow.intensity = 2.3 + breathe * 1.1;
+
     for (const gr of ghosts.values()) {
       const t = gr.userData.target;
       if (!t) continue;
@@ -255,5 +316,6 @@ export function buildRoom() {
   return {
     scene, key, panels, update, clampWalk, markDirty, setGhost, dropGhosts,
     screens: panels.map(p => p.mesh),
+    doorHits, doorPos,
   };
 }

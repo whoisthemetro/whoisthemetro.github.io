@@ -1614,6 +1614,40 @@ export function buildWorld() {
   const padMat = () => lam(0x141417);
   const rimMat = new THREE.MeshBasicMaterial({ color: 0x39c2ff });
   const tubeMatE = lam(0x26282e);
+  // every pad wears a glowing roman numeral — the order of the secret fill,
+  // hiding in plain sight. indexed by pad: kick I, snare II, hat V,
+  // hi tom III, lo tom IV, crash VI.
+  const EDRUM_NUM = ["I", "II", "V", "III", "IV", "VI"];
+  const edrumNumMats = [];
+  function numeralTex(s) {
+    const c = document.createElement("canvas");
+    c.width = c.height = 128;
+    const g = c.getContext("2d");
+    g.clearRect(0, 0, 128, 128);
+    g.fillStyle = "#fff";
+    g.font = "800 76px Archivo, Georgia, serif";
+    g.textAlign = "center"; g.textBaseline = "middle";
+    g.fillText(s, 64, 68);
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.anisotropy = 4;
+    return t;
+  }
+  // a numeral lying flat on a striking face, proud of it, glowing cyan at
+  // rest (MeshBasic so the toon pass and the dim room can't dull it)
+  function numeral(idx, size, y) {
+    const m = new THREE.MeshBasicMaterial({
+      map: numeralTex(EDRUM_NUM[idx]), transparent: true, opacity: 0.9,
+    });
+    m.color.setHSL(0.55, 1, 0.6);
+    const n = new THREE.Mesh(new THREE.PlaneGeometry(size, size), m);
+    n.rotation.x = -Math.PI / 2;      // lie on the face; the group's lean aims it
+    n.position.y = y;
+    n.userData.edrum = idx;           // a click on the numeral is a hit too
+    edrumNumMats[idx] = m;
+    edrumHits.push(n);
+    return n;
+  }
   // hex pad leaning back ~30° from vertical, face toward the player (+z)
   function epad(idx, r, x2, y2, lean = 1.06) {
     const grp2 = new THREE.Group();
@@ -1633,6 +1667,7 @@ export function buildWorld() {
     pad.userData.edrum = idx;
     face.userData.edrum = idx;
     rim.userData.edrum = idx;
+    grp2.add(numeral(idx, r * 1.05, 0.048));
     ekit.add(grp2);
     edrumHits.push(pad, face, rim);
     blockers.push(pad);
@@ -1656,6 +1691,7 @@ export function buildWorld() {
   kickRing.rotation.z = Math.PI / 6;
   kickRing.position.y = 0.05;
   kickGrp.add(kickRing);
+  kickGrp.add(numeral(0, 0.2, 0.062));
   kickGrp.position.set(0.10, 0.26, 0.18);
   kickGrp.rotation.x = 1.45;               // face square at the player
   ekit.add(kickGrp);
@@ -1681,15 +1717,27 @@ export function buildWorld() {
   ekit.position.set(-1.95, 0, -2.6);
   ekit.rotation.y = 0.85;                 // out of the corner, into the room
   add(ekit);
-  // pad flash when anyone hits it
+  // pad flash when anyone hits it. the hue is a tell: cyan is just a hit,
+  // gold means the hit landed inside the secret fill (main.js decides which)
   const edrumFlash = new Array(6).fill(0);
-  function pressEdrum(pad) { edrumFlash[Math.max(0, Math.min(5, pad))] = 1; }
+  const edrumHue = new Array(6).fill(0.55);
+  function pressEdrum(pad, hue = 0.55) {
+    const i = Math.max(0, Math.min(5, pad));
+    edrumFlash[i] = 1;
+    edrumHue[i] = hue;
+  }
   function tickEdrums(dt) {
     for (let i = 0; i < 6; i++) {
       if (edrumFlash[i] <= 0) continue;
       edrumFlash[i] = Math.max(0, edrumFlash[i] - dt * 5);
       const rim = edrumRims[i];
-      if (rim) rim.material.color.setHSL(0.55, 1, 0.5 + edrumFlash[i] * 0.45);
+      // once the flash dies, settle back to the resting cyan no matter
+      // what color the flash burned
+      const h = edrumFlash[i] > 0 ? edrumHue[i] : 0.55;
+      if (rim) rim.material.color.setHSL(h, 1, 0.5 + edrumFlash[i] * 0.45);
+      // the numeral burns brighter with the hit, in the same color
+      const nm = edrumNumMats[i];
+      if (nm) nm.color.setHSL(h, 1, 0.6 + edrumFlash[i] * 0.35);
     }
   }
 

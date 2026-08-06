@@ -1067,7 +1067,9 @@ controls.onAction((ndcX, ndcY) => {
   } else if (hit.object.userData.edrum !== undefined && hit.distance < 2.6) {
     const pad = hit.object.userData.edrum;
     edrumHit(pad);
-    world.pressEdrum(pad);
+    // a hit that lands inside the secret fill flashes gold, not cyan —
+    // the kit quietly confirming you're on the trail
+    world.pressEdrum(pad, studioFill(pad) ? 0.11 : undefined);
     presence.sendAct({ kind: "edrum", pad });
     aInstrument("drums");
   } else if (hit.object.userData.guitar && hit.distance < 2.4) {
@@ -1896,6 +1898,28 @@ async function sha256(s) {
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
   return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, "0")).join("");
 }
+// the secret fill: kick, snare, hi tom, lo tom, hat, crash — play it in
+// order on the kit and the drums open the studio. only YOUR hits count
+// (a ghost drumming the fill shouldn't teleport you), a wrong pad starts
+// you over (a kick always reads as a fresh downbeat), and taking longer
+// than four seconds between hits lets the fill lapse.
+const STUDIO_FILL = [0, 1, 3, 4, 2, 5];
+let fillPos = 0, fillAt = 0;
+// returns true when this hit advanced the fill (main.js flashes those gold)
+function studioFill(pad) {
+  const now = performance.now();
+  if (now - fillAt > 4000) fillPos = 0;
+  fillAt = now;
+  const on = pad === STUDIO_FILL[fillPos];
+  fillPos = on ? fillPos + 1 : (pad === 0 ? 1 : 0);
+  if (fillPos < STUDIO_FILL.length) return on || fillPos === 1;
+  fillPos = 0;
+  toast("that's the fill — the kit knows the way…");
+  // let the crash ring for a beat before the floor opens
+  setTimeout(() => fadeTo(() => { location.href = "/studio/"; }), 700);
+  return true;
+}
+
 function fadeTo(fn) {
   const f = $("#fade");
   f.classList.add("dark");

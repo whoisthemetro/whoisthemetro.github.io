@@ -122,3 +122,11 @@ html, body {
   #hint { display: none; }
   #crosshair.hide { opacity: .35; }     /* no pointer lock on touch — keep the dot */
 }
+
+/* the black you walk through on the way back to the bedroom */
+#fade {
+  position: fixed; inset: 0; z-index: 40;
+  background: #000; opacity: 0; pointer-events: none;
+  transition: opacity .5s ease;
+}
+#fade.dark { opacity: 1; }

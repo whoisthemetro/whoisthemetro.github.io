@@ -99,6 +99,23 @@ function aim() {
   return { kind: h.object.userData.kind, uv: h.uv, distance: h.distance };
 }
 
+function aimDoor() {
+  ray.setFromCamera(centre, camera);
+  const hits = ray.intersectObjects(room.doorHits, false);
+  return hits.length > 0 && hits[0].distance < REACH;
+}
+
+// the way out — the same door either way you use it: click it from across
+// the room, or just walk through the glow like a doorway
+let leaving = false;
+function leaveToBedroom() {
+  if (leaving) return;
+  leaving = true;
+  say("back through the door…");
+  $("fade").classList.add("dark");
+  setTimeout(() => { location.href = "/"; }, 520);
+}
+
 function applySlider(h) {
   if (h.ch) act.setChannel(h.ch, h.key, h.value);
   else act.setParam(h.dev, h.key, h.value);
@@ -138,7 +155,7 @@ canvas.addEventListener("mousedown", (e) => {
   if (e.button !== 0) return;
   if (!controls.locked()) { controls.lock(); return; }
   const a = aim();
-  if (!a) return;
+  if (!a) { if (aimDoor()) leaveToBedroom(); return; }
   const hit = hitPanel(a.kind, a.uv.x, a.uv.y);
   apply(a.kind, hit);
   // faders keep tracking while the button is down — anything else is a
@@ -155,6 +172,7 @@ canvas.addEventListener("touchend", (e) => {
   if (Math.abs(t.clientX - innerWidth / 2) > innerWidth * 0.22) return;
   const a = aim();
   if (a) apply(a.kind, hitPanel(a.kind, a.uv.x, a.uv.y));
+  else if (aimDoor()) leaveToBedroom();
 }, { passive: true });
 
 /* ---------- keys ---------- */
@@ -226,6 +244,10 @@ function frame(now) {
     const a = aim();
     if (a && a.kind === dragging.kind) dragStep(a.uv.x);
   }
+
+  // stepping into the doorway counts as using it
+  const p = controls.pose();
+  if (Math.hypot(p.x - room.doorPos.x, p.z - room.doorPos.z) < 0.6) leaveToBedroom();
 
   room.update(dt, playhead());
   renderer.render(room.scene, camera);
