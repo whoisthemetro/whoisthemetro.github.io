@@ -336,6 +336,30 @@ addEventListener("keydown", (e) => {
       if (to) { e.preventDefault(); adminJump(to); }
     }
   }
+  // admin layout mode: L toggles it; while it's on, the arrows/QE/PgUpDn
+  // move whatever prop is held (repeats allowed — holding an arrow slides)
+  if (adminMode && entered && !modalOpen && !chatOpen) {
+    const ae = document.activeElement;
+    if (!ae || (ae.tagName !== "INPUT" && ae.tagName !== "TEXTAREA")) {
+      if (e.code === "KeyL" && !e.repeat) { e.preventDefault(); setLayoutMode(!layoutMode); }
+      else if (layoutMode) {
+        const fine = e.shiftKey ? 0.01 : 0.05, rot = e.shiftKey ? 0.02 : 0.1;
+        const act = {
+          ArrowUp:    () => layoutNudge(0, 0, -fine),
+          ArrowDown:  () => layoutNudge(0, 0, fine),
+          ArrowLeft:  () => layoutNudge(-fine, 0, 0),
+          ArrowRight: () => layoutNudge(fine, 0, 0),
+          PageUp:     () => layoutNudge(0, fine, 0),
+          PageDown:   () => layoutNudge(0, -fine, 0),
+          KeyQ:       () => layoutNudge(0, 0, 0, rot),
+          KeyE:       () => layoutNudge(0, 0, 0, -rot),
+          KeyR:       () => { if (layoutSel) { world.resetMovable(layoutSel); layoutBox?.update(); } },
+        }[e.code];
+        // eat the key so the arrows edit the prop instead of walking you
+        if (act) { e.preventDefault(); controls.keys?.delete(e.code); act(); }
+      }
+    }
+  }
 });
 addEventListener("keyup", (e) => {
   if (e.code === "KeyV" && voice.mode() === "ptt") { voice.stopTalk(); updateMicUI(); }
@@ -936,6 +960,7 @@ controls.onAction((ndcX, ndcY) => {
   if (controls.pooling || controls.aiming) return;   // at the table/board the mouse aims; clicks charge
   if (hoopGame.wantsPointer()) return;               // on the court a press is a shot, not an interaction
   if (modalOpen) return;
+  if (layoutMode) { layoutClick(); return; }   // in layout mode a click only grabs/drops props
   if (carrying) { dropCarried(); return; }   // a click while carrying sets it down
   if (vacuuming) { setVacuuming(false); return; }   // a click while vacuuming puts it away
   if (toy && toy.phase === "held") { throwToy(); return; }   // a click while holding the toy throws it
@@ -1764,6 +1789,9 @@ function applyGrime(str) {
 }
 function applyRoomFlags(f, withRadio = true) {
   if (!f) return;
+  // the admin's saved furniture arrangement — everyone gets the same room.
+  // skipped while YOU are mid-edit so a stale echo can't yank the prop back.
+  if (f.layout && !layoutMode) world.applyLayout(f.layout);
   if (typeof f.blinds === "boolean") world.setBlinds(f.blinds);
   if (typeof f.curtains === "boolean") world.setCurtains(f.curtains);
   if (typeof f.closet === "boolean") world.setCloset(f.closet);
@@ -2001,6 +2029,67 @@ function rideElevator(floor) {
     else if (floor === "venue") tryClub();
   }, 1100);                                 // let the ride-cam play out before the doors open
 }
+/* --- admin layout editor: press L in #admin to rearrange the props.
+   click a prop to grab it (gold box), arrows slide it, PgUp/PgDn raise
+   and lower, Q/E spin, shift makes every move fine, R sends it home.
+   press L again and the layout saves to room_state — the room stays
+   that way for everyone, and other visitors see it live. --- */
+let layoutMode = false, layoutSel = null, layoutBox = null;
+const layRay = new THREE.Raycaster();
+const layCentre = new THREE.Vector2(0, 0);
+const layDelta = new THREE.Vector3();
+const layQuat = new THREE.Quaternion();
+function layoutDrop() {
+  if (layoutBox) { world.scene.remove(layoutBox); layoutBox = null; }
+  layoutSel = null;
+}
+function setLayoutMode(on) {
+  if (layoutMode === on) return;
+  layoutMode = on;
+  layoutDrop();
+  if (on) {
+    toast("layout mode — click a prop to grab it · arrows move · Q/E spin · PgUp/PgDn raise · R home · L saves");
+  } else {
+    store.saveRoomFlag("layout", world.layoutSnapshot()).catch(() => {});
+    toast("layout saved — the room stays this way for everyone");
+  }
+}
+function layoutSelect(id) {
+  layoutDrop();
+  const g = world.movables[id];
+  if (!g) return;
+  layoutSel = id;
+  layoutBox = new THREE.BoxHelper(g, 0xffd23c);
+  world.scene.add(layoutBox);
+  toast(`holding: ${id} — arrows · Q/E · PgUp/PgDn · R resets it`);
+}
+function layoutClick() {
+  layRay.setFromCamera(layCentre, camera);
+  layRay.layers.enableAll();
+  const h = layRay.intersectObjects(Object.values(world.movables), true)[0];
+  if (!h || h.distance > 4.5) { layoutDrop(); return; }
+  for (const [id, g] of Object.entries(world.movables)) {
+    let o = h.object;
+    while (o && o !== g) o = o.parent;
+    if (o === g) { layoutSelect(id); return; }
+  }
+  layoutDrop();
+}
+function layoutNudge(dx, dy, dz, dry = 0) {
+  if (!layoutSel) return;
+  const g = world.movables[layoutSel];
+  if (dry) g.rotation.y += dry;
+  if (dx || dy || dz) {
+    // arrows speak world axes, but a prop may live inside a rotated parent
+    // (the instrument rack leans −0.25) — carry the delta into its frame
+    layDelta.set(dx, dy, dz);
+    g.parent.getWorldQuaternion(layQuat);
+    layDelta.applyQuaternion(layQuat.invert());
+    g.position.add(layDelta);
+  }
+  layoutBox?.update();
+}
+
 // admin quick-travel: number keys jump straight to a room, skipping the lift
 // and any password / team gate. 1 = venue · 2 = desi · 3 = crew · 4 = home.
 // one fade tears down whatever room you're in and sets up the target.
@@ -3811,6 +3900,7 @@ addEventListener("keydown", (e) => {
 
 /* ---------------- frame loop ---------------- */
 window.METRO_DEBUG = { renderer, camera, world, controls, THREE, cat, bartender, ghosts, voice, screen, stream, setScreen, clearScreen, room: () => aRoomNow(), jump: adminJump, mirror, openPicker, analytics: analyticsBuffer, notesWall,
+  layout: { set: setLayoutMode, select: layoutSelect, nudge: layoutNudge, click: layoutClick, on: () => layoutMode, sel: () => layoutSel },
   uid: identity.uid, pool: poolGame, pool2: poolGame2, sitAtPool, leavePool,
   toy: () => toy, grabToy, throwToy,
   hoops: hoopGame,

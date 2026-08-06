@@ -1741,78 +1741,147 @@ export function buildWorld() {
     }
   }
 
-  /* --- the telecaster, yellow with a white guard, between desk and rack --- */
+  /* --- the telecaster, butterscotch blackguard, between desk and rack ---
+     a proper '52 silhouette this time: soft bass waist, single cutaway
+     horn on the treble side, ashtray bridge with brass saddles, slanted
+     bridge pickup, chrome neck pickup, and the scooped headstock. --- */
   const guitarHits = [];
   const tele = new THREE.Group();
+  const chromeMat = () => new THREE.MeshStandardMaterial({ color: 0xc6cbd2, metalness: 0.85, roughness: 0.28 });
+  // longer than it is wide (32×40 in real life) — get this backwards and
+  // the whole guitar reads as a banjo
   const bodyShape = new THREE.Shape();
-  bodyShape.moveTo(-0.14, -0.18);
-  bodyShape.quadraticCurveTo(-0.21, -0.05, -0.15, 0.07);
-  bodyShape.quadraticCurveTo(-0.11, 0.15, -0.045, 0.155);   // upper bout into the cutaway
-  bodyShape.quadraticCurveTo(0.02, 0.15, 0.05, 0.1);
-  bodyShape.quadraticCurveTo(0.16, 0.13, 0.185, 0.0);
-  bodyShape.quadraticCurveTo(0.19, -0.13, 0.07, -0.185);
-  bodyShape.quadraticCurveTo(-0.04, -0.22, -0.14, -0.18);
+  bodyShape.moveTo(-0.02, -0.235);
+  bodyShape.quadraticCurveTo(-0.145, -0.23, -0.163, -0.09);
+  bodyShape.quadraticCurveTo(-0.168, 0.03, -0.115, 0.083);   // bass waist → shoulder
+  bodyShape.quadraticCurveTo(-0.065, 0.13, -0.028, 0.142);   // shoulder rolls into the neck
+  bodyShape.lineTo(0.028, 0.142);                            // across the neck heel
+  bodyShape.quadraticCurveTo(0.036, 0.06, 0.085, 0.05);      // the cutaway scoop
+  bodyShape.quadraticCurveTo(0.145, 0.065, 0.152, -0.015);   // treble horn → waist
+  bodyShape.quadraticCurveTo(0.16, -0.15, 0.08, -0.215);
+  bodyShape.quadraticCurveTo(0.028, -0.245, -0.02, -0.235);
   const teleBody = new THREE.Mesh(
-    new THREE.ExtrudeGeometry(bodyShape, { depth: 0.045, bevelEnabled: true, bevelSize: 0.008, bevelThickness: 0.006 }),
-    lam(0xf2c84b));
+    new THREE.ExtrudeGeometry(bodyShape, { depth: 0.045, bevelEnabled: true, bevelSize: 0.01, bevelThickness: 0.008, bevelSegments: 2 }),
+    lam(0xe9b452));
   // the solid body is silent — only the strings/fretboard/neck sound (it stays
   // a blocker below so the body is still click-solid, just doesn't pluck)
   tele.add(teleBody);
+  // the blackguard — what makes a butterscotch tele read from across a room
   const guardShape = new THREE.Shape();
-  guardShape.moveTo(-0.13, -0.15);
-  guardShape.quadraticCurveTo(-0.17, -0.03, -0.12, 0.06);
-  guardShape.quadraticCurveTo(-0.08, 0.12, -0.03, 0.12);
-  guardShape.lineTo(0.0, -0.04);
-  guardShape.quadraticCurveTo(-0.02, -0.16, -0.13, -0.15);
+  guardShape.moveTo(-0.1, -0.14);
+  guardShape.quadraticCurveTo(-0.148, -0.03, -0.104, 0.055);
+  guardShape.quadraticCurveTo(-0.065, 0.115, -0.028, 0.12);
+  guardShape.lineTo(0.026, 0.12);
+  guardShape.lineTo(0.03, 0.03);
+  guardShape.quadraticCurveTo(0.024, -0.075, -0.035, -0.115);
+  guardShape.quadraticCurveTo(-0.08, -0.15, -0.1, -0.14);
   const guard = new THREE.Mesh(new THREE.ExtrudeGeometry(guardShape, { depth: 0.004, bevelEnabled: false }),
-    lam(0xf4f1e8));
-  guard.position.z = 0.046;
+    lam(0x17181c));
+  guard.position.z = 0.055;   // proud of the beveled body face (z≈0.053)
   tele.add(guard);
   const neck = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.58, 0.022), lam(0xd8b878));
   neck.position.set(0.0, 0.155 + 0.29 - 0.02, 0.022);
   neck.userData.guitar = true;
   tele.add(neck);
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.13, 0.018), lam(0xe2c685));
-  head.position.set(0.012, 0.155 + 0.58 + 0.04, 0.022);
-  tele.add(head);
-  const fretboard = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.58, 0.005), lam(0x4a3526));
+  const fretboard = new THREE.Mesh(new THREE.BoxGeometry(0.052, 0.58, 0.005), lam(0x4a3526));
   fretboard.position.set(0, neck.position.y, 0.036);
   fretboard.userData.guitar = true;
   tele.add(fretboard);
-  // the strings span body→headstock; they (with the fretboard/neck) are the
-  // only things that pluck — give each a fatter invisible hit-proxy so the
-  // thin visible string is actually clickable, then collect them all
+  // frets crowd together as they climb, like the real fingerboard does
+  for (let i = 0; i < 10; i++) {
+    const fy = fretboard.position.y - 0.26 + Math.pow(i / 9, 0.85) * 0.5;
+    const fret = new THREE.Mesh(new THREE.BoxGeometry(0.052, 0.0035, 0.0015),
+      new THREE.MeshBasicMaterial({ color: 0xb9bec6 }));
+    fret.position.set(0, fy, 0.039);
+    tele.add(fret);
+  }
+  for (const dy of [-0.13, 0, 0.13]) {                       // dot inlays
+    const dot = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.002, 8), lam(0xe8e2d2));
+    dot.rotation.x = Math.PI / 2;
+    dot.position.set(0, fretboard.position.y + dy, 0.0395);
+    tele.add(dot);
+  }
+  // the scooped headstock, tuners marching down the bass edge
+  const headShape = new THREE.Shape();
+  headShape.moveTo(-0.0275, 0);
+  headShape.lineTo(0.0275, 0);
+  headShape.quadraticCurveTo(0.038, 0.045, 0.034, 0.08);
+  headShape.quadraticCurveTo(0.03, 0.115, -0.004, 0.122);
+  headShape.quadraticCurveTo(-0.036, 0.124, -0.046, 0.108);
+  headShape.quadraticCurveTo(-0.052, 0.096, -0.038, 0.085);  // the scoop
+  headShape.quadraticCurveTo(-0.0275, 0.06, -0.0275, 0);
+  const head = new THREE.Mesh(new THREE.ExtrudeGeometry(headShape, { depth: 0.014, bevelEnabled: false }),
+    lam(0xe2c685));
+  head.position.set(0, 0.155 + 0.575, 0.016);
+  tele.add(head);
+  for (let i = 0; i < 6; i++) {
+    const tuner = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.012, 8), chromeMat());
+    tuner.rotation.z = Math.PI / 2;                          // barrels out the bass side
+    tuner.position.set(-0.042, 0.155 + 0.588 + i * 0.0155, 0.023);
+    tele.add(tuner);
+  }
+  const nut = new THREE.Mesh(new THREE.BoxGeometry(0.052, 0.006, 0.007), lam(0xe8e2d2));
+  nut.position.set(0, 0.155 + 0.572, 0.058);
+  tele.add(nut);
+  // six strings, gauged — wound bass strings visibly fatter than the plain
+  // trebles. they + fretboard + neck are what pluck; three fat invisible
+  // grips keep the thin strings actually clickable.
   const strings = [];
-  for (const sx of [-0.012, 0, 0.012]) {
-    const str = new THREE.Mesh(new THREE.BoxGeometry(0.0022, 0.74, 0.0022),
+  for (let i = 0; i < 6; i++) {
+    const str = new THREE.Mesh(
+      new THREE.BoxGeometry(0.0016 + (5 - i) * 0.0002, 0.855, 0.0018),
       new THREE.MeshBasicMaterial({ color: 0xd9dde2 }));
-    str.position.set(sx, 0.26, 0.052);
+    str.position.set(-0.0125 + i * 0.005, 0.3, 0.061);       // bridge → nut, the full run
     tele.add(str);
-    const grip = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.74, 0.01),
+  }
+  for (const sx of [-0.012, 0, 0.012]) {
+    const grip = new THREE.Mesh(new THREE.BoxGeometry(0.016, 0.855, 0.012),
       new THREE.MeshBasicMaterial({ visible: false }));
-    grip.position.set(sx, 0.26, 0.052);
+    grip.position.set(sx, 0.3, 0.061);
     grip.userData.guitar = true;
     tele.add(grip);
     strings.push(grip);
   }
-  const bridge = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.035, 0.012),
-    new THREE.MeshStandardMaterial({ color: 0xb9bec6, metalness: 0.8, roughness: 0.35 }));
-  bridge.position.set(0.02, -0.12, 0.052);
+  // ashtray bridge plate, three brass barrel saddles, slanted bridge pickup
+  const bridge = new THREE.Mesh(new THREE.BoxGeometry(0.085, 0.075, 0.008), chromeMat());
+  bridge.position.set(0, -0.13, 0.057);
   tele.add(bridge);
-  // a chrome control plate with a blade selector — flick it to change the
-  // guitar's voice (tele/acoustic/nylon/palm-mute). its own click target so a
-  // flick switches tone without sounding a fret. sits on the lower treble bout,
-  // clear of the strings (x≈0) and the guard (negative x).
-  const ctrlPlate = new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.022, 0.006),
-    new THREE.MeshStandardMaterial({ color: 0xc6cbd2, metalness: 0.85, roughness: 0.28 }));
-  ctrlPlate.position.set(0.115, -0.04, 0.05);
-  ctrlPlate.rotation.z = -0.5;
+  const brassMat = new THREE.MeshStandardMaterial({ color: 0xd8b25e, metalness: 0.7, roughness: 0.35 });
+  for (const sx of [-0.011, 0, 0.011]) {
+    const saddle = new THREE.Mesh(new THREE.CylinderGeometry(0.0045, 0.0045, 0.011, 8), brassMat);
+    saddle.rotation.z = Math.PI / 2;
+    saddle.position.set(sx, -0.143, 0.066);
+    tele.add(saddle);
+  }
+  const bpu = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.014, 0.006), lam(0x101114));
+  bpu.position.set(0, -0.1, 0.062);
+  bpu.rotation.z = -0.14;                                    // the tele slant
+  tele.add(bpu);
+  const npu = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.02, 0.007), chromeMat());
+  npu.position.set(0, 0.115, 0.062);
+  tele.add(npu);
+  // chrome control plate along the treble edge: blade selector (the voice
+  // switch — its own click target so a flick doesn't sound a fret) + two
+  // knurled knobs for looks
+  const ctrl = new THREE.Group();
+  ctrl.position.set(0.088, -0.1, 0);
+  ctrl.rotation.z = -0.7;
+  tele.add(ctrl);
+  const ctrlPlate = new THREE.Mesh(new THREE.BoxGeometry(0.095, 0.028, 0.006), chromeMat());
+  ctrlPlate.position.z = 0.06;
   ctrlPlate.userData.guitarVoice = true;
-  tele.add(ctrlPlate);
-  const blade = new THREE.Mesh(new THREE.BoxGeometry(0.009, 0.024, 0.013), lam(0x16181c));
-  blade.position.set(0.115, -0.04, 0.059);
+  ctrl.add(ctrlPlate);
+  const blade = new THREE.Mesh(new THREE.BoxGeometry(0.009, 0.022, 0.014), lam(0x16181c));
+  blade.position.set(-0.03, 0, 0.068);
   blade.userData.guitarVoice = true;
-  tele.add(blade);
+  ctrl.add(blade);
+  for (const off of [0.008, 0.032]) {
+    const knob = new THREE.Mesh(new THREE.CylinderGeometry(0.0095, 0.0095, 0.014, 12), chromeMat());
+    knob.rotation.x = Math.PI / 2;
+    knob.position.set(off, 0, 0.064);
+    knob.userData.guitarVoice = true;
+    ctrl.add(knob);
+  }
   const guitarVoiceHits = [blade, ctrlPlate];
   // flick the blade across the plate to the voice's slot (0..total-1)
   function setGuitarVoiceSwitch(idx, total) {
@@ -3211,16 +3280,20 @@ export function buildWorld() {
   pmScreen.position.set(-0.7, pmBezel.position.y, -0.133);
   desk.add(pmScreen);
 
-  // desk clock — actual Hawthorne time
+  // desk clock — actual Hawthorne time. body + face live in one group so
+  // the admin layout editor can move the clock as a single thing.
   const clockScr = makeClockScreen();
+  const deskClock = new THREE.Group();
+  deskClock.position.set(0.62, deskTopY + 0.035, -0.09);   // the group IS the clock's spot, so rotation pivots in place
+  desk.add(deskClock);
   const clockBody = box(0.17, 0.07, 0.05, lam(0x101216));
   clockBody.rotation.x = -0.1;
-  clockBody.position.set(0.62, deskTopY + 0.035, -0.1);
-  desk.add(clockBody);
+  clockBody.position.set(0, 0, -0.01);
+  deskClock.add(clockBody);
   const clockFace = plane(0.155, 0.058, new THREE.MeshBasicMaterial({ map: clockScr.tex }));
   clockFace.rotation.x = -0.1;
-  clockFace.position.set(0.62, deskTopY + 0.0355, -0.073);
-  desk.add(clockFace);
+  clockFace.position.set(0, 0.0005, 0.017);
+  deskClock.add(clockFace);
 
   // the mug that made the coffee ring
   const mug = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.032, 0.09, 14), lam(0xd8cdb8));
@@ -6845,10 +6918,42 @@ export function buildWorld() {
     o.material = tm;
   });
 
+  /* --- admin layout: the props the booth can pick up and re-place.
+     each id maps to the group that IS that prop's spot, so position and
+     rotation.y transplant cleanly. homes are recorded so reset works and
+     a bad saved layout can always be walked back. --- */
+  const movables = {
+    tele, pedalboard, kbpedals: kbPedals, radio: laRadio.group,
+    lava, mixer, clock: deskClock,
+  };
+  const movableHomes = {};
+  for (const [id, g] of Object.entries(movables))
+    movableHomes[id] = { p: g.position.toArray(), ry: g.rotation.y };
+  function applyLayout(layout) {
+    if (!layout) return;
+    for (const [id, t] of Object.entries(layout)) {
+      const g = movables[id];
+      if (!g || !t || !Array.isArray(t.p)) continue;
+      g.position.fromArray(t.p);
+      if (typeof t.ry === "number") g.rotation.y = t.ry;
+    }
+  }
+  function resetMovable(id) {
+    const g = movables[id], h = movableHomes[id];
+    if (g && h) { g.position.fromArray(h.p); g.rotation.y = h.ry; }
+  }
+  function layoutSnapshot() {
+    const out = {};
+    for (const [id, g] of Object.entries(movables))
+      out[id] = { p: g.position.toArray().map(v => +v.toFixed(4)), ry: +g.rotation.y.toFixed(4) };
+    return out;
+  }
+
   return {
     scene, walls, blockers, noteGroup, ghostGroup, tick,
     bounds: ROOM.bounds, isWalkable,
     spawn: { x: 1.7, z: 2.35, yaw: 0.28 },
+    movables, applyLayout, resetMovable, layoutSnapshot,
     setCityListener: fn => { onCity = fn; },
     setWeather,
     getWeather: () => wx,
