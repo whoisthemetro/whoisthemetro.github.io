@@ -3902,7 +3902,10 @@ renderer.setAnimationLoop(() => {
   if (!inBoat && !inArena && !inClub && !inGym) {
     if (!vacuuming) world.floorTraffic(controls.pos.x, controls.pos.z, dt, 1);
     world.floorTraffic(cat.pos.x, cat.pos.z, dt, 0.6);
-    if (vacuuming) world.vacuumStep(controls.pos.x, controls.pos.z, controls.yaw);
+    if (vacuuming) {
+      world.vacuumStep(controls.pos.x, controls.pos.z, controls.yaw);
+      cat.scare(controls.pos.x, controls.pos.z);   // the enemy is loud and it is HERE
+    }
     // persist the carpet for everyone on a slow throttle — the room stays as
     // dirty (or as freshly-vacuumed) as the last person left it
     if (world.grimeNeedsSave() && t - grimeSaveAt > 8) {

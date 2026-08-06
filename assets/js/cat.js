@@ -41,6 +41,8 @@ export class Cat {
     this.carrying = false;       // true while it's trotting the toy back to you
 
     // inner life
+    this.fearT = 0;                         // > 0 while the vacuum has it spooked
+    this._scareVoiceT = 0;                  // don't hiss every single frame
     this.mood = 0.35;                       // -1 grumpy .. 1 loving
     this.needs = { food: 1, water: 1, litter: 0 };
     this.moodTimer = rand(20, 50);
@@ -223,6 +225,58 @@ export class Cat {
     return true;
   }
 
+  // The vacuum is running and close. Bolt, like any self-respecting cat —
+  // whatever it was doing (sleeping, eating, belly-up, carrying the toy)
+  // stops mattering the instant that thing switches on. Called every frame
+  // the threat is live; fearT keeps the re-entry cheap.
+  scare(x, z) {
+    const d = Math.hypot(x - this.pos.x, z - this.pos.z);
+    if (d > 2.3) return;                   // far enough to merely judge you
+    const fresh = this.fearT <= 0;
+    this.fearT = 1.2;
+    if (fresh) {
+      // drop everything — the toy included — and complain about it
+      if (this.carrying) { this.carrying = false; this.fx.onToyDropped?.(this.pos.x, this.pos.z); }
+      if (this._scareVoiceT <= 0) {
+        this._scareVoiceT = 4;
+        this.fx.hiss ? this.fx.hiss() : this.fx.meow?.("angry");
+      }
+      this.mood = Math.max(-1, this.mood - 0.06);   // it will remember this
+      this.lovePets = 0;
+      this._fleeTarget(x, z);
+    } else if (d < 1.1) {
+      // you're chasing it with the thing?? re-aim mid-run
+      this._fleeTarget(x, z);
+    }
+  }
+
+  _fleeTarget(x, z) {
+    const b = this.spots.bounds;
+    const here = Math.hypot(this.pos.x - x, this.pos.z - z);
+    // straight away from the vacuum with a little scatter; if a wall guts
+    // that line, fan sideways until an escape actually escapes
+    for (const off of [0, 0.7, -0.7, 1.3, -1.3]) {
+      const a = Math.atan2(this.pos.x - x, this.pos.z - z) + off + rand(-0.15, 0.15);
+      const tx = Math.max(b.minX + 0.35, Math.min(b.maxX - 0.35, this.pos.x + Math.sin(a) * 2.6));
+      const tz = Math.max(b.minZ + 0.35, Math.min(b.maxZ - 0.35, this.pos.z + Math.cos(a) * 2.6));
+      if (Math.hypot(tx - x, tz - z) > here + 0.7) {
+        this._goto(tx, tz, "sit", 0);
+        this.target.speed = 1.6;           // a proper scramble
+        return;
+      }
+    }
+    // cornered — break for whichever corner is farthest from the thing
+    let best = null, bd = -1;
+    for (const cx of [b.minX + 0.4, b.maxX - 0.4]) {
+      for (const cz of [b.minZ + 0.4, b.maxZ - 0.4]) {
+        const dd = Math.hypot(cx - x, cz - z);
+        if (dd > bd) { bd = dd; best = { x: cx, z: cz }; }
+      }
+    }
+    this._goto(best.x, best.z, "sit", 0);
+    this.target.speed = 1.6;
+  }
+
   // world position of the mouth, so the toy can ride there while it's carried
   mouthPos(out) {
     this.head.updateWorldMatrix(true, false);
@@ -252,6 +306,8 @@ export class Cat {
 
   tick(dt, t, playerPose) {
     this.timer -= dt;
+    this.fearT = Math.max(0, this.fearT - dt);
+    this._scareVoiceT = Math.max(0, this._scareVoiceT - dt);
 
     // mood drifts with how well it's being taken care of
     this.moodTimer -= dt;
