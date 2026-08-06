@@ -3360,6 +3360,24 @@ export function buildWorld() {
     desk.add(cable);
   }
 
+  // gather each loose desk item into its own group so the admin layout
+  // editor can pick it up whole. attach() keeps world transforms, so this
+  // changes nothing visually — it only gives each thing a handle to hold.
+  const wrapDeskItem = (px, pz, ...parts) => {
+    const g = new THREE.Group();
+    g.position.set(px, deskTopY, pz);
+    desk.add(g);
+    for (const p of parts) g.attach(p);
+    return g;
+  };
+  const deskInterface = wrapDeskItem(0, -0.2, dbox, dboxKnob, dboxLed);
+  const deskMonitor = wrapDeskItem(0, -0.21, monBezel, monScreen, screenGlow);
+  const deskKeyboard = wrapDeskItem(-0.04, 0.13, kb, kbTop);
+  const deskTrackball = wrapDeskItem(0.28, 0.13, tbBase, tbBall);
+  const deskMeters = wrapDeskItem(-0.7, -0.14, pmBezel, pmScreen);
+  const deskMug = wrapDeskItem(0.49, 0.04, mug, coffee);
+  const deskMac = wrapDeskItem(-0.7, -0.12, mac);
+
   // midi controller tucked under the desk, keys barely sticking out;
   // its body is the piano-voice selector
   const midiBody = caster(box(0.96, 0.065, 0.27, lam(0x191b1f)));
@@ -6925,6 +6943,8 @@ export function buildWorld() {
   const movables = {
     tele, pedalboard, kbpedals: kbPedals, radio: laRadio.group,
     lava, mixer, clock: deskClock,
+    monitor: deskMonitor, interface: deskInterface, keyboard: deskKeyboard,
+    trackball: deskTrackball, meters: deskMeters, mug: deskMug, mac: deskMac,
   };
   const movableHomes = {};
   for (const [id, g] of Object.entries(movables))
