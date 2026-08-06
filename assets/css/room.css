@@ -46,20 +46,28 @@ body {
 .intro-card {
   text-align: center; max-width: 560px; padding: 48px 32px;
 }
+/* hand-lettered slate METRO — marker on the dark, not neon. each letter
+   leans its own way and carries a soft top-light gradient */
 .metro-title {
-  font-family: "Six Caps", sans-serif;
-  font-size: clamp(72px, 16vw, 160px);
-  letter-spacing: 0.08em;
-  line-height: 0.9;
-  color: var(--ink);
-  text-shadow: 0 0 18px rgba(255, 77, 46, 0.55), 0 0 60px rgba(255, 77, 46, 0.25);
-  animation: neon-breathe 4s ease-in-out infinite;
+  font-family: "Caveat", cursive;
+  font-weight: 700;
+  font-size: clamp(70px, 13vw, 140px);
+  letter-spacing: 0.04em;
+  line-height: 0.85;
+  white-space: nowrap;
 }
-@keyframes neon-breathe {
-  0%, 100% { text-shadow: 0 0 18px rgba(255,77,46,.55), 0 0 60px rgba(255,77,46,.25); }
-  50%      { text-shadow: 0 0 26px rgba(255,77,46,.8),  0 0 90px rgba(255,77,46,.4); }
-  92%      { text-shadow: 0 0 8px  rgba(255,77,46,.3); }
+.metro-title span {
+  display: inline-block;
+  background: linear-gradient(165deg, #59636f 0%, #3a424c 65%, #333a44 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
+.metro-title span:nth-child(1) { transform: rotate(-4deg) translateY(2px); }
+.metro-title span:nth-child(2) { transform: rotate(2deg)  translateY(-3px); }
+.metro-title span:nth-child(3) { transform: rotate(-2deg) translateY(1px); }
+.metro-title span:nth-child(4) { transform: rotate(3deg)  translateY(-2px); }
+.metro-title span:nth-child(5) { transform: rotate(-3deg) translateY(2px); }
 .metro-sub { font-family: "Six Caps", sans-serif; font-size: 56px; letter-spacing: .1em; }
 .tagline { color: var(--amber); letter-spacing: 0.22em; text-transform: uppercase; font-size: 12px; margin: 10px 0 26px; }
 .intro-body { color: var(--dim); line-height: 1.7; font-size: 15px; max-width: 420px; margin: 0 auto 30px; }
