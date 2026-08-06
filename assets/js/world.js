@@ -397,7 +397,7 @@ function makeClockScreen() {
 const LA = (() => {
   const r = (i) => (Math.abs(Math.sin(i * 127.1) * 43758.5453) % 1);
   const far = [];
-  for (let i = 0; i < 26; i++) far.push({ x: i * 30 - 12, w: 20 + r(i) * 20, h: 12 + r(i + 50) * 16 });
+  for (let i = 0; i < 26; i++) far.push({ x: i * 30 - 12, w: 20 + r(i) * 20, h: 12 + r(i + 50) * 16, s: r(i + 80) });
   const heights = [78, 64, 96, 58, 110, 72, 122, 66, 88, 96, 54];
   const dt = [];
   let x = 340;
@@ -406,10 +406,31 @@ const LA = (() => {
     for (let k = 0; k < (b.h * b.w) / 48; k++) {
       b.win.push([r(b.i * 7 + k) * b.w * 0.8 + b.w * 0.1, r(b.i * 13 + k * 3) * b.h * 0.85 + 4, r(k + b.i)]);
     }
+    // how much of the west wall shows (perspective), plus rooftop
+    // mechanicals — the stuff that makes a silhouette read as a box
+    b.d = 0.05 + r(i + 70) * 0.04;
+    b.mech = r(i + 90) > 0.35 ? { x: r(i + 91) * 0.6 + 0.1, w: 5 + r(i + 92) * 7, h: 3 + r(i + 93) * 4 } : null;
     dt.push(b);
     x += b.w + 4 + r(i + 30) * 12;
   });
-  return { far, dt, wilshire: dt.find(b => b.h === 122), usbank: dt.find(b => b.h === 110) };
+  // the san gabriels — two ridgelines from the same seeded noise so they
+  // never flicker between redraws. one proud peak sits east of downtown.
+  const ridge = (seed, amp, bump) => {
+    const pts = [];
+    for (let i = 0; i <= 36; i++) {
+      const t = i / 36;
+      const n = Math.abs(Math.sin(t * 7.3 + seed)) * 0.55
+        + Math.abs(Math.sin(t * 17.7 + seed * 3.1)) * 0.3
+        + r(i + seed * 40) * 0.15;
+      const baldy = bump * Math.exp(-((t - 0.62) ** 2) / 0.012);
+      pts.push([t * 720, (n + baldy) * amp]);
+    }
+    return pts;
+  };
+  return {
+    far, dt, mtsFar: ridge(3, 52, 0), mts: ridge(7, 88, 0.5),
+    wilshire: dt.find(b => b.h === 122), usbank: dt.find(b => b.h === 110),
+  };
 })();
 
 // the kaiju. drawn between the far ridge and downtown, so the towers
@@ -653,7 +674,12 @@ function makeSky() {
   const g = c.getContext("2d");
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
-  const stars = Array.from({ length: 90 }, () => [Math.random() * 720, Math.random() * 200, Math.random()]);
+  // each star: x, y, brightness, twinkle speed, twinkle phase — every one
+  // breathes on its own clock so the field shimmers instead of blinking
+  const stars = Array.from({ length: 110 }, () => [
+    Math.random() * 720, Math.random() * 200, Math.random(),
+    0.8 + Math.random() * 2.4, Math.random() * Math.PI * 2,
+  ]);
 
   function place(az, alt) {
     const azd = az / (Math.PI / 180), altd = alt / (Math.PI / 180);
@@ -663,19 +689,29 @@ function makeSky() {
 
   function draw(sun, moon, moonFrac, wx = { clouds: 0, fog: false, rain: 0 }, fx = {}) {
     const sunAlt = sun.altitude / (Math.PI / 180);
-    let top, bot;
-    if (sunAlt > 5)        { top = "#7fb2e0"; bot = "#c8dcec"; }
-    else if (sunAlt > -6)  { top = "#2a3c5e"; bot = "#d88a52"; }
-    else if (sunAlt > -12) { top = "#141d33"; bot = "#3a3550"; }
-    else                   { top = "#0a0f1f"; bot = "#1a2030"; }
+    // three stops instead of two — the mid band is what makes the sky
+    // feel deep instead of painted. mtn is the ridge color for this light.
+    let top, mid, bot, mtn;
+    if (sunAlt > 5)        { top = "#7fb2e0"; mid = "#a2c6e4"; bot = "#c8dcec"; mtn = "96,112,138"; }
+    else if (sunAlt > -6)  { top = "#2a3c5e"; mid = "#6b5670"; bot = "#d88a52"; mtn = "56,52,76"; }
+    else if (sunAlt > -12) { top = "#141d33"; mid = "#232744"; bot = "#3a3550"; mtn = "22,26,46"; }
+    else                   { top = "#0a0f1f"; mid = "#101527"; bot = "#1a2030"; mtn = "5,8,16"; }
+    const botRGB = [parseInt(bot.slice(1, 3), 16), parseInt(bot.slice(3, 5), 16), parseInt(bot.slice(5, 7), 16)];
     const grad = g.createLinearGradient(0, 0, 0, 280);
-    grad.addColorStop(0, top); grad.addColorStop(1, bot);
+    grad.addColorStop(0, top); grad.addColorStop(0.55, mid); grad.addColorStop(1, bot);
     g.fillStyle = grad;
     g.fillRect(0, 0, 720, 280);
 
     if (sunAlt < -8 && wx.clouds < 0.55) {
-      for (const [x, y, r] of stars) {
-        g.fillStyle = `rgba(255,255,255,${(0.25 + r * 0.5) * (1 - wx.clouds)})`;
+      const tw = Date.now() / 1000;
+      for (const [x, y, r, sp, ph] of stars) {
+        const s = 0.5 + 0.5 * Math.sin(tw * sp + ph);
+        const wink = 0.35 + 0.8 * s * s;     // long dims, short bright glints
+        const a = Math.min(1, (0.3 + r * 0.55) * wink) * (1 - wx.clouds);
+        // a few run cool, a few run warm — most stay honest white
+        g.fillStyle = r > 0.92 ? `rgba(205,222,255,${a})`
+          : r < 0.08 ? `rgba(255,235,205,${a})`
+          : `rgba(255,255,255,${a})`;
         g.fillRect(x, y, r > 0.8 ? 2 : 1.4, r > 0.8 ? 2 : 1.4);
       }
     }
@@ -696,6 +732,25 @@ function makeSky() {
       g.fillRect(0, 0, 720, 280);
     }
 
+    // ---- the san gabriels, mostly rumor ----
+    // two ridgelines behind everything, half-dissolved in the sky color,
+    // then a marine layer that swallows their feet — you squint, they're there
+    const drawRidge = (pts, a) => {
+      g.fillStyle = `rgba(${mtn},${a})`;
+      g.beginPath();
+      g.moveTo(-4, 280);
+      for (const [px, ph] of pts) g.lineTo(px, 280 - ph);
+      g.lineTo(724, 280);
+      g.closePath(); g.fill();
+    };
+    drawRidge(LA.mtsFar, 0.35);
+    drawRidge(LA.mts, 0.5);
+    const mfog = g.createLinearGradient(0, 280, 0, 185);
+    mfog.addColorStop(0, `rgba(${botRGB[0]},${botRGB[1]},${botRGB[2]},0.55)`);
+    mfog.addColorStop(1, `rgba(${botRGB[0]},${botRGB[1]},${botRGB[2]},0)`);
+    g.fillStyle = mfog;
+    g.fillRect(0, 185, 720, 95);
+
     // ---- downtown LA ----
     const night = sunAlt < -4;
     if (night) {
@@ -705,12 +760,35 @@ function makeSky() {
       g.fillStyle = glow;
       g.fillRect(0, 160, 720, 120);
     }
-    g.fillStyle = night ? "#0a0c12" : "rgba(95,105,120,0.75)";
-    for (const b of LA.far) g.fillRect(b.x, 280 - b.h, b.w, b.h);
+    // far ridge — each block its own shade so the ridge stops reading flat
+    for (const b of LA.far) {
+      g.fillStyle = night
+        ? `rgb(${10 + b.s * 8 | 0},${12 + b.s * 8 | 0},${18 + b.s * 10 | 0})`
+        : `rgba(95,105,120,${0.55 + b.s * 0.3})`;
+      g.fillRect(b.x, 280 - b.h, b.w, b.h);
+    }
     if (fx.zilla) drawZilla(g, fx.zilla, night);   // behind downtown, always
-    for (const b of LA.dt) {
+    // the towers get real corners: a lit front face plus a shadowed west
+    // wall receding toward a vanishing point past the window's left edge.
+    // drawn right-to-left so a near tower occludes its neighbor's wall.
+    const VP = 250;
+    const frontCol = night ? "#0c0e16" : "rgba(70,80,95,0.92)";
+    const sideCol = night ? "#141828" : "rgba(50,58,72,0.92)";
+    for (let di = LA.dt.length - 1; di >= 0; di--) {
+      const b = LA.dt[di];
       const top = 280 - b.h;
-      g.fillStyle = night ? "#0c0e16" : "rgba(70,80,95,0.92)";
+      // the wilshire slant rises to the right, so its west corner sits lower
+      const cTop = b === LA.wilshire ? top + 14 : top;
+      const kk = Math.min(b.d, 12 / (b.x - VP));  // clamp so far towers don't go cartoon
+      const bx = b.x - (b.x - VP) * kk;
+      // west wall in shadow
+      g.fillStyle = sideCol;
+      g.beginPath();
+      g.moveTo(b.x, cTop); g.lineTo(bx, cTop + (280 - cTop) * kk);
+      g.lineTo(bx, 280); g.lineTo(b.x, 280);
+      g.closePath(); g.fill();
+      // front face
+      g.fillStyle = frontCol;
       if (b === LA.wilshire) {
         // slanted crown
         g.beginPath();
@@ -722,21 +800,49 @@ function makeSky() {
         if (b === LA.usbank) {
           g.fillRect(b.x + b.w / 2 - 1.5, top - 12, 3, 12);   // spire
           g.fillRect(b.x + 4, top - 4, b.w - 8, 4);           // crown ring
+        } else if (b.mech) {
+          // rooftop mechanicals, with their own sliver of shadowed wall
+          const mx = b.x + b.mech.x * (b.w - b.mech.w);
+          g.fillStyle = sideCol;
+          g.fillRect(mx - 2, top - b.mech.h + 1, 2.5, b.mech.h - 1);
+          g.fillStyle = frontCol;
+          g.fillRect(mx, top - b.mech.h, b.mech.w, b.mech.h);
         }
       }
+      // the corner line that sells the box
+      g.fillStyle = night ? "rgba(140,160,210,0.14)" : "rgba(235,242,250,0.35)";
+      g.fillRect(b.x, cTop, 1, 280 - cTop);
       if (night) {
         for (const [wxp, wy, wr] of b.win) {
           if (wr < 0.55) {
             g.fillStyle = wr < 0.12 ? "rgba(170,210,255,0.8)" : `rgba(255,${200 + (wr * 40) | 0},130,${0.45 + wr * 0.4})`;
             g.fillRect(b.x + wxp, 280 - wy, 1.8, 2.4);
+          } else if (wr < 0.68) {
+            // a few windows wrap the corner onto the west wall, dimmer
+            const sx = b.x - (b.x - bx) * (wxp / b.w) * 0.9;
+            g.fillStyle = `rgba(255,214,140,${0.25 + wr * 0.2})`;
+            g.fillRect(sx - 1.4, 280 - wy, 1.2, 2.2);
           }
         }
+      } else {
+        // daytime curtain-wall: faint mullion columns give the face grain
+        g.fillStyle = "rgba(30,38,52,0.14)";
+        for (let mxx = b.x + 3; mxx < b.x + b.w - 2; mxx += 5)
+          g.fillRect(mxx, cTop + 5, 2, 280 - cTop - 9);
       }
       // Wilshire Grand beacon
       if (b === LA.wilshire && fx.beacon) {
         g.fillStyle = "#ff2030";
         g.fillRect(b.x + b.w - 3, top - 3, 4, 4);
       }
+    }
+    // ground haze — the marine layer eats the tower bases, so near reads near
+    if (sunAlt > -6) {
+      const haze = g.createLinearGradient(0, 280, 0, 205);
+      haze.addColorStop(0, `rgba(${botRGB[0]},${botRGB[1]},${botRGB[2]},0.35)`);
+      haze.addColorStop(1, `rgba(${botRGB[0]},${botRGB[1]},${botRGB[2]},0)`);
+      g.fillStyle = haze;
+      g.fillRect(0, 205, 720, 75);
     }
 
     // ---- a jet on the LAX approach ----
