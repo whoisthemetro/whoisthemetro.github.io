@@ -1001,9 +1001,11 @@ controls.onAction((ndcX, ndcY) => {
     grabToy();
     aItem("toy");
   } else if (hit.object.userData.mixDoor && hit.distance < 3) {
-    // the bedroom door leads out to the mix & master site — walk through it
+    // the bedroom door leads out to the mix & master site — walk through it.
+    // absolute URL: the site lives on the production domain, and a relative
+    // path 404s when you're walking the room off localhost
     toast("through the door…");
-    fadeTo(() => { location.href = "/mixandmaster/"; });
+    fadeTo(() => { location.href = "https://whoisthemetro.com/mixandmaster/"; });
   } else if (hit.object.userData.closet && hit.distance < 3) {
     const open = world.toggleCloset();
     presence.sendAct({ kind: "closet", open });
