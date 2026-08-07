@@ -311,18 +311,18 @@
   </div>
 </div>
 
-<!-- ====== the computer screen: rooms, messages, music ====== -->
+<!-- ====== the computer screen: METRO OS, a terminal now ====== -->
 <div id="pc" class="overlay">
-  <div class="panel">
-    <div class="panel-head">
-      <span class="tab active">METRO OS</span>
+  <div class="term-shell">
+    <div class="term-head">
+      <span class="term-title">METRO OS · tty1</span>
       <button class="x" id="pc-close">×</button>
     </div>
-    <div class="pc-sec">talk</div>
-    <button class="pc-item" id="pc-dm">✉️ send metro a message / file</button>
-    <button class="pc-item hidden" id="pc-inbox">📥 your inbox</button>
-    <div class="pc-sec">music<span class="pc-hint" id="pc-now"></span></div>
-    <div id="pc-songs"></div>
+    <div class="term-out" id="term-out"></div>
+    <div class="term-line" id="term-line">
+      <span class="term-prompt" id="term-prompt">visitor@metro:~$</span>
+      <input id="term-in" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="send">
+    </div>
   </div>
 </div>
 

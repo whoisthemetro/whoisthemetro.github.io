@@ -1274,7 +1274,7 @@ setInterval(() => {
     aimTip.textContent = `${hit.object.userData.arcadeSoon} — coming soon`;
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.dm && hit.distance < 3) {
-    aimTip.textContent = `${TAP} — the computer · messages · music`;
+    aimTip.textContent = `${TAP} — the computer · METRO OS`;
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.piano && hit.distance < 2.4) {
     aimTip.textContent = `${TAP} the keys to play`;
@@ -3434,16 +3434,10 @@ const pcOverlay = $("#pc");
 // playing still sits a touch on top — but close, so a song reads as the
 // instrument actually being played, not a distant backing loop.
 const MUSIC_VEL = 1.05;
-function refreshSongUI() {
-  const playing = currentSongId();
-  for (const b of $("#pc-songs").children) {
-    const on = b.dataset.song === playing;
-    b.classList.toggle("playing", on);
-    b.querySelector(".pc-hint").textContent = on ? "■ stop" : "▶ play";
-  }
-  const s = SONGS.find(x => x.id === playing);
-  $("#pc-now").textContent = s ? `now playing — ${s.title}` : "";
-}
+// the jukebox UI left the computer when METRO OS became a terminal; the
+// song engine stays wired (remote peers + the cat's keep-off-the-keys
+// check still use it), there's just no local UI to repaint anymore
+function refreshSongUI() {}
 // the self-playing songs are a SHARED room thing now: when someone starts (or
 // stops, or swaps) a track on the computer, the whole bedroom hears the same
 // one, and anyone can stop it or pick another. ordered by a logical clock so a
@@ -3482,33 +3476,127 @@ function applySong(id) {
   if (song) setDelayTempo(song.bpm);
   refreshSongUI();
 }
-// your click on the computer: toggle, then tell the room
-function toggleSong(id) {
-  const next = currentSongId() === id ? null : id;   // same one again = stop
-  applySong(next);
-  if (next) store.logEvent("piano");
-  songClock += 1;
-  songState = next ? { id: next, at: songClock } : null;
-  presence.sendAct({ kind: "song", id: next, at: songClock });
+/* --- METRO OS: the terminal ---
+   the computer stopped being a button menu. it's a little amber-phosphor
+   tty now: scrollback, prompt, history, and a command table that new
+   commands (the real-music jukebox is coming) can slot into. */
+const termOut = $("#term-out");
+const termIn = $("#term-in");
+const termPromptEl = $("#term-prompt");
+let termBooted = false;
+const termHistory = [];
+let termHistAt = -1;
+
+function termUser() {
+  const n = (identity.name || "visitor").toLowerCase().replace(/[^a-z0-9_-]+/g, "");
+  return n || "visitor";
 }
-for (const s of SONGS) {
-  const b = document.createElement("button");
-  b.className = "pc-item";
-  b.dataset.song = s.id;
-  b.textContent = `🎹 ${s.title}`;
-  const hint = document.createElement("span");
-  hint.className = "pc-hint";
-  hint.textContent = "▶ play";
-  b.appendChild(hint);
-  b.addEventListener("click", () => toggleSong(s.id));
-  $("#pc-songs").appendChild(b);
+function termPrint(text = "", cls = "") {
+  const div = document.createElement("div");
+  if (cls) div.className = cls;
+  div.textContent = text;
+  termOut.appendChild(div);
+  termOut.scrollTop = termOut.scrollHeight;
 }
+function termBanner() {
+  termPrint("METRO OS v3.0", "bright");
+  termPrint("─".repeat(34), "dim");
+  termPrint("the room is always on.");
+  termPrint("type 'help' to see what this thing does.", "dim");
+  termPrint("");
+}
+const laTime = () => new Date().toLocaleString("en-US", {
+  timeZone: "America/Los_Angeles", weekday: "short", month: "short", day: "numeric",
+  hour: "numeric", minute: "2-digit",
+});
+// the command table — one entry per command, help builds itself from it
+const TERM_COMMANDS = {
+  help: { blurb: "you're looking at it", run() {
+    termPrint("commands:", "bright");
+    for (const [name, c] of Object.entries(TERM_COMMANDS)) {
+      if (c.admin && !adminMode) continue;
+      termPrint(`  ${name.padEnd(10)} ${c.blurb}`, "");
+    }
+  } },
+  msg: { blurb: "send metro a message / file", run() {
+    hide(pcOverlay); openDM();
+  } },
+  inbox: { blurb: "read what visitors left", admin: true, run() {
+    hide(pcOverlay); openDM();
+  } },
+  music: { blurb: "the sound system", run() {
+    termPrint("the old jukebox has been unplugged.", "dim");
+    termPrint("a new sound system is being wired in — check back soon.");
+  } },
+  cat: { blurb: "how the cat's doing", run() {
+    const d = store.decayCat(catState);
+    const mood = cat.mood > 0.5 ? "purring" : cat.mood > 0 ? "content"
+      : cat.mood > -0.4 ? "aloof" : "plotting something";
+    termPrint(`fed ${Math.round(d.fed * 100)}% · hydrated ${Math.round(d.hydrated * 100)}% · mood: ${mood}`);
+    termPrint(`currently: ${cat.state}`, "dim");
+  } },
+  weather: { blurb: "what LA is doing outside", run() {
+    const wx = world.getWeather() || {};
+    const sky = wx.fog ? "fog" : wx.rain ? "rain" : wx.clouds > 0.6 ? "overcast"
+      : wx.clouds > 0.2 ? "some clouds" : "clear";
+    termPrint(`hawthorne, ca — ${sky}` + (wx.clouds != null ? ` · cloud cover ${Math.round(wx.clouds * 100)}%` : ""));
+  } },
+  time: { blurb: "studio clock (LA)", run() { termPrint(laTime()); } },
+  whoami: { blurb: "who the room thinks you are", run() {
+    termPrint(`${termUser()} — ${adminMode ? "the booth" : "a visitor"}. what you leave here is permanent.`);
+  } },
+  clear: { blurb: "wipe the scrollback", run() { termOut.textContent = ""; } },
+  exit: { blurb: "back to the room", run() { closePC(); } },
+};
+// a few things people will inevitably try
+const TERM_EGGS = {
+  ls: () => termPrint("demos/  mixes/  cat_photos/  do_not_open/", ""),
+  sudo: () => termPrint("this is metro's computer. nice try though.", "err"),
+  pwd: () => termPrint("/home/metro/studio"),
+  quit: () => TERM_COMMANDS.exit.run(),
+};
+function runTerm(line) {
+  termPrint(`${termPromptEl.textContent} ${line}`, "cmdline");
+  const [cmd, ...args] = line.trim().split(/\s+/);
+  if (!cmd) return;
+  const c = TERM_COMMANDS[cmd];
+  if (c && (!c.admin || adminMode)) c.run(args);
+  else if (TERM_EGGS[cmd]) TERM_EGGS[cmd](args);
+  else {
+    termPrint(`command not found: ${cmd}`, "err");
+    termPrint("try 'help'", "dim");
+  }
+  termOut.scrollTop = termOut.scrollHeight;
+}
+termIn.addEventListener("keydown", (e) => {
+  e.stopPropagation();   // the room's hotkeys don't belong in a terminal
+  if (e.key === "Enter") {
+    const line = termIn.value;
+    termIn.value = "";
+    if (line.trim()) { termHistory.push(line); }
+    termHistAt = termHistory.length;
+    runTerm(line);
+  } else if (e.key === "ArrowUp") {
+    e.preventDefault();
+    if (termHistAt > 0) { termHistAt--; termIn.value = termHistory[termHistAt] || ""; }
+  } else if (e.key === "ArrowDown") {
+    e.preventDefault();
+    if (termHistAt < termHistory.length) { termHistAt++; termIn.value = termHistory[termHistAt] || ""; }
+  } else if (e.key === "Escape") {
+    closePC();
+  }
+});
+// clicking anywhere in the shell keeps the keyboard on the prompt
+pcOverlay.addEventListener("click", (e) => {
+  if (e.target.closest(".term-shell")) termIn.focus();
+});
 function openPC() {
   modalOpen = true;
   controls.unlock();
-  $("#pc-inbox").classList.toggle("hidden", !adminMode);
-  refreshSongUI();
+  termPromptEl.textContent = `${termUser()}@metro:~$`;
+  if (!termBooted) { termBooted = true; termBanner(); }
   show(pcOverlay);
+  setTimeout(() => termIn.focus(), 50);
 }
 function closePC() {
   hide(pcOverlay);
@@ -3516,9 +3604,6 @@ function closePC() {
   if (entered) safeLock();
 }
 $("#pc-close").addEventListener("click", closePC);
-// rooms moved to the arcade elevator — the computer is now just messages + music
-$("#pc-dm").addEventListener("click", () => { hide(pcOverlay); openDM(); });
-$("#pc-inbox").addEventListener("click", () => { hide(pcOverlay); openDM(); });
 $("#dm-file").addEventListener("change", (e) => {
   const f = e.target.files[0];
   if (!f) return;
