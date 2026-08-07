@@ -1156,6 +1156,261 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
 }
 `;
 
+// ---- 13: warped sphere-noise nebula (as provided) ----------------------
+const SPHERE_WARP = /* glsl */ `
+#define gridSize 1
+#define layers 3
+
+#define scale 6.
+#define moveDistance .5
+
+#define movement_1 0.035
+#define movement_2 0.7
+#define movement_3 1.
+
+#define warpAmount 3.
+
+#define shape 0.1
+#define density 1.
+
+mat2 rot(float a)
+{
+return mat2(
+  cos(a), sin(a),
+  -sin(a), cos(a)
+  );
+}
+
+float hash31(vec3 p3)
+{
+    p3  = fract(p3 * .1031);
+    p3 += dot(p3, p3.zyx + 31.32);
+    return fract((p3.x + p3.y) * p3.z);
+}
+
+float sphere(vec2 uv, float rId){
+
+  float rDens = fract(sin(rId * 23.456));
+
+  float size = sin(rId * iTime * movement_3) * 0.5 + 0.5;
+
+  float dist = length(uv) + size;
+
+  vec2 sphereShape = mix(vec2(1.,0.),vec2(0.5,0.49),shape);
+  float s = smoothstep(sphereShape.x,sphereShape.y,dist);
+
+  s *= smoothstep(density+0.01,density,rDens);
+
+  return s;
+}
+
+float sphereNoise(vec2 uv, vec2 offset){
+  float s = 0.;
+
+  float amp = 1.;
+
+  for(int i = 0; i < layers; i++){
+
+    float del = float(i)/float(layers);
+    float dist = fract(-iTime * movement_1 + del);
+
+    float fade = (1.-dist) * dist * 3.;
+
+    vec2 gridPos = uv * scale * dist + offset * pow(2.,float(i));
+    gridPos += vec2(float(i) * 23.456);
+
+    vec2 id = floor(gridPos);
+    vec2 fd = fract(gridPos) - 0.5;
+
+    for(int x = -gridSize; x <= gridSize; x++){
+      for(int y = -gridSize; y <= gridSize; y++){
+
+        vec2 gridOffset = vec2(x,y);
+        vec2 nId = id + gridOffset;
+        float rId = hash31(vec3(nId,1 + i));
+        float posOffset = rId * 2. - 1.;
+
+        vec2 p = vec2(sin(iTime * movement_2 * posOffset),cos(iTime * movement_2 * posOffset));
+        p *= moveDistance;
+
+        s += sphere(fd - gridOffset + p,rId) * fade;
+      }
+    }
+
+  }
+
+  s /= float(layers);
+
+  return s;
+}
+
+void mainImage( out vec4 fragColor, in vec2 fragCoord )
+{
+    vec2 uv = (fragCoord.xy * 2.0 - iResolution.xy)/iResolution.y;
+
+    float s_1 = sphereNoise(uv,vec2(50.,50.));
+    float s_2 = sphereNoise(uv,vec2(100.,100.));
+    vec2 s = vec2(s_1,s_2);
+
+    float r_1 = sphereNoise(uv + s * warpAmount,vec2(200.,200.));
+    float r_2 = sphereNoise(uv + s * warpAmount,vec2(300.,300.));
+    vec2 r = vec2(r_1,r_2);
+
+    vec3 c1 = mix(vec3(0.9,0.2,0.1),vec3(1.,1.,1.),s_1 * 3.);
+    c1 = mix(c1,vec3(0.6,.7,0.9),r_2 * 2.);
+
+    float final = sphereNoise(uv + r * warpAmount,vec2(0.)) * 2.5;
+
+    vec3 c = final * c1;
+
+    fragColor = vec4(c,1.0);
+}
+`;
+
+// ---- 14: code-golfed animated short (Shader Minifier output, as
+// provided). needs ES 3.0 for the int[16] dither-matrix constructor.
+const GOLF_SHORT = /* glsl */ `
+float f,v,y,i,e;
+int m,s;
+#define PI 3.14
+#define time (mod(iTime*.7, 41.))
+// below is code golfed using Shader Minifier!
+struct x{vec3 e;vec3 t;};struct p{vec3 o;vec3 c;
+float v;int i;vec3 m;};struct n{float f;vec3 a;vec3 l;};n t[6];
+mat2 r(float v){float t=cos(v);v=sin(v);return mat2(t,-v,v,t);}
+float r(float v,float t,float y,float e){float m=clamp(.5+e*.5*(
+t-v)/y,0.,1.);return mix(t,v,m)-e*y*m*(1.-m);}float r(vec3 v,
+vec3 y,float e){v=abs(v)-y+e;return length(max(v,0.))+min(max(
+v.x,max(v.y,v.z)),0.)-e;}float r(vec3 v){return fract(sin(dot(v,
+vec3(1,57,113)))*43758.5453);}float d(vec3 v){v*=2.;vec3
+t=floor(v);v=fract(v);v=v*v*(3.-2.*v);return mix(mix(mix(r(t),r(
+t+vec3(1,0,0)),v.x),mix(r(t+vec3(0,1,0)),r(t+vec3(1,1,0)),v.x),
+v.y),mix(mix(r(t+vec3(0,0,1)),r(t+vec3(1,0,1)),v.x),mix(r(t+
+vec3(0,1,1)),r(t+vec3(1)),v.x),v.y),v.z);}vec3 d(vec3 m,inout
+vec3 f){if(s>=4)return m-=vec3(-5,2,-3),m.xz*=r(.96),m.xy*=r(
+4.19),m;vec3 i=m-vec3(0,7,8),d=f,n=m-vec3(0,7,0),c=f;if(e>7.&&y>
+.3){float t=floor(v/2.);n.x+=sin(t*3.)*.6;n.z+=cos(t*10.)*.3+1.;
+t=smoothstep(.98,1.,cos((time-.2)*PI/.5)*.5+.5)*.1*(1.-2.*mod(
+v/2.,2.));n.xy*=r(t);c.xy*=r(t);}float z=(floor(time*8.)/8.+v)
+*4.;vec3 x=f;float l=mix(0.,5.,y*(e-8.));vec3 a=m-vec3(sin(z*6.)
+*2.4,2.+sin(z*.3)-y,l);a.xz*=r(z);x.xz*=r(z);a.zy*=r(z);x.zy*=r(
+z);l=smoothstep(t[s+1].f-5.+float(s)*2.,t[s+1].f-2.+float(s),
+time);f=s==0?m=mix(i,n,l),mix(d,c,l):s==1?m=n,c:s==2?m=mix(n,a,
+l),mix(c,x,l):(m=a,x);return m;}float h(vec3 v){vec3 t=v+vec3(0,
+.4,0);t.xz/=3.5;float m=r(r((length(t)-.8)*min(1.,3.5),length(v-
+vec3(0,.1,0))-1.1,.1,1.),-t.y+.25,.1,-1.);t=v;t.y=abs(t.y-.05)-
+.45;float y=r(abs(length(t.xz)-1.1)-.09,t.y,.05,-1.);return r(m,
+y,.05,1.);}float d(vec3 v,inout int e){float y=m==1||m==2?1.:0.;
+v/=1.;float t;vec3 f=v;float i=1.+smoothstep(-.7,.3,f.y)
+*.4*step(0.,f.x);f.x/=i;i=r(f,vec3(1,.7,.55),.4-y*.38)*min(1.,
+i);f=v-vec3(.05,-.7,0);f.xz=abs(f.xz);float s=1.5+smoothstep(-
+.8,0.,f.y)*.6;f-=vec3(.73,.1,0);f.z-=m!=4?.27:0.;f.xz/=s;
+f.xy*=r(.08);s=r(f,vec3(.1,1.2,.1)*.8,.06-y*.05)*min(1.,s);f=v-
+vec3(1.8,.4,0);vec3 z=f;f.xy*=r(11.6);float n=smoothstep(-.6,.7,
+f.y)*.4+1.;f.xz/=n;n=r(f,vec3(.23,.5,.2+y*.02)*.95,.14-y*.13)
+*min(1.,n);float l;z-=vec3(-.15,.22,0);l=r(z,vec3(.1,.06,.5),
+.05);t=r(r(s,i,.25-y*.24,1.),r(n,l,.15-y*.14,1.),.43-y*.42,1.);
+if(m==4){float m=abs(v.z)-.1;t=r(t,m,.008,-1.);}return t;}float
+d(vec3 v,out int f,inout vec3 m){float i;vec3 y=v;float
+e=smoothstep(t[2].f-1.,t[2].f,time)-smoothstep(t[4].f,t[4].f,
+time);y.yz*=r(.26*e);e=y.y+4.;y=d(v,y);vec3 n=y;float
+z=smoothstep(10.,12.,time);n.y+=mix(9.4,5.4,z);n.zy*=r(.26*z);
+n.xz*=r(2.*time*z);n-=vec3(-.6,0,0);z=1.12;n/=z;int l=2;if(s>3)
+z=.5,n=v-vec3(2.5,-2,5.5),n.xz*=r(1.48),n/=z;z*=d(n,l);f=0;
+float a=mix(1.5,.3,floor(float(s)/4.));y*=a;a=h(y)/a;i=a;m=y;if(
+z<i)f=l,m=n,i=z;if(e<i)f=1,m=v,i=e;return i;}float a(vec3 v){
+int t;vec3 m;return d(v,t,m);}vec3 c(vec3 v){vec3 m=vec3(1e-4,0,
+0),t=vec3(0,1e-4,0),y=vec3(0,0,1e-4);float f=a(v+m)-a(v-m),i=a(
+v+t)-a(v-t),e=a(v+y)-a(v-y);return normalize(vec3(f,i,e));}p a(
+x v){vec3 t=v.e;int m=-1;vec3 e=vec3(0);for(float f=0.;f<64.;
+f++){float s=d(t,m,e);if(s<.001)return p(t,c(t),length(t-v.e),m,
+e);t+=v.t*s;}return p(t,t,-1.,-1,e);}vec3 a(vec3 v,vec3 m,vec3
+e){v=vec3(0);vec3 f[3],i[3];float y=step(time,t[2].f-.5)*2.-1.;
+f[0]=normalize(vec3(-1,y,1));f[1]=normalize(vec3(1,3.*y,4));f[2]
+=normalize(vec3(-10,-1,5));i[0]=vec3(.99,.96,.04)*.25;i[1]=vec3(
+.14,.4,.67);i[2]=vec3(.7,.2,.1);for(float t=0.;t<3.;t++){vec3
+e=f[int(t)];v=(v+max(0.,dot(m,e))*i[int(t)])*1.3;}v*=e;return
+v/(v+1.);}vec3 l(vec3 v){return vec3(smoothstep(.38,.4,d(v)));}
+vec3 a(p v,vec2 t,vec3 e){float f=max(0.,dot(normalize(vec3(.3,
+1,.8)),v.c));return m==2?floor(v.m*4.+1.)/4.:m==3?v.c*v.v*.5:
+m==4?vec3(.9,.8,.1)*(pow(f,10.)*2.+.5):m==5?floor(v.m*4.+1.)
+/4.:(l(v.m)*.8+.2)*(.3+f);}vec3 a(p v,vec3 t){t=vec3(1);t=a(v.o,
+v.c,t);if(e>7.){float m=step(9.,e),f=smoothstep(.8,1.,cos(
+time*PI*mix(1.5,.5,m)/.5)*.5+.5)*step(r(vec3(time*10.)),mix(.3,
+.58,m));f=mix(1.-f,f,m);t=mix(max(0.,dot(normalize(vec3(.3,-1,
+.8)),v.c))*(l(v.m)*.8+.2),t,f);}return floor(t*8.)/8.*1.5;}vec3
+c(p v,vec2 t,vec3 m){vec3 y;return v.i==0?a(v,m):v.i==1?y=mix(
+mix(vec3(.1,.4,.1),vec3(.2,.6,.2),d(v.o*.5)),vec3(.7,.8,.4),d(
+v.o*.1+vec3(100)-4.)),y*.5:a(v,t,m);}float a(x v,float t,out
+vec3 f){v.e=d(v.e,v.t);v.e.y-=1.;vec3 m=v.e,s=v.t;float
+y=s.x*s.x+s.z*s.z-.217*s.y*s.y,e=2.*(m.x*s.x+m.z*s.z-
+.217*m.y*s.y),i=m.x*m.x+m.z*m.z-.217*m.y*m.y,z=e*e-4.*y*i;if(z<
+0.)i=-1.;else{float v=sqrt(z),m=(-e-v)/(2.*y);i=m>0.?m:(-e+v)/(
+2.*y);}if(i<0.)return 0.;f=v.e+v.t*i;return t>0.&&t<i?0.:f.y>-
+1.?0.:i;}vec4 a(float v,vec3 t,vec2 m){t.y=mix(t.y,m.y,.3);
+t=vec3(sin(t.y-vec3(0,1,2)-time)*.7+.5);float f=1.-smoothstep(
+0.,.4,fract(y*2.)),i=f*.7+.3;t=mix(vec3(1,1,.2),t,f);if(e>7.){
+float v=smoothstep(.5,.6,sin(time*PI/.5*2.)*.5+.5);t=mix(t,vec3(
+.9412,.2039,0),v);i=mix(.3,.9,v);}if(time>12.)t*=v/4.;return
+vec4(t,i);}vec3 a(vec2 v,vec3 t,vec3 m){m=normalize(m-t);vec3
+f=normalize(cross(m,vec3(0,1,0)));float y=smoothstep(11.,12.6,
+time)*15.+25.;f=f*v.x*tan(radians(y))+normalize(cross(f,m))
+*v.y*tan(radians(y))+normalize(m);x e=x(t,normalize(f));p s=a(
+e);f=vec3(0);if(s.v>0.)f=c(s,v,t);y=(.1-v.y*.2)*step(11.,time)+
+r(vec3(time))*smoothstep(.6,0.,abs(time-12.8))*.4;t=vec3(y*.1,
+y*.3,y*.7);y=a(e,s.v,m);t*=y<=0.?1.:1.5;if(s.v<=0.)f=t;f=mix(f,
+t,smoothstep(45.,50.,s.v));if(time>i*2.){vec4 t=a(y,m,v);vec3
+i=mix(f,t.xyz*.5,t.w);f=mix(f,i,step(.01,y));}return f;}float a(
+vec2 v){ivec2 m=ivec2(mod(v,4.));int t[16]=int[](0,8,2,10,12,4,
+14,6,3,11,1,9,15,7,13,5);return float(t[m.x+m.y*4])/16.;}void
+a(){t[0]=n(0.,vec3(0,11,0),vec3(0,6,10));t[1]=n(8.,vec3(0,.5,-
+.5),vec3(0,10,16));t[2]=n(12.5,vec3(0,2.8,0),vec3(0,1,5.5));t[3]
+=n(i*8.,vec3(0,2.8,0),vec3(0,1,5.5));t[4]=n(i*9.,vec3(0),vec3(0,
+0,10));t[5]=t[4];}void mainImage(out vec4 fragColor,vec2
+fragCoord){vec2 z=(fragCoord/iResolution.xy*2.-1.)/vec2(
+iResolution.y/iResolution.x,1);f=mod(time,.5)/.5;v=floor(
+time/.5);y=mod(time/8.,.5)/.5;i=4.;e=time/i;vec3 n,l;a();s=int(
+step(t[1].f,time)+step(t[2].f,time)+step(t[3].f,time)+step(t[4]
+.f,time));float r=floor(v/4.);if(e>7.)r=v;m=int(mod(float(r)+2.,
+8.));if(s<2||s>3)m=0;r=5.;if(s==1)r=1.;float d=smoothstep(t[s+1]
+.f-r,t[s+1].f,time);if(s!=0)d=pow(smoothstep(.3,.9,d),.7);n=mix(
+t[s].a,t[s+1].a,d);l=mix(t[s].l,t[s+1].l,d);n=a(z,l,n);n=floor(
+n*8.+a(z*1e2))/8.;r=1.;if(e>8.){float m=time>8.*i+2.?4.:2.;
+r=smoothstep(.48,.52,1.-smoothstep(.75,1.,cos(time*PI*m/.5)*.5+
+.5));}if(e>9.)r=smoothstep(.2,.5,y)*.8*step(e,10.);
+r*=smoothstep(0.,2.,time);n*=mix(0.,1.,r);fragColor=vec4(n,1);}
+`;
+
+// ---- 15: acid plasma flow (code-golf, "-13 thanks to Nguyen2007").
+// adapted: the loop counter i was uninitialized (Shadertoy hands out
+// zeros, GLSL hands out undefined) — set to 0; ES 3.0 for tanh.
+const ACID_PLASMA = /* glsl */ `
+// -13 thanks to Nguyen2007
+void mainImage( out vec4 o, vec2 u )
+{
+    vec2 v = iResolution.xy;
+         u = .2*(u+u-v)/v.y;
+
+    vec4 z = o = vec4(1,2,3,0);
+
+    for (float a = .5, t = iTime, i = 0.;
+         ++i < 19.;
+         o += (1. + cos(z+t))
+            / length((1.+i*dot(v,v))
+                   * sin(1.5*u/(.5-dot(u,u)) - 9.*u.yx + t))
+         )
+        v = cos(++t - 7.*u*pow(a += .03, i)) - 5.*u,
+        u += tanh(40. * dot(u *= mat2(cos(i + .02*t - z.wxzw*11.))
+                           ,u)
+                      * cos(1e2*u.yx + t)) / 2e2
+           + .2 * a * u
+           + cos(4./exp(dot(o,o)/1e2) + t) / 3e2;
+
+     o = 25.6 / (min(o, 13.) + 164. / o)
+       - dot(u, u) / 250.;
+}
+`;
+
 // what world.js consumes: name → { frag, glsl3 }
 export const SHADER_ART = {
   tunnelOrb: { frag: TUNNEL_ORB },
@@ -1168,4 +1423,7 @@ export const SHADER_ART = {
   starTunnel: { frag: STAR_TUNNEL, glsl3: true },
   balatro: { frag: BALATRO },
   universeWithin: { frag: UNIVERSE_WITHIN, glsl3: true },
+  sphereWarp: { frag: SPHERE_WARP },
+  golfShort: { frag: GOLF_SHORT, glsl3: true },
+  acidPlasma: { frag: ACID_PLASMA, glsl3: true },
 };

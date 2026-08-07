@@ -1836,10 +1836,9 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
 
   // which slab wears which shader face, by PANEL_DEFS index.
   // back wall: 0-3 · west: 4-8 (7 is the skinny strip) · east: 9-12
-  // (12 stays a plain slab — the room keeps one honest acoustic panel)
   const PANEL_SHADERS = {
-    0: toyOf("tunnelOrb"),
-    1: toyOf("phantom"),
+    0: toyOf("sphereWarp"),
+    1: toyOf("golfShort"),
     2: toyOf("marble"),
     3: toyOf("balatro"),
     4: toyOf("blueRects"),
@@ -1850,6 +1849,7 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     9: neuroGold,
     10: neuroPink,
     11: toyOf("neonCity"),
+    12: toyOf("acidPlasma"),
   };
   let panelIdx = 0;
   for (const [wid, pu, pv, pw, ph] of PANEL_DEFS) {
