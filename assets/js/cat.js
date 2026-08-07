@@ -107,6 +107,8 @@ export class Cat {
     // pupils, big forward-facing ears with pink inners, and whiskers —
     // the whiskers alone do half the work of "that's a cat"
     this.head = new THREE.Group();
+    this.eyes = [];
+    this.pupils = [];
     const skull = new THREE.Mesh(new THREE.SphereGeometry(0.05, 14, 12), fur());
     skull.scale.set(0.95, 0.88, 0.82);
     skull.castShadow = true;
@@ -135,10 +137,12 @@ export class Cat {
       eye.scale.set(0.55, 1, 0.8);          // almond, not marble
       eye.position.set(0.0405, 0.009, s * 0.0205);
       this.head.add(eye);
+      this.eyes.push(eye);
       const pupil = new THREE.Mesh(new THREE.BoxGeometry(0.0025, 0.011, 0.0035),
         new THREE.MeshBasicMaterial({ color: 0x142008 }));
       pupil.position.set(0.0455, 0.009, s * 0.0205);
       this.head.add(pupil);
+      this.pupils.push(pupil);
       for (let w = 0; w < 3; w++) {
         const wh = new THREE.Mesh(new THREE.CylinderGeometry(0.0009, 0.0005, 0.075, 4),
           new THREE.MeshBasicMaterial({ color: 0xe8e4da, transparent: true, opacity: 0.8 }));
@@ -186,6 +190,9 @@ export class Cat {
     }
     this._hind = [this.legs[2], this.legs[3]];
     this._sit = 0;
+    this._sleep = 0;
+    this._blink = 0;
+    this._blinkAt = rand(2, 6);
     this.rig.add(this.body, this.head);
     this._roll = 0;             // current belly-roll about the spine (0 = upright)
     this._kick = 0;             // decaying bunny-kick flail after an over-rub
@@ -599,25 +606,46 @@ export class Cat {
     const wantsSit = (this.state === "sit" || this.state === "window") && this._roll < 0.1 ? 1 : 0;
     this._sit += (wantsSit - this._sit) * Math.min(1, dt * 5);
     const sit = this._sit;
+    // the sleep curl settles in slow, the way an actual cat arranges itself
+    this._sleep += ((sleeping ? 1 : 0) - this._sleep) * Math.min(1, dt * 3);
+    const slp = this._sleep;
 
     // breathing / trot bob
     const breathe = sleeping ? Math.sin(t * 1.6) * 0.006 : 0;
     const bob = walking ? Math.abs(Math.sin(t * 8)) * 0.012 : 0;
-    this.body.position.y = 0.115 + breathe + bob - sit * 0.008;
+    this.body.position.y = 0.115 + breathe + bob - sit * 0.008 - slp * 0.022;
     this.body.position.x = -sit * 0.02;
     this.body.rotation.z = sit * 0.5;       // chest up, haunches planted
-    this.head.position.x = 0.125 - sit * 0.045;
-    this.head.position.y = (sleeping ? 0.09 : headDown ? 0.08 : 0.175 + sit * 0.045) + bob;
-    this.head.rotation.z = sleeping ? -0.5
-      : headDown ? -0.9 + Math.sin((this.actionT || 0) * 7) * 0.12   // nibbling / digging
-      : 0;
-    // tail sway — faster when walking, lazy when asleep; the rest curve is
-    // the question mark, the sway just breathes through it
+    this.body.rotation.x = slp * 0.15;
+    this.body.scale.x = 1 - slp * 0.16;     // the loaf compresses
+    // head: sits tall awake, tucks toward the chest and turns into the
+    // curl as it drifts off
+    this.head.position.x = 0.125 - sit * 0.045 - slp * 0.055;
+    const headY = headDown ? 0.08 : 0.175 + sit * 0.045;
+    this.head.position.y = headY * (1 - slp) + 0.105 * slp + bob;
+    const headZ = headDown ? -0.9 + Math.sin((this.actionT || 0) * 7) * 0.12 : 0;   // nibbling / digging
+    this.head.rotation.z = headZ * (1 - slp) - 0.85 * slp;
+    this.head.rotation.y = slp * 0.55;
+
+    // blink — a quick lid every few seconds; asleep the eyes just stay shut
+    this._blinkAt -= dt;
+    if (this._blinkAt <= 0) { this._blink = 0.14; this._blinkAt = rand(2.5, 8); }
+    if (this._blink > 0) this._blink = Math.max(0, this._blink - dt);
+    const lid = Math.max(this._blink > 0 ? Math.sin((1 - this._blink / 0.14) * Math.PI) : 0, slp);
+    for (const e of this.eyes) e.scale.y = Math.max(0.08, 1 - lid * 0.92);
+    for (const p of this.pupils) p.scale.y = Math.max(0.06, 1 - lid);
+
+    // tail: awake it sways through the question mark; asleep it unwinds
+    // and wraps flat around the loaf
     const sway = Math.sin(t * (walking ? 6 : 1.6));
-    this.tail.forEach((seg, i) => { seg.rotation.x = sway * (0.28 - i * 0.03); });
-    // legs tuck when sleeping
-    for (const leg of this.legs) leg.visible = !sleeping;
-    if (sleeping) this.body.rotation.x = 0.35; else this.body.rotation.x = 0;
+    const WRAPZ = [-1.85, 0.25, 0.12, 0.08, 0.06, 0.05];
+    const WRAPX = [0, 0.5, 0.55, 0.55, 0.5, 0.45];
+    this.tail.forEach((seg, i) => {
+      seg.rotation.x = sway * (0.28 - i * 0.03) * (1 - slp) + WRAPX[i] * slp;
+      seg.rotation.z = this._tailRest[i] * (1 - slp) + WRAPZ[i] * slp;
+    });
+    // legs tuck under the loaf once it's mostly settled
+    for (const leg of this.legs) leg.visible = slp < 0.5;
     // trot gait; sitting folds the hind legs under the haunches
     if (walking) {
       this.legs.forEach((leg, i) => {
