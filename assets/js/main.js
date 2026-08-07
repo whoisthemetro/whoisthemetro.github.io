@@ -723,11 +723,14 @@ function pickUpNote(note) {
 }
 
 // fired every frame while carrying: hover the note on the wall under the
+// how close you must stand to the wall to read or leave anything — kept
+// tight so nobody posts (or opens) a note by accident from across the room
+const NOTE_REACH = 2.2;
 // crosshair and tint it by whether that exact patch is free.
 function updateCarry() {
   if (!carrying) return;
   const hit = castWalls(0, 0);
-  const place = hit && hit.distance < 4.5 && notesWall.postableFrom(hit, controls.pos)
+  const place = hit && hit.distance < NOTE_REACH && notesWall.postableFrom(hit, controls.pos)
     ? notesWall.placementFromHit(hit) : null;
   const mesh = notesWall.byId.get(carrying.id);
   if (!mesh) { carrying = null; return; }
@@ -1218,9 +1221,9 @@ controls.onAction((ndcX, ndcY) => {
     toast(what === "bong" ? "the water does its job 🫧" : "just a little one");
   } else if (hit.object.userData.care && hit.distance < 2.6) {
     handleCare(hit.object.userData.care);
-  } else if (hit.object.userData.note) {
+  } else if (hit.object.userData.note && hit.distance < NOTE_REACH) {
     openReader(hit.object.userData.note);
-  } else if (hit.object.userData.postable && hit.distance < 4.5 && notesWall.postableFrom(hit, controls.pos)) {
+  } else if (hit.object.userData.postable && hit.distance < NOTE_REACH && notesWall.postableFrom(hit, controls.pos)) {
     const place = notesWall.placementFromHit(hit);
     if (place) openComposer(place);
   }
@@ -1393,10 +1396,10 @@ setInterval(() => {
       k === "litter" ? (d.litter > 0.15 ? `${TAP} to clean the litter box` : "litter box — clean") :
       `treat jar — ${Math.max(0, treatsLeftToday())} left today`;
     aimTip.classList.add("show");
-  } else if (hit && hit.object.userData.note) {
+  } else if (hit && hit.object.userData.note && hit.distance < NOTE_REACH) {
     aimTip.textContent = `${TAP} to read`;
     aimTip.classList.add("show");
-  } else if (hit && hit.object.userData.postable && hit.distance < 4.5 && notesWall.postableFrom(hit, controls.pos)) {
+  } else if (hit && hit.object.userData.postable && hit.distance < NOTE_REACH && notesWall.postableFrom(hit, controls.pos)) {
     aimTip.textContent = `${TAP} to leave something`;
     aimTip.classList.add("show");
   } else {
