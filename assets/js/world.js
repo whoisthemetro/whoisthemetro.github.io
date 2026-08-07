@@ -7776,7 +7776,7 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
      toon pass so it keeps its own PBR look, and hidden until you're in it
      (an invisible group costs nothing — its lights and shadow map go with
      it). --- */
-  const STUDIO = { x: 0, z: 80 };
+  const STUDIO = { x: 0, z: -80 };   // -80, not +80: the gym owns +80 and we were standing in its court
   const studio = buildStudioRoom({ parent: scene, offset: STUDIO });
   studio.root.visible = false;
   studioWalk = (x, z) => {

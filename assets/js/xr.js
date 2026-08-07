@@ -44,41 +44,48 @@ export function setupXR({ renderer, camera, scene, controls, world, onSelect, ca
     controllers.push(c);
   }
 
-  /* --- the in-world HUD ---
-     toasts and aim tips are DOM, and DOM does not exist inside a session,
-     so the headset gets its own little panel riding under the view. it's a
-     child of the CAMERA, which only joins the scene graph while a session
-     runs — so it costs the flat-screen path exactly nothing. */
+  /* --- the wrist HUD ---
+     toasts and aim tips are DOM, and DOM does not exist inside a session.
+     rather than hang them in the middle of your view, the headset wears
+     them on the off hand: raise your wrist to read, drop it and the room
+     is unobstructed. it's a child of a CONTROLLER, which only joins the
+     scene graph while a session runs — so the flat screen pays nothing. */
   const hudCanvas = document.createElement("canvas");
-  hudCanvas.width = 768; hudCanvas.height = 168;
+  hudCanvas.width = 768; hudCanvas.height = 200;
   const hg = hudCanvas.getContext("2d");
   const hudTex = new THREE.CanvasTexture(hudCanvas);
   hudTex.colorSpace = THREE.SRGBColorSpace;
   const hud = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.46, 0.101),
+    new THREE.PlaneGeometry(0.20, 0.052),
     new THREE.MeshBasicMaterial({ map: hudTex, transparent: true, depthTest: false }));
-  hud.position.set(0, -0.26, -0.62);   // low in the view, out of the way
+  // worn on the wrist, not floating in the middle of your view: tilted to
+  // face up and back toward your eyes, the way you'd read a watch
+  hud.position.set(0, 0.05, 0.055);
+  hud.rotation.set(-1.15, 0, 0);
   hud.renderOrder = 999;
   hud.visible = false;
-  camera.add(hud);
+  const hudHolder = new THREE.Group();
+  hudHolder.add(hud);
+  controllers[0].add(hudHolder);   // moves to the off hand once we know which is which
 
   let tipText = "", noteText = "", noteUntil = 0;
   function paintHud() {
-    hg.clearRect(0, 0, 768, 168);
+    hg.clearRect(0, 0, 768, 200);
     const lines = [];
     if (noteText) lines.push([noteText, "#ffd9a0"]);
     if (tipText) lines.push([tipText, "#7ec97e"]);
     if (!lines.length) { hud.visible = false; hudTex.needsUpdate = true; return; }
-    hg.fillStyle = "rgba(8,11,14,0.74)";
-    hg.fillRect(6, 6, 756, 156);
-    hg.strokeStyle = "rgba(255,179,71,0.35)";
-    hg.lineWidth = 3;
-    hg.strokeRect(6, 6, 756, 156);
+    hg.fillStyle = "rgba(8,11,14,0.8)";
+    hg.fillRect(6, 6, 756, 188);
+    hg.strokeStyle = "rgba(255,179,71,0.4)";
+    hg.lineWidth = 4;
+    hg.strokeRect(6, 6, 756, 188);
     hg.textAlign = "center"; hg.textBaseline = "middle";
-    hg.font = "600 34px ui-monospace, Menlo, Consolas, monospace";
+    // big for its canvas: this ends up ~20cm wide read at arm's length
+    hg.font = "600 46px ui-monospace, Menlo, Consolas, monospace";
     lines.forEach(([txt, col], i) => {
       hg.fillStyle = col;
-      hg.fillText(txt, 384, lines.length === 1 ? 84 : 56 + i * 58, 716);
+      hg.fillText(txt, 384, lines.length === 1 ? 100 : 66 + i * 68, 712);
     });
     hud.visible = true;
     hudTex.needsUpdate = true;
@@ -147,8 +154,14 @@ export function setupXR({ renderer, camera, scene, controls, world, onSelect, ca
       if (!gp) continue;
       const ax = gp.axes.length >= 4 ? gp.axes[2] : (gp.axes[0] || 0);
       const ay = gp.axes.length >= 4 ? gp.axes[3] : (gp.axes[1] || 0);
-      if (src.handedness === "left") { mx = ax; mz = ay; }
-      else if (src.handedness === "right") { turn = ax; if (controllers[i]) primary = controllers[i]; }
+      if (src.handedness === "left") {
+        mx = ax; mz = ay;
+        // the screen rides the hand you don't point with
+        if (controllers[i] && hudHolder.parent !== controllers[i]) controllers[i].add(hudHolder);
+      } else if (src.handedness === "right") {
+        turn = ax;
+        if (controllers[i]) primary = controllers[i];
+      }
     }
 
     // --- did something outside VR teleport us? bring the rig along ---

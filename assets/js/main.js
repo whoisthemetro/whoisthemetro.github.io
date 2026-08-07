@@ -1890,10 +1890,17 @@ function applyRoomFlags(f, withRadio = true) {
 
 // in a headset the radio and the dimmer are physical things: a click is the
 // power knob / the next brightness step, not an overlay you can't see
+// one button, the whole dial: off → first station → next → … → last → off,
+// so a headset can work the radio without the station overlay
 function vrToggleRadio(r) {
-  r.radio.toggle();
+  const before = r.radio.info();
+  if (!before.on) r.radio.power(true);
+  else if (before.idx >= before.total - 1) r.radio.power(false);
+  else r.radio.scan(1);
   broadcastRadio(r);
-  xrRef.note(r.radio.info().on ? "radio on" : "radio off");
+  const now = r.radio.info();
+  const name = now.station && (now.station.name || now.station.label);
+  xrRef.note(now.on ? `📻 ${name || "station " + (now.idx + 1)}` : "radio off");
 }
 function vrCycleDimmer() {
   dimLevel = dimLevel >= 0.99 ? 0 : Math.min(1, Math.round((dimLevel + 0.34) * 100) / 100);
