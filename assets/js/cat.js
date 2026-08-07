@@ -61,7 +61,12 @@ export class Cat {
     const toonRamp = new THREE.DataTexture(rampData, 4, 1);
     toonRamp.needsUpdate = true;
     toonRamp.minFilter = toonRamp.magFilter = THREE.NearestFilter;
-    const toon = (c, map = null) => new THREE.MeshToonMaterial({ color: c, map, gradientMap: toonRamp });
+    // a faint self-glow floor so the cat never fades to a silhouette when
+    // the curtains shut the room down — at 16% it's invisible in daylight
+    const toon = (c, map = null) => new THREE.MeshToonMaterial({
+      color: c, map, gradientMap: toonRamp,
+      emissive: map ? 0xffffff : c, emissiveMap: map, emissiveIntensity: 0.22,
+    });
     const fur = () => toon(FUR);
     const DARK = 0xb5691f;                  // the tabby's darker stripe orange
     // tabby coat: darker bands that wrap the torso. the spheres are rotated
