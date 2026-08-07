@@ -46,6 +46,10 @@ At the end of buildWorld, every Lambert/Standard material is swapped for `MeshTo
 - **Z-fighting:** anything mounted on a wall sits ≥3 cm proud of it (notes use `0.03 + seq stagger` in notes3d.js).
 - Shadow masks around the window are thick DoubleSide boxes, not thin planes.
 
+### Shader art — shaderart.js
+
+The acoustic slabs carry animated Shadertoy-style pieces. Fragment sources live in shaderart.js (`SHADER_ART`, with per-shader adaptation notes and licenses); world.js wraps each in a prelude where `vUv * iResolution` stands in for `gl_FragCoord` (so every piece renders in its slab's true aspect — set iResolution from the slab's w:h), pins `iMouse` to zero, and drives `iTime` from the world tick. `glsl3: true` marks shaders needing ES 3.0; those get an explicit out var (GLSL3 mode has no `gl_FragColor`). GLSL ES 1.00 pitfalls that keep recurring: no `round()`/`tanh()` (polyfill), no `#define` line continuations, uninitialized globals/locals are undefined (Shadertoy hands out zeros — set them). Panel assignment is `PANEL_SHADERS` in world.js, keyed by PANEL_DEFS index.
+
 ### Notes ("the wall") — notes3d.js + world walls[]
 
 Postable walls are entries in `walls[]`: `{id, mesh, w, h, origin, uDir, vDir, normal, voids}`. Note placement raycasts against walls **and** `blockers` (doors, furniture, acoustic slabs — all click-solid so notes land on bare wall only). `voids` are no-post rects (doorways, panels, signs); the DB `notes.wall` check constraint must list every wall id (bedroom: `back/west/east`, boat: `boat_*`). Notes are room-scoped by `refreshNoteVisibility()` in main.js. De-overlap is a deterministic spiral in notes3d.js sorted by `created_at`.

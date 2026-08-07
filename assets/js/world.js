@@ -25,6 +25,7 @@ import * as THREE from "three";
 import { rand, IS_TOUCH } from "./util.js";
 import { getSunPosition, getMoonPosition, getMoonIllumination, getStarPosition, getPlanetPositions, STARS } from "./astro.js";
 import { makeAttractScreen } from "./arcade.js";
+import { SHADER_ART } from "./shaderart.js";
 
 export const ROOM = {
   X: 2.6, ZF: -3.3, ZB: 3.3, H: 2.7,
@@ -1798,10 +1799,58 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     sunGridUniforms.iTime.value = elapsed2;
     sunsetUniforms.iTime.value = elapsed2;
     sunsetUniforms.iTimeDelta.value = dt2 || 1 / 60;
+    for (const toy of TOYS) {
+      toy.uniforms.iTime.value = elapsed2;
+      toy.uniforms.iTimeDelta.value = dt2 || 1 / 60;
+    }
   }
 
-  // which slab wears which shader face, by PANEL_DEFS index
-  const PANEL_SHADERS = { 9: neuroGold, 10: neuroPink };
+  /* --- the rest of the gallery: Shadertoy-style pieces from
+     shaderart.js, one material per slab. the prelude makes vUv stand in
+     for gl_FragCoord and pins iMouse, so every piece renders in the
+     slab's own aspect. --- */
+  const TOYS = [];
+  const makeToy = ({ frag, glsl3 }) => {
+    const uniforms = {
+      iResolution: { value: new THREE.Vector3(550, 1200, 1) },
+      iTime: { value: 0 },
+      iTimeDelta: { value: 1 / 60 },
+    };
+    // ES 3.0 mode has no gl_FragColor — those shaders get an explicit out
+    const mainWrap = glsl3
+      ? "layout(location = 0) out highp vec4 metroFragColor;\nvoid main() { mainImage(metroFragColor, vUv * iResolution.xy); }\n"
+      : "void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }\n";
+    const mat = new THREE.ShaderMaterial({
+      uniforms,
+      vertexShader: SHADER_VERT,
+      fragmentShader:
+        "varying vec2 vUv;\nuniform vec3 iResolution;\nuniform float iTime;\nuniform float iTimeDelta;\nconst vec4 iMouse = vec4(0.0);\n"
+        + frag + "\n" + mainWrap,
+      glslVersion: glsl3 ? THREE.GLSL3 : null,
+    });
+    const toy = { uniforms, mat };
+    TOYS.push(toy);
+    return toy;
+  };
+  const toyOf = (name) => makeToy(SHADER_ART[name]);
+
+  // which slab wears which shader face, by PANEL_DEFS index.
+  // back wall: 0-3 · west: 4-8 (7 is the skinny strip) · east: 9-12
+  // (12 stays a plain slab — the room keeps one honest acoustic panel)
+  const PANEL_SHADERS = {
+    0: toyOf("tunnelOrb"),
+    1: toyOf("phantom"),
+    2: toyOf("marble"),
+    3: toyOf("balatro"),
+    4: toyOf("blueRects"),
+    5: toyOf("sineLattice"),
+    6: toyOf("proteanClouds"),
+    7: toyOf("universeWithin"),
+    8: toyOf("starTunnel"),
+    9: neuroGold,
+    10: neuroPink,
+    11: toyOf("neonCity"),
+  };
   let panelIdx = 0;
   for (const [wid, pu, pv, pw, ph] of PANEL_DEFS) {
     const wall = walls.find(w2 => w2.id === wid);
@@ -1820,8 +1869,12 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     // chosen slabs wear a shader face, a hair proud of the box
     const ps = PANEL_SHADERS[panelIdx];
     if (ps) {
-      ps.uniforms.u_scene.value.x = pw * 1000;
-      ps.uniforms.u_scene.value.y = ph * 1000;
+      if (ps.uniforms.u_scene) {         // the neuro pieces pack res into u_scene
+        ps.uniforms.u_scene.value.x = pw * 1000;
+        ps.uniforms.u_scene.value.y = ph * 1000;
+      } else {
+        ps.uniforms.iResolution.value.set(pw * 1000, ph * 1000, 1);
+      }
       const face = new THREE.Mesh(new THREE.PlaneGeometry(pw - 0.02, ph - 0.02), ps.mat);
       face.position.copy(center).addScaledVector(wall.normal, 0.041);
       face.lookAt(face.position.clone().add(wall.normal));
