@@ -5402,7 +5402,7 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
   })));
 
   // stamp the whole boat (meshes AND lights) onto layer 1
-  boatGroup.traverse((o) => { o.layers.set(1); });
+  boatGroup.traverse((o) => { o.layers.set(3); });   // 3, not 1 — three.js reserves 1/2 for the XR eyes
 
   /* --- THE CREW: the Echo Arena, far above everything ---
      Behind the Echo poster in the arcade (or one click in METRO OS).
@@ -5964,7 +5964,7 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
   exitPanel.userData.arenaExit = true;
   addA(exitPanel);
   arenaExits.push(exitPanel);
-  arenaGroup.traverse((o) => { o.layers.set(2); });
+  arenaGroup.traverse((o) => { o.layers.set(4); });   // 4, not 2 — see the boat above
 
   /* --- dust --- */
   const DUST = 240;

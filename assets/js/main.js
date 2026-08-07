@@ -33,11 +33,30 @@ import { createRadio, SR_STATIONS, LA_STATIONS } from "./radio.js";
 import { startTitleFX } from "./title.js";
 import { setupXR } from "./xr.js";
 import {
-  PAPERS, IS_TOUCH, safeUrl, hostOf, timeAgo, toast,
+  PAPERS, IS_TOUCH, safeUrl, hostOf, timeAgo, toast as domToast,
   getIdentity, saveIdentity, shrinkImage,
 } from "./util.js";
 
 const $ = (s) => document.querySelector(s);
+
+/* ---------------- VR bridges ----------------
+   DOM is invisible inside a headset session. xrRef is filled in once
+   setupXR has run; declaring it here (before anything can toast) keeps it
+   out of the temporal dead zone. */
+let xrRef = null;
+const inVR = () => !!(xrRef && xrRef.presenting());
+// every toast also lands on the in-world HUD
+function toast(msg, ms) {
+  domToast(msg, ms);
+  if (inVR()) xrRef.note(msg);
+}
+// anything that would open a DOM overlay says so in-world instead of
+// silently setting modalOpen and locking every further click
+function vrBlocked(what) {
+  if (!inVR()) return false;
+  xrRef.note(what);
+  return true;
+}
 
 /* ---------------- renderer / scene ---------------- */
 const canvas = $("#scene");
@@ -54,8 +73,11 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = IS_TOUCH ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
 
 const camera = new THREE.PerspectiveCamera(72, innerWidth / innerHeight, 0.05, 120);
-camera.layers.enable(1);   // boat layer
-camera.layers.enable(2);   // arena layer
+// 3 and 4, not 1 and 2: three.js hands layers 1/2 to the left and right
+// eye inside a WebXR session, so a room parked on those would render to
+// one eye only once you ride the lift there in VR
+camera.layers.enable(3);   // boat layer
+camera.layers.enable(4);   // arena layer
 const world = buildWorld(renderer);
 
 /* --- per-room light culling: keep the mobile shader-uniform budget in check --
@@ -540,6 +562,7 @@ const mirror = makeSelfieMirror(renderer, outfitSpec);
 let pickerOpen = false;
 let pickerReturn = null;
 function openPicker() {
+  if (vrBlocked("the mirror needs a flat screen")) return;
   if (pickerOpen) return;
   pickerOpen = true; modalOpen = true; controls.unlock();
   // pull the camera back to frame the WHOLE mirror (nothing cut off): straight
@@ -706,9 +729,12 @@ canvas.addEventListener("click", () => {
 let xrAim = null;
 const xrAimMat = new THREE.Matrix4();
 function castAt(ndcX, ndcY) {
-  if (xrAim) {
-    xrAimMat.identity().extractRotation(xrAim.matrixWorld);
-    raycaster.ray.origin.setFromMatrixPosition(xrAim.matrixWorld);
+  // an explicit xrAim (the hand that pulled the trigger) wins; otherwise the
+  // pointing hand stands in, so aim tips and previews follow your hand too
+  const aim = xrAim || (renderer.xr.isPresenting && xrRef ? xrRef.aimController() : null);
+  if (aim) {
+    xrAimMat.identity().extractRotation(aim.matrixWorld);
+    raycaster.ray.origin.setFromMatrixPosition(aim.matrixWorld);
     raycaster.ray.direction.set(0, 0, -1).applyMatrix4(xrAimMat);
   } else {
     raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera);
@@ -718,11 +744,6 @@ function castAt(ndcX, ndcY) {
   const hits = raycaster.intersectObjects(targets, false);
   return hits[0] || null;
 }
-
-// what a VR laser is allowed to touch (everything here is DOM-free)
-const XR_TOUCH = ["cat", "toy", "care", "edrum", "piano", "pianoVoice",
-  "guitar", "guitarVoice", "blinds", "curtain", "closet", "dimmer",
-  "stomp", "vacuum", "radio", "glass"];
 
 // a ray that only sees bare wall + the solid things stuck to it — used while
 // re-hanging a note so the note you're carrying (floating on top of the
@@ -1003,11 +1024,6 @@ controls.onAction((ndcX, ndcY) => {
     return;
   }
   const hit = castAt(ndcX, ndcY);
-  // in VR only the physical stuff answers the laser — anything that opens
-  // a DOM overlay (composer, reader, terminal, mirror, arcade, portals)
-  // stays a flat-screen activity for now
-  if (renderer.xr.isPresenting && hit &&
-      !XR_TOUCH.some((k) => hit.object.userData[k] !== undefined)) return;
   // in the arena, a click is a swing — unless you're on a catapult
   // handle (then the punch IS the launch) or aiming at something useful
   if (inArena) {
@@ -1058,6 +1074,7 @@ controls.onAction((ndcX, ndcY) => {
     grabToy();
     aItem("toy");
   } else if (hit.object.userData.mixDoor && hit.distance < 3) {
+    if (vrBlocked("that door leaves the room — step out of VR first")) return;
     // the bedroom door leads out to the mix & master site — walk through it.
     // absolute URL: the site lives on the production domain, and a relative
     // path 404s when you're walking the room off localhost
@@ -1085,6 +1102,7 @@ controls.onAction((ndcX, ndcY) => {
   } else if (hit.object.userData.pool2 && hit.distance < 3.0) {
     sitAtPool(poolGame2);
   } else if (hit.object.userData.arcade && hit.distance < 3.2) {
+    if (vrBlocked("the cabinets need a flat screen")) return;
     modalOpen = true;
     controls.unlock();
     store.logEvent("arcade_" + hit.object.userData.arcade);
@@ -1112,7 +1130,7 @@ controls.onAction((ndcX, ndcY) => {
     }
   } else if (hit.object.userData.dimmer && hit.distance < 2.6) {
     aItem("dimmer");
-    openDimmer();
+    if (inVR()) vrCycleDimmer(); else openDimmer();
   } else if (hit.object.userData.launchHandle && hit.distance < 3) {
     const h = hit.object.userData.launchHandle;
     controls.pos.x = h.x; controls.flyY = h.y; controls.pos.z = h.z;
@@ -1204,9 +1222,9 @@ controls.onAction((ndcX, ndcY) => {
   } else if (hit.object.userData.mixer && hit.distance < 2.8) {
     openMixer();
   } else if (hit.object.userData.radio && hit.distance < 2.8) {
-    openRadio(radios.sr);
+    if (inVR()) vrToggleRadio(radios.sr); else openRadio(radios.sr);
   } else if (hit.object.userData.laradio && hit.distance < 2.8) {
-    openRadio(radios.la);
+    if (inVR()) vrToggleRadio(radios.la); else openRadio(radios.la);
   } else if (hit.object.userData.gtrFilter && hit.distance < 2.8) {
     openFilter();
   } else if (hit.object.userData.vacuum && hit.distance < 2.6) {
@@ -1257,8 +1275,14 @@ controls.onAction((ndcX, ndcY) => {
 
 // what would a tap/click do right now? (crosshair hint, desktop AND mobile)
 const TAP = IS_TOUCH ? "tap" : "click";
+// the DOM tip is invisible in a session — mirror it onto the in-world HUD
 setInterval(() => {
-  if (!controls.locked || modalOpen) { aimTip.classList.remove("show"); return; }
+  if (!inVR()) return;
+  xrRef.tip(aimTip.classList.contains("show") ? aimTip.textContent : "");
+}, 150);
+setInterval(() => {
+  // pointer lock never applies in a headset: the laser IS the crosshair
+  if ((!controls.locked && !inVR()) || modalOpen) { aimTip.classList.remove("show"); return; }
   if (carrying) {
     aimTip.textContent = carrying.place
       ? `${TAP} to set it down here`
@@ -1480,6 +1504,7 @@ $("#photo-input").addEventListener("change", async (e) => {
 });
 
 function openComposer(place) {
+  if (vrBlocked("leaving a note needs a flat screen")) return;
   pendingPlacement = place;
   modalOpen = true;
   controls.unlock();
@@ -1572,6 +1597,7 @@ $("#post-btn").addEventListener("click", async () => {
 
 /* ---------------- reader ---------------- */
 function openReader(note) {
+  if (vrBlocked("reading a note needs a flat screen")) return;
   currentNote = note;
   modalOpen = true;
   controls.unlock();
@@ -1717,6 +1743,7 @@ function setMixChannel(id, pct, save) {
   if (save) { try { localStorage.setItem("metro.mix." + id, String(Math.round(mixLevel[id]))); } catch (e) {} }
 }
 function openMixer() {
+  if (vrBlocked("the mixer needs a flat screen")) return;
   modalOpen = true;
   controls.unlock();
   for (const id of MIX_IDS) {
@@ -1838,6 +1865,18 @@ function applyRoomFlags(f, withRadio = true) {
   }
 }
 
+// in a headset the radio and the dimmer are physical things: a click is the
+// power knob / the next brightness step, not an overlay you can't see
+function vrToggleRadio(r) {
+  r.radio.toggle();
+  broadcastRadio(r);
+  xrRef.note(r.radio.info().on ? "radio on" : "radio off");
+}
+function vrCycleDimmer() {
+  dimLevel = dimLevel >= 0.99 ? 0 : Math.min(1, Math.round((dimLevel + 0.34) * 100) / 100);
+  applyDimmer(true);
+  xrRef.note(`lights ${Math.round(dimLevel * 100)}%`);
+}
 function openRadio(r) {
   activeRadio = r;
   modalOpen = true;
@@ -1878,6 +1917,7 @@ function setFilterLevel(pct, save) {
   if (save) { try { localStorage.setItem("metro.gtrfilter", gtrFilterLevel.toFixed(3)); } catch (e) {} }
 }
 function openFilter() {
+  if (vrBlocked("the filter pedal needs a flat screen")) return;
   modalOpen = true;
   controls.unlock();
   const sl = $("#filter-slider");
@@ -1912,6 +1952,7 @@ function pushChat(name, color, text, mine = false) {
   setTimeout(() => div.classList.add("old"), 20000);
 }
 function openChat() {
+  if (vrBlocked("chat needs a flat screen")) return;
   if (modalOpen) return;
   chatOpen = true;
   modalOpen = true;
@@ -2158,6 +2199,7 @@ function setupHome() {
 }
 async function tryBoat() {
   modalOpen = true;                      // keep the pause screen away
+  if (vrBlocked("that door wants a password — step out of VR")) return;
   const pass = prompt("this door is private. password:");
   if (!pass) { modalOpen = false; if (entered) safeLock(); return; }
   if (await sha256(pass.trim().toLowerCase()) !== BOAT_PASS_HASH) {
@@ -2213,6 +2255,7 @@ let inClub = false;
 async function tryClub() {
   modalOpen = true;                      // keep the pause screen away
   if (!CLUB_OPEN) {
+    if (vrBlocked("that door wants a password — step out of VR")) return;
     const pass = prompt("an unmarked door. bass through the brick. password:");
     if (!pass) { modalOpen = false; if (entered) safeLock(); return; }
     if (await sha256(pass.trim().toLowerCase()) !== CLUB_PASS_HASH) {
@@ -2475,6 +2518,7 @@ function grantBooth(uid, name) { writeDJ({ on: true, act: { uid, name: name || "
 function revokeBooth() { writeDJ({ on: true, act: null }); }
 
 function openBooth() {
+  if (vrBlocked("the booth needs a flat screen")) return;
   modalOpen = true;
   controls.unlock();
   renderBooth();
@@ -2576,6 +2620,7 @@ $("#booth-close").addEventListener("click", () => {
 });
 
 async function openDJPicker() {
+  if (vrBlocked("the decks need a flat screen")) return;
   modalOpen = true;
   controls.unlock();
   const list = $("#dj-list");
@@ -2657,6 +2702,8 @@ const arenaScore = { o: 0, b: 0 };
 let myTeam = "o";
 try { myTeam = localStorage.getItem("metro.team") || (Math.random() < 0.5 ? "o" : "b"); } catch (e) {}
 async function tryArena() {
+  // zero-g flight has no VR controls yet — phase one is a walking room
+  if (vrBlocked("the zero-g arena needs a flat screen for now")) return;
   // no password — but you do have to pick a locker room
   modalOpen = true;
   controls.unlock();
@@ -3316,6 +3363,7 @@ function stopArenaMusic() {
 /* ---------------- message in a bottle ---------------- */
 const bottleOverlay = $("#bottle");
 async function openBottle() {
+  if (vrBlocked("the bottle needs a flat screen")) return;
   modalOpen = true;
   controls.unlock();
   $("#bottle-msg").textContent = "…uncorking…";
@@ -3393,6 +3441,7 @@ function hideFlightStrip() {
 /* ---------------- private notes to Metro ---------------- */
 const dmOverlay = $("#dm");
 async function openDM(compose = false) {
+  if (vrBlocked("writing to metro needs a flat screen")) return;
   modalOpen = true;
   controls.unlock();
   // compose=true always opens the write-a-note pane — no passphrase, even
@@ -3629,6 +3678,7 @@ pcOverlay.addEventListener("click", (e) => {
   if (e.target.closest(".term-shell")) termIn.focus();
 });
 function openPC() {
+  if (vrBlocked("METRO OS needs a flat screen for now")) return;
   modalOpen = true;
   controls.unlock();
   termPromptEl.textContent = `${termUser()}@metro:~$`;
@@ -4025,7 +4075,7 @@ addEventListener("keydown", (e) => {
 /* --- VR: phase one (see xr.js) --- */
 const xr = setupXR({
   renderer, camera, scene: world.scene, controls, world,
-  canEnter: () => !inBoat && !inArena && !inClub && !inGym,
+  canEnter: () => !inBoat && !inArena && !inClub && !inGym && !modalOpen,
   onSelect: (controller) => {
     if (modalOpen) return;
     xrAim = controller;
@@ -4034,7 +4084,9 @@ const xr = setupXR({
   },
 });
 
-window.METRO_DEBUG = { renderer, camera, world, controls, THREE, cat, bartender, ghosts, voice, screen, stream, setScreen, clearScreen, room: () => aRoomNow(), jump: adminJump, mirror, openPicker, analytics: analyticsBuffer, notesWall,
+xrRef = xr;   // helpers above can reach it now that it exists
+
+window.METRO_DEBUG = { renderer, camera, world, controls, xr, THREE, cat, bartender, ghosts, voice, screen, stream, setScreen, clearScreen, room: () => aRoomNow(), jump: adminJump, mirror, openPicker, analytics: analyticsBuffer, notesWall,
   layout: { set: setLayoutMode, select: layoutSelect, nudge: layoutNudge, scale: layoutScale, click: layoutClick, on: () => layoutMode, sel: () => layoutSel },
   uid: identity.uid, pool: poolGame, pool2: poolGame2, sitAtPool, leavePool,
   toy: () => toy, grabToy, throwToy,

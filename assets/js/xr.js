@@ -6,9 +6,9 @@
    trigger fires the same click dispatch the crosshair uses — via a
    laser from the controller instead of the screen centre.
 
-   Phase-one rules: DOM overlays don't exist inside a session, so
-   main.js filters interactions down to the physical stuff (drums,
-   piano, cat, blinds…). Writing on the wall stays a flat-screen act.
+   DOM overlays don't exist inside a session, so this module also owns a
+   small in-world HUD (toasts + aim tips) and main.js redirects anything
+   that would open an overlay to it instead of silently freezing.
    ============================================================ */
 
 import * as THREE from "three";
@@ -44,6 +44,61 @@ export function setupXR({ renderer, camera, scene, controls, world, onSelect, ca
     controllers.push(c);
   }
 
+  /* --- the in-world HUD ---
+     toasts and aim tips are DOM, and DOM does not exist inside a session,
+     so the headset gets its own little panel riding under the view. it's a
+     child of the CAMERA, which only joins the scene graph while a session
+     runs — so it costs the flat-screen path exactly nothing. */
+  const hudCanvas = document.createElement("canvas");
+  hudCanvas.width = 768; hudCanvas.height = 168;
+  const hg = hudCanvas.getContext("2d");
+  const hudTex = new THREE.CanvasTexture(hudCanvas);
+  hudTex.colorSpace = THREE.SRGBColorSpace;
+  const hud = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.46, 0.101),
+    new THREE.MeshBasicMaterial({ map: hudTex, transparent: true, depthTest: false }));
+  hud.position.set(0, -0.19, -0.58);
+  hud.renderOrder = 999;
+  hud.visible = false;
+  camera.add(hud);
+
+  let tipText = "", noteText = "", noteUntil = 0;
+  function paintHud() {
+    hg.clearRect(0, 0, 768, 168);
+    const lines = [];
+    if (noteText) lines.push([noteText, "#ffd9a0"]);
+    if (tipText) lines.push([tipText, "#7ec97e"]);
+    if (!lines.length) { hud.visible = false; hudTex.needsUpdate = true; return; }
+    hg.fillStyle = "rgba(8,11,14,0.74)";
+    hg.fillRect(6, 6, 756, 156);
+    hg.strokeStyle = "rgba(255,179,71,0.35)";
+    hg.lineWidth = 3;
+    hg.strokeRect(6, 6, 756, 156);
+    hg.textAlign = "center"; hg.textBaseline = "middle";
+    hg.font = "600 34px ui-monospace, Menlo, Consolas, monospace";
+    lines.forEach(([txt, col], i) => {
+      hg.fillStyle = col;
+      hg.fillText(txt, 384, lines.length === 1 ? 84 : 56 + i * 58, 716);
+    });
+    hud.visible = true;
+    hudTex.needsUpdate = true;
+  }
+  function note(msg) {
+    noteText = msg || "";
+    noteUntil = performance.now() + 3600;
+    paintHud();
+  }
+  function tip(msg) {
+    msg = msg || "";
+    if (msg === tipText) return;      // don't repaint a canvas for nothing
+    tipText = msg;
+    paintHud();
+  }
+
+  let primary = null;
+  // what we last pushed into controls.pos — lets us notice when the WORLD
+  // moves the body instead (a lift ride, a room jump) and follow it
+  let wroteX = NaN, wroteZ = NaN;
   let snapReady = true;
   const headWorld = new THREE.Vector3();
   const fwd = new THREE.Vector3();
@@ -61,6 +116,7 @@ export function setupXR({ renderer, camera, scene, controls, world, onSelect, ca
   renderer.xr.addEventListener("sessionend", () => {
     rig.remove(camera);
     for (const c of controllers) c.visible = false;
+    tipText = ""; noteText = ""; hud.visible = false;
     // hand the body back to the desktop controls where VR left it
     camera.position.set(controls.pos.x, 1.5, controls.pos.z);
     if (btn) btn.textContent = "[ enter vr ]";
@@ -79,15 +135,28 @@ export function setupXR({ renderer, camera, scene, controls, world, onSelect, ca
     const session = renderer.xr.getSession();
     if (!session) return;
 
+    // let the HUD note expire on its own
+    if (noteText && performance.now() > noteUntil) { noteText = ""; paintHud(); }
+
     // --- sticks (xr-standard mapping: thumbstick on axes 2/3) ---
     let mx = 0, mz = 0, turn = 0;
-    for (const src of session.inputSources) {
+    const srcs = session.inputSources;
+    for (let i = 0; i < srcs.length; i++) {
+      const src = srcs[i];
       const gp = src.gamepad;
       if (!gp) continue;
       const ax = gp.axes.length >= 4 ? gp.axes[2] : (gp.axes[0] || 0);
       const ay = gp.axes.length >= 4 ? gp.axes[3] : (gp.axes[1] || 0);
       if (src.handedness === "left") { mx = ax; mz = ay; }
-      else if (src.handedness === "right") turn = ax;
+      else if (src.handedness === "right") { turn = ax; if (controllers[i]) primary = controllers[i]; }
+    }
+
+    // --- did something outside VR teleport us? bring the rig along ---
+    if (Math.abs(controls.pos.x - wroteX) > 0.001 || Math.abs(controls.pos.z - wroteZ) > 0.001) {
+      camera.getWorldPosition(headWorld);
+      rig.position.x += controls.pos.x - headWorld.x;
+      rig.position.z += controls.pos.z - headWorld.z;
+      rig.updateMatrixWorld(true);
     }
 
     // --- snap turn, pivoting around the HEAD so the room doesn't slide ---
@@ -111,10 +180,10 @@ export function setupXR({ renderer, camera, scene, controls, world, onSelect, ca
       camera.getWorldDirection(fwd);
       fwd.y = 0; fwd.normalize();
       right.crossVectors(fwd, UP);            // fwd × up = right
-      const step = SPEED * dt;
+      const dist = SPEED * dt;
       // stick up is -1 in xr-standard, so forward is -mz
-      const dx = (right.x * mx - fwd.x * mz) * step;
-      const dz = (right.z * mx - fwd.z * mz) * step;
+      const dx = (right.x * mx - fwd.x * mz) * dist;
+      const dz = (right.z * mx - fwd.z * mz) * dist;
       camera.getWorldPosition(headWorld);
       // axis-slide against the walkable floorplan, same rules as on foot
       let nx = headWorld.x + dx, nz = headWorld.z + dz;
@@ -131,6 +200,7 @@ export function setupXR({ renderer, camera, scene, controls, world, onSelect, ca
     controls.pos.z = headWorld.z;
     camera.getWorldDirection(fwd);
     controls.yaw = Math.atan2(-fwd.x, -fwd.z);
+    wroteX = controls.pos.x; wroteZ = controls.pos.z;
   }
 
   // --- the door into VR: a quiet terminal-style button ---
@@ -170,5 +240,8 @@ export function setupXR({ renderer, camera, scene, controls, world, onSelect, ca
     presenting: () => renderer.xr.isPresenting,
     tick,
     showButton,
+    note,                                     // a transient message
+    tip,                                      // what you're pointing at
+    aimController: () => primary || controllers[0],
   };
 }
