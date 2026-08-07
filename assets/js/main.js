@@ -32,6 +32,16 @@ import { PIANO_VOICES, GUITAR_VOICES } from "./ambience.js";
 import { createRadio, SR_STATIONS, LA_STATIONS } from "./radio.js";
 import { startTitleFX } from "./title.js";
 import { setupXR } from "./xr.js";
+// THE STUDIO's engine — the room itself is built by world.js
+import * as SA from "./studio/audio.js";
+import {
+  state as sState, act as sAct, bindDevices as sBind, seedTransport as sSeed,
+  mergeRemote as sMerge, snapshot as sSnap, adoptSnapshot as sAdopt,
+  startScheduler as sStartScheduler, playhead as sPlayhead, applyMixer as sApplyMixer,
+} from "./studio/devices.js";
+import { hitPanel as sHitPanel } from "./studio/panels.js";
+import { clock as sClock } from "./studio/clock.js";
+import { net as sNet } from "./studio/net.js";
 import {
   PAPERS, IS_TOUCH, safeUrl, hostOf, timeAgo, toast as domToast,
   getIdentity, saveIdentity, shrinkImage,
@@ -135,6 +145,7 @@ function aWorldReady() {
 }
 // which space the player is in — flags for the far rooms, x for bedroom vs arcade
 function aRoomNow() {
+  if (inStudio) return "studio";
   if (inBoat) return "desi";
   if (inArena) return "crew";
   if (inClub) return "venue";
@@ -153,6 +164,7 @@ function roomScopeOfPos(x, y, z) {
   return "home";
 }
 function myScope() {
+  if (inStudio) return "studio";
   if (inBoat) return "desi";
   if (inArena) return "crew";
   if (inClub) return "venue";
@@ -428,7 +440,7 @@ function applyGuitarFilter() { setGuitarFilter(gtrFilterLevel); world.setGuitarP
 
 // the cat — its key-walking plays the same piano visitors can play.
 // All bedroom sounds are gated: aboard THE DESI you hear only the sea.
-const bedroomSound = (fn) => (...a) => { if (!inBoat && !inArena && !inClub && !inGym) fn(...a); };
+const bedroomSound = (fn) => (...a) => { if (!inBoat && !inArena && !inClub && !inGym && !inStudio) fn(...a); };
 // the arcade is effectively its own room (walled off, through the opening): its
 // zone reads ~1 inside, ~0.72 in the doorway, ≤0.14 from the bedroom. once you've
 // crossed in, the bedroom's INSTRUMENTS shouldn't carry over the wall (the cat's
@@ -740,7 +752,7 @@ function castAt(ndcX, ndcY) {
     raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera);
   }
   // doors are included as blockers so notes can't be pinned onto them
-  const targets = [cat.hitMesh, toyHit, bartender.hitMesh, mirror.glass, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, ...world.elevHits, ...world.elevCallHits, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.guitarVoiceHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, world.pool.hit, world.pool.resetHit, world.pool.joinHit, world.pool2.hit, world.pool2.resetHit, world.pool2.joinHit, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.radioHits, ...world.laRadioHits, ...world.filterPedalHit, ...world.vacuumHits, ...notesWall.raycastTargets(), screenMesh, world.gym.joinHit, world.gym.exitHit, ...world.gym.readyHits, ...world.blockers];
+  const targets = [cat.hitMesh, toyHit, bartender.hitMesh, mirror.glass, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, ...world.elevHits, ...world.elevCallHits, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.guitarVoiceHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, world.pool.hit, world.pool.resetHit, world.pool.joinHit, world.pool2.hit, world.pool2.resetHit, world.pool2.joinHit, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.radioHits, ...world.laRadioHits, ...world.filterPedalHit, ...world.vacuumHits, ...world.studio.screens, ...world.studio.doorHits, ...notesWall.raycastTargets(), screenMesh, world.gym.joinHit, world.gym.exitHit, ...world.gym.readyHits, ...world.blockers];
   const hits = raycaster.intersectObjects(targets, false);
   return hits[0] || null;
 }
@@ -1115,6 +1127,11 @@ controls.onAction((ndcX, ndcY) => {
     });
   } else if (hit.object.userData.arcadeSoon && hit.distance < 3.2) {
     toast(`${hit.object.userData.arcadeSoon} — cabinet's dark. coming soon.`);
+  } else if (inStudio && hit.object.userData.kind && hit.uv && hit.distance < 5.5) {
+    applyStudioHit(hit.object.userData.kind, sHitPanel(hit.object.userData.kind, hit.uv.x, hit.uv.y));
+  } else if (inStudio && hit.object.userData.exit && hit.distance < 5.5) {
+    toast("back through the door…");
+    goHome();
   } else if (hit.object.userData.dm && hit.distance < 3) {
     openPC();
   } else if (hit.object.userData.piano && hit.distance < 2.4 && hit.uv) {
@@ -1328,6 +1345,12 @@ setInterval(() => {
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.arcadeSoon && hit.distance < 3.2) {
     aimTip.textContent = `${hit.object.userData.arcadeSoon} — coming soon`;
+    aimTip.classList.add("show");
+  } else if (inStudio && hit && hit.object.userData.kind && hit.distance < 5.5) {
+    aimTip.textContent = `${TAP} — play the machine`;
+    aimTip.classList.add("show");
+  } else if (inStudio && hit && hit.object.userData.exit && hit.distance < 5.5) {
+    aimTip.textContent = `${TAP} — back to the bedroom`;
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.dm && hit.distance < 3) {
     aimTip.textContent = `${TAP} — the computer · METRO OS`;
@@ -1996,6 +2019,101 @@ document.addEventListener("pointerdown", (e) => {
 
 /* ---------------- THE DESI: the boat room ---------------- */
 const BOAT_PASS_HASH = "7b917f679d49b06d44802d0c701bc923dd077cd94719999c48f850fc468d1c57";
+let inStudio = false;
+let studioBooted = false;
+
+/* --- THE STUDIO ---
+   the sequencer room is a space in this world now, not another web page.
+   its engine (transport, audio, net) boots the first time you walk in and
+   then keeps running; the audio is gated so it goes quiet behind you. */
+async function bootStudio() {
+  if (studioBooted) return;
+  studioBooted = true;
+  const sUid = identity.uid + "." + Math.random().toString(36).slice(2, 7);
+  SA.initAudio();                       // rides the click that got us here
+  sBind({
+    uid: sUid,
+    onLocalEdit: (id, data) => sNet.pushPatch(id, data),
+    onStateChange: (id) => {
+      world.studio.markDirty(id);
+      if (id === "mixer" || id === "*" || id === "xport") sApplyMixer();
+    },
+  });
+  let adopted = false;
+  sNet.onPatch((id, data) => sMerge(id, data));
+  sNet.onWant((uid) => sNet.sendSnapshot(uid, sSnap()));
+  sNet.onSnapshot((snap) => {
+    if (adopted) return;                // first answer wins; the rest are echoes
+    adopted = true;
+    sAdopt(snap); sApplyMixer();
+    world.studio.markDirty("*");
+    toast("joined the session in progress");
+  });
+  sApplyMixer();
+  sStartScheduler();
+  try { await sClock.start(); } catch (e) {}
+  try {
+    // poses go out in the studio's own local coordinates so anyone on the
+    // old standalone page still sees people standing in the right place
+    await sNet.join({ ...identity, uid: sUid }, () => ({
+      x: controls.pos.x - world.STUDIO.x, y: 0,
+      z: controls.pos.z - world.STUDIO.z, yaw: controls.yaw,
+    }));
+  } catch (e) {}
+  // nobody answered — we're first in, so it's on us to start something
+  setTimeout(() => {
+    if (adopted) return;
+    adopted = true;
+    sSeed(); sApplyMixer();
+    sNet.pushPatch("xport", sState.xport);
+    sNet.pushPatch("drums", sState.dev.drums);
+    sNet.pushPatch("clips", sState.dev.clips);
+    world.studio.markDirty("*");
+  }, 1300);
+}
+
+function setupStudio() {
+  inStudio = true;
+  world.studio.root.visible = true;
+  controls.pos.x = world.STUDIO.x;
+  controls.pos.z = world.STUDIO.z + 2.6;
+  controls.yaw = Math.PI;                 // facing the drum machine
+  setRoomTone(false);                     // the bedroom stays behind, fully
+  refreshNoteVisibility();
+  bootStudio();
+  try { SA.setFx({ masterGain: 0.85 }); } catch (e) {}
+  store.logEvent("studio");
+  toast("THE STUDIO — everyone's on the same bar");
+  hide(paused);
+  if (entered) safeLock();
+}
+
+function leaveStudio() {
+  inStudio = false;
+  world.studio.root.visible = false;
+  try { SA.setFx({ masterGain: 0 }); } catch (e) {}   // the loop keeps running, you just can't hear it
+}
+
+// the machines answer a click the same way they did on the old page
+function applyStudioHit(kind, hit) {
+  if (!hit || hit.type === "none") return;
+  if (hit.type === "step") sAct.toggleStep(hit.id, hit.row, hit.step);
+  else if (hit.type === "mute") sAct.toggleMute(hit.id);
+  else if (hit.type === "clip") sAct.launchClip(hit.index);
+  else if (hit.type === "chmute") sAct.setChannel(hit.name, "mute", !sState.dev.mixer.ch[hit.name].mute);
+  else if (hit.type === "slider") {
+    if (hit.ch) sAct.setChannel(hit.ch, hit.key, hit.value);
+    else sAct.setParam(hit.dev, hit.key, hit.value);
+  } else if (hit.type === "cycle") {
+    const a = sState.dev.arp;
+    const cyc = (list, cur) => list[(list.indexOf(cur) + 1) % list.length];
+    if (hit.key === "voice") sAct.setParam("arp", "voice", cyc(SA.VOICES, a.voice));
+    else if (hit.key === "scale") sAct.setParam("arp", "scale", cyc(Object.keys(SA.SCALES), a.scale));
+    else if (hit.key === "root") sAct.setParam("arp", "root", 40 + (((a.root - 40) + 1) % 12));
+    else if (hit.key === "oct") sAct.setParam("arp", "oct", a.oct >= 2 ? -1 : a.oct + 1);
+  }
+}
+
 let inBoat = false;
 async function sha256(s) {
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
@@ -2019,7 +2137,7 @@ function studioFill(pad) {
   fillPos = 0;
   toast("that's the fill — the kit knows the way…");
   // let the crash ring for a beat before the floor opens
-  setTimeout(() => fadeTo(() => { location.href = "/studio/"; }), 700);
+  setTimeout(() => fadeTo(setupStudio), 700);
   return true;
 }
 
@@ -2190,6 +2308,7 @@ function adminJump(target) {
 }
 function goHome() { fadeTo(setupHome); }
 function setupHome() {
+  if (inStudio) leaveStudio();
   controls.pos.x = world.spawn.x;
   controls.pos.z = world.spawn.z;
   controls.yaw = world.spawn.yaw;
@@ -3543,7 +3662,7 @@ function applySong(id) {
   if (!id) { stopSong(); return; }   // stop calls ended → setDelayTempo(null) + UI
   // the song keeps rolling while you're in another room — you just don't
   // hear the bedroom instruments from there (the arcade counts as away too)
-  const here = () => !inBoat && !inArena && !inClub && !inGym && !inArcade();
+  const here = () => !inBoat && !inArena && !inClub && !inGym && !inStudio && !inArcade();
   playSong(id, {
     now: audioNow,
     // each track to its own instrument — piano is chromatic (raw semitone,
@@ -4078,7 +4197,7 @@ addEventListener("keydown", (e) => {
 /* --- VR: phase one (see xr.js) --- */
 const xr = setupXR({
   renderer, camera, scene: world.scene, controls, world,
-  canEnter: () => !inBoat && !inArena && !inClub && !inGym && !modalOpen,
+  canEnter: () => !inBoat && !inArena && !inClub && !inGym && !modalOpen,   // studio is fine — it walks
   onSelect: (controller) => {
     // an overlay is invisible in a session, so a stuck modalOpen would
     // silently swallow every trigger pull. if nothing is actually on
@@ -4227,6 +4346,12 @@ renderer.setAnimationLoop(() => {
         controls.vel.x *= k; controls.vel.y *= k; controls.vel.z *= k;
       }
     }
+  }
+  if (inStudio) {
+    world.studio.update(dt, sPlayhead());
+    // stepping into the doorway counts as using it
+    const dp = world.studio.doorPos;
+    if (Math.hypot(controls.pos.x - dp.x, controls.pos.z - dp.z) < 0.6) goHome();
   }
   shieldMesh.visible = inArena && !!controls.blocking;
   if (inArena) setThruster(controls.thrusting);

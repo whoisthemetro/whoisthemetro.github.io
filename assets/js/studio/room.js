@@ -21,46 +21,65 @@ export const ROOM_HALF = 8.4;       // walkable half-extent
 const RING = 4.6;                    // how far out the consoles stand
 const CONSOLE_R = 1.25;              // how close you can get before you bump it
 
-export function buildRoom() {
-  const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x07090b);
-  scene.fog = new THREE.Fog(0x07090b, 12, 30);
+export function buildRoom(opts = {}) {
+  const { parent = null, offset = null } = opts;
+  // standalone page → our own scene. merged into the main world → a group
+  // parked at an offset inside the shared scene, the way the boat and the
+  // arena are. everything below hangs off `root` either way.
+  const scene = parent || new THREE.Scene();
+  const root = parent ? new THREE.Group() : scene;
+  if (parent) {
+    if (offset) root.position.set(offset.x || 0, offset.y || 0, offset.z || 0);
+    parent.add(root);
+  } else {
+    scene.background = new THREE.Color(0x07090b);
+    scene.fog = new THREE.Fog(0x07090b, 12, 30);
+  }
+  const OX = root.position.x, OZ = root.position.z;
 
   /* ---------- shell ---------- */
 
   const floor = new THREE.Mesh(
-    new THREE.PlaneGeometry(24, 24),
+    // a shade wider than the shell so its edge tucks behind the walls
+    new THREE.PlaneGeometry(24.4, 24.4),
     new THREE.MeshStandardMaterial({ color: 0x141b23, roughness: 0.55, metalness: 0.2 })
   );
   floor.rotation.x = -Math.PI / 2;
   floor.receiveShadow = true;
-  scene.add(floor);
+  root.add(floor);
 
   // a faint grid so movement reads — without it a dark floor is a void and
   // you can't tell you're walking
   const grid = new THREE.GridHelper(24, 24, 0x1b2229, 0x141a20);
-  grid.position.y = 0.01;
+  grid.position.y = 0.02;
   grid.material.transparent = true;
   grid.material.opacity = 0.5;
-  scene.add(grid);
+  root.add(grid);
 
   const wallMat = new THREE.MeshStandardMaterial({ color: 0x101720, roughness: 0.9, side: THREE.BackSide });
   const shell = new THREE.Mesh(new THREE.BoxGeometry(24, 7, 24), wallMat);
-  shell.position.y = 3.5;
-  scene.add(shell);
+  // sink it 6cm: the box's bottom face used to sit EXACTLY on the floor
+  // plane, and two coplanar surfaces across 24m of room is what all that
+  // shimmering was
+  shell.position.y = 3.5 - 0.06;
+  root.add(shell);
 
   /* ---------- light ---------- */
 
   // enough fill that the consoles read as objects. this is a dark room by
   // design, but "moody" and "you cannot see the furniture" are different things.
-  scene.add(new THREE.AmbientLight(0x2b3d4e, 1.15));
+  // ambient light is global and normally can't be trusted in a shared
+  // scene — but this whole group is hidden unless you're standing in it,
+  // and an invisible group's lights contribute nothing. So it only ever
+  // burns while the rest of the world is 80m behind you, out past the fog.
+  root.add(new THREE.AmbientLight(0x2b3d4e, 1.15));
 
   const key = new THREE.SpotLight(0xcfe0ff, 48, 24, Math.PI / 2.6, 0.7, 1.2);
   key.position.set(0, 6.4, 0);
   key.target.position.set(0, 0, 0);
   key.castShadow = true;
   key.shadow.mapSize.set(1024, 1024);
-  scene.add(key, key.target);
+  root.add(key, key.target);
 
   /* ---------- the machines ---------- */
 
@@ -78,7 +97,7 @@ export function buildRoom() {
     const rig = new THREE.Group();
     rig.position.set(x, 0, z);
     rig.lookAt(0, 0, 0);              // every machine faces whoever's in the middle
-    scene.add(rig);
+    root.add(rig);
 
     // stand
     const leg = new THREE.Mesh(
@@ -192,7 +211,7 @@ export function buildRoom() {
   doorHits.push(...homeDoor.children.filter((o) => o.isMesh));
   homeDoor.position.set(doorPos.x, 0, doorPos.z);
   homeDoor.lookAt(0, 0, 0);
-  scene.add(homeDoor);
+  root.add(homeDoor);
 
   let doorT = 0;   // breathing glow
 
@@ -206,8 +225,8 @@ export function buildRoom() {
     new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.05, side: THREE.DoubleSide })
   );
   pulse.rotation.x = -Math.PI / 2;
-  pulse.position.y = 0.02;
-  scene.add(pulse);
+  pulse.position.y = 0.045;
+  root.add(pulse);
 
   let pulseT = 0;
   onStep((pos) => {
@@ -240,7 +259,7 @@ export function buildRoom() {
 
   function setGhost(uid, pose, color) {
     let gr = ghosts.get(uid);
-    if (!gr) { gr = makeGhost(color || 0x7ef5e0); scene.add(gr); ghosts.set(uid, gr); }
+    if (!gr) { gr = makeGhost(color || 0x7ef5e0); root.add(gr); ghosts.set(uid, gr); }
     gr.userData.target = { x: pose.x, z: pose.z, yaw: pose.yaw };
     if (gr.userData.target && gr.position.lengthSq() === 0) gr.position.set(pose.x, 0, pose.z);
   }
@@ -248,7 +267,7 @@ export function buildRoom() {
   function dropGhosts(keep) {
     for (const [uid, gr] of ghosts) {
       if (keep.has(uid)) continue;
-      scene.remove(gr);
+      root.remove(gr);
       ghosts.delete(uid);
     }
   }
@@ -294,10 +313,11 @@ export function buildRoom() {
   }
 
   // walls, plus a no-go disc around each console so you can't stand inside one
+  // takes and returns WORLD coordinates; the maths is local to the room
   function clampWalk(x, z) {
     const lim = ROOM_HALF;
-    let nx = Math.max(-lim, Math.min(lim, x));
-    let nz = Math.max(-lim, Math.min(lim, z));
+    let nx = Math.max(-lim, Math.min(lim, x - OX));
+    let nz = Math.max(-lim, Math.min(lim, z - OZ));
     for (const b of bodies) {
       const dx = nx - b.x, dz = nz - b.z;
       const d = Math.hypot(dx, dz);
@@ -306,7 +326,7 @@ export function buildRoom() {
         nz = b.z + (dz / d) * CONSOLE_R;
       }
     }
-    return { x: nx, z: nz };
+    return { x: nx + OX, z: nz + OZ };
   }
 
   function markDirty(kind) {
@@ -314,8 +334,13 @@ export function buildRoom() {
   }
 
   return {
-    scene, key, panels, update, clampWalk, markDirty, setGhost, dropGhosts,
+    scene, root, key, panels, update, clampWalk, markDirty, setGhost, dropGhosts,
     screens: panels.map(p => p.mesh),
-    doorHits, doorPos,
+    doorHits,
+    doorPos: { x: doorPos.x + OX, z: doorPos.z + OZ },   // world coords
+    origin: { x: OX, z: OZ },
+    half: ROOM_HALF,
+    consoles: bodies.map(b => ({ x: b.x + OX, z: b.z + OZ })),
+    consoleR: CONSOLE_R,
   };
 }

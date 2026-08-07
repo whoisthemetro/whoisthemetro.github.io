@@ -26,6 +26,7 @@ import { rand, IS_TOUCH } from "./util.js";
 import { getSunPosition, getMoonPosition, getMoonIllumination, getStarPosition, getPlanetPositions, STARS } from "./astro.js";
 import { makeAttractScreen } from "./arcade.js";
 import { SHADER_ART, KUKO_A, KUKO_B, KUKO_IMAGE } from "./shaderart.js";
+import { buildRoom as buildStudioRoom } from "./studio/room.js";
 
 export const ROOM = {
   X: 2.6, ZF: -3.3, ZB: 3.3, H: 2.7,
@@ -7728,7 +7729,12 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     { x0: CLUB.x + 1.4, x1: CLUB.x + 2.05, z0: CLUB.z - 3.6, z1: CLUB.z - 2.5 },
     { x0: CLUB.x - 2.05, x1: CLUB.x - 1.4, z0: CLUB.z - 3.6, z1: CLUB.z - 2.5 },
   ];
+  // THE STUDIO is another space in this same scene, like the boat and the
+  // arena — filled in once the room is built below (after the toon pass, so
+  // it keeps its own look)
+  let studioWalk = () => false;
   const isWalkable = (x, z) =>
+    studioWalk(x, z) ||
     WALK_RECTS.some(r => x >= r.x0 && x <= r.x1 && z >= r.z0 && z <= r.z1) ||
     // the recessed elevator cab + its threshold, walkable only when open
     (elevDoorPos > 0.45 &&
@@ -7763,6 +7769,23 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     });
     o.material = tm;
   });
+
+  /* --- THE STUDIO ---
+     the sequencer room used to be its own web page; now it's a space in
+     this scene, reached by playing the fill on the kit. built AFTER the
+     toon pass so it keeps its own PBR look, and hidden until you're in it
+     (an invisible group costs nothing — its lights and shadow map go with
+     it). --- */
+  const STUDIO = { x: 0, z: 80 };
+  const studio = buildStudioRoom({ parent: scene, offset: STUDIO });
+  studio.root.visible = false;
+  studioWalk = (x, z) => {
+    if (Math.abs(x - STUDIO.x) > studio.half || Math.abs(z - STUDIO.z) > studio.half) return false;
+    for (const c of studio.consoles) {
+      if (Math.hypot(x - c.x, z - c.z) < studio.consoleR) return false;   // can't stand inside a machine
+    }
+    return true;
+  };
 
   /* --- admin layout: the props the booth can pick up and re-place.
      each id maps to the group that IS that prop's spot, so position and
@@ -7804,6 +7827,7 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     bounds: ROOM.bounds, isWalkable,
     spawn: { x: 1.7, z: 2.35, yaw: 0.28 },
     movables, applyLayout, resetMovable, layoutSnapshot,
+    studio, STUDIO,
     setCityListener: fn => { onCity = fn; },
     setWeather,
     getWeather: () => wx,
