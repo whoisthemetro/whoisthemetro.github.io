@@ -1149,6 +1149,454 @@ export function buildWorld() {
       slab.add(led);
     }
   }
+  /* --- TEST: "Neuro Noise" animated shader on one acoustic slab ---
+     adapted from Paper Shaders (https://shaders.paper.design/neuro-noise),
+     Apache-2.0 (https://github.com/paper-design/shaders). the original is a
+     fullscreen gl_FragCoord shader; here the panel's UVs stand in for the
+     screen so the pattern maps 1:1 onto the slab face with the panel's own
+     aspect (u_resolution mirrors the slab's w:h) — no stretch, no warp. --- */
+  const NEURO_FRAG = /* glsl */ `
+varying vec2 vUv;
+uniform vec3 u_colors[8];
+uniform vec4 u_scene;      // resolution.xy, time, colour count
+uniform vec4 u_shape;      // scale, intensity, paramA, warp
+uniform vec4 u_surface;    // detail, contrast, brightness, saturation
+uniform vec4 u_finish;     // hue, vignette, blur, grain
+uniform vec4 u_transform;  // seed, rotation, drift, OKLab toggle
+uniform vec4 u_space;      // offset.xy, pointer.xy
+uniform vec4 u_cursor;
+
+#define u_resolution u_scene.xy
+#define u_time u_scene.z
+#define u_colorCount u_scene.w
+#define u_scale u_shape.x
+#define u_intensity u_shape.y
+#define u_paramA u_shape.z
+#define u_warp u_shape.w
+#define u_detail u_surface.x
+#define u_contrast u_surface.y
+#define u_brightness u_surface.z
+#define u_saturation u_surface.w
+#define u_hue u_finish.x
+#define u_vignette u_finish.y
+#define u_blur u_finish.z
+#define u_grain u_finish.w
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+#define u_seed u_transform.x
+#else
+#define u_seed mod(u_transform.x, 31.0)
+#endif
+#define u_rotate u_transform.y
+#define u_drift u_transform.z
+#define u_oklab u_transform.w
+#define u_offset u_space.xy
+#define u_mouse u_space.zw
+#define u_cursorPresence u_cursor.x
+#define u_cursorEffect u_cursor.y
+#define u_cursorStrength u_cursor.z
+#define u_cursorRadius u_cursor.w
+
+float hash21(vec2 p) {
+#ifndef GL_FRAGMENT_PRECISION_HIGH
+  p = mod(p, 31.0);
+#endif
+  p = fract(p * vec2(234.34, 435.345));
+  p += dot(p, p + 34.23);
+  return fract(p.x * p.y);
+}
+
+float grainHash(vec2 p) {
+  vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+  p3 += dot(p3, p3.yzx + 33.33);
+  return fract((p3.x + p3.y) * p3.z);
+}
+
+float noise(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  vec2 u = f * f * (3.0 - 2.0 * f);
+  return mix(
+    mix(hash21(i), hash21(i + vec2(1.0, 0.0)), u.x),
+    mix(hash21(i + vec2(0.0, 1.0)), hash21(i + vec2(1.0, 1.0)), u.x),
+    u.y);
+}
+
+float fbm(vec2 p) {
+  float v = 0.0;
+  float a = 0.5;
+  for (int i = 0; i < 5; i++) {
+    v += a * noise(p);
+    p = p * 2.03 + vec2(17.0, 9.2);
+    a *= 0.5;
+  }
+  return v;
+}
+
+vec3 srgbToLinear(vec3 c) {
+  return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)),
+    step(0.04045, c));
+}
+vec3 linearToSrgb(vec3 c) {
+  return mix(c * 12.92, 1.055 * pow(max(c, vec3(0.0)), vec3(1.0 / 2.4)) - 0.055,
+    step(0.0031308, c));
+}
+vec3 linToOklab(vec3 c) {
+  float l = 0.4122214708 * c.r + 0.5363325363 * c.g + 0.0514459929 * c.b;
+  float m = 0.2119034982 * c.r + 0.6806995451 * c.g + 0.1073969566 * c.b;
+  float s = 0.0883024619 * c.r + 0.2817188376 * c.g + 0.6299787005 * c.b;
+  l = pow(max(l, 0.0), 1.0 / 3.0);
+  m = pow(max(m, 0.0), 1.0 / 3.0);
+  s = pow(max(s, 0.0), 1.0 / 3.0);
+  return vec3(
+    0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s,
+    1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s,
+    0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s);
+}
+vec3 oklabToLin(vec3 c) {
+  float l = c.x + 0.3963377774 * c.y + 0.2158037573 * c.z;
+  float m = c.x - 0.1055613458 * c.y - 0.0638541728 * c.z;
+  float s = c.x - 0.0894841775 * c.y - 1.2914855480 * c.z;
+  l = l * l * l; m = m * m * m; s = s * s * s;
+  return vec3(
+    4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+    -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s);
+}
+vec3 mixColour(vec3 a, vec3 b, float t) {
+  if (u_oklab > 0.5) {
+    vec3 la = linToOklab(srgbToLinear(a));
+    vec3 lb = linToOklab(srgbToLinear(b));
+    return clamp(linearToSrgb(oklabToLin(mix(la, lb, t))), 0.0, 1.0);
+  }
+  return mix(a, b, t);
+}
+
+vec3 palette(float x) {
+  float n = max(u_colorCount - 1.0, 1.0);
+  float f = clamp(x, 0.0, 1.0) * n;
+  vec3 col = u_colors[0];
+  for (int i = 0; i < 7; i++) {
+    if (float(i) < n)
+      col = mixColour(col, u_colors[i + 1],
+        smoothstep(0.0, 1.0, clamp(f - float(i), 0.0, 1.0)));
+  }
+  return col;
+}
+
+vec3 hueRotate(vec3 col, float a) {
+  const mat3 toYIQ = mat3(0.299, 0.596, 0.211,
+                          0.587, -0.274, -0.523,
+                          0.114, -0.322, 0.312);
+  const mat3 toRGB = mat3(1.0, 1.0, 1.0,
+                          0.956, -0.272, -1.106,
+                          0.621, -0.647, 1.703);
+  vec3 yiq = toYIQ * col;
+  float ca = cos(a), sa = sin(a);
+  yiq = vec3(yiq.x, yiq.y * ca - yiq.z * sa, yiq.y * sa + yiq.z * ca);
+  return toRGB * yiq;
+}
+
+vec3 shade(vec2 uv, vec2 p, float t) {
+  vec2 q = p * (1.6 + u_intensity * 2.4);
+  float field = 0.0;
+  float weight = 0.55;
+  for (int i = 0; i < 6; i++) {
+    float fi = float(i);
+    q += vec2(
+      sin(q.y * (1.7 + fi * 0.09) + t * (0.35 + fi * 0.04) + u_seed),
+      cos(q.x * (1.5 + fi * 0.11) - t * (0.28 + fi * 0.03))
+    ) * (0.22 + u_intensity * 0.14);
+    float filaments = abs(sin(q.x + q.y + fi * 0.72));
+    field += weight / (0.08 + filaments);
+    weight *= 0.62;
+    q = q.yx * vec2(-1.08, 1.04);
+  }
+  float glow = 1.0 - exp(-field * (0.018 + u_paramA * 0.04));
+  return palette(clamp(glow, 0.0, 1.0));
+}
+
+void main() {
+  // the panel's UV grid stands in for gl_FragCoord — same math, mapped to
+  // the slab face so the pattern carries the panel's true aspect
+  vec2 fragXY = vUv * u_resolution.xy;
+  vec2 uv = fragXY / u_resolution.xy;
+  vec2 screenUv = uv;
+  vec2 p = (fragXY - 0.5 * u_resolution.xy)
+    / min(u_resolution.x, u_resolution.y);
+  float cursorMask = 0.0;
+
+  if (u_cursorPresence > 0.001) {
+    vec2 cursor = (0.5 * u_mouse * u_resolution.xy)
+      / min(u_resolution.x, u_resolution.y);
+    vec2 cursorDelta = p - cursor;
+    if (u_cursorEffect < 0.5) {
+      p += cursor * u_cursorPresence * u_cursorStrength * 0.55;
+    } else {
+      float cursorDistance = length(cursorDelta);
+      vec2 cursorDirection = cursorDelta / max(cursorDistance, 0.0001);
+      cursorMask = u_cursorPresence
+        * (1.0 - smoothstep(0.0, u_cursorRadius, cursorDistance));
+      if (u_cursorEffect < 1.5) {
+        p -= cursorDirection * cursorMask * u_cursorStrength * 0.24;
+      } else if (u_cursorEffect < 2.5) {
+        float cursorAngle = cursorMask * u_cursorStrength * 2.2;
+        float cc = cos(cursorAngle), cs = sin(cursorAngle);
+        p = cursor + mat2(cc, -cs, cs, cc) * cursorDelta;
+      } else if (u_cursorEffect < 3.5) {
+        float ripple = sin(
+          cursorDistance / max(u_cursorRadius, 0.001) * 18.0 - u_time * 5.0);
+        p -= cursorDirection * ripple * cursorMask * u_cursorStrength * 0.07;
+      }
+    }
+  }
+
+  uv = p * min(u_resolution.x, u_resolution.y) / u_resolution.xy + 0.5;
+  p *= u_scale;
+  if (abs(u_rotate) > 0.0001) {
+    float cr = cos(u_rotate), sr = sin(u_rotate);
+    p = mat2(cr, -sr, sr, cr) * p;
+  }
+  p += u_offset;
+  if (u_drift > 0.0001)
+    p += u_drift * vec2(sin(u_time * 0.31), cos(u_time * 0.23));
+  if (u_warp > 0.0) {
+    p += u_warp * (vec2(
+      fbm(p * u_detail + u_seed),
+      fbm(p * u_detail + vec2(5.2, 1.3))) - 0.5);
+  }
+  vec3 col;
+  if (u_blur > 0.0) {
+    float e = u_blur;
+    float pe = e * u_scale;
+    vec2 uvE = vec2(e) * min(u_resolution.x, u_resolution.y) / u_resolution.xy;
+    col  = shade(uv, p, u_time) * 0.36;
+    col += shade(uv + vec2(uvE.x, 0.0), p + vec2(pe, 0.0), u_time) * 0.16;
+    col += shade(uv - vec2(uvE.x, 0.0), p - vec2(pe, 0.0), u_time) * 0.16;
+    col += shade(uv + vec2(0.0, uvE.y), p + vec2(0.0, pe), u_time) * 0.16;
+    col += shade(uv - vec2(0.0, uvE.y), p - vec2(0.0, pe), u_time) * 0.16;
+  } else {
+    col = shade(uv, p, u_time);
+  }
+  if (abs(u_contrast - 1.0) > 0.0001)
+    col = (col - 0.5) * u_contrast + 0.5;
+  if (abs(u_saturation - 1.0) > 0.0001) {
+    float luma = dot(col, vec3(0.299, 0.587, 0.114));
+    col = mix(vec3(luma), col, u_saturation);
+  }
+  if (abs(u_hue) > 0.0001)
+    col = hueRotate(col, u_hue);
+  if (abs(u_brightness) > 0.0001)
+    col += u_brightness;
+  if (u_vignette > 0.0001) {
+    float vd = length(screenUv - 0.5) * 1.41421356;
+    col *= 1.0 - u_vignette * smoothstep(0.35, 1.0, vd);
+  }
+  if (u_cursorPresence > 0.001 && u_cursorEffect > 3.5)
+    col += (vec3(0.18) + col * 0.12) * cursorMask * u_cursorStrength;
+  if (u_grain > 0.0001)
+    col += (grainHash(
+      fragXY + vec2(u_seed * 17.0, u_seed * 31.0)) - 0.5) * u_grain;
+  gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
+}
+`;
+  const SHADER_VERT = "varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }";
+  // one neuro instance per panel: same fragment source, its own uniforms
+  const makeNeuro = ({ colors, speed, shape, surface, finish, transform }) => {
+    const uniforms = {
+      u_colors: { value: colors.concat(Array.from({ length: 8 - colors.length }, () => new THREE.Vector3())) },
+      u_scene: { value: new THREE.Vector4(550, 1200, 0, colors.length) },
+      u_shape: { value: shape },
+      u_surface: { value: surface },
+      u_finish: { value: finish },
+      u_transform: { value: transform },
+      u_space: { value: new THREE.Vector4(0, 0, 0, 0) },
+      u_cursor: { value: new THREE.Vector4(0, 2.0, 0.65, 0.46) },   // presence 0 = cursor off
+    };
+    return {
+      uniforms, speed,
+      mat: new THREE.ShaderMaterial({ uniforms, vertexShader: SHADER_VERT, fragmentShader: NEURO_FRAG }),
+    };
+  };
+  // gold: the first recipe — dark → gold → pink → purple, slow and calm
+  const neuroGold = makeNeuro({
+    colors: [
+      new THREE.Vector3(0.027, 0.012, 0.051),   // #07030D
+      new THREE.Vector3(1.000, 0.855, 0.475),   // #FFDA79
+      new THREE.Vector3(0.839, 0.161, 0.463),   // #D62976
+      new THREE.Vector3(0.165, 0.039, 0.282),   // #2A0A48
+    ],
+    speed: 0.82,
+    shape: new THREE.Vector4(1.48, 0.52, 0.51, 0.19),
+    surface: new THREE.Vector4(2.75, 1.00, 0.00, 1.00),
+    finish: new THREE.Vector4(0.00, 0.00, 0.000, 0.03),
+    transform: new THREE.Vector4(1.0, 0.65, 0.00, 0.0),
+  });
+  // pink: the palette inverted (pink lows, void highs), hotter and faster
+  const neuroPink = makeNeuro({
+    colors: [
+      new THREE.Vector3(0.839, 0.161, 0.463),   // #D62976
+      new THREE.Vector3(1.000, 0.855, 0.475),   // #FFDA79
+      new THREE.Vector3(0.027, 0.012, 0.051),   // #07030D
+      new THREE.Vector3(0.165, 0.039, 0.282),   // #2A0A48
+    ],
+    speed: 1.07,
+    shape: new THREE.Vector4(1.70, 0.69, 0.74, 0.30),
+    surface: new THREE.Vector4(3.68, 1.00, 0.00, 1.00),
+    finish: new THREE.Vector4(0.00, 0.00, 0.000, 0.06),
+    transform: new THREE.Vector4(1.0, 1.29, 0.00, 0.0),
+  });
+
+  /* --- "sun & grid" synthwave slab (Shader License: CC BY 3.0,
+     Author: Jan Mróz / jaszunio15). composed for landscape screens, so on
+     a portrait slab we normalize by WIDTH instead of height — the sun and
+     fuji stay in frame with extra sky above and grid below. --- */
+  const SUNGRID_FRAG = /* glsl */ `
+varying vec2 vUv;
+uniform vec2 iResolution;
+uniform float iTime;
+
+float sun(vec2 uv, float battery)
+{
+  float val = smoothstep(0.3, 0.29, length(uv));
+  float bloom = smoothstep(0.7, 0.0, length(uv));
+  float cut = 3.0 * sin((uv.y + iTime * 0.2 * (battery + 0.02)) * 100.0)
+    + clamp(uv.y * 14.0 + 1.0, -6.0, 6.0);
+  cut = clamp(cut, 0.0, 1.0);
+  return clamp(val * cut, 0.0, 1.0) + bloom * 0.6;
+}
+
+float grid(vec2 uv, float battery)
+{
+  vec2 size = vec2(uv.y, uv.y * uv.y * 0.2) * 0.01;
+  uv += vec2(0.0, iTime * 4.0 * (battery + 0.05));
+  uv = abs(fract(uv) - 0.5);
+  vec2 lines = smoothstep(size, vec2(0.0), uv);
+  lines += smoothstep(size * 5.0, vec2(0.0), uv) * 0.4 * battery;
+  return clamp(lines.x + lines.y, 0.0, 3.0);
+}
+
+float dot2(in vec2 v) { return dot(v, v); }
+
+float sdTrapezoid(in vec2 p, in float r1, float r2, float he)
+{
+  vec2 k1 = vec2(r2, he);
+  vec2 k2 = vec2(r2 - r1, 2.0 * he);
+  p.x = abs(p.x);
+  vec2 ca = vec2(p.x - min(p.x, (p.y < 0.0) ? r1 : r2), abs(p.y) - he);
+  vec2 cb = p - k1 + k2 * clamp(dot(k1 - p, k2) / dot2(k2), 0.0, 1.0);
+  float s = (cb.x < 0.0 && ca.y < 0.0) ? -1.0 : 1.0;
+  return s * sqrt(min(dot2(ca), dot2(cb)));
+}
+
+float sdLine(in vec2 p, in vec2 a, in vec2 b)
+{
+  vec2 pa = p - a, ba = b - a;
+  float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+  return length(pa - ba * h);
+}
+
+float sdBox(in vec2 p, in vec2 b)
+{
+  vec2 d = abs(p) - b;
+  return length(max(d, vec2(0))) + min(max(d.x, d.y), 0.0);
+}
+
+float opSmoothUnion(float d1, float d2, float k) {
+  float h = clamp(0.5 + 0.5 * (d2 - d1) / k, 0.0, 1.0);
+  return mix(d2, d1, h) - k * h * (1.0 - h);
+}
+
+float sdCloud(in vec2 p, in vec2 a1, in vec2 b1, in vec2 a2, in vec2 b2, float w)
+{
+  float lineVal1 = sdLine(p, a1, b1);
+  float lineVal2 = sdLine(p, a2, b2);
+  vec2 ww = vec2(w * 1.5, 0.0);
+  vec2 left = max(a1 + ww, a2 + ww);
+  vec2 right = min(b1 - ww, b2 - ww);
+  vec2 boxCenter = (left + right) * 0.5;
+  float boxH = abs(a2.y - a1.y) * 0.5;
+  float boxVal = sdBox(p - boxCenter, vec2(0.04, boxH)) + w;
+  float uniVal1 = opSmoothUnion(lineVal1, boxVal, 0.05);
+  float uniVal2 = opSmoothUnion(lineVal2, boxVal, 0.05);
+  return min(uniVal1, uniVal2);
+}
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord)
+{
+  // portrait slab: normalize by width so the landscape scene fits across
+  vec2 uv = (2.0 * fragCoord.xy - iResolution.xy) / iResolution.x;
+  float battery = 1.0;
+  float fog = smoothstep(0.1, -0.02, abs(uv.y + 0.2));
+  vec3 col = vec3(0.0, 0.1, 0.2);
+  if (uv.y < -0.2)
+  {
+    uv.y = 3.0 / (abs(uv.y + 0.2) + 0.05);
+    uv.x *= uv.y * 1.0;
+    float gridVal = grid(uv, battery);
+    col = mix(col, vec3(1.0, 0.5, 1.0), gridVal);
+  }
+  else
+  {
+    float fujiD = min(uv.y * 4.5 - 0.5, 1.0);
+    uv.y -= battery * 1.1 - 0.51;
+    vec2 sunUV = uv;
+    sunUV += vec2(0.75, 0.2);
+    col = vec3(1.0, 0.2, 1.0);
+    float sunVal = sun(sunUV, battery);
+    col = mix(col, vec3(1.0, 0.4, 0.1), sunUV.y * 2.0 + 0.2);
+    col = mix(vec3(0.0, 0.0, 0.0), col, sunVal);
+    float fujiVal = sdTrapezoid(uv + vec2(-0.75 + sunUV.y * 0.0, 0.5), 1.75 + pow(uv.y * uv.y, 2.1), 0.2, 0.5);
+    float waveVal = uv.y + sin(uv.x * 20.0 + iTime * 2.0) * 0.05 + 0.2;
+    float wave_width = smoothstep(0.0, 0.01, (waveVal));
+    col = mix(col, mix(vec3(0.0, 0.0, 0.25), vec3(1.0, 0.0, 0.5), fujiD), step(fujiVal, 0.0));
+    col = mix(col, vec3(1.0, 0.5, 1.0), wave_width * step(fujiVal, 0.0));
+    col = mix(col, vec3(1.0, 0.5, 1.0), 1.0 - smoothstep(0.0, 0.01, abs(fujiVal)));
+    col += mix(col, mix(vec3(1.0, 0.12, 0.8), vec3(0.0, 0.0, 0.2), clamp(uv.y * 3.5 + 3.0, 0.0, 1.0)), step(0.0, fujiVal));
+    vec2 cloudUV = uv;
+    cloudUV.x = mod(cloudUV.x + iTime * 0.1, 4.0) - 2.0;
+    float cloudTime = iTime * 0.5;
+    float cloudY = -0.5;
+    float cloudVal1 = sdCloud(cloudUV,
+      vec2(0.1 + sin(cloudTime + 140.5) * 0.1, cloudY),
+      vec2(1.05 + cos(cloudTime * 0.9 - 36.56) * 0.1, cloudY),
+      vec2(0.2 + cos(cloudTime * 0.867 + 387.165) * 0.1, 0.25 + cloudY),
+      vec2(0.5 + cos(cloudTime * 0.9675 - 15.162) * 0.09, 0.25 + cloudY), 0.075);
+    cloudY = -0.6;
+    float cloudVal2 = sdCloud(cloudUV,
+      vec2(-0.9 + cos(cloudTime * 1.02 + 541.75) * 0.1, cloudY),
+      vec2(-0.5 + sin(cloudTime * 0.9 - 316.56) * 0.1, cloudY),
+      vec2(-1.5 + cos(cloudTime * 0.867 + 37.165) * 0.1, 0.25 + cloudY),
+      vec2(-0.6 + sin(cloudTime * 0.9675 + 665.162) * 0.09, 0.25 + cloudY), 0.075);
+    float cloudVal = min(cloudVal1, cloudVal2);
+    col = mix(col, vec3(0.0, 0.0, 0.2), 1.0 - smoothstep(0.075 - 0.0001, 0.075, cloudVal));
+    col += vec3(1.0, 1.0, 1.0) * (1.0 - smoothstep(0.0, 0.01, abs(cloudVal - 0.075)));
+  }
+  col += fog * fog * fog;
+  col = mix(vec3(col.r, col.r, col.r) * 0.5, col, battery * 0.7);
+  fragColor = vec4(col, 1.0);
+}
+
+void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
+`;
+  const sunGridUniforms = {
+    iResolution: { value: new THREE.Vector2(530, 1180) },
+    iTime: { value: 0 },
+  };
+  const sunGridMat = new THREE.ShaderMaterial({
+    uniforms: sunGridUniforms,
+    vertexShader: SHADER_VERT,
+    fragmentShader: SUNGRID_FRAG,
+  });
+
+  function tickNeuro(elapsed2) {
+    neuroGold.uniforms.u_scene.value.z = elapsed2 * neuroGold.speed;
+    neuroPink.uniforms.u_scene.value.z = elapsed2 * neuroPink.speed;
+    sunGridUniforms.iTime.value = elapsed2;
+  }
+
+  // which slab wears which shader face, by PANEL_DEFS index
+  const PANEL_SHADERS = { 9: neuroGold, 10: neuroPink };
+  let panelIdx = 0;
   for (const [wid, pu, pv, pw, ph] of PANEL_DEFS) {
     const wall = walls.find(w2 => w2.id === wid);
     const center = wall.origin.clone()
@@ -1163,10 +1611,22 @@ export function buildWorld() {
     add(slab);
     blockers.push(slab);
     ledRim(slab, pw, ph);
+    // chosen slabs wear a shader face, a hair proud of the box
+    const ps = PANEL_SHADERS[panelIdx];
+    if (ps) {
+      ps.uniforms.u_scene.value.x = pw * 1000;
+      ps.uniforms.u_scene.value.y = ph * 1000;
+      const face = new THREE.Mesh(new THREE.PlaneGeometry(pw - 0.02, ph - 0.02), ps.mat);
+      face.position.copy(center).addScaledVector(wall.normal, 0.041);
+      face.lookAt(face.position.clone().add(wall.normal));
+      add(face);
+    }
+    panelIdx++;
     // notes keep clear of the slabs
     wall.voids.push({ u0: pu - 0.04, u1: pu + pw + 0.04, v0: pv - 0.04, v1: pv + ph + 0.04 });
   }
-  // the front wall's two painted panels become slabs too
+  // the front wall's two painted panels become slabs too; the one by the
+  // tele wears the synthwave sunset
   for (const fx4 of [-2.32, 2.2]) {
     const slab = new THREE.Mesh(new THREE.BoxGeometry(0.55, 1.2, 0.07), panelMat);
     slab.position.set(fx4, 1.6, ZF + 0.038);
@@ -1174,6 +1634,11 @@ export function buildWorld() {
     add(slab);
     blockers.push(slab);
     ledRim(slab, 0.55, 1.2);
+    if (fx4 === 2.2) {
+      const face = new THREE.Mesh(new THREE.PlaneGeometry(0.53, 1.18), sunGridMat);
+      face.position.set(fx4, 1.6, ZF + 0.079);
+      add(face);
+    }
   }
 
   /* --- the window (faces south over LA) --- */
@@ -5324,6 +5789,7 @@ export function buildWorld() {
 
   function tick(dt, ppos) {
     elapsed += dt;
+    tickNeuro(elapsed);
     if (grimeDirty && elapsed - grimeUpAt > 0.1) {
       grimeUpAt = elapsed; grimeDirty = false; grimeTex.needsUpdate = true;
     }
