@@ -1411,6 +1411,158 @@ void mainImage( out vec4 o, vec2 u )
 }
 `;
 
+/* ---- the KuKo floor ("KuKo Day 466", multi-pass) ----------------------
+   Buffer A: a self-feeding cellular automaton — light-cycle trails
+   growing on a grid (ping-pongs against its own last frame).
+   Buffer B: nimitz-style layered zoom accumulation of A.
+   Image: radial blur + vignette of B (this one wears the floor).
+   All ES 3.0 (texelFetch, uint hashing, array constructors). ---- */
+export const KUKO_A = /* glsl */ `
+#define ZOOM 2
+const int steps = 4;
+
+const ivec2 STEP[steps] = ivec2[steps](
+    ivec2(1,0), ivec2(-1,0), ivec2(0,1), ivec2(0,-1)
+);
+
+float S(ivec2 p){
+    ivec2 R = ivec2(iResolution.xy) / ZOOM;
+    return texelFetch(iChannel0, ((p + R) % R) * ZOOM, 0).w;
+}
+
+vec3 P(ivec2 p){
+    ivec2 R = ivec2(iResolution.xy) / ZOOM;
+    return texelFetch(iChannel0, ((p + R) % R) * ZOOM, 0).rgb;
+}
+
+float rnd(ivec2 p, int salt){
+    uint n = uint(p.x)*1973u + uint(p.y)*9277u + uint(salt)*26699u;
+    n = (n ^ (n >> 15)) * 2246822519u;
+    n = (n ^ (n >> 13)) * 3266489917u;
+    return float(n ^ (n >> 16)) / 4294967296.0;
+}
+
+const vec3 trail = vec3(0.071,0.667,0.710);
+const vec3 colState[4] = vec3[4](
+    vec3(0.000,1.000,0.984),
+    vec3(0.498,0.518,0.565),
+    vec3(0.106,0.671,0.816),
+    vec3(0.976,0.224,0.949)
+);
+
+vec3 state(int s)
+{
+    int a = s;
+    if(s == 1) return trail;
+    if(s == 0) return vec3(1);
+    return colState[a];
+}
+
+void mainImage(out vec4 O, in vec2 U)
+{
+    ivec2 p = ivec2(U) / ZOOM;
+
+    if(iFrame == 0)
+    {
+        bool seed = rnd(p,15)<0.000025;
+        O = vec4(0,0,0,seed ?
+            float(2 + (p.x/14 + p.y/26) % 3):0.);
+        return;
+    }
+
+    if(iFrame >= 1000 && iFrame % 1000 < 100)
+       p.y += iFrame/(iFrame);
+
+    float me = S(p), next = me;
+
+    if (iFrame % 500 == 0 && next == 0. && rnd(p, iFrame) < 0.000012)
+        next = float(2 + int(rnd(p, iFrame + 1) * 4.));
+
+    if (me >= 2.) next = 1.;
+
+    int inc = 0, dn = -1;
+    for (int i = 0; i < steps; i++)
+    {
+        int dq = int(S(p - STEP[i])) - 2;
+        if (dq < 0 || dq > 3) continue;
+
+        if (dq == i)
+        {
+            inc++; dn = i;
+        }
+        else if ((dq >> 1) != (i >> 1) && rnd(p, i*31 + iFrame) < 0.034)
+        {
+            inc++; dn = i;
+        }
+    }
+
+    if (inc == 1)
+    {
+        int d = dn;
+
+        ivec2 f = STEP[d], t = ivec2(f.y, f.x);
+        if (S(p+f) + S(p+f+t) + S(p+f-t) == 0.)
+        {
+            if (rnd(p, 7) > 0.9)
+                d = (d < 2 ? 2 : 0) + int(rnd(p, 9) * 2.);
+
+            next = float(2 + d);
+        }
+    }
+    vec3 paint = P(p) * 1.;
+    int d = int(next) - 2;
+    if(d >= 0)
+        paint = max(paint, colState[d] * 2.0);
+
+    O = vec4(paint, next);
+}
+`;
+
+export const KUKO_B = /* glsl */ `
+#define ZL   6
+#define SPAN .7
+void mainImage(out vec4 O, in vec2 I)
+{
+    vec2 uv = (I - 0.5*iResolution.xy)/iResolution.y;
+    float T = iTime*0.2;
+    vec3 g = vec3(0);
+    float wsum = 0.0;
+    // layers from @nimitz
+    // https://www.shadertoy.com/view/MtKSWW
+    for(int i=0;i<ZL;i++)
+    {
+        float t = mod(T + float(i)*(SPAN/float(ZL)), SPAN);
+        float scale = SPAN - t;
+        float w = sin(3.14159*t/SPAN);
+        vec2 q = uv*scale + vec2(float(i)*3.31, float(i)*3.17);
+        g    += texture(iChannel0, q).rgb * w;
+        wsum += w;
+    }
+    O = vec4(g/max(wsum,1e-3), 1.0);
+}
+`;
+
+export const KUKO_IMAGE = /* glsl */ `
+void mainImage(out vec4 O, in vec2 U)
+{
+    vec2 p = U/iResolution.xy;
+    vec2 tc = vec2(0.5) - p;
+    float strength = 0.32;
+    vec3 col = vec3(0.0); float tw = 0.0;
+    // @nimitz blur
+    // https://www.shadertoy.com/view/MtKSWW
+    for(int i=0;i<12;i++)
+    {
+        float sr = float(i)/50.0;
+        col += texture(iChannel0, p + tc*sr*strength).rgb * sr;
+        tw  += sr;
+    }
+    col /= tw;
+    col *= pow(24.0*p.x*p.y*(1.0-p.x)*(1.0-p.y), 0.135);  // vignette / tunnel
+    O = vec4(col, 1.0);
+}
+`;
+
 // what world.js consumes: name → { frag, glsl3 }
 export const SHADER_ART = {
   tunnelOrb: { frag: TUNNEL_ORB },

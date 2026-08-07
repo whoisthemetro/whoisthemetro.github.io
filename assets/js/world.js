@@ -25,7 +25,7 @@ import * as THREE from "three";
 import { rand, IS_TOUCH } from "./util.js";
 import { getSunPosition, getMoonPosition, getMoonIllumination, getStarPosition, getPlanetPositions, STARS } from "./astro.js";
 import { makeAttractScreen } from "./arcade.js";
-import { SHADER_ART } from "./shaderart.js";
+import { SHADER_ART, KUKO_A, KUKO_B, KUKO_IMAGE } from "./shaderart.js";
 
 export const ROOM = {
   X: 2.6, ZF: -3.3, ZB: 3.3, H: 2.7,
@@ -931,7 +931,7 @@ function blindsTexture() {
 
 /* ---------------- world ---------------- */
 
-export function buildWorld() {
+export function buildWorld(renderer) {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x07080b);
   scene.fog = new THREE.Fog(0x07080b, 9, 40);
@@ -1854,6 +1854,95 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     11: toyOf("neonCity"),
     12: toyOf("acidPlasma"),
   };
+  /* --- the KuKo floor: the room's first multi-pass piece.
+     Buffer A (a light-cycle cellular automaton) ping-pongs against its
+     own previous frame in half-float render targets, Buffer B stacks
+     zoomed layers of it, and the floor material radial-blurs B. runs
+     only when a renderer was handed in (headless calls skip it). --- */
+  let tickKuko = () => {};
+  let kukoRug = null;
+  if (renderer) {
+    const KSIZE = 512;
+    const mkRT = () => new THREE.WebGLRenderTarget(KSIZE, KSIZE, {
+      type: THREE.HalfFloatType,
+      minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter,
+      wrapS: THREE.RepeatWrapping, wrapT: THREE.RepeatWrapping,
+      depthBuffer: false, stencilBuffer: false,
+    });
+    let kA = mkRT(), kA2 = mkRT();
+    const kB = mkRT();
+    const passCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    const passScene = new THREE.Scene();
+    const passQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2));
+    passScene.add(passQuad);
+    const mkPass = (frag) => {
+      const m = new THREE.ShaderMaterial({
+        uniforms: {
+          iResolution: { value: new THREE.Vector3(KSIZE, KSIZE, 1) },
+          iTime: { value: 0 },
+          iFrame: { value: 0 },
+          iChannel0: { value: null },
+        },
+        vertexShader: "void main() { gl_Position = vec4(position, 1.0); }",
+        fragmentShader:
+          "uniform vec3 iResolution;\nuniform float iTime;\nuniform int iFrame;\nuniform sampler2D iChannel0;\n"
+          + frag
+          + "\nlayout(location = 0) out highp vec4 kukoOut;\nvoid main() { mainImage(kukoOut, gl_FragCoord.xy); }\n",
+        glslVersion: THREE.GLSL3,
+        blending: THREE.NoBlending,   // passes REPLACE the target, never blend with it
+        depthTest: false, depthWrite: false,
+      });
+      return m;
+    };
+    const matA = mkPass(KUKO_A);
+    const matB = mkPass(KUKO_B);
+    // a THROW RUG runs the Image pass over Buffer B — mid-room, slightly
+    // askew like it was actually thrown there. its group is registered as
+    // a movable so the layout editor can slide and spin it.
+    const floorUniforms = {
+      iResolution: { value: new THREE.Vector3(240, 170, 1) },   // rug aspect
+      iTime: { value: 0 },
+      iFrame: { value: 0 },
+      iChannel0: { value: kB.texture },
+    };
+    const rugFace = new THREE.Mesh(
+      new THREE.PlaneGeometry(2.4, 1.7),
+      new THREE.ShaderMaterial({
+        uniforms: floorUniforms,
+        vertexShader: "out vec2 vUv2; void main() { vUv2 = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
+        fragmentShader:
+          "in vec2 vUv2;\nuniform vec3 iResolution;\nuniform float iTime;\nuniform int iFrame;\nuniform sampler2D iChannel0;\n"
+          + KUKO_IMAGE
+          + "\nlayout(location = 0) out highp vec4 kukoOut;\nvoid main() { mainImage(kukoOut, vUv2 * iResolution.xy); }\n",
+        glslVersion: THREE.GLSL3,
+      }));
+    rugFace.rotation.x = -Math.PI / 2;
+    kukoRug = new THREE.Group();
+    kukoRug.add(rugFace);
+    kukoRug.position.set(0.15, 0.004, 0.85);   // open carpet mid-room, over the pile, under the grime
+    kukoRug.rotation.y = 0.14;                 // a little askew, like it landed there
+    add(kukoRug);
+    let kFrame = 0;
+    tickKuko = (elapsed2) => {
+      // Buffer A: read last frame, write the next
+      matA.uniforms.iChannel0.value = kA.texture;
+      matA.uniforms.iFrame.value = kFrame;
+      matA.uniforms.iTime.value = elapsed2;
+      passQuad.material = matA;
+      renderer.setRenderTarget(kA2);
+      renderer.render(passScene, passCam);
+      // Buffer B: layer the fresh A
+      matB.uniforms.iChannel0.value = kA2.texture;
+      matB.uniforms.iTime.value = elapsed2;
+      passQuad.material = matB;
+      renderer.setRenderTarget(kB);
+      renderer.render(passScene, passCam);
+      renderer.setRenderTarget(null);
+      [kA, kA2] = [kA2, kA];
+      kFrame++;
+    };
+  }
+
   let panelIdx = 0;
   for (const [wid, pu, pv, pw, ph] of PANEL_DEFS) {
     const wall = walls.find(w2 => w2.id === wid);
@@ -6057,6 +6146,7 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
   function tick(dt, ppos) {
     elapsed += dt;
     tickNeuro(elapsed, dt);
+    tickKuko(elapsed);
     if (grimeDirty && elapsed - grimeUpAt > 0.1) {
       grimeUpAt = elapsed; grimeDirty = false; grimeTex.needsUpdate = true;
     }
@@ -7679,6 +7769,7 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     monitor: deskMonitor, interface: deskInterface, keyboard: deskKeyboard,
     trackball: deskTrackball, meters: deskMeters, mug: deskMug, mac: deskMac,
   };
+  if (kukoRug) movables.rug = kukoRug;   // headless builds have no renderer, no rug
   const movableHomes = {};
   for (const [id, g] of Object.entries(movables))
     movableHomes[id] = { p: g.position.toArray(), ry: g.rotation.y };
