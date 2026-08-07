@@ -3542,8 +3542,8 @@ const TERM_COMMANDS = {
     termPrint(`hawthorne, ca — ${sky}${temp}` + (wx.clouds != null ? ` · cloud cover ${Math.round(wx.clouds * 100)}%` : ""));
   } },
   time: { blurb: "studio clock (LA)", run() { termPrint(laTime()); } },
-  whoami: { blurb: "who the room thinks you are", run() {
-    termPrint(`${termUser()} — ${adminMode ? "the booth" : "a visitor"}. what you leave here is permanent.`);
+  whoami: { blurb: "your name in the room", run() {
+    termPrint(identity.name || "visitor");
   } },
   clear: { blurb: "wipe the scrollback", run() { termOut.textContent = ""; } },
   exit: { blurb: "back to the room", run() { closePC(); } },
