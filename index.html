@@ -9,10 +9,10 @@
   ["gesturestart", "gesturechange", "gestureend"].forEach((g) =>
     document.addEventListener(g, (e) => e.preventDefault(), { passive: false }));
 </script>
-<title>THE METRO — the room is always on</title>
-<meta name="description" content="A living studio room. Walk in, leave a note on the wall. It stays forever.">
-<meta property="og:title" content="THE METRO">
-<meta property="og:description" content="The room is always on. Leave something on the wall.">
+<title>METRO</title>
+<meta name="description" content="METRO — a multiplayer interactive 3D room.">
+<meta property="og:title" content="METRO">
+<meta property="og:description" content="a multiplayer interactive 3D room">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2307090b'/%3E%3Ctext x='16' y='23' font-family='Helvetica,Arial' font-size='20' font-weight='900' fill='%23ff4d2e' text-anchor='middle'%3EM%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -34,18 +34,11 @@
 <!-- ====== intro ====== -->
 <div id="intro" class="overlay show">
   <div class="intro-card">
-    <!-- hand-lettered, one span per letter so each can sit at its own angle -->
-    <h1 class="metro-title"><span>M</span><span>E</span><span>T</span><span>R</span><span>O</span></h1>
-    <p class="tagline">the room is always on</p>
-    <p class="intro-body">
-      Step into the studio. The session never stops. Leave a note,
-      a picture, a link on the wall — it stays after you're gone.
-      If someone else is in the room right now, you'll see them.
-    </p>
-    <input type="text" id="visitor-name" maxlength="24" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="what should we call you?">
-    <button id="enter-btn">come in</button>
-    <p class="controls-hint" id="hint-desktop">WASD move &nbsp;·&nbsp; mouse look &nbsp;·&nbsp; click a wall to post &nbsp;·&nbsp; ESC to step out</p>
-    <p class="controls-hint" id="hint-mobile">left thumb to walk &nbsp;·&nbsp; right thumb to look &nbsp;·&nbsp; tap a wall to post</p>
+    <!-- the title is a live shader masked to the hand-drawn letters (title.js) -->
+    <canvas id="title-fx" width="900" height="280" aria-label="METRO"></canvas>
+    <p class="login-line">guest@metro:~$ login</p>
+    <input type="text" id="visitor-name" maxlength="24" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="handle">
+    <button id="enter-btn">[ enter ]</button>
     <p class="mode-badge" id="mode-badge"></p>
   </div>
 </div>

@@ -46,28 +46,19 @@ body {
 .intro-card {
   text-align: center; max-width: 560px; padding: 48px 32px;
 }
-/* hand-lettered slate METRO — marker on the dark, not neon. each letter
-   leans its own way and carries a soft top-light gradient */
-.metro-title {
-  font-family: "Caveat", cursive;
-  font-weight: 700;
-  font-size: clamp(70px, 13vw, 140px);
-  letter-spacing: 0.04em;
-  line-height: 0.85;
-  white-space: nowrap;
+/* the door sign: a canvas wearing the hand-drawn letters, filled by a
+   live shader (title.js). the glow does the popping. */
+#title-fx {
+  width: min(92vw, 560px); height: auto; display: block; margin: 0 auto 8px;
+  filter: drop-shadow(0 0 26px rgba(255, 90, 60, 0.35)) drop-shadow(0 0 60px rgba(255, 120, 60, 0.18));
 }
-.metro-title span {
-  display: inline-block;
-  background: linear-gradient(165deg, #59636f 0%, #3a424c 65%, #333a44 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+/* the terminal login line under the sign */
+.login-line {
+  font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+  color: #7ec97e; font-size: 13px; letter-spacing: 0.04em;
+  text-shadow: 0 0 8px rgba(126, 201, 126, 0.4);
+  margin: 6px 0 16px;
 }
-.metro-title span:nth-child(1) { transform: rotate(-4deg) translateY(2px); }
-.metro-title span:nth-child(2) { transform: rotate(2deg)  translateY(-3px); }
-.metro-title span:nth-child(3) { transform: rotate(-2deg) translateY(1px); }
-.metro-title span:nth-child(4) { transform: rotate(3deg)  translateY(-2px); }
-.metro-title span:nth-child(5) { transform: rotate(-3deg) translateY(2px); }
 .metro-sub { font-family: "Six Caps", sans-serif; font-size: 56px; letter-spacing: .1em; }
 .tagline { color: var(--amber); letter-spacing: 0.22em; text-transform: uppercase; font-size: 12px; margin: 10px 0 26px; }
 .intro-body { color: var(--dim); line-height: 1.7; font-size: 15px; max-width: 420px; margin: 0 auto 30px; }
@@ -83,17 +74,24 @@ body {
 #enter-btn:hover, #resume-btn:hover, #post-btn:hover {
   transform: translateY(-1px); box-shadow: 0 0 40px rgba(255, 77, 46, 0.55);
 }
+/* the door button talks terminal now */
+#enter-btn {
+  font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+  text-transform: none; letter-spacing: 0.1em; font-weight: 600;
+}
 /* the door asks your name before it lets you in */
 #visitor-name {
-  display: block; margin: 0 auto 22px; width: min(300px, 82%);
-  background: rgba(10, 14, 17, 0.62); border: 1px solid var(--line);
-  border-radius: 2px; color: var(--ink); text-align: center;
-  font-family: "Archivo", sans-serif; font-size: 15px; letter-spacing: 0.04em;
-  padding: 13px 16px; outline: none;
+  display: block; margin: 0 auto 18px; width: min(300px, 82%);
+  background: rgba(8, 11, 8, 0.75); border: 1px solid #2a2f28;
+  border-radius: 4px; color: #ffd9a0; text-align: center;
+  font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+  font-size: 15px; letter-spacing: 0.04em;
+  padding: 13px 16px; outline: none; caret-color: #ffb347;
+  text-shadow: 0 0 6px rgba(255, 179, 71, 0.3);
   transition: border-color .15s ease, box-shadow .15s ease;
 }
-#visitor-name::placeholder { color: var(--dim); letter-spacing: 0.02em; }
-#visitor-name:focus { border-color: var(--neon); box-shadow: 0 0 16px rgba(255, 77, 46, 0.25); }
+#visitor-name::placeholder { color: #6a6f66; letter-spacing: 0.02em; text-shadow: none; }
+#visitor-name:focus { border-color: var(--amber); box-shadow: 0 0 16px rgba(255, 179, 71, 0.2); }
 #visitor-name.nudge { border-color: var(--amber); animation: name-nudge 0.32s ease; }
 @keyframes name-nudge {
   0%,100% { transform: translateX(0); }

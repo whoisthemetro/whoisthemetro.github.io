@@ -30,6 +30,7 @@ import { makeGymBall } from "./gymball.js";
 import { initDebug } from "./debug.js";
 import { PIANO_VOICES, GUITAR_VOICES } from "./ambience.js";
 import { createRadio, SR_STATIONS, LA_STATIONS } from "./radio.js";
+import { startTitleFX } from "./title.js";
 import {
   PAPERS, IS_TOUCH, safeUrl, hostOf, timeAgo, toast,
   getIdentity, saveIdentity, shrinkImage,
@@ -685,6 +686,8 @@ function enterRoom() {
   if (venueDeepLink) tryClub();
 }
 $("#enter-btn").addEventListener("click", enterRoom);
+// the door sign: a live shader masked to the hand-drawn letters
+startTitleFX($("#title-fx"));
 nameInput?.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); enterRoom(); } });
 $("#resume-btn").addEventListener("click", () => { hide(paused); safeLock(); });
 canvas.addEventListener("click", () => {
@@ -3708,10 +3711,10 @@ addEventListener("keydown", (e) => {
     history.replaceState(null, "", location.pathname);
   }
 
+  // the badge only speaks up when something's off — connected is the
+  // normal state and doesn't need announcing
   const badge = $("#mode-badge");
-  if (mode === "supabase") {
-    badge.textContent = "● connected — what you leave here is permanent";
-  } else {
+  if (mode !== "supabase") {
     badge.textContent = "local mode — notes only persist in this browser for now";
     badge.classList.add("warn");
   }
