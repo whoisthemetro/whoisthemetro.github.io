@@ -66,7 +66,16 @@ export function setupXR({ renderer, camera, scene, controls, world, onSelect, ca
     if (btn) btn.textContent = "[ enter vr ]";
   });
 
+  // a controller quirk on unfamiliar hardware must never blank the headset —
+  // if input handling throws, the frame still renders and you can still look
+  // around. warns once so remote debugging can see it.
+  let warned = false;
   function tick(dt) {
+    try { step(dt); }
+    catch (e) { if (!warned) { warned = true; console.warn("xr: input tick failed —", e); } }
+  }
+
+  function step(dt) {
     const session = renderer.xr.getSession();
     if (!session) return;
 

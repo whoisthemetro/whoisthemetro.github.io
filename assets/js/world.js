@@ -1924,6 +1924,11 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     add(kukoRug);
     let kFrame = 0;
     tickKuko = (elapsed2) => {
+      // save whatever's bound and put it back when we're done. inside a
+      // WebXR session that's the HEADSET's framebuffer, and clearing it to
+      // null would send the whole room to the canvas instead of the eyes
+      // (a black headset). the mirror does the same dance.
+      const prevRT = renderer.getRenderTarget();
       // Buffer A: read last frame, write the next
       matA.uniforms.iChannel0.value = kA.texture;
       matA.uniforms.iFrame.value = kFrame;
@@ -1937,7 +1942,7 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
       passQuad.material = matB;
       renderer.setRenderTarget(kB);
       renderer.render(passScene, passCam);
-      renderer.setRenderTarget(null);
+      renderer.setRenderTarget(prevRT);
       [kA, kA2] = [kA2, kA];
       kFrame++;
     };
