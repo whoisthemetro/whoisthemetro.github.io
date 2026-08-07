@@ -354,6 +354,10 @@ addEventListener("keydown", (e) => {
           PageDown:   () => layoutNudge(0, -fine, 0),
           KeyQ:       () => layoutNudge(0, 0, 0, rot),
           KeyE:       () => layoutNudge(0, 0, 0, -rot),
+          Equal:      () => layoutScale(e.shiftKey ? 1.01 : 1.05),
+          NumpadAdd:  () => layoutScale(e.shiftKey ? 1.01 : 1.05),
+          Minus:      () => layoutScale(e.shiftKey ? 1 / 1.01 : 1 / 1.05),
+          NumpadSubtract: () => layoutScale(e.shiftKey ? 1 / 1.01 : 1 / 1.05),
           KeyR:       () => { if (layoutSel) { world.resetMovable(layoutSel); layoutBox?.update(); } },
         }[e.code];
         // eat the key so the arrows edit the prop instead of walking you
@@ -2054,7 +2058,7 @@ function setLayoutMode(on) {
   layoutMode = on;
   layoutDrop();
   if (on) {
-    toast("layout mode — click a prop to grab it · arrows move · Q/E spin · PgUp/PgDn raise · R home · L saves");
+    toast("layout mode — click a prop · arrows move · Q/E spin · +/- resize · PgUp/PgDn raise · R home · L saves");
   } else {
     store.saveRoomFlag("layout", world.layoutSnapshot()).catch(() => {});
     toast("layout saved — the room stays this way for everyone");
@@ -2067,7 +2071,7 @@ function layoutSelect(id) {
   layoutSel = id;
   layoutBox = new THREE.BoxHelper(g, 0xffd23c);
   world.scene.add(layoutBox);
-  toast(`holding: ${id} — arrows · Q/E · PgUp/PgDn · R resets it`);
+  toast(`holding: ${id} — arrows · Q/E · +/- · PgUp/PgDn · R resets it`);
 }
 function layoutClick() {
   layRay.setFromCamera(layCentre, camera);
@@ -2080,6 +2084,12 @@ function layoutClick() {
     if (o === g) { layoutSelect(id); return; }
   }
   layoutDrop();
+}
+function layoutScale(f) {
+  if (!layoutSel) return;
+  const g = world.movables[layoutSel];
+  g.scale.setScalar(Math.max(0.2, Math.min(5, g.scale.x * f)));
+  layoutBox?.update();
 }
 function layoutNudge(dx, dy, dz, dry = 0) {
   if (!layoutSel) return;
@@ -3991,7 +4001,7 @@ addEventListener("keydown", (e) => {
 
 /* ---------------- frame loop ---------------- */
 window.METRO_DEBUG = { renderer, camera, world, controls, THREE, cat, bartender, ghosts, voice, screen, stream, setScreen, clearScreen, room: () => aRoomNow(), jump: adminJump, mirror, openPicker, analytics: analyticsBuffer, notesWall,
-  layout: { set: setLayoutMode, select: layoutSelect, nudge: layoutNudge, click: layoutClick, on: () => layoutMode, sel: () => layoutSel },
+  layout: { set: setLayoutMode, select: layoutSelect, nudge: layoutNudge, scale: layoutScale, click: layoutClick, on: () => layoutMode, sel: () => layoutSel },
   uid: identity.uid, pool: poolGame, pool2: poolGame2, sitAtPool, leavePool,
   toy: () => toy, grabToy, throwToy,
   hoops: hoopGame,

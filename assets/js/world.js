@@ -7772,7 +7772,7 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
   if (kukoRug) movables.rug = kukoRug;   // headless builds have no renderer, no rug
   const movableHomes = {};
   for (const [id, g] of Object.entries(movables))
-    movableHomes[id] = { p: g.position.toArray(), ry: g.rotation.y };
+    movableHomes[id] = { p: g.position.toArray(), ry: g.rotation.y, s: g.scale.x };
   function applyLayout(layout) {
     if (!layout) return;
     for (const [id, t] of Object.entries(layout)) {
@@ -7780,16 +7780,17 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
       if (!g || !t || !Array.isArray(t.p)) continue;
       g.position.fromArray(t.p);
       if (typeof t.ry === "number") g.rotation.y = t.ry;
+      if (typeof t.s === "number") g.scale.setScalar(t.s);
     }
   }
   function resetMovable(id) {
     const g = movables[id], h = movableHomes[id];
-    if (g && h) { g.position.fromArray(h.p); g.rotation.y = h.ry; }
+    if (g && h) { g.position.fromArray(h.p); g.rotation.y = h.ry; g.scale.setScalar(h.s); }
   }
   function layoutSnapshot() {
     const out = {};
     for (const [id, g] of Object.entries(movables))
-      out[id] = { p: g.position.toArray().map(v => +v.toFixed(4)), ry: +g.rotation.y.toFixed(4) };
+      out[id] = { p: g.position.toArray().map(v => +v.toFixed(4)), ry: +g.rotation.y.toFixed(4), s: +g.scale.x.toFixed(4) };
     return out;
   }
 

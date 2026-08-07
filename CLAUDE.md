@@ -68,7 +68,7 @@ Pure WebAudio, no files. Everything routes through a master gain → DynamicsCom
 
 ### Glue — main.js
 
-Boot, raycast target list in `castAt()`, all click handling + aim tips, modals, room transitions (instant: `modalOpen` guard around `prompt()`, then fade + `safeLock()`), disc simulation, cat HUD, flight strips (planes.js → airplanes.live; OpenSky/adsb.lol are NOT CORS-open), chat, admin mode at `/#admin`. Admin layout editor: press L in admin mode to move/rotate the props registered in `world.movables` (arrows/QE/PgUpDn, R resets, L again saves); layouts persist for everyone via the `layout` room flag (`set_room_flag` whitelists its keys in site.sql).
+Boot, raycast target list in `castAt()`, all click handling + aim tips, modals, room transitions (instant: `modalOpen` guard around `prompt()`, then fade + `safeLock()`), disc simulation, cat HUD, flight strips (planes.js → airplanes.live; OpenSky/adsb.lol are NOT CORS-open), chat, admin mode at `/#admin`. Admin layout editor: press L in admin mode to move/rotate/resize the props registered in `world.movables` (arrows/QE/+-/PgUpDn, R resets, L again saves); layouts persist for everyone via the `layout` room flag (`set_room_flag` whitelists its keys in site.sql).
 
 ## Supabase / secrets
 
