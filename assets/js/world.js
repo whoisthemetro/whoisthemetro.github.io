@@ -1836,9 +1836,12 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
 
   // which slab wears which shader face, by PANEL_DEFS index.
   // back wall: 0-3 · west: 4-8 (7 is the skinny strip) · east: 9-12
+  // east 9/10 were the neuro pair — the first two shader panels the room
+  // ever had; they're retired in favour of the newer drop (the neuro
+  // materials still build above if they're ever rehung)
   const PANEL_SHADERS = {
-    0: toyOf("sphereWarp"),
-    1: toyOf("golfShort"),
+    0: toyOf("tunnelOrb"),
+    1: toyOf("phantom"),
     2: toyOf("marble"),
     3: toyOf("balatro"),
     4: toyOf("blueRects"),
@@ -1846,8 +1849,8 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     6: toyOf("proteanClouds"),
     7: toyOf("universeWithin"),
     8: toyOf("starTunnel"),
-    9: neuroGold,
-    10: neuroPink,
+    9: toyOf("sphereWarp"),
+    10: toyOf("golfShort"),
     11: toyOf("neonCity"),
     12: toyOf("acidPlasma"),
   };
