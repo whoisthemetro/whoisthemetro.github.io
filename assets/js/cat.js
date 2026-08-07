@@ -55,50 +55,138 @@ export class Cat {
   setNeeds(n) { if (n) this.needs = n; }
 
   _build() {
-    const lam = (c) => new THREE.MeshLambertMaterial({ color: c });
-    const fur = lam(FUR);
+    // the cat gets the room's cel shading — it's built after the world's
+    // toon pass, so it carries its own little 4-step ramp
+    const rampData = new Uint8Array([90, 90, 90, 255, 150, 150, 150, 255, 210, 210, 210, 255, 255, 255, 255, 255]);
+    const toonRamp = new THREE.DataTexture(rampData, 4, 1);
+    toonRamp.needsUpdate = true;
+    toonRamp.minFilter = toonRamp.magFilter = THREE.NearestFilter;
+    const toon = (c, map = null) => new THREE.MeshToonMaterial({ color: c, map, gradientMap: toonRamp });
+    const fur = () => toon(FUR);
+    const DARK = 0xb5691f;                  // the tabby's darker stripe orange
+    // tabby coat: darker bands that wrap the torso. the spheres are rotated
+    // so their poles run along the spine — bands in v become rings around it.
+    const coatCanvas = document.createElement("canvas");
+    coatCanvas.width = coatCanvas.height = 64;
+    const cg = coatCanvas.getContext("2d");
+    cg.fillStyle = "#d98a3d"; cg.fillRect(0, 0, 64, 64);
+    cg.fillStyle = "#b5691f";
+    for (let i = 0; i < 5; i++) {
+      cg.beginPath();
+      cg.ellipse(32, 9 + i * 11.5, 34, 2.6 + (i % 2), 0, 0, 7);
+      cg.fill();
+    }
+    const coatTex = new THREE.CanvasTexture(coatCanvas);
+    coatTex.colorSpace = THREE.SRGBColorSpace;
+
     // everything hangs off an inner rig so we can ROLL the whole cat onto its
     // back (belly rubs) about its spine without disturbing grp's position/yaw
     this.rig = new THREE.Group();
     this.grp.add(this.rig);
-    this.body = new THREE.Mesh(new THREE.CapsuleGeometry(0.062, 0.16, 6, 10), fur);
-    this.body.rotation.z = Math.PI / 2;
+
+    // torso: haunches rounder than shoulders, striped coat, cream chest.
+    // this.body is a GROUP now, but _apply's handles (position.y for the
+    // breathe/bob, rotation.x for the sleep-slump, rotation.z for the sit
+    // tilt) work the same as when it was one capsule.
+    this.body = new THREE.Group();
     this.body.position.y = 0.115;
-    this.body.castShadow = true;
-    const chest = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), lam(CHEST));
-    chest.position.set(0.07, 0.1, 0);
+    const haunch = new THREE.Mesh(new THREE.SphereGeometry(0.068, 14, 12).rotateZ(Math.PI / 2), toon(0xffffff, coatTex));
+    haunch.scale.set(1.05, 0.92, 0.88);
+    haunch.position.x = -0.055;
+    haunch.castShadow = true;
+    const shoulder = new THREE.Mesh(new THREE.SphereGeometry(0.056, 14, 12).rotateZ(Math.PI / 2), toon(0xffffff, coatTex));
+    shoulder.scale.set(1.15, 0.95, 0.9);
+    shoulder.position.set(0.065, 0.003, 0);
+    shoulder.castShadow = true;
+    const chest = new THREE.Mesh(new THREE.SphereGeometry(0.038, 10, 8), toon(CHEST));
+    chest.scale.set(1.1, 1.2, 0.9);
+    chest.position.set(0.09, -0.022, 0);
+    this.body.add(haunch, shoulder, chest);
+
+    // the head: skull + cream muzzle + pink nose, almond eyes with slit
+    // pupils, big forward-facing ears with pink inners, and whiskers —
+    // the whiskers alone do half the work of "that's a cat"
     this.head = new THREE.Group();
-    const skull = new THREE.Mesh(new THREE.SphereGeometry(0.054, 12, 10), fur);
+    const skull = new THREE.Mesh(new THREE.SphereGeometry(0.05, 14, 12), fur());
+    skull.scale.set(0.95, 0.88, 0.82);
+    skull.castShadow = true;
     this.head.add(skull);
+    const muzzle = new THREE.Mesh(new THREE.SphereGeometry(0.024, 10, 8), toon(CHEST));
+    muzzle.scale.set(0.9, 0.72, 1.05);
+    muzzle.position.set(0.036, -0.016, 0);
+    this.head.add(muzzle);
+    const nose = new THREE.Mesh(new THREE.ConeGeometry(0.0065, 0.008, 3), toon(0xd97a8a));
+    nose.rotation.z = -Math.PI / 2;
+    nose.position.set(0.056, -0.005, 0);
+    this.head.add(nose);
     for (const s of [-1, 1]) {
-      const ear = new THREE.Mesh(new THREE.ConeGeometry(0.018, 0.035, 4), fur);
-      ear.position.set(-0.01, 0.05, s * 0.032);
+      const ear = new THREE.Mesh(new THREE.ConeGeometry(0.021, 0.045, 4), fur());
+      ear.position.set(-0.012, 0.052, s * 0.028);
+      ear.rotation.y = Math.PI / 4;         // flat face toward the front
+      ear.rotation.x = s * 0.22;            // splayed a little outward
       this.head.add(ear);
-      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.0075, 6, 6),
+      const inner = new THREE.Mesh(new THREE.ConeGeometry(0.011, 0.026, 4), toon(0xe8a2b4));
+      inner.position.set(-0.005, 0.049, s * 0.028);
+      inner.rotation.y = Math.PI / 4;
+      inner.rotation.x = s * 0.22;
+      this.head.add(inner);
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.009, 8, 8),
         new THREE.MeshBasicMaterial({ color: EYE }));
-      eye.position.set(0.045, 0.012, s * 0.022);
+      eye.scale.set(0.55, 1, 0.8);          // almond, not marble
+      eye.position.set(0.0405, 0.009, s * 0.0205);
       this.head.add(eye);
+      const pupil = new THREE.Mesh(new THREE.BoxGeometry(0.0025, 0.011, 0.0035),
+        new THREE.MeshBasicMaterial({ color: 0x142008 }));
+      pupil.position.set(0.0455, 0.009, s * 0.0205);
+      this.head.add(pupil);
+      for (let w = 0; w < 3; w++) {
+        const wh = new THREE.Mesh(new THREE.CylinderGeometry(0.0009, 0.0005, 0.075, 4),
+          new THREE.MeshBasicMaterial({ color: 0xe8e4da, transparent: true, opacity: 0.8 }));
+        wh.rotation.x = s * Math.PI / 2;    // out to the side…
+        wh.rotation.z = (w - 1) * 0.2;      // …fanned up/down a touch
+        wh.position.set(0.04, -0.012 + (w - 1) * 0.004, s * 0.048);
+        this.head.add(wh);
+      }
     }
-    this.head.position.set(0.135, 0.16, 0);
+    this.head.position.set(0.125, 0.175, 0);
+
+    // the tail: six chained segments resting in a question-mark curve, ringed
+    // like a proper tabby. pivots sit at each base so the sway curls.
     this.tail = [];
+    const tailRest = [-0.5, 0.18, 0.28, 0.32, 0.34, 0.3];
     let parent = this.rig;
-    for (let i = 0; i < 3; i++) {
-      const seg = new THREE.Mesh(new THREE.CylinderGeometry(0.011 - i * 0.002, 0.013 - i * 0.002, 0.09, 6), fur);
-      seg.position.set(i ? 0 : -0.13, i ? 0.075 : 0.13, 0);
-      if (i) seg.position.y = 0.08;
-      seg.rotation.z = 0.5;
+    for (let i = 0; i < 6; i++) {
+      const r0 = 0.012 - i * 0.0011;
+      const seg = new THREE.Mesh(new THREE.CylinderGeometry(Math.max(0.005, r0 - 0.0012), r0, 0.042, 6),
+        i % 2 ? toon(DARK) : fur());
+      seg.geometry.translate(0, 0.021, 0);
+      if (i === 0) seg.position.set(-0.115, 0.145, 0);
+      else seg.position.y = 0.04;
+      seg.rotation.z = tailRest[i];
       parent.add(seg);
       parent = seg;
       this.tail.push(seg);
     }
+    this._tailRest = tailRest;
+
+    // legs pivot at the hip (they're groups now), each ending in a cream paw
     this.legs = [];
-    for (const [lx, lz] of [[0.07, 0.035], [0.07, -0.035], [-0.07, 0.035], [-0.07, -0.035]]) {
-      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.009, 0.075, 6), fur);
-      leg.position.set(lx, 0.038, lz);
+    for (const [lx, lz] of [[0.075, 0.034], [0.075, -0.034], [-0.06, 0.04], [-0.06, -0.04]]) {
+      const leg = new THREE.Group();
+      leg.position.set(lx, 0.08, lz);
+      const shin = new THREE.Mesh(new THREE.CylinderGeometry(0.0095, 0.008, 0.075, 8), fur());
+      shin.position.y = -0.042;
+      leg.add(shin);
+      const paw = new THREE.Mesh(new THREE.SphereGeometry(0.012, 8, 6), toon(CHEST));
+      paw.scale.set(1.25, 0.7, 1);
+      paw.position.set(0.004, -0.078, 0);
+      leg.add(paw);
       this.rig.add(leg);
       this.legs.push(leg);
     }
-    this.rig.add(this.body, chest, this.head);
+    this._hind = [this.legs[2], this.legs[3]];
+    this._sit = 0;
+    this.rig.add(this.body, this.head);
     this._roll = 0;             // current belly-roll about the spine (0 = upright)
     this._kick = 0;             // decaying bunny-kick flail after an over-rub
   }
@@ -506,30 +594,40 @@ export class Cat {
     this.rig.position.y = SPINE * (1 - Math.cos(this._roll));
     if (this._kick > 0) this._kick = Math.max(0, this._kick - dt * 1.5);
 
+    // the upright sit — THE cat silhouette. eases in when it settles
+    // (sitting or window-gazing, not mid-roll), eases out the moment it moves
+    const wantsSit = (this.state === "sit" || this.state === "window") && this._roll < 0.1 ? 1 : 0;
+    this._sit += (wantsSit - this._sit) * Math.min(1, dt * 5);
+    const sit = this._sit;
+
     // breathing / trot bob
     const breathe = sleeping ? Math.sin(t * 1.6) * 0.006 : 0;
     const bob = walking ? Math.abs(Math.sin(t * 8)) * 0.012 : 0;
-    this.body.position.y = 0.115 + breathe + bob;
-    this.head.position.y = (sleeping ? 0.09 : headDown ? 0.08 : 0.16) + bob;
+    this.body.position.y = 0.115 + breathe + bob - sit * 0.008;
+    this.body.position.x = -sit * 0.02;
+    this.body.rotation.z = sit * 0.5;       // chest up, haunches planted
+    this.head.position.x = 0.125 - sit * 0.045;
+    this.head.position.y = (sleeping ? 0.09 : headDown ? 0.08 : 0.175 + sit * 0.045) + bob;
     this.head.rotation.z = sleeping ? -0.5
       : headDown ? -0.9 + Math.sin((this.actionT || 0) * 7) * 0.12   // nibbling / digging
       : 0;
-    // tail sway — faster when walking, lazy when asleep
+    // tail sway — faster when walking, lazy when asleep; the rest curve is
+    // the question mark, the sway just breathes through it
     const sway = Math.sin(t * (walking ? 6 : 1.6));
-    this.tail[0].rotation.x = sway * 0.35;
-    this.tail[1].rotation.x = sway * 0.3;
-    this.tail[2].rotation.x = sway * 0.25;
+    this.tail.forEach((seg, i) => { seg.rotation.x = sway * (0.28 - i * 0.03); });
     // legs tuck when sleeping
     for (const leg of this.legs) leg.visible = !sleeping;
     if (sleeping) this.body.rotation.x = 0.35; else this.body.rotation.x = 0;
-    // trot gait
+    // trot gait; sitting folds the hind legs under the haunches
     if (walking) {
       this.legs.forEach((leg, i) => {
         leg.rotation.x = Math.sin(t * 8 + (i % 2 ? Math.PI : 0)) * 0.5;
       });
     } else {
       this.legs.forEach(leg => { leg.rotation.x = 0; });
+      for (const h of this._hind) { h.rotation.x = sit * 1.3; h.scale.y = 1 - sit * 0.3; }
     }
+    if (walking) for (const h of this._hind) h.scale.y = 1;
     // overstimulated bunny-kick — a quick alternating flail of all four paws
     if (this._kick > 0) {
       this.legs.forEach((leg, i) => {
