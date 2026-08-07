@@ -2198,8 +2198,10 @@ function setupHome() {
   if (entered) safeLock();                  // re-lock — the ride unlocked us
 }
 async function tryBoat() {
-  modalOpen = true;                      // keep the pause screen away
+  // the VR guard has to come BEFORE the flag goes up: bailing out with
+  // modalOpen still true leaves an invisible modal wedging every click
   if (vrBlocked("that door wants a password — step out of VR")) return;
+  modalOpen = true;                      // keep the pause screen away
   const pass = prompt("this door is private. password:");
   if (!pass) { modalOpen = false; if (entered) safeLock(); return; }
   if (await sha256(pass.trim().toLowerCase()) !== BOAT_PASS_HASH) {
@@ -2253,9 +2255,10 @@ const CLUB_PASS_HASH = "7aaaa3946f3f4de633bda31fc85970434577eb3b0d4540b008797278
 const CLUB_OPEN = true;
 let inClub = false;
 async function tryClub() {
+  // guard first — see tryBoat
+  if (!CLUB_OPEN && vrBlocked("that door wants a password — step out of VR")) return;
   modalOpen = true;                      // keep the pause screen away
   if (!CLUB_OPEN) {
-    if (vrBlocked("that door wants a password — step out of VR")) return;
     const pass = prompt("an unmarked door. bass through the brick. password:");
     if (!pass) { modalOpen = false; if (entered) safeLock(); return; }
     if (await sha256(pass.trim().toLowerCase()) !== CLUB_PASS_HASH) {
@@ -4077,6 +4080,10 @@ const xr = setupXR({
   renderer, camera, scene: world.scene, controls, world,
   canEnter: () => !inBoat && !inArena && !inClub && !inGym && !modalOpen,
   onSelect: (controller) => {
+    // an overlay is invisible in a session, so a stuck modalOpen would
+    // silently swallow every trigger pull. if nothing is actually on
+    // screen and we're not mid-lift, the flag is stale — clear it.
+    if (modalOpen && !elevBusy && !document.querySelector(".overlay.show")) modalOpen = false;
     if (modalOpen) return;
     xrAim = controller;
     try { controls.actionFns.forEach((f) => f(0, 0)); }

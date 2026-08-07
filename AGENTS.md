@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
 
 ## What this is
 
@@ -37,18 +37,14 @@ Smoke tests are ad-hoc puppeteer-core scripts in `/tmp/metro-smoke/` (system Chr
 - **THE DESI** (boat, password `desi`, sha256 gate in main.js) at `BOAT = {x:40}`. Runs on real **Gotland** sun/weather (`astro.js` + Open-Meteo). The "outside" is a seabox of stacked 56 m-wide sheets — every layer must stay ≥56 m wide or its edges become visible through windows at steep angles.
 - **THE CREW** (zero-g Echo Arena, no password — team chooser overlay on entry) at `ARENA = {y:80}`. Full Echo layout: main hall + goal domes (rings at x=±34, 3-point bubble r=14), mid-wing tunnels, island cubes, per-team locker rooms (x=±54.5) with ready kiosks, 3 launch tubes per side with catapult handles. Flight containment is a UNION of volumes — `world.arenaClamp(pos, vel, r)` (players and disc both); grabbing checks `world.arenaNearWall`. Zero-g flight is `controls._updateZeroG` (gaze WASD thrust, E grab/fling walls *and* teammates, SHIFT boost, B brake, F shield, click = punch/stun, click on catapult handles = launch). Disc/goals/punch/deflect/match-start are presence `sendAct` kinds with last-event-wins authority.
 
-At the end of buildWorld, every Lambert/Standard material is swapped for `MeshToonMaterial` with a 4-step ramp (cel shading). Materials created after buildWorld (notes) stay Lambert; the cat builds its own 4-step toon ramp in cat.js.
+At the end of buildWorld, every Lambert/Standard material is swapped for `MeshToonMaterial` with a 4-step ramp (cel shading). Materials created after buildWorld (notes, cat) stay Lambert.
 
 ### Hard-won three.js rules (do not relearn these)
 
 - **`light.layers` does NOT scope illumination.** A directional light reaches every object in the scene. Cross-room "suns" must be **SpotLights** (cones physically can't reach the other room). Point lights are contained by short `distance` instead — keep arcade/boat point-light throws shorter than the gap to the next room.
-- Light layers (boat = layer 3, arena = layer 4) are still used for raycast/visibility bookkeeping: `camera.layers.enable(3|4)` and `raycaster.layers.enableAll()` in main.js are required. **Never use layers 1 or 2** — three.js assigns those to the left/right eye in a WebXR session, so anything on them renders to one eye only.
+- Light layers (boat = layer 1, arena = layer 2) are still used for raycast/visibility bookkeeping: `camera.layers.enable(1|2)` and `raycaster.layers.enableAll()` in main.js are required.
 - **Z-fighting:** anything mounted on a wall sits ≥3 cm proud of it (notes use `0.03 + seq stagger` in notes3d.js).
 - Shadow masks around the window are thick DoubleSide boxes, not thin planes.
-
-### Shader art — shaderart.js
-
-The acoustic slabs carry animated Shadertoy-style pieces. Fragment sources live in shaderart.js (`SHADER_ART`, with per-shader adaptation notes and licenses); world.js wraps each in a prelude where `vUv * iResolution` stands in for `gl_FragCoord` (so every piece renders in its slab's true aspect — set iResolution from the slab's w:h), pins `iMouse` to zero, and drives `iTime` from the world tick. `glsl3: true` marks shaders needing ES 3.0; those get an explicit out var (GLSL3 mode has no `gl_FragColor`). GLSL ES 1.00 pitfalls that keep recurring: no `round()`/`tanh()` (polyfill), no `#define` line continuations, uninitialized globals/locals are undefined (Shadertoy hands out zeros — set them). Panel assignment is `PANEL_SHADERS` in world.js, keyed by PANEL_DEFS index.
 
 ### Notes ("the wall") — notes3d.js + world walls[]
 
@@ -68,9 +64,7 @@ Pure WebAudio, no files. Everything routes through a master gain → DynamicsCom
 
 ### Glue — main.js
 
-Boot, raycast target list in `castAt()`, all click handling + aim tips, modals, room transitions (instant: `modalOpen` guard around `prompt()`, then fade + `safeLock()`), disc simulation, cat HUD, flight strips (planes.js → airplanes.live; OpenSky/adsb.lol are NOT CORS-open), chat, admin mode at `/#admin`. **Render targets and XR:** any pass that binds a render target must save and restore the previous one (`const prev = renderer.getRenderTarget()` … `setRenderTarget(prev)`) — never `setRenderTarget(null)`. Inside a WebXR session three.js binds the headset's framebuffer before the animation callback, and clearing it to null sends the room to the canvas instead of the eyes (black headset). Both the mirror and the rug's multi-pass do this; `/tmp/metro-smoke/xrframebuffer.js` asserts the invariant headlessly.
-
-VR (xr.js): WebXR — [ enter vr ] appears post-entry on XR browsers; left stick walks (world.isWalkable axis-slide), right stick snap-turns, triggers fire the normal click dispatch, and `castAt` casts from the pointing controller whenever a session is live (so aim tips follow your hand). Every physical interaction works; anything that would open a **DOM overlay** must call `vrBlocked("…")` first — DOM is invisible in a session, and opening a modal there sets `modalOpen` behind an unseeable panel and locks every further click. The radio and dimmer get physical VR paths instead (power toggle / brightness cycle). xr.js owns an in-world HUD (`xr.note` transient, `xr.tip` aim) since toasts and tips are DOM; `toast()` in main.js mirrors to it automatically. The rig follows world-driven teleports (lift rides) by watching `controls.pos` change behind its back. **Raise the guard BEFORE `modalOpen = true`** — bailing out after it leaves an invisible modal wedging every click (bit both door functions once); `onSelect` self-heals a stale flag when no `.overlay.show` exists and no lift is riding. The studio (`/studio/`) has its own rig: it feeds xr.js an isWalkable adapter built from `room.clampWalk`, exposes `pos`/`yaw` off its controls, and runs on `setAnimationLoop`. Admin layout editor: press L in admin mode to move/rotate/resize the props registered in `world.movables` (arrows/QE/+-/PgUpDn, R resets, L again saves); layouts persist for everyone via the `layout` room flag (`set_room_flag` whitelists its keys in site.sql).
+Boot, raycast target list in `castAt()`, all click handling + aim tips, modals, room transitions (instant: `modalOpen` guard around `prompt()`, then fade + `safeLock()`), disc simulation, cat HUD, flight strips (planes.js → airplanes.live; OpenSky/adsb.lol are NOT CORS-open), chat, admin mode at `/#admin`.
 
 ## Supabase / secrets
 

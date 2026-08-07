@@ -57,7 +57,7 @@ export function setupXR({ renderer, camera, scene, controls, world, onSelect, ca
   const hud = new THREE.Mesh(
     new THREE.PlaneGeometry(0.46, 0.101),
     new THREE.MeshBasicMaterial({ map: hudTex, transparent: true, depthTest: false }));
-  hud.position.set(0, -0.19, -0.58);
+  hud.position.set(0, -0.26, -0.62);   // low in the view, out of the way
   hud.renderOrder = 999;
   hud.visible = false;
   camera.add(hud);

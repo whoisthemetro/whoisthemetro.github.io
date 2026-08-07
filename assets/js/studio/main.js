@@ -21,6 +21,7 @@ import {
 import { hitPanel, sliderValue } from "./panels.js";
 import { buildRoom } from "./room.js";
 import { makeControls } from "./controls.js";
+import { setupXR } from "../xr.js";
 
 const me = getIdentity();
 // the stored uid identifies the *person* and is shared across their tabs. as a
@@ -45,6 +46,31 @@ renderer.toneMappingExposure = 1.05;
 const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.05, 120);
 const room = buildRoom();
 const controls = makeControls(camera, canvas, room.clampWalk);
+
+/* ---------- VR ----------
+   the same rig the bedroom uses. xr.js asks a world for isWalkable; the
+   studio thinks in clamps, so translate: a spot is walkable when the
+   clamp leaves it where it was. */
+let xrHandle = null;
+const inVR = () => !!(xrHandle && xrHandle.presenting());
+const xr = setupXR({
+  renderer, camera, scene: room.scene, controls,
+  world: {
+    isWalkable: (x, z) => {
+      const c = room.clampWalk(x, z);
+      return Math.abs(c.x - x) < 1e-6 && Math.abs(c.z - z) < 1e-6;
+    },
+  },
+  onSelect: (controller) => {
+    xrAim = controller;
+    try {
+      const a = aim();
+      if (!a) { if (aimDoor()) leaveToBedroom(); return; }
+      apply(a.kind, hitPanel(a.kind, a.uv.x, a.uv.y));
+    } finally { xrAim = null; }
+  },
+});
+xrHandle = xr;
 
 addEventListener("resize", () => {
   camera.aspect = innerWidth / innerHeight;
@@ -91,8 +117,23 @@ const centre = new THREE.Vector2(0, 0);
 const REACH = 5.5;
 let dragging = null;    // { kind, type } while a fader is held
 
+// in a headset the crosshair is the controller's laser: the hand that
+// pulled the trigger wins, otherwise the pointing hand stands in
+let xrAim = null;
+const xrAimMat = new THREE.Matrix4();
+function castRay() {
+  const a = xrAim || (renderer.xr.isPresenting && xrHandle ? xrHandle.aimController() : null);
+  if (a) {
+    xrAimMat.identity().extractRotation(a.matrixWorld);
+    ray.ray.origin.setFromMatrixPosition(a.matrixWorld);
+    ray.ray.direction.set(0, 0, -1).applyMatrix4(xrAimMat);
+  } else {
+    ray.setFromCamera(centre, camera);
+  }
+}
+
 function aim() {
-  ray.setFromCamera(centre, camera);
+  castRay();
   const hits = ray.intersectObjects(room.screens, false);
   if (!hits.length || hits[0].distance > REACH) return null;
   const h = hits[0];
@@ -100,7 +141,7 @@ function aim() {
 }
 
 function aimDoor() {
-  ray.setFromCamera(centre, camera);
+  castRay();
   const hits = ray.intersectObjects(room.doorHits, false);
   return hits.length > 0 && hits[0].distance < REACH;
 }
@@ -230,12 +271,12 @@ document.addEventListener("studio-lock", (e) => {
 /* ---------- the loop ---------- */
 
 let last = performance.now();
-function frame(now) {
-  requestAnimationFrame(frame);
+function frame() {
+  const now = performance.now();
   const dt = Math.min((now - last) / 1000, 0.1);
   last = now;
 
-  controls.update(dt);
+  if (inVR()) xr.tick(dt); else controls.update(dt);
 
   if (dragging && controls.locked()) {
     // drifting off the row, off the end of the bar, or off the panel entirely
@@ -267,7 +308,8 @@ async function enter() {
   startScheduler();
   paintTransport();
   controls.lock();
-  requestAnimationFrame(frame);
+  xr.showButton();              // headsets get a door into the room
+  renderer.setAnimationLoop(frame);   // WebXR drives the loop when a session runs
 
   try {
     await store.init();

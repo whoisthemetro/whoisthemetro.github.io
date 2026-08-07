@@ -112,6 +112,11 @@ export function makeControls(camera, dom, clampWalk) {
   return {
     update,
     locked: () => locked,
+    // the XR rig moves the body directly (see xr.js), so it needs live
+    // access to where we are and which way we're facing
+    pos,
+    get yaw() { return yaw; },
+    set yaw(v) { yaw = v; },
     // newer Chrome returns a promise here, and a rejected one surfaces as an
     // uncaught error (headless refuses the lock outright) — swallow both shapes
     lock: () => {
