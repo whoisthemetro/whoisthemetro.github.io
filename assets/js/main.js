@@ -31,6 +31,7 @@ import { initDebug } from "./debug.js";
 import { PIANO_VOICES, GUITAR_VOICES } from "./ambience.js";
 import { createRadio, SR_STATIONS, LA_STATIONS } from "./radio.js";
 import { startTitleFX } from "./title.js";
+import { setupXR } from "./xr.js";
 import {
   PAPERS, IS_TOUCH, safeUrl, hostOf, timeAgo, toast,
   getIdentity, saveIdentity, shrinkImage,
@@ -679,6 +680,7 @@ function enterRoom() {
   if (roomFlags) applyRoomFlags(roomFlags);   // now that audio's unlocked, tune the radio to the room
   hide(intro);
   hud.classList.add("show");
+  xr.showButton();   // quest & friends get a door into headset mode
   safeLock();
   // earned accessories: rebuild what this visitor already owns,
   // celebrate anything new they unlock from here on
@@ -699,13 +701,28 @@ canvas.addEventListener("click", () => {
 });
 
 /* ---------------- aiming / interacting ---------------- */
+// while a VR trigger-pull is being dispatched, the "crosshair" is the
+// controller's laser instead of the screen centre
+let xrAim = null;
+const xrAimMat = new THREE.Matrix4();
 function castAt(ndcX, ndcY) {
-  raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera);
+  if (xrAim) {
+    xrAimMat.identity().extractRotation(xrAim.matrixWorld);
+    raycaster.ray.origin.setFromMatrixPosition(xrAim.matrixWorld);
+    raycaster.ray.direction.set(0, 0, -1).applyMatrix4(xrAimMat);
+  } else {
+    raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera);
+  }
   // doors are included as blockers so notes can't be pinned onto them
   const targets = [cat.hitMesh, toyHit, bartender.hitMesh, mirror.glass, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, ...world.elevHits, ...world.elevCallHits, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.guitarVoiceHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, world.pool.hit, world.pool.resetHit, world.pool.joinHit, world.pool2.hit, world.pool2.resetHit, world.pool2.joinHit, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.radioHits, ...world.laRadioHits, ...world.filterPedalHit, ...world.vacuumHits, ...notesWall.raycastTargets(), screenMesh, world.gym.joinHit, world.gym.exitHit, ...world.gym.readyHits, ...world.blockers];
   const hits = raycaster.intersectObjects(targets, false);
   return hits[0] || null;
 }
+
+// what a VR laser is allowed to touch (everything here is DOM-free)
+const XR_TOUCH = ["cat", "toy", "care", "edrum", "piano", "pianoVoice",
+  "guitar", "guitarVoice", "blinds", "curtain", "closet", "dimmer",
+  "stomp", "vacuum", "radio", "glass"];
 
 // a ray that only sees bare wall + the solid things stuck to it — used while
 // re-hanging a note so the note you're carrying (floating on top of the
@@ -986,6 +1003,11 @@ controls.onAction((ndcX, ndcY) => {
     return;
   }
   const hit = castAt(ndcX, ndcY);
+  // in VR only the physical stuff answers the laser — anything that opens
+  // a DOM overlay (composer, reader, terminal, mirror, arcade, portals)
+  // stays a flat-screen activity for now
+  if (renderer.xr.isPresenting && hit &&
+      !XR_TOUCH.some((k) => hit.object.userData[k] !== undefined)) return;
   // in the arena, a click is a swing — unless you're on a catapult
   // handle (then the punch IS the launch) or aiming at something useful
   if (inArena) {
@@ -4000,6 +4022,18 @@ addEventListener("keydown", (e) => {
 })();
 
 /* ---------------- frame loop ---------------- */
+/* --- VR: phase one (see xr.js) --- */
+const xr = setupXR({
+  renderer, camera, scene: world.scene, controls, world,
+  canEnter: () => !inBoat && !inArena && !inClub && !inGym,
+  onSelect: (controller) => {
+    if (modalOpen) return;
+    xrAim = controller;
+    try { controls.actionFns.forEach((f) => f(0, 0)); }
+    finally { xrAim = null; }
+  },
+});
+
 window.METRO_DEBUG = { renderer, camera, world, controls, THREE, cat, bartender, ghosts, voice, screen, stream, setScreen, clearScreen, room: () => aRoomNow(), jump: adminJump, mirror, openPicker, analytics: analyticsBuffer, notesWall,
   layout: { set: setLayoutMode, select: layoutSelect, nudge: layoutNudge, scale: layoutScale, click: layoutClick, on: () => layoutMode, sel: () => layoutSel },
   uid: identity.uid, pool: poolGame, pool2: poolGame2, sitAtPool, leavePool,
@@ -4023,7 +4057,7 @@ let grimeSaveAt = 0;     // last time we pushed the carpet snapshot to room_stat
 renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta(), 0.05);
   t += dt;
-  controls.update(dt);
+  if (xr.presenting()) xr.tick(dt); else controls.update(dt);
   aWorldReady();                       // analytics: world_loaded (first frame)
   if (entered) aSetRoom(aRoomNow());   // analytics: room_entered/exited + session_engaged
   // safety: never leave anyone shut inside the cab. if you're standing in the

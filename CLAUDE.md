@@ -68,7 +68,7 @@ Pure WebAudio, no files. Everything routes through a master gain → DynamicsCom
 
 ### Glue — main.js
 
-Boot, raycast target list in `castAt()`, all click handling + aim tips, modals, room transitions (instant: `modalOpen` guard around `prompt()`, then fade + `safeLock()`), disc simulation, cat HUD, flight strips (planes.js → airplanes.live; OpenSky/adsb.lol are NOT CORS-open), chat, admin mode at `/#admin`. Admin layout editor: press L in admin mode to move/rotate/resize the props registered in `world.movables` (arrows/QE/+-/PgUpDn, R resets, L again saves); layouts persist for everyone via the `layout` room flag (`set_room_flag` whitelists its keys in site.sql).
+Boot, raycast target list in `castAt()`, all click handling + aim tips, modals, room transitions (instant: `modalOpen` guard around `prompt()`, then fade + `safeLock()`), disc simulation, cat HUD, flight strips (planes.js → airplanes.live; OpenSky/adsb.lol are NOT CORS-open), chat, admin mode at `/#admin`. VR (xr.js): phase-one WebXR — [ enter vr ] button appears post-entry on XR browsers; left stick walks (world.isWalkable axis-slide), right stick snap-turns, triggers fire the normal click dispatch through a controller laser (castAt's xrAim override); `XR_TOUCH` in main.js whitelists DOM-free interactions only. Admin layout editor: press L in admin mode to move/rotate/resize the props registered in `world.movables` (arrows/QE/+-/PgUpDn, R resets, L again saves); layouts persist for everyone via the `layout` room flag (`set_room_flag` whitelists its keys in site.sql).
 
 ## Supabase / secrets
 
