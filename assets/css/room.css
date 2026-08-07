@@ -50,7 +50,7 @@ body {
    live shader (title.js). the glow does the popping. */
 #title-fx {
   width: min(92vw, 560px); height: auto; display: block; margin: 0 auto 8px;
-  filter: drop-shadow(0 0 26px rgba(255, 90, 60, 0.35)) drop-shadow(0 0 60px rgba(255, 120, 60, 0.18));
+  filter: brightness(1.12) drop-shadow(0 0 22px rgba(255, 110, 70, 0.55)) drop-shadow(0 0 70px rgba(255, 130, 70, 0.3));
 }
 /* the terminal login line under the sign */
 .login-line {

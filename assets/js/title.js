@@ -36,7 +36,8 @@ export function startTitleFX(canvas) {
   const vsrc = "attribute vec2 p; void main() { gl_Position = vec4(p, 0.0, 1.0); }";
   const fsrc = "precision highp float;\nuniform vec3 iResolution;\nuniform float iTime;\nconst vec4 iMouse = vec4(0.0);\n"
     + TITLE_FRAG
-    + "\nvoid main() { mainImage(gl_FragColor, gl_FragCoord.xy); }";
+    // the sign is a light, not a print — lift the shader's output hard
+    + "\nvoid main() { vec4 c; mainImage(c, gl_FragCoord.xy); c.rgb = c.rgb * 1.55 + 0.12; gl_FragColor = c; }";
   const mk = (type, src) => {
     const s = gl.createShader(type);
     gl.shaderSource(s, src);
