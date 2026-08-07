@@ -3354,10 +3354,12 @@ function hideFlightStrip() {
 
 /* ---------------- private notes to Metro ---------------- */
 const dmOverlay = $("#dm");
-async function openDM() {
+async function openDM(compose = false) {
   modalOpen = true;
   controls.unlock();
-  if (adminMode) {
+  // compose=true always opens the write-a-note pane — no passphrase, even
+  // for the booth. the inbox path stays for wherever it's needed next.
+  if (adminMode && !compose) {
     // owner: this is your inbox
     let pass = sessionStorage.getItem("metro.adminpass") || prompt("admin passphrase:");
     if (!pass) { modalOpen = false; if (entered) safeLock(); return; }
@@ -3519,10 +3521,7 @@ const TERM_COMMANDS = {
     }
   } },
   msg: { blurb: "send metro a message / file", run() {
-    hide(pcOverlay); openDM();
-  } },
-  inbox: { blurb: "read what visitors left", admin: true, run() {
-    hide(pcOverlay); openDM();
+    hide(pcOverlay); openDM(true);   // straight to the composer, no passcode ever
   } },
   music: { blurb: "the sound system", run() {
     termPrint("the old jukebox has been unplugged.", "dim");
@@ -3539,7 +3538,8 @@ const TERM_COMMANDS = {
     const wx = world.getWeather() || {};
     const sky = wx.fog ? "fog" : wx.rain ? "rain" : wx.clouds > 0.6 ? "overcast"
       : wx.clouds > 0.2 ? "some clouds" : "clear";
-    termPrint(`hawthorne, ca — ${sky}` + (wx.clouds != null ? ` · cloud cover ${Math.round(wx.clouds * 100)}%` : ""));
+    const temp = wx.tempC != null ? ` · ${Math.round(wx.tempC * 9 / 5 + 32)}°F (${Math.round(wx.tempC)}°C)` : "";
+    termPrint(`hawthorne, ca — ${sky}${temp}` + (wx.clouds != null ? ` · cloud cover ${Math.round(wx.clouds * 100)}%` : ""));
   } },
   time: { blurb: "studio clock (LA)", run() { termPrint(laTime()); } },
   whoami: { blurb: "who the room thinks you are", run() {
