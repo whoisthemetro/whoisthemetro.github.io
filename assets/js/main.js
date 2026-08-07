@@ -1256,7 +1256,7 @@ setInterval(() => {
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.cat && hit.distance < 2.2) {
     const d = store.decayCat(catState);
-    aimTip.textContent = `${TAP} to pet the cat · fed ${Math.round(d.fed * 100)}%`;
+    aimTip.textContent = `${TAP} to pet · fed ${Math.round(d.fed * 100)}%`;   // you're looking right at the cat — no need to say so
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.toy && toy.phase === "rest" && !toy.claimed && hit.distance < 2.6) {
     aimTip.textContent = `${TAP} to pick up the toy`;
