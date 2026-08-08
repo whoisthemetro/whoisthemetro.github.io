@@ -208,7 +208,7 @@ controls.pos.x = world.spawn.x;
 controls.pos.z = world.spawn.z;
 controls.yaw = world.spawn.yaw;
 
-world.setCityListener((type) => { if (!inBoat && !inArena && !inClub && !inGym) citySound(type); });
+world.setCityListener((type) => { if (!inBoat && !inArena && !inClub && !inGym && !inStudio) citySound(type); });
 
 // the arcade hums and chirps when you're near it — spatial by position
 setInterval(() => {
@@ -1276,7 +1276,7 @@ controls.onAction((ndcX, ndcY) => {
     if (shot) {
       shotSound();
       if (shot === "hit") {
-        setTimeout(() => { if (!inBoat && !inArena && !inClub) citySound("boom"); }, 300);
+        setTimeout(() => { if (!inBoat && !inArena && !inClub && !inStudio) citySound("boom"); }, 300);
         toast("🛩️💥 got it. somewhere over Inglewood, a pilot is very confused");
         presence.sendAct({ kind: "planeshot" });
       }
@@ -2096,7 +2096,7 @@ function ensurePads() {
     act: sAct, state: sState, rec: sRec,
     drumRows: SA.DRUM_ROWS, stepCount: sStepCount, nPats: S_NPATS,
     canPlay: () => inStudio,
-    playhead: sPlayhead, onStep: sOnStep, metroClick: SA.metroClick, curGrid: sCurGrid,
+    playhead: sPlayhead, onStep: sOnStep, metroClick: SA.metroClick, curGrid: sCurGrid, audio: SA,
     blocked: () => vrBlocked("the pads need a flat screen"),
     onOpen: () => { modalOpen = true; controls.unlock(); },
     onClose: () => { modalOpen = false; if (entered) safeLock(); },
@@ -2111,6 +2111,9 @@ function setupStudio() {
   controls.pos.z = world.STUDIO.z + 2.6;
   controls.yaw = 0;                       // facing the drum machine (forward is -z here)
   setRoomTone(false);                     // the bedroom stays behind, fully
+  setRain(0);                             // the booth is treated — no weather in here
+  hideFlightStrip();                      // no window on LAX either
+  document.body.classList.add("in-studio");   // the cat HUD stays home too
   refreshNoteVisibility();
   bootStudio();
   try { SA.setFx({ masterGain: 0.85 }); } catch (e) {}
@@ -2123,6 +2126,8 @@ function setupStudio() {
 
 function leaveStudio() {
   inStudio = false;
+  document.body.classList.remove("in-studio");
+  try { setRain((world.getWeather() && world.getWeather().rain) || 0); } catch (e) {}   // weather back
   if (pads) { pads.close(); pads.showButton(false); }
   world.studio.root.visible = false;
   try { SA.setFx({ masterGain: 0 }); } catch (e) {}   // the loop keeps running, you just can't hear it
@@ -3597,7 +3602,7 @@ function stripBlocked() {
   // the LAX window is the bedroom's — no flight strips in the far rooms
   // (boat / arena / venue / gym), behind a game, or over a modal
   return controls.pooling || controls.aiming || modalOpen ||
-    inBoat || inArena || inClub || inGym ||
+    inBoat || inArena || inClub || inGym || inStudio ||
     (typeof arcadeIsOpen === "function" && arcadeIsOpen());
 }
 function showFlightStrip(info) {

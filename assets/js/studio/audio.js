@@ -223,6 +223,63 @@ function nextPerc() {
   return percBufs[percLastIdx];
 }
 
+/* ---------- the sample library, and pads that wear samples ----------
+   Any pad can trade its synthesised voice for a one-shot. The library is
+   a manifest of packs — add a folder and a pack entry and every pad can
+   reach it. Assignments travel with the drum device (dev.drums.kit), so
+   the whole room hears the same kit; the buffers themselves are fetched
+   by URL in each browser. */
+export const SAMPLE_PACKS = [
+  {
+    name: "dumbek",
+    base: "/assets/audio/dumbek/",
+    files: Array.from({ length: 77 }, (_, i) => `dumbek-${String(i + 1).padStart(2, "0")}.wav`),
+  },
+];
+
+const sampleCache = new Map();   // url -> AudioBuffer | Promise
+export function loadSample(url) {
+  if (!ctx) return Promise.resolve(null);
+  const hit = sampleCache.get(url);
+  if (hit) return hit instanceof Promise ? hit : Promise.resolve(hit);
+  const pr = fetch(url)
+    .then(r => r.arrayBuffer())
+    .then(arr => new Promise((ok, no) => ctx.decodeAudioData(arr, ok, no)))
+    .then(buf => { sampleCache.set(url, buf); return buf; })
+    .catch(() => { sampleCache.delete(url); return null; });
+  sampleCache.set(url, pr);
+  return pr;
+}
+export const sampleBuf = (url) => {
+  const b = sampleCache.get(url);
+  return b instanceof Promise ? null : b || null;
+};
+
+// one shot, trimmed and pitched. start/end are 0..1 of the buffer; semis is
+// pitch in semitones; the envelope keeps the trim points from clicking.
+export function playSample(url, at, { vel = 1, out = null, start = 0, end = 1, semis = 0, gain = 1 } = {}) {
+  if (!ctx) return;
+  const buf = sampleBuf(url);
+  if (!buf) { loadSample(url); return; }              // warms up for the next hit
+  const dest = (out || channel("drums")).input;
+  const rate = Math.pow(2, semis / 12);
+  const s = Math.max(0, Math.min(start, 0.98)) * buf.duration;
+  const e = Math.max(s + 0.01, Math.min(end, 1) * buf.duration);
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  src.playbackRate.value = rate;
+  const g = ctx.createGain();
+  const dur = (e - s) / rate;                          // real seconds at this pitch
+  const lvl = Math.max(0.05, Math.min(vel, 1.4)) * gain;
+  g.gain.setValueAtTime(0, at);
+  g.gain.linearRampToValueAtTime(lvl, at + 0.002);
+  g.gain.setValueAtTime(lvl, Math.max(at + 0.002, at + dur - 0.012));
+  g.gain.linearRampToValueAtTime(0, at + dur);         // land on silence, not a cliff
+  src.connect(g); g.connect(dest);
+  src.start(at, s);
+  src.stop(at + dur + 0.02);
+}
+
 export const DRUM_ROWS = [
   "kick", "sub",   "snare", "clap",
   "rim",  "perc",  "tomLo", "tomMid",

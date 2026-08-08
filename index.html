@@ -372,8 +372,31 @@
     <div class="pads-controls">
       <button class="pads-btn rec" id="pads-rec">● REC</button>
       <button class="pads-btn" id="pads-metro">METRO</button>
+      <button class="pads-btn" id="pads-mute">MUTE</button>
+    </div>
+    <div class="pads-controls">
       <button class="pads-btn" id="pads-undo">UNDO</button>
       <button class="pads-btn" id="pads-clear">CLEAR</button>
+      <button class="pads-btn danger" id="pads-clear-all">CLR ALL</button>
+    </div>
+  </div>
+
+  <!-- press-and-hold on a pad: dress it in a sample, then trim it -->
+  <div class="pads-shell sampler" id="sampler">
+    <div class="pads-head">
+      <span class="pads-title" id="sampler-title">KICK</span>
+      <span class="pads-midi" id="sampler-file">built-in</span>
+      <button class="x" id="sampler-close">×</button>
+    </div>
+    <div class="sampler-list" id="sampler-list"></div>
+    <canvas id="sampler-wave" width="480" height="64"></canvas>
+    <div class="sampler-row"><span>START</span><input type="range" id="smp-start" min="0" max="97" value="0"><b id="smp-start-v">0%</b></div>
+    <div class="sampler-row"><span>END</span><input type="range" id="smp-end" min="3" max="100" value="100"><b id="smp-end-v">100%</b></div>
+    <div class="sampler-row"><span>PITCH</span><input type="range" id="smp-pitch" min="-12" max="12" value="0"><b id="smp-pitch-v">0</b></div>
+    <div class="sampler-row"><span>VOL</span><input type="range" id="smp-gain" min="0" max="150" value="100"><b id="smp-gain-v">100%</b></div>
+    <div class="pads-controls">
+      <button class="pads-btn" id="smp-play">▶ PLAY</button>
+      <button class="pads-btn" id="smp-builtin">BUILT-IN</button>
     </div>
   </div>
 </div>

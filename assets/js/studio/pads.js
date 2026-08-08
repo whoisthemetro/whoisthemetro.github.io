@@ -26,7 +26,7 @@ const LABEL = {
 const $ = (id) => document.getElementById(id);
 
 export function setupPads({ act, state, rec, drumRows, stepCount, nPats, canPlay, onOpen, onClose, blocked,
-                            playhead, onStep, metroClick, curGrid }) {
+                            playhead, onStep, metroClick, curGrid, audio }) {
   const overlay = $("pads");
   const gridEl = $("pads-grid");
   const patsEl = $("pads-pats");
@@ -38,6 +38,7 @@ export function setupPads({ act, state, rec, drumRows, stepCount, nPats, canPlay
   // most likely wondering about
   let focusRow = 0;
   let metroOn = false;
+  let holdTimer = null;
 
   // ---- the 4×4, built bottom row first so pad 1 lands bottom-left ----
   for (let r = ROWS - 1; r >= 0; r--) {
@@ -46,8 +47,17 @@ export function setupPads({ act, state, rec, drumRows, stepCount, nPats, canPlay
       const b = document.createElement("button");
       b.textContent = LABEL[drumRows[i]] || drumRows[i] || "";
       b.dataset.pad = String(i);
-      // pointerdown, not click: a pad has to fire the instant you touch it
-      b.addEventListener("pointerdown", (e) => { e.preventDefault(); hit(i, 1); });
+      // pointerdown, not click: a pad has to fire the instant you touch it.
+      // hold it instead and the pad opens its sample drawer.
+      b.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        hit(i, 1);
+        clearTimeout(holdTimer);
+        holdTimer = setTimeout(() => openSampler(i), 520);
+      });
+      for (const ev of ["pointerup", "pointerleave", "pointercancel"]) {
+        b.addEventListener(ev, () => clearTimeout(holdTimer));
+      }
       gridEl.appendChild(b);
       padEls[i] = b;
     }
@@ -117,14 +127,24 @@ export function setupPads({ act, state, rec, drumRows, stepCount, nPats, canPlay
     $("pads-stepnum").textContent = String(stepCount());
     $("pads-rec").classList.toggle("on", rec.on());
     $("pads-metro").classList.toggle("on", metroOn);
+    $("pads-mute").classList.toggle("on", !!state.dev.drums.mute);
+    $("pads-mute").classList.toggle("mute", !!state.dev.drums.mute);
     const cur = (state.xport && state.xport.pat) || 0;
-    patEls.forEach((b, i) => b.classList.toggle("on", i === cur));
+    const queued = state.xport ? state.xport.qpat : -1;
+    patEls.forEach((b, i) => {
+      b.classList.toggle("on", i === cur);
+      // a queued switch blinks until the bar turns over and it lands
+      b.classList.toggle("queued", queued >= 0 && i === queued);
+    });
     paintSeq();
   }
 
   $("pads-rec").addEventListener("click", () => { rec.toggle(); paint(); });
   $("pads-undo").addEventListener("click", () => { act.undo(); paint(); });
-  $("pads-clear").addEventListener("click", () => { act.clearDrums(); paint(); });
+  // CLEAR is scoped to the voice you're working on; CLR ALL takes the pattern
+  $("pads-clear").addEventListener("click", () => { act.clearRow(focusRow); paint(); });
+  $("pads-clear-all").addEventListener("click", () => { act.clearDrums(); paint(); });
+  $("pads-mute").addEventListener("click", () => { act.toggleMute("drums"); paint(); });
   $("pads-step-down").addEventListener("click", () => { act.setSteps(stepCount() - 1); paint(); });
   $("pads-step-up").addEventListener("click", () => { act.setSteps(stepCount() + 1); paint(); });
   $("pads-metro").addEventListener("click", () => { metroOn = !metroOn; paint(); });
@@ -137,6 +157,128 @@ export function setupPads({ act, state, rec, drumRows, stepCount, nPats, canPlay
       if (pos % 4 === 0) metroClick(at, pos === 0);   // the downbeat gets the accent
     });
   }
+
+  /* ---------- the sampler: a long press opens a pad's sample drawer ---------- */
+
+  const sampler = $("sampler");
+  let smpRow = 0;
+  const patchOf = (row) => (state.dev.drums.kit && state.dev.drums.kit[row]) || null;
+
+  // the library list is built once — the packs don't change mid-session
+  const listEl = $("sampler-list");
+  const listBtns = [];
+  if (listEl && audio) {
+    for (const pack of audio.SAMPLE_PACKS) {
+      pack.files.forEach((f, i) => {
+        const b = document.createElement("button");
+        b.textContent = `${pack.name} ${String(i + 1).padStart(2, "0")}`;
+        b.dataset.url = pack.base + f;
+        b.addEventListener("click", () => pickSample(b.dataset.url));
+        listEl.appendChild(b);
+        listBtns.push(b);
+      });
+    }
+  }
+
+  function pickSample(url) {
+    const old = patchOf(smpRow) || {};
+    act.setPad(smpRow, { url, start: old.start || 0, end: old.end == null ? 1 : old.end,
+                         semis: old.semis || 0, gain: old.gain == null ? 1 : old.gain });
+    audio.loadSample(url).then(() => { drawWave(); preview(); });
+    paintSampler();
+  }
+
+  function preview() {
+    const p = patchOf(smpRow);
+    if (p && p.url) audio.playSample(p.url, audio.audioTime() + 0.01,
+      { out: audio.channel("drums"), start: p.start, end: p.end, semis: p.semis, gain: p.gain });
+    else act.trigger("drums", smpRow, { record: false });
+  }
+
+  // sliders write the patch live but only commit (version bump + wire) on
+  // release — dragging shouldn't broadcast sixty edits a second
+  function bindSlider(id, valId, read, write, show) {
+    const el = $(id);
+    el.addEventListener("input", () => {
+      const p = patchOf(smpRow);
+      if (p) { write(p, +el.value); $(valId).textContent = show(+el.value); drawWave(); }
+    });
+    el.addEventListener("change", () => {
+      const p = patchOf(smpRow);
+      if (!p) return;
+      act.setPad(smpRow, p);
+      preview();
+    });
+    return { el, read, show, valId };
+  }
+  const sliders = [
+    bindSlider("smp-start", "smp-start-v", p => Math.round((p.start || 0) * 100),
+      (p, v) => { p.start = Math.min(v, (p.end == null ? 100 : p.end * 100) - 3) / 100; }, v => v + "%"),
+    bindSlider("smp-end", "smp-end-v", p => Math.round((p.end == null ? 1 : p.end) * 100),
+      (p, v) => { p.end = Math.max(v, (p.start || 0) * 100 + 3) / 100; }, v => v + "%"),
+    bindSlider("smp-pitch", "smp-pitch-v", p => p.semis || 0,
+      (p, v) => { p.semis = v; }, v => (v > 0 ? "+" : "") + v),
+    bindSlider("smp-gain", "smp-gain-v", p => Math.round((p.gain == null ? 1 : p.gain) * 100),
+      (p, v) => { p.gain = v / 100; }, v => v + "%"),
+  ];
+
+  function drawWave() {
+    const cv = $("sampler-wave");
+    if (!cv) return;
+    const c = cv.getContext("2d");
+    c.clearRect(0, 0, cv.width, cv.height);
+    const p = patchOf(smpRow);
+    const buf = p && p.url && audio ? audio.sampleBuf(p.url) : null;
+    if (!buf) {
+      c.fillStyle = "#3a4450"; c.font = "12px ui-monospace, monospace"; c.textAlign = "center";
+      c.fillText(p && p.url ? "loading…" : "built-in voice — pick a sample below", cv.width / 2, cv.height / 2 + 4);
+      return;
+    }
+    const data = buf.getChannelData(0);
+    const mid = cv.height / 2, stride = Math.max(1, Math.floor(data.length / cv.width));
+    c.strokeStyle = "#54708a"; c.beginPath();
+    for (let x = 0; x < cv.width; x++) {
+      let peak = 0;
+      const base = x * stride;
+      for (let k = 0; k < stride; k += 8) peak = Math.max(peak, Math.abs(data[base + k] || 0));
+      c.moveTo(x + 0.5, mid - peak * mid * 0.92);
+      c.lineTo(x + 0.5, mid + peak * mid * 0.92);
+    }
+    c.stroke();
+    // dim everything outside the trim, and mark the edges
+    const sx = (p.start || 0) * cv.width, ex = (p.end == null ? 1 : p.end) * cv.width;
+    c.fillStyle = "rgba(10,13,16,0.75)";
+    c.fillRect(0, 0, sx, cv.height); c.fillRect(ex, 0, cv.width - ex, cv.height);
+    c.fillStyle = "#ffb347";
+    c.fillRect(sx, 0, 2, cv.height); c.fillRect(ex - 2, 0, 2, cv.height);
+  }
+
+  function paintSampler() {
+    $("sampler-title").textContent = LABEL[drumRows[smpRow]] || "";
+    const p = patchOf(smpRow);
+    const file = p && p.url ? p.url.split("/").pop() : "built-in";
+    $("sampler-file").textContent = file;
+    listBtns.forEach(b => b.classList.toggle("on", !!p && b.dataset.url === p.url));
+    for (const sl of sliders) {
+      const v = p ? sl.read(p) : +sl.el.getAttribute("value");
+      sl.el.value = v;
+      $(sl.valId).textContent = sl.show(v);
+    }
+    drawWave();
+  }
+
+  function openSampler(row) {
+    smpRow = row;
+    overlay.classList.add("sampling");
+    paintSampler();
+    const on = listBtns.find(b => b.classList.contains("on"));
+    if (on) on.scrollIntoView({ block: "center" });
+  }
+  function closeSampler() { overlay.classList.remove("sampling"); }
+
+  $("sampler-close").addEventListener("click", closeSampler);
+  $("smp-play").addEventListener("click", preview);
+  $("smp-builtin").addEventListener("click", () => { act.setPad(smpRow, null); paintSampler(); preview(); });
 
   /* ---------- a real controller ---------- */
 
@@ -198,6 +340,7 @@ export function setupPads({ act, state, rec, drumRows, stepCount, nPats, canPlay
   }
   function close() {
     overlay.classList.remove("show");
+    closeSampler();
     clearInterval(painting); painting = null;
     onClose && onClose();
   }

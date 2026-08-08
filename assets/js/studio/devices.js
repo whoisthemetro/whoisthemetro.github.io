@@ -74,9 +74,15 @@ function pats(rows, count = N_PATS) {
 }
 
 export const state = {
-  xport: { epoch: 0, bpm: 112, playing: true, swing: 0.12, steps: STEPS, pat: 0, v: 0, by: "" },
+  // qpat/qat: a pattern change waits for the top of the bar, exactly like the
+  // synth launcher — qat names the absolute step it lands on, so every
+  // browser flips on the same downbeat no matter when the edit arrived.
+  xport: { epoch: 0, bpm: 112, playing: true, swing: 0.12, steps: STEPS, pat: 0,
+           qpat: -1, qat: -1, v: 0, by: "" },
   dev: {
-    drums: { v: 0, by: "", pats: pats(A.DRUM_ROWS.length), mute: false },
+    // kit: per-row sample overrides — { row: {url, start, end, semis, gain} }.
+    // shared, because a kit half the room can't hear isn't a kit.
+    drums: { v: 0, by: "", pats: pats(A.DRUM_ROWS.length), mute: false, kit: {} },
     // one instrument with eight patterns: the launcher picks which plays,
     // the editor writes whichever you've opened. delay and reverb are ITS
     // sends now — they were on the master, where they belonged to nothing.
@@ -97,6 +103,21 @@ export function bindDevices({ uid, onLocalEdit, onStateChange }) {
   myUid = uid;
   push = onLocalEdit || (() => {});
   onChange = onStateChange || (() => {});
+}
+
+// what one drum row sounds like right now: the sample it's wearing, or the
+// synthesised voice it was born with. every playback path goes through here.
+export function playDrumRow(row, at, vel = 1) {
+  const patch = state.dev.drums.kit && state.dev.drums.kit[row];
+  if (patch && patch.url) {
+    A.playSample(patch.url, at, {
+      vel, out: A.channel("drums"),
+      start: patch.start || 0, end: patch.end == null ? 1 : patch.end,
+      semis: patch.semis || 0, gain: patch.gain == null ? 1 : patch.gain,
+    });
+  } else {
+    A.drum(A.DRUM_ROWS[row], at, vel, A.channel("drums"));
+  }
 }
 
 // what note a sequencer row actually plays, given the current key and octave.
@@ -173,6 +194,18 @@ export const act = {
       for (const row of g) row.fill(0);
     });
   },
+  // wipe one voice's lane and leave the rest of the pattern standing
+  clearRow(row) {
+    pushUndo();
+    edit("drums", () => { curGrid("drums")[row].fill(0); });
+  },
+  // dress a pad in a sample (or hand it back its built-in voice with null)
+  setPad(row, patch) {
+    edit("drums", d => {
+      if (!d.kit) d.kit = {};
+      if (patch) d.kit[row] = patch; else delete d.kit[row];
+    });
+  },
   toggleStep(id, row, step) {
     edit(id, () => { const g = editGrid(id); g[row][step] = g[row][step] ? 0 : 1; });
   },
@@ -183,16 +216,29 @@ export const act = {
     edit("xport", d => { d.steps = v; });
     resetSchedule();
   },
+  // a pattern change lands on the next downbeat, not mid-bar. we name the
+  // absolute step so the whole room flips together; if the transport is
+  // stopped there's no bar to wait for, so it flips now.
   setPattern(i) {
     const v = Math.max(0, Math.min(N_PATS - 1, Math.round(i)));
-    edit("xport", d => { d.pat = v; });
-    onChange("*");
+    const x = state.xport;
+    if (v === x.pat && x.qpat < 0) return;
+    if (!x.playing || !x.epoch) {
+      edit("xport", d => { d.pat = v; d.qpat = -1; d.qat = -1; });
+      onChange("*");
+      return;
+    }
+    const stepMs = 60000 / x.bpm / 4;
+    const cur = Math.floor((clock.now() - x.epoch) / stepMs);
+    const n = stepCount();
+    const nextBar = (Math.floor(cur / n) + 1) * n;
+    edit("xport", d => { d.qpat = v; d.qat = nextBar; });
   },
   // a pad struck by hand. always audible immediately; if the player has
   // record armed it also lands on the nearest step, quantised, so you can
   // tap a pattern in rather than drawing it.
   trigger(id, row, { record = recArmed, vel = 1 } = {}) {
-    if (id === "drums") A.drum(A.DRUM_ROWS[row], A.audioTime() + 0.001, vel, A.channel("drums"));
+    if (id === "drums") playDrumRow(row, A.audioTime() + 0.001, vel);
     else if (id === "synth") {
       const degree = (editGrid("synth").length - 1) - row;
       const d = state.dev.synth;
@@ -317,6 +363,16 @@ function fireStep(abs, at) {
   const pos = ((abs % n) + n) % n;
   const mx = state.dev.mixer;
 
+  // ---- a queued drum pattern commits at the top of its named bar ----
+  // no edit(), no version bump: every browser holds the same qat and runs the
+  // same scheduler, so they all make this exact local change on the same step.
+  if (x.qpat >= 0 && x.qat >= 0 && abs >= x.qat) {
+    x.pat = x.qpat;
+    x.qpat = -1;
+    x.qat = -1;
+    onChange("*");
+  }
+
   // ---- a queued pattern commits on its named step, wherever we are ----
   const sy = state.dev.synth;
   if (sy.queued >= 0 && sy.atStep >= 0 && abs >= sy.atStep) {
@@ -331,7 +387,7 @@ function fireStep(abs, at) {
   if (!dr.mute && !mx.ch.drums.mute) {
     const dg = curGrid("drums");
     for (let r = 0; r < A.DRUM_ROWS.length; r++) {
-      if (dg[r][pos]) A.drum(A.DRUM_ROWS[r], at, 1, A.channel("drums"));
+      if (dg[r][pos]) playDrumRow(r, at, 1);
     }
   }
 
