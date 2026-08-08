@@ -777,6 +777,7 @@ body.in-club #flight-strip { display: none; }
   padding: max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-left))
            max(10px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-right));
 }
+#pads { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 #pads .pads-shell {
   /* hug the controls rather than stretching to the full screen — but stay
      shrinkable, so a short screen squeezes the pad block instead of
@@ -796,7 +797,8 @@ body.in-club #flight-strip { display: none; }
 .pads-pats button {
   flex: 1; padding: 8px 0; border-radius: 7px; cursor: pointer;
   background: #141a20; border: 1px solid #232a30; color: var(--dim);
-  font: 700 13px/1 inherit; letter-spacing: 0.1em;
+  font: 700 13px/1 "SF Mono", ui-monospace, Menlo, Consolas, monospace; letter-spacing: 0.1em;
+  appearance: none; -webkit-appearance: none; margin: 0;
 }
 .pads-pats button.on { background: var(--amber); border-color: var(--amber); color: #10140c; }
 .pads-steps { display: flex; align-items: center; gap: 5px; }
@@ -827,7 +829,8 @@ body.in-club #flight-strip { display: none; }
   border-radius: 12px; cursor: pointer; min-height: 0;
   background: linear-gradient(180deg, #222b33, #161d23);
   border: 1px solid #2c353d; color: #cfd6dd;
-  font: 700 10px/1.2 inherit; letter-spacing: 0.03em;
+  font: 700 10px/1.2 "SF Mono", ui-monospace, Menlo, Consolas, monospace; letter-spacing: 0.03em;
+  appearance: none; -webkit-appearance: none; margin: 0;
   display: flex; align-items: flex-end; justify-content: center; padding-bottom: 6px;
   transition: background .06s, box-shadow .06s, transform .06s;
   -webkit-tap-highlight-color: transparent; touch-action: manipulation;
@@ -841,15 +844,21 @@ body.in-club #flight-strip { display: none; }
 .pads-btn {
   /* min-width: 0 keeps long labels (CLR ALL) from stretching their button
      wider than their row-mates — every button in a row splits it evenly */
-  flex: 1; min-width: 0; padding: 12px 0; border-radius: 9px; cursor: pointer; white-space: nowrap;
+  /* every metric is EXPLICIT: iOS Safari restyles buttons it thinks are
+     unstyled, and its text-inflation resizes labels unevenly — a fixed
+     height and a real font family leave it nothing to decide. */
+  flex: 1 1 0; min-width: 0; height: 46px; padding: 0; margin: 0;
+  border-radius: 9px; cursor: pointer; white-space: nowrap;
+  appearance: none; -webkit-appearance: none;
   background: #141a20; border: 1px solid #2c353d; color: var(--ink);
-  font: 700 12px/1 inherit; letter-spacing: 0.06em;
+  font: 700 12px/1 "SF Mono", ui-monospace, Menlo, Consolas, monospace; letter-spacing: 0.06em;
+  -webkit-text-size-adjust: 100%;
   -webkit-tap-highlight-color: transparent; touch-action: manipulation;
 }
 .pads-btn:active { background: #1d252c; }
 .pads-btn.rec.on { background: var(--neon); border-color: var(--neon); color: #fff; }
 .pads-btn.on { background: var(--amber); border-color: var(--amber); color: #10140c; }
-.pads-steps .pads-btn { flex: none; width: 36px; padding: 8px 0; }
+.pads-steps .pads-btn { flex: none; width: 36px; height: 38px; }
 
 /* the floating way in, while you're standing in the studio */
 #pads-btn {
@@ -881,7 +890,8 @@ body.in-club #flight-strip { display: none; }
 .sampler-list button {
   display: block; width: 100%; text-align: left; padding: 10px 12px;
   background: none; border: none; border-bottom: 1px solid #161c22;
-  color: var(--dim); font: 500 12px/1 inherit; letter-spacing: 0.04em; cursor: pointer;
+  color: var(--dim); font: 500 12px/1 "SF Mono", ui-monospace, Menlo, Consolas, monospace; letter-spacing: 0.04em; cursor: pointer;
+  appearance: none; -webkit-appearance: none; margin: 0;
 }
 .sampler-list button.on { color: #10140c; background: var(--amber); }
 #sampler-wave {
