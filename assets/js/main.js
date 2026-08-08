@@ -666,6 +666,9 @@ const adminMode = /(^|[#,])admin\b/i.test(location.hash);
 // /venue → /#venue : land in the 3D world but walk straight into THE VENUE
 // (the standalone flat watch page is gone). honoured once, on first entry.
 const venueDeepLink = /(^|[#,])venue\b/i.test(location.hash);
+// /studio → /#studio : same idea for the sequencer room, so there's a link
+// you can hand a friend instead of teaching them the drum fill
+const studioDeepLink = /(^|[#,])studio\b/i.test(location.hash);
 
 function show(el) { el.classList.add("show"); }
 function hide(el) { el.classList.remove("show"); }
@@ -723,8 +726,9 @@ function enterRoom() {
     world.addAccessory(acc.id);
     if (isNew) toast(`🔓 the room grew something: ${acc.title}`);
   });
-  // arrived via /venue — skip the bedroom and ride straight into the club
+  // arrived via /venue or /studio — skip the bedroom and land in that room
   if (venueDeepLink) tryClub();
+  else if (studioDeepLink) setupStudio();
 }
 $("#enter-btn").addEventListener("click", enterRoom);
 // the door sign: a live shader masked to the hand-drawn letters
