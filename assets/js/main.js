@@ -38,11 +38,12 @@ import {
   state as sState, act as sAct, bindDevices as sBind, seedTransport as sSeed,
   mergeRemote as sMerge, snapshot as sSnap, adoptSnapshot as sAdopt,
   startScheduler as sStartScheduler, playhead as sPlayhead, applyMixer as sApplyMixer,
-  stepCount as sStepCount, rec as sRec, MAX_STEPS as S_MAX_STEPS,
+  stepCount as sStepCount, rec as sRec, MAX_STEPS as S_MAX_STEPS, N_PATS as S_NPATS,
 } from "./studio/devices.js";
 import { hitPanel as sHitPanel } from "./studio/panels.js";
 import { clock as sClock } from "./studio/clock.js";
 import { net as sNet } from "./studio/net.js";
+import { setupPads } from "./studio/pads.js";
 import {
   PAPERS, IS_TOUCH, safeUrl, hostOf, timeAgo, toast as domToast,
   getIdentity, saveIdentity, shrinkImage,
@@ -2086,6 +2087,21 @@ async function bootStudio() {
   }, 1300);
 }
 
+// the MPC overlay — built once, shown only while you're in the studio
+let pads = null;
+function ensurePads() {
+  if (pads) return pads;
+  pads = setupPads({
+    act: sAct, state: sState, rec: sRec,
+    drumRows: SA.DRUM_ROWS, stepCount: sStepCount, nPats: S_NPATS,
+    canPlay: () => inStudio,
+    blocked: () => vrBlocked("the pads need a flat screen"),
+    onOpen: () => { modalOpen = true; controls.unlock(); },
+    onClose: () => { modalOpen = false; if (entered) safeLock(); },
+  });
+  return pads;
+}
+
 function setupStudio() {
   inStudio = true;
   world.studio.root.visible = true;
@@ -2097,6 +2113,7 @@ function setupStudio() {
   bootStudio();
   try { SA.setFx({ masterGain: 0.85 }); } catch (e) {}
   store.logEvent("studio");
+  ensurePads().showButton(true);
   toast("THE STUDIO — everyone's on the same bar");
   hide(paused);
   if (entered) safeLock();
@@ -2104,6 +2121,7 @@ function setupStudio() {
 
 function leaveStudio() {
   inStudio = false;
+  if (pads) { pads.close(); pads.showButton(false); }
   world.studio.root.visible = false;
   try { SA.setFx({ masterGain: 0 }); } catch (e) {}   // the loop keeps running, you just can't hear it
 }

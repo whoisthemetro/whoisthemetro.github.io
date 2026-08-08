@@ -223,7 +223,12 @@ function nextPerc() {
   return percBufs[percLastIdx];
 }
 
-export const DRUM_ROWS = ["kick", "snare", "perc", "hat", "openhat", "tomLo", "tomHi", "rim"];
+export const DRUM_ROWS = [
+  "kick", "sub",   "snare", "clap",
+  "rim",  "perc",  "tomLo", "tomMid",
+  "tomHi", "hat",  "openhat", "ride",
+  "crash", "cowbell", "shaker", "tamb",
+];
 
 export function drum(name, at, vel = 1, out = null) {
   if (!ctx) return;
@@ -292,14 +297,94 @@ export function drum(name, at, vel = 1, out = null) {
     n.connect(f); f.connect(g); g.connect(dest);
     n.start(at); n.stop(at + (open ? 0.42 : 0.09));
 
-  } else if (name === "tomLo" || name === "tomHi") {
-    const hi = name === "tomHi";
+  } else if (name === "tomLo" || name === "tomMid" || name === "tomHi") {
+    const f0 = name === "tomHi" ? 260 : name === "tomMid" ? 205 : 160;
     const o = ctx.createOscillator(); o.type = "sine"; const g = ctx.createGain();
-    const f0 = hi ? 260 : 160;
     o.frequency.setValueAtTime(f0, at);
     o.frequency.exponentialRampToValueAtTime(f0 * 0.62, at + 0.16);
     env(g, at, 0.5 * v, 0.002, 0.26);
     o.connect(g); g.connect(dest); o.start(at); o.stop(at + 0.4);
+
+  } else if (name === "sub") {
+    // the kick's deeper cousin: no click, just weight
+    const o = ctx.createOscillator(); o.type = "sine"; const g = ctx.createGain();
+    o.frequency.setValueAtTime(78, at);
+    o.frequency.exponentialRampToValueAtTime(33, at + 0.20);
+    env(g, at, 1.0 * v, 0.004, 0.44);
+    o.connect(g); g.connect(dest); o.start(at); o.stop(at + 0.55);
+
+  } else if (name === "clap") {
+    // three quick bursts and a tail — the classic, and what PERC used to be
+    [0, 0.009, 0.019].forEach((off, i) => {
+      const n = noise(); const f = ctx.createBiquadFilter(); const g = ctx.createGain();
+      f.type = "bandpass"; f.frequency.value = 1150; f.Q.value = 1.1;
+      env(g, at + off, (0.34 - i * 0.06) * v, 0.001, 0.035);
+      n.connect(f); f.connect(g); g.connect(dest);
+      n.start(at + off); n.stop(at + off + 0.07);
+    });
+    const n = noise(); const f = ctx.createBiquadFilter(); const g = ctx.createGain();
+    f.type = "bandpass"; f.frequency.value = 1050; f.Q.value = 0.8;
+    env(g, at + 0.028, 0.26 * v, 0.001, 0.14);
+    n.connect(f); f.connect(g); g.connect(dest);
+    n.start(at + 0.028); n.stop(at + 0.22);
+
+  } else if (name === "ride" || name === "crash") {
+    // inharmonic squares behind a highpass: only their ringing tops get
+    // through, which is what makes a cymbal sing instead of hiss
+    const crash = name === "crash";
+    const mix = ctx.createGain(); mix.gain.value = 0.13;
+    const f = ctx.createBiquadFilter();
+    f.type = "highpass"; f.frequency.value = crash ? 5200 : 7400; f.Q.value = 0.4;
+    const g = ctx.createGain();
+    mix.connect(f); f.connect(g); g.connect(dest);
+    for (const fr of [523, 681, 837, 1047, 1392, 1875]) {
+      const o = ctx.createOscillator();
+      o.type = "square"; o.frequency.value = fr * (crash ? 1 : 1.4);
+      o.connect(mix); o.start(at); o.stop(at + (crash ? 1.5 : 0.85));
+    }
+    env(g, at, (crash ? 0.30 : 0.20) * v, 0.002, crash ? 1.3 : 0.7);
+    if (crash) {
+      const n = noise(); const nf = ctx.createBiquadFilter(); const ng = ctx.createGain();
+      nf.type = "highpass"; nf.frequency.value = 6000;
+      env(ng, at, 0.20 * v, 0.001, 0.9);
+      n.connect(nf); nf.connect(ng); ng.connect(dest);
+      n.start(at); n.stop(at + 1.2);
+    }
+
+  } else if (name === "cowbell") {
+    // two detuned squares through a bandpass — the 808's whole trick
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass"; bp.frequency.value = 2640; bp.Q.value = 2.2;
+    const g = ctx.createGain();
+    bp.connect(g); g.connect(dest);
+    for (const fr of [540, 800]) {
+      const o = ctx.createOscillator(); o.type = "square"; o.frequency.value = fr;
+      o.connect(bp); o.start(at); o.stop(at + 0.32);
+    }
+    env(g, at, 0.30 * v, 0.002, 0.24);
+
+  } else if (name === "shaker") {
+    const n = noise(); const f = ctx.createBiquadFilter(); const g = ctx.createGain();
+    f.type = "highpass"; f.frequency.value = 6200;
+    env(g, at, 0.20 * v, 0.006, 0.075);   // a soft front end — it's a rattle, not a tick
+    n.connect(f); f.connect(g); g.connect(dest);
+    n.start(at); n.stop(at + 0.14);
+
+  } else if (name === "tamb") {
+    const n = noise(); const f = ctx.createBiquadFilter(); const g = ctx.createGain();
+    f.type = "bandpass"; f.frequency.value = 8200; f.Q.value = 1.6;
+    env(g, at, 0.26 * v, 0.001, 0.13);
+    n.connect(f); f.connect(g); g.connect(dest);
+    n.start(at); n.stop(at + 0.22);
+    const mix = ctx.createGain(); mix.gain.value = 0.06;
+    const hf = ctx.createBiquadFilter(); hf.type = "highpass"; hf.frequency.value = 7000;
+    const hg = ctx.createGain();
+    mix.connect(hf); hf.connect(hg); hg.connect(dest);
+    for (const fr of [1180, 1490]) {
+      const o = ctx.createOscillator(); o.type = "square"; o.frequency.value = fr;
+      o.connect(mix); o.start(at); o.stop(at + 0.16);
+    }
+    env(hg, at, 0.18 * v, 0.001, 0.12);
 
   } else if (name === "rim") {
     const n = noise(); const f = ctx.createBiquadFilter(); const g = ctx.createGain();

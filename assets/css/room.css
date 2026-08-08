@@ -766,3 +766,67 @@ body.in-club #flight-strip { display: none; }
   cursor: pointer; text-shadow: 0 0 8px rgba(255, 179, 71, 0.4);
 }
 #vr-btn:hover { border-color: var(--amber); }
+
+/* ---- the pads: an MPC laid out for a phone held upright ---- */
+#pads .pads-shell {
+  width: min(96vw, 520px); height: min(94vh, 900px);
+  display: flex; flex-direction: column; gap: 10px;
+  background: #0a0d10; border: 1px solid #232a30; border-radius: 14px;
+  padding: 14px; font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+.pads-head { display: flex; align-items: center; gap: 10px; }
+.pads-title { color: var(--amber); font-size: 13px; letter-spacing: 0.18em; font-weight: 700; }
+.pads-midi { flex: 1; color: var(--dim); font-size: 11px; letter-spacing: 0.06em; }
+.pads-midi.live { color: #54e08a; }
+.pads-row { display: flex; gap: 10px; align-items: center; }
+.pads-pats { display: flex; gap: 6px; flex: 1; }
+.pads-pats button {
+  flex: 1; padding: 9px 0; border-radius: 7px; cursor: pointer;
+  background: #141a20; border: 1px solid #232a30; color: var(--dim);
+  font: 700 13px/1 inherit; letter-spacing: 0.1em;
+}
+.pads-pats button.on { background: var(--amber); border-color: var(--amber); color: #10140c; }
+.pads-steps { display: flex; align-items: center; gap: 6px; }
+.pads-stepnum { color: var(--ink); font-size: 15px; min-width: 26px; text-align: center; }
+
+/* the 4×4 itself — square pads, thumb-sized, MPC order (pad 1 bottom-left) */
+.pads-grid {
+  flex: 1; display: grid; grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(4, 1fr);
+  gap: 8px; min-height: 0;
+}
+.pads-grid button {
+  border-radius: 12px; cursor: pointer; position: relative;
+  background: linear-gradient(180deg, #222b33, #161d23);
+  border: 1px solid #2c353d; color: #cfd6dd;
+  font: 700 11px/1.25 inherit; letter-spacing: 0.04em;
+  display: flex; align-items: flex-end; justify-content: center; padding-bottom: 8px;
+  transition: background .06s, box-shadow .06s, transform .06s;
+  -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+}
+.pads-grid button.lit {
+  background: linear-gradient(180deg, #ffd08a, #ffb347);
+  color: #14100a; transform: translateY(1px);
+  box-shadow: 0 0 22px rgba(255, 179, 71, 0.6);
+}
+.pads-controls { display: flex; gap: 8px; }
+.pads-btn {
+  flex: 1; padding: 13px 0; border-radius: 9px; cursor: pointer;
+  background: #141a20; border: 1px solid #2c353d; color: var(--ink);
+  font: 700 13px/1 inherit; letter-spacing: 0.1em;
+  -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+}
+.pads-btn:active { background: #1d252c; }
+.pads-btn.rec.on { background: var(--neon); border-color: var(--neon); color: #fff; }
+.pads-steps .pads-btn { flex: none; width: 40px; padding: 9px 0; }
+
+/* the floating way in, while you're standing in the studio */
+#pads-btn {
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: 18px; z-index: 30;
+  font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+  font-size: 12px; letter-spacing: 0.1em; font-weight: 600;
+  background: rgba(10, 13, 16, 0.85); color: var(--amber);
+  border: 1px solid #3a3f38; border-radius: 6px; padding: 10px 18px;
+  cursor: pointer; display: none;
+}
+#pads-btn.show { display: block; }
+#pads-btn:hover { border-color: var(--amber); }

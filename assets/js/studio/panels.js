@@ -45,6 +45,12 @@ const C = {
 // "launch" fires them. They share one bank of eight and one voice.
 const ACCENT = { drums: C.hot, synth: C.cool, launch: C.mint, mixer: C.amber };
 const TITLE = { drums: "DRUM MACHINE", synth: "SYNTH", launch: "PATTERNS", mixer: "MASTER" };
+// sixteen voices in a column that also has to fit a play pad: the long
+// names get clipped, so they get short ones here
+const ROW_LABEL = {
+  openhat: "OPEN", cowbell: "BELL", shaker: "SHKR",
+  tomLo: "TOM L", tomMid: "TOM M", tomHi: "TOM H",
+};
 // the launcher's tiles are named so the eight aren't interchangeable
 export const PAT_LABELS = ["ROOT", "WALK", "PUSH", "DRIFT", "CHUG", "LIFT", "HOLLOW", "RUN"];
 // a panel kind is a FACE; two of them belong to the same instrument, so
@@ -553,7 +559,7 @@ export function drawPanel(kind, g, playStep) {
   g.fillRect(0, 0, PANEL_W, PANEL_H);
   if (kind === "drums") {
     drawHead(g, "drums");
-    drawGrid(g, "drums", DRUM_ROWS.length, DRUM_ROWS.map(n => n.toUpperCase()), playStep);
+    drawGrid(g, "drums", DRUM_ROWS.length, DRUM_ROWS.map(n => ROW_LABEL[n] || n.toUpperCase()), playStep);
   } else if (kind === "synth") {
     const a = state.dev.synth;
     drawHead(g, "synth", `${PAT_LABELS[a.sel] || ""} · ${VOICE_LABEL[a.voice] || ""}`);

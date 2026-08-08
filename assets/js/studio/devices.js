@@ -107,24 +107,6 @@ export function arpMidi(degree) {
   return A.degreeToMidi(degree, a.root + (a.oct || 0) * 12, a.scale);
 }
 
-/* ---------- the synth's eight patterns ---------- */
-
-// eight starter loops, so the room is already playing when you walk in and
-// nobody has to stare at an empty grid wondering what this thing does.
-// written as scale degrees (null = rest) and painted into grids on seed, so
-// they're editable from the moment you arrive rather than being fixed clips.
-const _ = null;
-const STARTER_PATS = [
-  { name: "ROOT",   notes: [0,_,_,_, 0,_,_,_, 0,_,_,_, 0,_,_,_] },
-  { name: "WALK",   notes: [0,_,2,_, 4,_,2,_, 3,_,1,_, 0,_,_,_] },
-  { name: "PUSH",   notes: [0,0,_,0, _,0,_,_, 3,_,3,_, 2,_,_,_] },
-  { name: "DRIFT",  notes: [7,_,_,5, _,_,4,_, _,2,_,_, 0,_,_,_] },
-  { name: "CHUG",   notes: [0,_,0,0, _,0,0,_, 0,_,0,0, _,0,_,0] },
-  { name: "LIFT",   notes: [0,_,4,_, 7,_,4,_, 9,_,7,_, 4,_,2,_] },
-  { name: "HOLLOW", notes: [_,_,0,_, _,_,_,_, _,_,5,_, _,_,_,_] },
-  { name: "RUN",    notes: [0,2,3,5, 7,5,3,2, 0,2,3,5, 7,9,10,7] },
-];
-
 /* ---------- a beat to start on ---------- */
 
 // only used when we're the first one here — otherwise the room's transport
@@ -136,24 +118,9 @@ export function seedTransport() {
   state.xport.v = 1;
   state.xport.by = myUid;
 
-  // and a starting groove, so the door opens onto music
-  const d = curGrid("drums");
-  const R = (n) => A.DRUM_ROWS.indexOf(n);
-  [0, 8].forEach(i => d[R("kick")][i] = 1);
-  [4, 12].forEach(i => d[R("snare")][i] = 1);
-  [0, 2, 4, 6, 8, 10, 12, 14].forEach(i => d[R("hat")][i] = 1);
+  // no starting groove and no starter loops: the room opens on silence and
+  // the first thing anyone hears is something they played.
   state.dev.drums.v = 1; state.dev.drums.by = myUid;
-
-  // paint the starter loops into the synth's pattern grids. the grid runs
-  // low notes at the bottom, so degree d lives on row (rows-1-d).
-  STARTER_PATS.forEach((c, i) => {
-    const g = state.dev.synth.pats[i];
-    c.notes.forEach((deg, st) => {
-      if (deg == null) return;
-      const d = Math.max(0, Math.min(g.length - 1, deg));
-      g[(g.length - 1) - d][st] = 1;
-    });
-  });
   state.dev.synth.active = 0;
   state.dev.synth.sel = 0;
   state.dev.synth.v = 1; state.dev.synth.by = myUid;
@@ -180,7 +147,32 @@ export const rec = {
   toggle() { recArmed = !recArmed; onChange("drums"); return recArmed; },
 };
 
+// Undo is local and shallow on purpose: it remembers the drum grids only,
+// which is what hands actually ruin. Anything the room does over the wire
+// lands on top of it — this is a "take that back" button, not a timeline.
+const undoStack = [];
+function pushUndo() {
+  undoStack.push(JSON.stringify(state.dev.drums.pats));
+  if (undoStack.length > 40) undoStack.shift();
+}
+
 export const act = {
+  pushUndo,
+  undo() {
+    const prev = undoStack.pop();
+    if (!prev) return false;
+    edit("drums", d => { d.pats = JSON.parse(prev); });
+    return true;
+  },
+  canUndo: () => undoStack.length > 0,
+  // wipe the pattern you're looking at, and only that one
+  clearDrums() {
+    pushUndo();
+    edit("drums", () => {
+      const g = curGrid("drums");
+      for (const row of g) row.fill(0);
+    });
+  },
   toggleStep(id, row, step) {
     edit(id, () => { const g = editGrid(id); g[row][step] = g[row][step] ? 0 : 1; });
   },
@@ -199,8 +191,8 @@ export const act = {
   // a pad struck by hand. always audible immediately; if the player has
   // record armed it also lands on the nearest step, quantised, so you can
   // tap a pattern in rather than drawing it.
-  trigger(id, row, { record = recArmed } = {}) {
-    if (id === "drums") A.drum(A.DRUM_ROWS[row], A.audioTime() + 0.001, 1, A.channel("drums"));
+  trigger(id, row, { record = recArmed, vel = 1 } = {}) {
+    if (id === "drums") A.drum(A.DRUM_ROWS[row], A.audioTime() + 0.001, vel, A.channel("drums"));
     else if (id === "synth") {
       const degree = (editGrid("synth").length - 1) - row;
       const d = state.dev.synth;
@@ -215,6 +207,7 @@ export const act = {
     const n = stepCount();
     const at = Math.round((clock.now() - x.epoch) / stepMs);
     const pos = ((at % n) + n) % n;
+    if (id === "drums" && !editGrid(id)[row][pos]) pushUndo();
     edit(id, () => { editGrid(id)[row][pos] = 1; });
   },
   setParam(id, key, value) {
