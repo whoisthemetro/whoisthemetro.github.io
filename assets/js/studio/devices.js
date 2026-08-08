@@ -25,8 +25,9 @@ import * as A from "./audio.js";
 
 export const MAX_STEPS = 32;             // grids are allocated this wide…
 export const STEPS = 16;                 // …and this many are live by default
-export const N_PATS = 4;                 // A B C D
-export const CLIP_SLOTS = 8;
+export const N_PATS = 4;                 // the drum machine's A B C D
+export const SYNTH_PATS = 8;             // the synth's eight launchable patterns
+export const CLIP_SLOTS = 8;             // (kept: the launcher's tile count)
 
 // how long the loop actually is right now. everything — drawing, hit
 // testing, the scheduler's wrap — asks this rather than assuming 16, which
@@ -35,12 +36,22 @@ export const stepCount = () => {
   const n = state.xport && state.xport.steps;
   return Math.max(1, Math.min(MAX_STEPS, n || STEPS));
 };
-// the grid a device is showing/playing: patterns are per-device, but which
-// pattern is live is a transport-wide thing, so the whole room switches together
+// The grid a device is PLAYING. The drum machine follows the transport's
+// A/B/C/D; the synth follows whichever of its patterns was last launched,
+// which is why launching and editing can point at different things.
 export const curGrid = (id) => {
   const d = state.dev[id];
+  if (id === "synth") return d.pats[Math.max(0, Math.min(SYNTH_PATS - 1, d.active || 0))];
   const i = Math.max(0, Math.min(N_PATS - 1, (state.xport && state.xport.pat) || 0));
   return d.pats[i];
+};
+// The grid a device is SHOWING. Same thing for the drums; for the synth it's
+// the pattern you've opened on the editor, so you can rewrite pattern 5 while
+// pattern 2 is playing.
+export const editGrid = (id) => {
+  const d = state.dev[id];
+  if (id === "synth") return d.pats[Math.max(0, Math.min(SYNTH_PATS - 1, d.sel || 0))];
+  return curGrid(id);
 };
 
 const LOOKAHEAD_MS = 220;                // how far ahead we schedule audio
@@ -58,21 +69,23 @@ function grid(rows, steps = MAX_STEPS) {
 // four patterns per device, each allocated full width so shortening the loop
 // hides steps rather than destroying them — lengthen it again and your old
 // tail is still there
-function pats(rows) {
-  return Array.from({ length: N_PATS }, () => grid(rows));
+function pats(rows, count = N_PATS) {
+  return Array.from({ length: count }, () => grid(rows));
 }
 
 export const state = {
   xport: { epoch: 0, bpm: 112, playing: true, swing: 0.12, steps: STEPS, pat: 0, v: 0, by: "" },
   dev: {
     drums: { v: 0, by: "", pats: pats(A.DRUM_ROWS.length), mute: false },
-    arp:   { v: 0, by: "", pats: pats(8), root: 45, oct: 0, scale: "minor", voice: "saw",
-             cutoff: 1800, res: 6, gate: 0.6, mute: false },
-    clips: { v: 0, by: "", active: -1, queued: -1, atStep: -1,
-             slots: Array.from({ length: CLIP_SLOTS }, () => null), mute: false },
+    // one instrument with eight patterns: the launcher picks which plays,
+    // the editor writes whichever you've opened. delay and reverb are ITS
+    // sends now — they were on the master, where they belonged to nothing.
+    synth: { v: 0, by: "", pats: pats(8, SYNTH_PATS), sel: 0, active: 0, queued: -1, atStep: -1,
+             root: 45, oct: 0, scale: "minor", voice: "saw",
+             cutoff: 1800, res: 6, gate: 0.6, delay: 0, reverb: 0, mute: false },
     mixer: { v: 0, by: "",
-             ch: { drums: { gain: 0.9, mute: false }, arp: { gain: 0.7, mute: false }, clips: { gain: 0.75, mute: false } },
-             cutoff: 20000, delaySend: 0.15, reverb: 0.5, feedback: 0.34, master: 0.85 },
+             ch: { drums: { gain: 0.9, mute: false }, synth: { gain: 0.75, mute: false } },
+             cutoff: 20000, master: 0.85 },
   },
 };
 
@@ -90,17 +103,18 @@ export function bindDevices({ uid, onLocalEdit, onStateChange }) {
 // the panel draws its row labels from this too, so the grid can never disagree
 // with what you hear.
 export function arpMidi(degree) {
-  const a = state.dev.arp;
+  const a = state.dev.synth;
   return A.degreeToMidi(degree, a.root + (a.oct || 0) * 12, a.scale);
 }
 
-/* ---------- clips ---------- */
+/* ---------- the synth's eight patterns ---------- */
 
 // eight starter loops, so the room is already playing when you walk in and
 // nobody has to stare at an empty grid wondering what this thing does.
-// each is 16 steps of scale degree, or null for a rest.
+// written as scale degrees (null = rest) and painted into grids on seed, so
+// they're editable from the moment you arrive rather than being fixed clips.
 const _ = null;
-const STARTER_CLIPS = [
+const STARTER_PATS = [
   { name: "ROOT",   notes: [0,_,_,_, 0,_,_,_, 0,_,_,_, 0,_,_,_] },
   { name: "WALK",   notes: [0,_,2,_, 4,_,2,_, 3,_,1,_, 0,_,_,_] },
   { name: "PUSH",   notes: [0,0,_,0, _,0,_,_, 3,_,3,_, 2,_,_,_] },
@@ -130,9 +144,19 @@ export function seedTransport() {
   [0, 2, 4, 6, 8, 10, 12, 14].forEach(i => d[R("hat")][i] = 1);
   state.dev.drums.v = 1; state.dev.drums.by = myUid;
 
-  state.dev.clips.slots = STARTER_CLIPS.map(c => ({ ...c }));
-  state.dev.clips.active = 0;
-  state.dev.clips.v = 1; state.dev.clips.by = myUid;
+  // paint the starter loops into the synth's pattern grids. the grid runs
+  // low notes at the bottom, so degree d lives on row (rows-1-d).
+  STARTER_PATS.forEach((c, i) => {
+    const g = state.dev.synth.pats[i];
+    c.notes.forEach((deg, st) => {
+      if (deg == null) return;
+      const d = Math.max(0, Math.min(g.length - 1, deg));
+      g[(g.length - 1) - d][st] = 1;
+    });
+  });
+  state.dev.synth.active = 0;
+  state.dev.synth.sel = 0;
+  state.dev.synth.v = 1; state.dev.synth.by = myUid;
 }
 
 /* ---------- editing ---------- */
@@ -158,7 +182,7 @@ export const rec = {
 
 export const act = {
   toggleStep(id, row, step) {
-    edit(id, () => { const g = curGrid(id); g[row][step] = g[row][step] ? 0 : 1; });
+    edit(id, () => { const g = editGrid(id); g[row][step] = g[row][step] ? 0 : 1; });
   },
   // the loop length. shortening never erases: the columns past the end are
   // just not played or drawn until you lengthen it again.
@@ -177,11 +201,11 @@ export const act = {
   // tap a pattern in rather than drawing it.
   trigger(id, row, { record = recArmed } = {}) {
     if (id === "drums") A.drum(A.DRUM_ROWS[row], A.audioTime() + 0.001, 1, A.channel("drums"));
-    else if (id === "arp") {
-      const degree = (curGrid("arp").length - 1) - row;
-      const d = state.dev.arp;
+    else if (id === "synth") {
+      const degree = (editGrid("synth").length - 1) - row;
+      const d = state.dev.synth;
       A.note(arpMidi(degree), A.audioTime() + 0.001, 0.18,
-        { voice: d.voice, cutoff: d.cutoff, res: d.res, level: 0.18, out: A.channel("arp") });
+        { voice: d.voice, cutoff: d.cutoff, res: d.res, level: 0.18, out: A.channel("synth") });
     }
     if (!record) return;
     // quantise to the nearest step, not the one just gone — a hit a hair
@@ -191,7 +215,7 @@ export const act = {
     const n = stepCount();
     const at = Math.round((clock.now() - x.epoch) / stepMs);
     const pos = ((at % n) + n) % n;
-    edit(id, () => { curGrid(id)[row][pos] = 1; });
+    edit(id, () => { editGrid(id)[row][pos] = 1; });
   },
   setParam(id, key, value) {
     edit(id, d => { d[key] = value; });
@@ -225,19 +249,18 @@ export const act = {
   // launching is the one thing that has to happen *on a boundary*. we name
   // the exact absolute step it lands on, so everyone commits to the same bar
   // no matter when the message reaches them.
-  launchClip(idx) {
+  launchPattern(idx) {
     const x = state.xport;
     const stepMs = 60000 / x.bpm / 4;
     const cur = Math.floor((clock.now() - x.epoch) / stepMs);
     const n = stepCount();
     const nextBar = (Math.floor(cur / n) + 1) * n;
-    edit("clips", d => { d.queued = idx; d.atStep = nextBar; });
+    edit("synth", d => { d.queued = idx; d.atStep = nextBar; d.sel = idx; });
   },
-  setClipNote(slot, step, degree) {
-    edit("clips", d => {
-      if (!d.slots[slot]) d.slots[slot] = { name: "SLOT " + (slot + 1), notes: new Array(MAX_STEPS).fill(null) };
-      d.slots[slot].notes[step] = degree;
-    });
+  // open a pattern on the editor without disturbing what's playing
+  selectPattern(idx) {
+    edit("synth", d => { d.sel = Math.max(0, Math.min(SYNTH_PATS - 1, idx)); });
+    onChange("synth");
   },
 };
 
@@ -301,13 +324,13 @@ function fireStep(abs, at) {
   const pos = ((abs % n) + n) % n;
   const mx = state.dev.mixer;
 
-  // ---- clips commit on their named step, wherever we are ----
-  const clips = state.dev.clips;
-  if (clips.queued >= 0 && clips.atStep >= 0 && abs >= clips.atStep) {
-    clips.active = clips.queued;
-    clips.queued = -1;
-    clips.atStep = -1;
-    onChange("clips");
+  // ---- a queued pattern commits on its named step, wherever we are ----
+  const sy = state.dev.synth;
+  if (sy.queued >= 0 && sy.atStep >= 0 && abs >= sy.atStep) {
+    sy.active = sy.queued;
+    sy.queued = -1;
+    sy.atStep = -1;
+    onChange("synth");
   }
 
   // ---- drums ----
@@ -320,27 +343,16 @@ function fireStep(abs, at) {
   }
 
   // ---- melodic sequencer ----
-  const ar = state.dev.arp;
-  if (!ar.mute && !mx.ch.arp.mute) {
+  const ar = state.dev.synth;
+  if (!ar.mute && !mx.ch.synth.mute) {
     const dur = Math.max(0.05, (stepMs / 1000) * (ar.gate * 3));
-    const ag = curGrid("arp");
+    const ag = curGrid("synth");
     for (let r = 0; r < ag.length; r++) {
       if (!ag[r][pos]) continue;
       // the grid is drawn with low notes at the bottom, so flip the row index
       const degree = (ag.length - 1) - r;
       A.note(arpMidi(degree), at, dur, {
-        voice: ar.voice, cutoff: ar.cutoff, res: ar.res, level: 0.18, out: A.channel("arp"),
-      });
-    }
-  }
-
-  // ---- the launched clip ----
-  if (!clips.mute && !mx.ch.clips.mute && clips.active >= 0) {
-    const slot = clips.slots[clips.active];
-    const deg = slot && slot.notes ? slot.notes[pos] : null;
-    if (deg != null) {
-      A.note(A.degreeToMidi(deg, ar.root - 12, ar.scale), at, (stepMs / 1000) * 0.9, {
-        voice: "bass", cutoff: 900, res: 9, level: 0.20, out: A.channel("clips"),
+        voice: ar.voice, cutoff: ar.cutoff, res: ar.res, level: 0.18, out: A.channel("synth"),
       });
     }
   }
@@ -398,14 +410,19 @@ export function playhead() {
 export function applyMixer() {
   const m = state.dev.mixer;
   if (!A.audioCtx()) return;
-  for (const name of ["drums", "arp", "clips"]) {
+  const sy = state.dev.synth;
+  for (const name of ["drums", "synth"]) {
     const c = m.ch[name];
     A.setChannel(name, {
       gain: c.gain, mute: c.mute, cutoff: m.cutoff,
-      delaySend: m.delaySend, reverbSend: m.reverb * 0.35,
+      // only the synth goes to the effects, and only as far as ITS knobs say
+      delaySend: name === "synth" ? sy.delay : 0,
+      reverbSend: name === "synth" ? sy.reverb : 0,
     });
   }
-  // tie the delay to the tempo so it always lands on a dotted eighth
+  // tie the delay to the tempo so it always lands on a dotted eighth. the
+  // returns stay wide open — the per-channel sends are the volume control,
+  // which is what lets the effects be off until somebody turns them on.
   const beat = 60 / state.xport.bpm;
-  A.setFx({ delayTime: beat * 0.75, feedback: m.feedback, reverbAmount: m.reverb, masterGain: m.master });
+  A.setFx({ delayTime: beat * 0.75, feedback: 0.34, reverbAmount: 1, masterGain: m.master });
 }

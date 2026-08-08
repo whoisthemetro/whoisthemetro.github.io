@@ -12,7 +12,7 @@
    grabbing one can latch onto it by identity. See sliderValue().
    ============================================================ */
 
-import { state, STEPS, MAX_STEPS, N_PATS, CLIP_SLOTS, arpMidi, stepCount, curGrid, rec } from "./devices.js";
+import { state, STEPS, MAX_STEPS, N_PATS, SYNTH_PATS, CLIP_SLOTS, arpMidi, stepCount, curGrid, editGrid, rec } from "./devices.js";
 import { DRUM_ROWS, SCALES, VOICES, VOICE_LABEL, noteName } from "./audio.js";
 
 export const PANEL_W = 1024;
@@ -41,8 +41,15 @@ const C = {
   faint:     "#6d7d8f",
 };
 
-const ACCENT = { drums: C.hot, arp: C.cool, clips: C.mint, mixer: C.amber };
-const TITLE = { drums: "DRUM MACHINE", arp: "SEQUENCER", clips: "CLIP LAUNCHER", mixer: "MIXER + FX" };
+// two of these are faces of the SAME instrument: "synth" edits a pattern,
+// "launch" fires them. They share one bank of eight and one voice.
+const ACCENT = { drums: C.hot, synth: C.cool, launch: C.mint, mixer: C.amber };
+const TITLE = { drums: "DRUM MACHINE", synth: "SYNTH", launch: "PATTERNS", mixer: "MASTER" };
+// the launcher's tiles are named so the eight aren't interchangeable
+export const PAT_LABELS = ["ROOT", "WALK", "PUSH", "DRIFT", "CHUG", "LIFT", "HOLLOW", "RUN"];
+// a panel kind is a FACE; two of them belong to the same instrument, so
+// anything that wants the device (mute, state) has to go through this
+const DEV_OF = { drums: "drums", synth: "synth", launch: "synth", mixer: "mixer" };
 
 // header takes the top 12%, everything else lives below it
 const HEAD = 0.12;
@@ -81,9 +88,13 @@ const RANGE = {
   "mixer.delaySend": { lo: 0,   hi: 0.6 },
   "mixer.reverb":    { lo: 0,   hi: 1 },
   "mixer.master":    { lo: 0,   hi: 1 },
-  "arp.cutoff":      { lo: 180, hi: 12000, log: true },
-  "arp.res":         { lo: 0.5, hi: 18 },
-  "arp.gate":        { lo: 0.1, hi: 1.6 },
+  "mixer.bpm":       { lo: 60,  hi: 180 },
+  "mixer.swing":     { lo: 0,   hi: 0.55 },
+  "synth.cutoff":    { lo: 180, hi: 12000, log: true },
+  "synth.res":       { lo: 0.5, hi: 18 },
+  "synth.gate":      { lo: 0.1, hi: 1.6 },
+  "synth.delay":     { lo: 0,   hi: 0.6 },
+  "synth.reverb":    { lo: 0,   hi: 0.6 },
 };
 
 const rangeOf = (h) => RANGE[`${h.dev}.${h.key}`];
@@ -104,6 +115,8 @@ function fromFrac(h, f) {
 
 // current reading of a named control, straight off the shared state
 function readValue(h) {
+  // the master console shows two transport values; everything else is a device
+  if (h.key === "bpm" || h.key === "swing") return state.xport[h.key];
   const d = state.dev[h.dev];
   if (!d) return 0;
   return h.ch ? d.ch[h.ch][h.key] : d[h.key];
@@ -131,7 +144,7 @@ function drawHead(g, kind, extra = "") {
   g.fillRect(0, h - 3, PANEL_W, 3);
   label(g, TITLE[kind], 22, h / 2, 26, C.text);
 
-  const dev = state.dev[kind];
+  const dev = state.dev[DEV_OF[kind]];
   // mute lives top-right on every machine, same place every time
   const mw = 108, mh = h * 0.56, mx = PANEL_W - mw - 18, my = (h - mh) / 2;
   g.fillStyle = dev.mute ? C.hot : C.btn;
@@ -139,7 +152,7 @@ function drawHead(g, kind, extra = "") {
   label(g, dev.mute ? "MUTED" : "MUTE", mx + mw / 2, h / 2, 20, dev.mute ? "#0b0d10" : C.dim, "center");
 
   if (extra) label(g, extra, PANEL_W - mw - 44, h / 2, 20, C.dim, "right");
-  if (kind === "drums" || kind === "arp") drawXportBits(g, kind, h);
+  if (kind === "drums" || kind === "synth") drawXportBits(g, kind, h);
   return h;
 }
 
@@ -149,20 +162,24 @@ function drawHead(g, kind, extra = "") {
    shared clock makes. drawn on the two grid machines because that's where
    you're looking when you want them. */
 const PAT_NAMES = ["A", "B", "C", "D"];
-function xportLayout(h) {
+// A/B/C/D belongs to the DRUM MACHINE — those are its four patterns. The
+// synth's patterns are the eight tiles on the launcher, so it only gets the
+// loop length, and the row closes up where the buttons would have been.
+function xportLayout(h, showPats) {
   const bh = Math.round(h * 0.56), by = Math.round((h - bh) / 2);
   const pw = 34, gap = 5, nudge = 32, numW = 46;
   const patX = 296;                                   // clear of the title
-  const labelX = patX + N_PATS * (pw + gap) + 52;     // "STEPS" ends here
+  const labelX = patX + (showPats ? N_PATS * (pw + gap) : 0) + 52;
   const stepX = labelX + 12;                          // then − n +
   const recX = stepX + nudge + 4 + numW + 4 + nudge + 22;
   return { bh, by, pw, gap, patX, labelX, stepX, nudge, numW, recX, recW: 66 };
 }
 
 function drawXportBits(g, kind, h) {
-  const L = xportLayout(h);
+  const showPats = kind === "drums";
+  const L = xportLayout(h, showPats);
   const cur = (state.xport && state.xport.pat) || 0;
-  for (let i = 0; i < N_PATS; i++) {
+  if (showPats) for (let i = 0; i < N_PATS; i++) {
     const x = L.patX + i * (L.pw + L.gap);
     g.fillStyle = i === cur ? ACCENT[kind] : C.btn;
     rr(g, x, L.by, L.pw, L.bh, 7); g.fill();
@@ -190,10 +207,11 @@ function drawXportBits(g, kind, h) {
 }
 
 function hitXportBits(kind, px, py, h) {
-  if (kind !== "drums" && kind !== "arp") return null;
-  const L = xportLayout(h);
+  if (kind !== "drums" && kind !== "synth") return null;
+  const showPats = kind === "drums";
+  const L = xportLayout(h, showPats);
   if (py < L.by || py > L.by + L.bh) return null;
-  for (let i = 0; i < N_PATS; i++) {
+  if (showPats) for (let i = 0; i < N_PATS; i++) {
     const x = L.patX + i * (L.pw + L.gap);
     if (px >= x && px <= x + L.pw) return { type: "pattern", i };
   }
@@ -208,7 +226,7 @@ function hitHead(kind, px, py) {
   const h = PANEL_H * HEAD;
   if (py > h) return null;
   const mw = 108, mh = h * 0.56, mx = PANEL_W - mw - 18, my = (h - mh) / 2;
-  if (px >= mx && px <= mx + mw && py >= my && py <= my + mh) return { type: "mute", id: kind };
+  if (px >= mx && px <= mx + mw && py >= my && py <= my + mh) return { type: "mute", id: DEV_OF[kind] };
   const xb = hitXportBits(kind, px, py, h);
   if (xb) return xb;
   return { type: "none" };
@@ -220,7 +238,7 @@ const GUT = 132;   // label gutter down the left of every grid
 
 function gridBox(kind) {
   const top = PANEL_H * HEAD;
-  if (kind === "arp") {
+  if (kind === "synth") {
     const L = arpLayout();
     return { x: GUT, y: L.gy, w: PANEL_W - GUT - 18, h: L.gh };
   }
@@ -236,7 +254,7 @@ function drawGrid(g, kind, rows, rowLabels, playStep) {
   const B = gridBox(kind);
   const steps = stepCount();
   const cw = B.w / steps, chh = B.h / rows;
-  const grid = curGrid(kind);
+  const grid = editGrid(kind);
   const accent = ACCENT[kind];
   const pads = kind === "drums";
 
@@ -251,7 +269,7 @@ function drawGrid(g, kind, rows, rowLabels, playStep) {
       g.fillStyle = accent;
       g.beginPath(); g.arc(PAD.x + PAD.w / 2, py + ph / 2, Math.min(7, ph * 0.2), 0, Math.PI * 2); g.fill();
     }
-    label(g, rowLabels[r], GUT - 8, B.y + chh * (r + 0.5), kind === "arp" ? 15 : 16, C.dim, "right");
+    label(g, rowLabels[r], GUT - 8, B.y + chh * (r + 0.5), kind === "synth" ? 15 : 16, C.dim, "right");
     for (let s = 0; s < steps; s++) {
       const x = B.x + s * cw + 3, y = B.y + r * chh + 3;
       const w = cw - 6, h = chh - 6;
@@ -307,6 +325,8 @@ const ARP_SLIDERS = [
   { key: "cutoff", label: "CUTOFF" },
   { key: "res",    label: "RESO" },
   { key: "gate",   label: "LENGTH" },
+  { key: "delay",  label: "DELAY" },
+  { key: "reverb", label: "REVERB" },
 ];
 
 const STRIP_H = 158;
@@ -333,7 +353,7 @@ const arpBarRect = (L, i) => {
 };
 
 function arpBtnValue(key) {
-  const a = state.dev.arp;
+  const a = state.dev.synth;
   if (key === "voice") return VOICE_LABEL[a.voice] || a.voice.toUpperCase();
   if (key === "scale") return a.scale.toUpperCase();
   if (key === "root")  return noteName(a.root).replace(/-?\d+$/, "");
@@ -366,7 +386,7 @@ function drawArpStrip(g) {
   for (let i = 0; i < ARP_SLIDERS.length; i++) {
     const s = ARP_SLIDERS[i];
     const r = arpSlRect(L, i), bar = arpBarRect(L, i);
-    const h = { dev: "arp", key: s.key };
+    const h = { dev: "synth", key: s.key };
     const v = readValue(h);
     label(g, s.label, r.x + 14, r.y + 14, 14, C.dim);
     label(g, fmtSlider(s.key, v), r.x + r.w - 14, r.y + 14, 15, C.cool, "right");
@@ -380,14 +400,14 @@ function hitArpStrip(px, py) {
   for (let i = 0; i < ARP_BTNS.length; i++) {
     const r = arpBtnRect(L, i);
     if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) {
-      return { type: "cycle", dev: "arp", key: ARP_BTNS[i].key };
+      return { type: "cycle", dev: "synth", key: ARP_BTNS[i].key };
     }
   }
   for (let i = 0; i < ARP_SLIDERS.length; i++) {
     const r = arpSlRect(L, i);
     if (px < r.x || px > r.x + r.w) continue;
     const bar = arpBarRect(L, i);
-    const h = { dev: "arp", key: ARP_SLIDERS[i].key };
+    const h = { dev: "synth", key: ARP_SLIDERS[i].key };
     return { type: "slider", ...h, value: fromFrac(h, (px - bar.x) / bar.w) };
   }
   return { type: "none" };
@@ -396,16 +416,18 @@ function hitArpStrip(px, py) {
 /* ---------- clip launcher ---------- */
 
 function drawClips(g, playStep) {
-  const top = drawHead(g, "clips", "launches on the next bar");
-  const d = state.dev.clips;
+  const top = drawHead(g, "launch", "launches on the next bar");
+  const d = state.dev.synth;
   const cols = 4, rows = CLIP_SLOTS / cols;
   const px = 18, py = top + 14;
   const pw = (PANEL_W - px * 2) / cols, ph = (PANEL_H - py - 16) / rows;
 
-  for (let i = 0; i < CLIP_SLOTS; i++) {
+  const steps = stepCount();
+  for (let i = 0; i < SYNTH_PATS; i++) {
     const cx = px + (i % cols) * pw + 6, cy = py + Math.floor(i / cols) * ph + 6;
     const w = pw - 12, h = ph - 12;
-    const slot = d.slots[i];
+    const pat = d.pats[i];
+    const filled = pat.some(row => row.some(v => v));
     const active = d.active === i, queued = d.queued === i;
 
     g.fillStyle = active ? C.mint : (queued ? C.slotArmed : C.slot);
@@ -415,28 +437,37 @@ function drawClips(g, playStep) {
       g.strokeStyle = C.mint; g.lineWidth = 3; g.setLineDash([9, 7]);
       rr(g, cx + 2, cy + 2, w - 4, h - 4, 9); g.stroke(); g.setLineDash([]);
     }
+    // the one you're editing gets a solid ring, so the two faces agree
+    if (d.sel === i && !active) {
+      g.strokeStyle = C.cool; g.lineWidth = 3;
+      rr(g, cx + 2, cy + 2, w - 4, h - 4, 9); g.stroke();
+    }
     const ink = active ? "#08120f" : C.text;
-    label(g, slot ? slot.name : "EMPTY", cx + w / 2, cy + h * 0.36, 26, slot ? ink : C.faint, "center");
+    label(g, PAT_LABELS[i] || `P${i + 1}`, cx + w / 2, cy + h * 0.36, 26, filled ? ink : C.faint, "center");
 
-    // a little piano-roll thumbnail so the pads aren't interchangeable
-    if (slot) {
-      const sw = (w - 32) / stepCount();
-      for (let s = 0; s < stepCount(); s++) {
-        if (slot.notes[s] == null) continue;
-        const bh = 4 + Math.min(slot.notes[s], 9) * 2.2;
-        g.fillStyle = active ? "rgba(8,18,15,0.65)" : "rgba(143,251,230,0.85)";
-        g.fillRect(cx + 16 + s * sw, cy + h - 16 - bh, sw - 2, bh);
+    // a piano-roll thumbnail straight off the pattern's own grid
+    {
+      const sw = (w - 32) / steps;
+      const rows = pat.length;
+      for (let st = 0; st < steps; st++) {
+        for (let r = 0; r < rows; r++) {
+          if (!pat[r][st]) continue;
+          const deg = (rows - 1) - r;
+          const bh = 4 + deg * 2.2;
+          g.fillStyle = active ? "rgba(8,18,15,0.65)" : "rgba(143,251,230,0.85)";
+          g.fillRect(cx + 16 + st * sw, cy + h - 16 - bh, Math.max(2, sw - 2), bh);
+        }
       }
-      if (active && playStep >= 0) {
+      if (active && playStep >= 0 && playStep < steps) {
         g.fillStyle = "rgba(8,18,15,0.9)";
-        g.fillRect(cx + 16 + playStep * sw, cy + h - 20, sw - 2, 3);
+        g.fillRect(cx + 16 + playStep * sw, cy + h - 20, Math.max(2, sw - 2), 3);
       }
     }
   }
 }
 
 function hitClips(px, py) {
-  const head = hitHead("clips", px, py);
+  const head = hitHead("launch", px, py);
   if (head) return head;
   const top = PANEL_H * HEAD;
   const cols = 4, rows = CLIP_SLOTS / cols;
@@ -444,19 +475,21 @@ function hitClips(px, py) {
   const pw = (PANEL_W - ox * 2) / cols, ph = (PANEL_H - oy - 16) / rows;
   const c = Math.floor((px - ox) / pw), r = Math.floor((py - oy) / ph);
   if (c < 0 || c >= cols || r < 0 || r >= rows) return { type: "none" };
-  return { type: "clip", index: r * cols + c };
+  return { type: "clip", index: r * cols + c };   // handled as launch-or-open in main.js
 }
 
 /* ---------- mixer ---------- */
 
+// tempo and feel live here now; delay and reverb went to the synth, which is
+// the only thing that was ever sending to them
 const FX_ROWS = [
-  { key: "cutoff",    label: "FILTER" },
-  { key: "delaySend", label: "DELAY" },
-  { key: "reverb",    label: "REVERB" },
-  { key: "master",    label: "MASTER" },
+  { key: "bpm",    label: "TEMPO",  xport: true },
+  { key: "swing",  label: "SWING",  xport: true },
+  { key: "cutoff", label: "FILTER" },
+  { key: "master", label: "MASTER" },
 ];
-const CH_NAMES = ["drums", "arp", "clips"];
-const CH_LABEL = { drums: "DRUMS", arp: "SEQ", clips: "CLIPS" };
+const CH_NAMES = ["drums", "synth"];
+const CH_LABEL = { drums: "DRUMS", synth: "SYNTH" };
 
 function mixerLayout() {
   const top = PANEL_H * HEAD;
@@ -521,15 +554,15 @@ export function drawPanel(kind, g, playStep) {
   if (kind === "drums") {
     drawHead(g, "drums");
     drawGrid(g, "drums", DRUM_ROWS.length, DRUM_ROWS.map(n => n.toUpperCase()), playStep);
-  } else if (kind === "arp") {
-    const a = state.dev.arp;
-    drawHead(g, "arp", `${VOICE_LABEL[a.voice] || ""} · ${a.scale.toUpperCase()}`);
+  } else if (kind === "synth") {
+    const a = state.dev.synth;
+    drawHead(g, "synth", `${PAT_LABELS[a.sel] || ""} · ${VOICE_LABEL[a.voice] || ""}`);
     // rows are labelled with the note they will actually play, so the grid can
     // never disagree with what comes out of it when you change key or scale
     const names = Array.from({ length: 8 }, (_, i) => noteName(arpMidi(7 - i)));
-    drawGrid(g, "arp", 8, names, playStep);
+    drawGrid(g, "synth", 8, names, playStep);
     drawArpStrip(g);
-  } else if (kind === "clips") drawClips(g, playStep);
+  } else if (kind === "launch") drawClips(g, playStep);
   else if (kind === "mixer") drawMixer(g);
 }
 
@@ -538,8 +571,8 @@ export function drawPanel(kind, g, playStep) {
 export function hitPanel(kind, u, v) {
   const px = u * PANEL_W, py = (1 - v) * PANEL_H;
   if (kind === "drums") return hitGrid("drums", DRUM_ROWS.length, px, py);
-  if (kind === "arp")   return hitArpStrip(px, py) || hitGrid("arp", 8, px, py);
-  if (kind === "clips") return hitClips(px, py);
+  if (kind === "synth")  return hitArpStrip(px, py) || hitGrid("synth", 8, px, py);
+  if (kind === "launch") return hitClips(px, py);
   if (kind === "mixer") return hitMixer(px, py);
   return { type: "none" };
 }
@@ -556,7 +589,7 @@ export function sliderValue(kind, h, u) {
     const L = mixerLayout();
     return fromFrac(h, (px - L.x) / L.w);
   }
-  if (kind === "arp" && h.dev === "arp") {
+  if (kind === "synth" && h.dev === "synth") {
     const i = ARP_SLIDERS.findIndex(s => s.key === h.key);
     if (i < 0) return null;
     const bar = arpBarRect(arpLayout(), i);

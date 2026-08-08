@@ -1133,7 +1133,8 @@ controls.onAction((ndcX, ndcY) => {
   } else if (hit.object.userData.arcadeSoon && hit.distance < 3.2) {
     toast(`${hit.object.userData.arcadeSoon} — cabinet's dark. coming soon.`);
   } else if (inStudio && hit.object.userData.kind && hit.uv && hit.distance < 5.5) {
-    applyStudioHit(hit.object.userData.kind, sHitPanel(hit.object.userData.kind, hit.uv.x, hit.uv.y));
+    const k = hit.object.userData.kind;
+    applyStudioHit(k, sHitPanel(k, hit.uv.x, hit.uv.y));
   } else if (inStudio && hit.object.userData.exit && hit.distance < 5.5) {
     toast("back through the door…");
     goHome();
@@ -2080,7 +2081,7 @@ async function bootStudio() {
     sSeed(); sApplyMixer();
     sNet.pushPatch("xport", sState.xport);
     sNet.pushPatch("drums", sState.dev.drums);
-    sNet.pushPatch("clips", sState.dev.clips);
+    sNet.pushPatch("synth", sState.dev.synth);
     world.studio.markDirty("*");
   }, 1300);
 }
@@ -2111,6 +2112,13 @@ function leaveStudio() {
 function applyStudioHit(kind, hit) {
   if (!hit || hit.type === "none") return;
   if (hit.type === "step") sAct.toggleStep(hit.id, hit.row, hit.step);
+  else if (hit.type === "clip") {
+    // the launcher's tiles: firing the one already playing just opens it on
+    // the editor instead of re-launching what you're already hearing
+    const sy = sState.dev.synth;
+    if (sy.active === hit.index) { sAct.selectPattern(hit.index); toast("opened for editing"); }
+    else { sAct.launchPattern(hit.index); toast("queued — lands on the next bar"); }
+  }
   else if (hit.type === "pad") sAct.trigger(hit.id, hit.row);     // played by hand, recorded if armed
   else if (hit.type === "rec") {
     toast(sRec.toggle() ? "REC armed — tap the pads to lay it in" : "REC off");
@@ -2126,15 +2134,21 @@ function applyStudioHit(kind, hit) {
   else if (hit.type === "clip") sAct.launchClip(hit.index);
   else if (hit.type === "chmute") sAct.setChannel(hit.name, "mute", !sState.dev.mixer.ch[hit.name].mute);
   else if (hit.type === "slider") {
-    if (hit.ch) sAct.setChannel(hit.ch, hit.key, hit.value);
+    // tempo and swing are transport, not device — they have their own actions
+    if (hit.key === "bpm") sAct.setBpm(hit.value);
+    else if (hit.key === "swing") sAct.setSwing(hit.value);
+    else if (hit.ch) sAct.setChannel(hit.ch, hit.key, hit.value);
     else sAct.setParam(hit.dev, hit.key, hit.value);
+    // the synth's sends and the master's filter only reach the audio graph
+    // through applyMixer, so nudge it whenever one of them moves
+    if (hit.dev === "mixer" || hit.key === "delay" || hit.key === "reverb") sApplyMixer();
   } else if (hit.type === "cycle") {
-    const a = sState.dev.arp;
+    const a = sState.dev.synth;
     const cyc = (list, cur) => list[(list.indexOf(cur) + 1) % list.length];
-    if (hit.key === "voice") sAct.setParam("arp", "voice", cyc(SA.VOICES, a.voice));
-    else if (hit.key === "scale") sAct.setParam("arp", "scale", cyc(Object.keys(SA.SCALES), a.scale));
-    else if (hit.key === "root") sAct.setParam("arp", "root", 40 + (((a.root - 40) + 1) % 12));
-    else if (hit.key === "oct") sAct.setParam("arp", "oct", a.oct >= 2 ? -1 : a.oct + 1);
+    if (hit.key === "voice") sAct.setParam("synth", "voice", cyc(SA.VOICES, a.voice));
+    else if (hit.key === "scale") sAct.setParam("synth", "scale", cyc(Object.keys(SA.SCALES), a.scale));
+    else if (hit.key === "root") sAct.setParam("synth", "root", 40 + (((a.root - 40) + 1) % 12));
+    else if (hit.key === "oct") sAct.setParam("synth", "oct", a.oct >= 2 ? -1 : a.oct + 1);
   }
 }
 

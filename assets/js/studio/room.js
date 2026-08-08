@@ -14,8 +14,11 @@ import * as THREE from "three";
 import { drawPanel, PANEL_W, PANEL_H } from "./panels.js";
 import { onStep } from "./devices.js";
 
-const ACCENT = { drums: 0xff4d2e, arp: 0x5db8ff, clips: 0x7ef5e0, mixer: 0xffb347 };
-const ORDER = ["drums", "arp", "clips", "mixer"];
+// four stations, but only three instruments: the synth gets two faces —
+// one to write a pattern on, one to fire them from — so four people can
+// still work at once without queueing for the same screen.
+const ACCENT = { drums: 0xff4d2e, synth: 0x5db8ff, launch: 0x7ef5e0, mixer: 0xffb347 };
+const ORDER = ["drums", "synth", "launch", "mixer"];
 
 export const ROOM_HALF = 8.4;       // walkable half-extent
 const RING = 4.6;                    // how far out the consoles stand

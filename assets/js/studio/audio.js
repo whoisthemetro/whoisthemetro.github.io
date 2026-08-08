@@ -125,7 +125,7 @@ export function channel(id) {
   gain.gain.value = 0.85;
 
   const dSend = ctx.createGain(); dSend.gain.value = 0;
-  const rSend = ctx.createGain(); rSend.gain.value = 0.08;
+  const rSend = ctx.createGain(); rSend.gain.value = 0;   // dry until something asks for wet
 
   input.connect(filter);
   filter.connect(gain);
@@ -348,7 +348,7 @@ function sweep(f, at, span, cutoff, res, open, close) {
 export function note(midi, at, dur = 0.3, opts = {}) {
   if (!ctx) return;
   const { voice = "saw", cutoff = 1800, res = 6, level = 0.2, out = null } = opts;
-  const dest = (out || channel("arp")).input;
+  const dest = (out || channel("synth")).input;
   const hz = midiToHz(midi);
 
   const f = ctx.createBiquadFilter();
