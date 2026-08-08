@@ -230,6 +230,18 @@ export const DRUM_ROWS = [
   "crash", "cowbell", "shaker", "tamb",
 ];
 
+// A click track is a personal thing: it goes straight to the master so it
+// survives muting the kit, and it never leaves this browser.
+export function metroClick(at, accent = false) {
+  if (!ctx) return;
+  const o = ctx.createOscillator(); o.type = "square";
+  o.frequency.value = accent ? 1560 : 1040;
+  const g = ctx.createGain();
+  env(g, at, accent ? 0.16 : 0.09, 0.001, accent ? 0.045 : 0.03);
+  o.connect(g); g.connect(master);
+  o.start(at); o.stop(at + 0.08);
+}
+
 export function drum(name, at, vel = 1, out = null) {
   if (!ctx) return;
   const dest = (out || channel("drums")).input;

@@ -25,13 +25,19 @@ const LABEL = {
 
 const $ = (id) => document.getElementById(id);
 
-export function setupPads({ act, state, rec, drumRows, stepCount, nPats, canPlay, onOpen, onClose, blocked }) {
+export function setupPads({ act, state, rec, drumRows, stepCount, nPats, canPlay, onOpen, onClose, blocked,
+                            playhead, onStep, metroClick, curGrid }) {
   const overlay = $("pads");
   const gridEl = $("pads-grid");
   const patsEl = $("pads-pats");
   if (!overlay || !gridEl) return { open() {}, close() {}, isOpen: () => false, showButton() {} };
 
   const padEls = [];
+  const seqEl = $("pads-seq-cells");
+  // the strip follows the last voice you struck — that's the row you're
+  // most likely wondering about
+  let focusRow = 0;
+  let metroOn = false;
 
   // ---- the 4×4, built bottom row first so pad 1 lands bottom-left ----
   for (let r = ROWS - 1; r >= 0; r--) {
@@ -60,8 +66,10 @@ export function setupPads({ act, state, rec, drumRows, stepCount, nPats, canPlay
   // ---- striking a pad ----
   function hit(i, vel) {
     if (!canPlay()) return;
+    focusRow = i;                              // the strip follows your hands
     act.trigger("drums", i, { vel });
     flash(i);
+    paintSeq();
   }
   function flash(i) {
     const el = padEls[i];
@@ -71,12 +79,47 @@ export function setupPads({ act, state, rec, drumRows, stepCount, nPats, canPlay
     el._t = setTimeout(() => el.classList.remove("lit"), 110);
   }
 
+  // ---- the sequencer slice ----
+  // one row of the grid — the voice you last played — so you can see where
+  // your hits are landing, and fix one by tapping it.
+  const seqCells = [];
+  function buildSeq() {
+    const n = stepCount();
+    if (seqCells.length === n) return;
+    seqEl.textContent = "";
+    seqCells.length = 0;
+    for (let i = 0; i < n; i++) {
+      const c = document.createElement("span");
+      if (i % 4 === 0) c.classList.add("beat");
+      c.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        act.toggleStep("drums", focusRow, i);
+        paintSeq();
+      });
+      seqEl.appendChild(c);
+      seqCells.push(c);
+    }
+  }
+  function paintSeq() {
+    if (!seqEl || !curGrid) return;
+    buildSeq();
+    const row = curGrid("drums")[focusRow] || [];
+    const head = playhead ? playhead() : -1;
+    $("pads-seq-label").textContent = LABEL[drumRows[focusRow]] || "";
+    for (let i = 0; i < seqCells.length; i++) {
+      seqCells[i].classList.toggle("on", !!row[i]);
+      seqCells[i].classList.toggle("head", i === head);
+    }
+  }
+
   // ---- keeping the chrome honest ----
   function paint() {
     $("pads-stepnum").textContent = String(stepCount());
     $("pads-rec").classList.toggle("on", rec.on());
+    $("pads-metro").classList.toggle("on", metroOn);
     const cur = (state.xport && state.xport.pat) || 0;
     patEls.forEach((b, i) => b.classList.toggle("on", i === cur));
+    paintSeq();
   }
 
   $("pads-rec").addEventListener("click", () => { rec.toggle(); paint(); });
@@ -84,7 +127,16 @@ export function setupPads({ act, state, rec, drumRows, stepCount, nPats, canPlay
   $("pads-clear").addEventListener("click", () => { act.clearDrums(); paint(); });
   $("pads-step-down").addEventListener("click", () => { act.setSteps(stepCount() - 1); paint(); });
   $("pads-step-up").addEventListener("click", () => { act.setSteps(stepCount() + 1); paint(); });
+  $("pads-metro").addEventListener("click", () => { metroOn = !metroOn; paint(); });
   $("pads-close").addEventListener("click", () => close());
+
+  // the click track. local only — it's a thing for your ears, not the room's.
+  if (onStep && metroClick) {
+    onStep((pos, abs, at) => {
+      if (!metroOn || !canPlay()) return;
+      if (pos % 4 === 0) metroClick(at, pos === 0);   // the downbeat gets the accent
+    });
+  }
 
   /* ---------- a real controller ---------- */
 
@@ -141,7 +193,7 @@ export function setupPads({ act, state, rec, drumRows, stepCount, nPats, canPlay
     overlay.classList.add("show");
     paint();
     initMidi();                                // asks permission on a real gesture
-    painting = setInterval(paint, 400);         // the room can change these under us
+    painting = setInterval(paint, 90);          // fast enough to carry the playhead
     onOpen && onOpen();
   }
   function close() {

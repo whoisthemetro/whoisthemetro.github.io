@@ -767,39 +767,68 @@ body.in-club #flight-strip { display: none; }
 }
 #vr-btn:hover { border-color: var(--amber); }
 
-/* ---- the pads: an MPC laid out for a phone held upright ---- */
-#pads .pads-shell {
-  width: min(96vw, 520px); height: min(94vh, 900px);
-  display: flex; flex-direction: column; gap: 10px;
-  background: #0a0d10; border: 1px solid #232a30; border-radius: 14px;
-  padding: 14px; font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+/* ---- the pads: an MPC laid out for a phone held upright ----
+   `vh` on a phone means the viewport WITHOUT browser chrome, so a 94vh
+   panel hangs off both ends of what you can actually see. dvh is the
+   height that's really there, and the safe-area insets keep the notch
+   and the home bar off the controls. */
+#pads {
+  height: 100vh; height: 100dvh;
+  padding: max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-left))
+           max(10px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-right));
 }
-.pads-head { display: flex; align-items: center; gap: 10px; }
+#pads .pads-shell {
+  /* hug the controls rather than stretching to the full screen — but stay
+     shrinkable, so a short screen squeezes the pad block instead of
+     pushing REC off the bottom */
+  width: min(100%, 520px); height: auto; max-height: 100%;
+  display: flex; flex-direction: column; gap: 8px;
+  background: #0a0d10; border: 1px solid #232a30; border-radius: 14px;
+  padding: 12px; font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+  overflow: hidden;
+}
+.pads-head { display: flex; align-items: center; gap: 10px; flex: none; }
 .pads-title { color: var(--amber); font-size: 13px; letter-spacing: 0.18em; font-weight: 700; }
 .pads-midi { flex: 1; color: var(--dim); font-size: 11px; letter-spacing: 0.06em; }
 .pads-midi.live { color: #54e08a; }
-.pads-row { display: flex; gap: 10px; align-items: center; }
+.pads-row { display: flex; gap: 8px; align-items: center; flex: none; }
 .pads-pats { display: flex; gap: 6px; flex: 1; }
 .pads-pats button {
-  flex: 1; padding: 9px 0; border-radius: 7px; cursor: pointer;
+  flex: 1; padding: 8px 0; border-radius: 7px; cursor: pointer;
   background: #141a20; border: 1px solid #232a30; color: var(--dim);
   font: 700 13px/1 inherit; letter-spacing: 0.1em;
 }
 .pads-pats button.on { background: var(--amber); border-color: var(--amber); color: #10140c; }
-.pads-steps { display: flex; align-items: center; gap: 6px; }
-.pads-stepnum { color: var(--ink); font-size: 15px; min-width: 26px; text-align: center; }
+.pads-steps { display: flex; align-items: center; gap: 5px; }
+.pads-stepnum { color: var(--ink); font-size: 14px; min-width: 24px; text-align: center; }
 
-/* the 4×4 itself — square pads, thumb-sized, MPC order (pad 1 bottom-left) */
+/* the slice of sequencer: one row, the voice you last hit */
+.pads-seq { display: flex; align-items: center; gap: 8px; flex: none; }
+.pads-seq-label {
+  color: var(--amber); font-size: 10px; letter-spacing: 0.08em;
+  width: 52px; flex: none; text-align: right;
+}
+.pads-seq-cells { flex: 1; display: flex; gap: 3px; height: 26px; }
+.pads-seq-cells span {
+  flex: 1; border-radius: 4px; background: #141a20; border: 1px solid #232a30;
+  cursor: pointer; transition: background .05s;
+}
+.pads-seq-cells span.beat { border-color: #333d46; }
+.pads-seq-cells span.on { background: var(--amber); border-color: var(--amber); }
+.pads-seq-cells span.head { box-shadow: 0 0 0 2px #7ec97e inset; }
+
+/* the 4×4 — a square block, so the pads are pads and not dominoes */
 .pads-grid {
-  flex: 1; display: grid; grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(4, 1fr);
-  gap: 8px; min-height: 0;
+  display: grid; grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(4, 1fr);
+  gap: 7px; aspect-ratio: 1; width: min(100%, 52dvh); margin: 0 auto;
+  flex: 0 1 auto; min-height: 0;
 }
 .pads-grid button {
-  border-radius: 12px; cursor: pointer; position: relative;
+  border-radius: 12px; cursor: pointer; min-height: 0;
   background: linear-gradient(180deg, #222b33, #161d23);
   border: 1px solid #2c353d; color: #cfd6dd;
-  font: 700 11px/1.25 inherit; letter-spacing: 0.04em;
-  display: flex; align-items: flex-end; justify-content: center; padding-bottom: 8px;
+  font: 700 10px/1.2 inherit; letter-spacing: 0.03em;
+  display: flex; align-items: flex-end; justify-content: center; padding-bottom: 6px;
   transition: background .06s, box-shadow .06s, transform .06s;
   -webkit-tap-highlight-color: transparent; touch-action: manipulation;
 }
@@ -808,20 +837,22 @@ body.in-club #flight-strip { display: none; }
   color: #14100a; transform: translateY(1px);
   box-shadow: 0 0 22px rgba(255, 179, 71, 0.6);
 }
-.pads-controls { display: flex; gap: 8px; }
+.pads-controls { display: flex; gap: 6px; flex: none; }
 .pads-btn {
-  flex: 1; padding: 13px 0; border-radius: 9px; cursor: pointer;
+  flex: 1; padding: 12px 0; border-radius: 9px; cursor: pointer;
   background: #141a20; border: 1px solid #2c353d; color: var(--ink);
-  font: 700 13px/1 inherit; letter-spacing: 0.1em;
+  font: 700 12px/1 inherit; letter-spacing: 0.06em;
   -webkit-tap-highlight-color: transparent; touch-action: manipulation;
 }
 .pads-btn:active { background: #1d252c; }
 .pads-btn.rec.on { background: var(--neon); border-color: var(--neon); color: #fff; }
-.pads-steps .pads-btn { flex: none; width: 40px; padding: 9px 0; }
+.pads-btn.on { background: var(--amber); border-color: var(--amber); color: #10140c; }
+.pads-steps .pads-btn { flex: none; width: 36px; padding: 8px 0; }
 
 /* the floating way in, while you're standing in the studio */
 #pads-btn {
-  position: fixed; left: 50%; transform: translateX(-50%); bottom: 18px; z-index: 30;
+  position: fixed; left: 50%; transform: translateX(-50%);
+  bottom: max(18px, env(safe-area-inset-bottom)); z-index: 30;
   font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
   font-size: 12px; letter-spacing: 0.1em; font-weight: 600;
   background: rgba(10, 13, 16, 0.85); color: var(--amber);

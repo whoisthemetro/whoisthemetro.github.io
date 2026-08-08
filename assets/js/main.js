@@ -39,6 +39,7 @@ import {
   mergeRemote as sMerge, snapshot as sSnap, adoptSnapshot as sAdopt,
   startScheduler as sStartScheduler, playhead as sPlayhead, applyMixer as sApplyMixer,
   stepCount as sStepCount, rec as sRec, MAX_STEPS as S_MAX_STEPS, N_PATS as S_NPATS,
+  onStep as sOnStep, curGrid as sCurGrid,
 } from "./studio/devices.js";
 import { hitPanel as sHitPanel } from "./studio/panels.js";
 import { clock as sClock } from "./studio/clock.js";
@@ -2095,6 +2096,7 @@ function ensurePads() {
     act: sAct, state: sState, rec: sRec,
     drumRows: SA.DRUM_ROWS, stepCount: sStepCount, nPats: S_NPATS,
     canPlay: () => inStudio,
+    playhead: sPlayhead, onStep: sOnStep, metroClick: SA.metroClick, curGrid: sCurGrid,
     blocked: () => vrBlocked("the pads need a flat screen"),
     onOpen: () => { modalOpen = true; controls.unlock(); },
     onClose: () => { modalOpen = false; if (entered) safeLock(); },
