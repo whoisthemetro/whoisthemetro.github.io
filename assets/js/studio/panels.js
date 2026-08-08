@@ -191,8 +191,8 @@ function drawXportBits(g, kind, h) {
     rr(g, x, L.by, L.pw, L.bh, 7); g.fill();
     label(g, PAT_NAMES[i], x + L.pw / 2, h / 2, 20, i === cur ? "#0b0d10" : C.dim, "center");
   }
-  // − n +
-  const n = stepCount();
+  // − n + : each grid machine shows and edits ITS OWN loop length
+  const n = stepCount(kind);
   g.fillStyle = C.btn;
   rr(g, L.stepX, L.by, L.nudge, L.bh, 7); g.fill();
   label(g, "−", L.stepX + L.nudge / 2, h / 2, 24, C.dim, "center");
@@ -221,9 +221,9 @@ function hitXportBits(kind, px, py, h) {
     const x = L.patX + i * (L.pw + L.gap);
     if (px >= x && px <= x + L.pw) return { type: "pattern", i };
   }
-  if (px >= L.stepX && px <= L.stepX + L.nudge) return { type: "steps", d: -1 };
+  if (px >= L.stepX && px <= L.stepX + L.nudge) return { type: "steps", d: -1, id: kind };
   const plusX = L.stepX + L.nudge + 4 + L.numW + 4;
-  if (px >= plusX && px <= plusX + L.nudge) return { type: "steps", d: 1 };
+  if (px >= plusX && px <= plusX + L.nudge) return { type: "steps", d: 1, id: kind };
   if (kind === "drums" && px >= L.recX && px <= L.recX + L.recW) return { type: "rec" };
   return null;
 }
@@ -258,7 +258,7 @@ const PAD = { x: 8, w: 40 };
 
 function drawGrid(g, kind, rows, rowLabels, playStep) {
   const B = gridBox(kind);
-  const steps = stepCount();
+  const steps = stepCount(kind);
   const cw = B.w / steps, chh = B.h / rows;
   const grid = editGrid(kind);
   const accent = ACCENT[kind];
@@ -305,7 +305,7 @@ function hitGrid(kind, rows, px, py) {
   const head = hitHead(kind, px, py);
   if (head) return head;
   const B = gridBox(kind);
-  const steps = stepCount();
+  const steps = stepCount(kind);
   const r = Math.floor((py - B.y) / (B.h / rows));
   // the play pads live in the gutter, left of the grid
   if (kind === "drums" && px >= PAD.x && px <= PAD.x + PAD.w && r >= 0 && r < rows) {
@@ -428,7 +428,7 @@ function drawClips(g, playStep) {
   const px = 18, py = top + 14;
   const pw = (PANEL_W - px * 2) / cols, ph = (PANEL_H - py - 16) / rows;
 
-  const steps = stepCount();
+  const steps = stepCount("synth");
   for (let i = 0; i < SYNTH_PATS; i++) {
     const cx = px + (i % cols) * pw + 6, cy = py + Math.floor(i / cols) * ph + 6;
     const w = pw - 12, h = ph - 12;

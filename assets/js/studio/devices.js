@@ -29,11 +29,15 @@ export const N_PATS = 4;                 // the drum machine's A B C D
 export const SYNTH_PATS = 8;             // the synth's eight launchable patterns
 export const CLIP_SLOTS = 8;             // (kept: the launcher's tile count)
 
-// how long the loop actually is right now. everything — drawing, hit
+// how long a loop actually is right now. everything — drawing, hit
 // testing, the scheduler's wrap — asks this rather than assuming 16, which
-// is what makes an odd meter like 7 work everywhere at once.
-export const stepCount = () => {
-  const n = state.xport && state.xport.steps;
+// is what makes an odd meter like 7 work everywhere at once. each machine
+// keeps its own length: the drums can run a 7 while the synth holds a 16,
+// and the shared clock keeps them honest against the same downbeat.
+export const stepCount = (id = "drums") => {
+  const n = id === "synth"
+    ? state.dev.synth && state.dev.synth.steps
+    : state.xport && state.xport.steps;
   return Math.max(1, Math.min(MAX_STEPS, n || STEPS));
 };
 // The grid a device is PLAYING. The drum machine follows the transport's
@@ -87,6 +91,7 @@ export const state = {
     // the editor writes whichever you've opened. delay and reverb are ITS
     // sends now — they were on the master, where they belonged to nothing.
     synth: { v: 0, by: "", pats: pats(8, SYNTH_PATS), sel: 0, active: 0, queued: -1, atStep: -1,
+             steps: STEPS,   // its own loop length, independent of the drums'
              root: 45, oct: 0, scale: "minor", voice: "saw",
              cutoff: 1800, res: 6, gate: 0.6, delay: 0, reverb: 0, mute: false },
     mixer: { v: 0, by: "",
@@ -209,11 +214,12 @@ export const act = {
   toggleStep(id, row, step) {
     edit(id, () => { const g = editGrid(id); g[row][step] = g[row][step] ? 0 : 1; });
   },
-  // the loop length. shortening never erases: the columns past the end are
-  // just not played or drawn until you lengthen it again.
-  setSteps(n) {
+  // a loop length. shortening never erases: the columns past the end are
+  // just not played or drawn until you lengthen it again. the drums' length
+  // rides the transport; the synth's rides the synth.
+  setSteps(n, id = "drums") {
     const v = Math.max(1, Math.min(MAX_STEPS, Math.round(n)));
-    edit("xport", d => { d.steps = v; });
+    edit(id === "synth" ? "synth" : "xport", d => { d.steps = v; });
     resetSchedule();
   },
   // a pattern change lands on the next downbeat, not mid-bar. we name the
@@ -230,7 +236,7 @@ export const act = {
     }
     const stepMs = 60000 / x.bpm / 4;
     const cur = Math.floor((clock.now() - x.epoch) / stepMs);
-    const n = stepCount();
+    const n = stepCount("drums");
     const nextBar = (Math.floor(cur / n) + 1) * n;
     edit("xport", d => { d.qpat = v; d.qat = nextBar; });
   },
@@ -250,7 +256,7 @@ export const act = {
     // early belongs to the beat you were aiming at
     const x = state.xport;
     const stepMs = 60000 / x.bpm / 4;
-    const n = stepCount();
+    const n = stepCount(id);
     const at = Math.round((clock.now() - x.epoch) / stepMs);
     const pos = ((at % n) + n) % n;
     if (id === "drums" && !editGrid(id)[row][pos]) pushUndo();
@@ -292,7 +298,7 @@ export const act = {
     const x = state.xport;
     const stepMs = 60000 / x.bpm / 4;
     const cur = Math.floor((clock.now() - x.epoch) / stepMs);
-    const n = stepCount();
+    const n = stepCount("synth");
     const nextBar = (Math.floor(cur / n) + 1) * n;
     edit("synth", d => { d.queued = idx; d.atStep = nextBar; d.sel = idx; });
   },
@@ -359,8 +365,11 @@ function stepTimeMs(abs) {
 function fireStep(abs, at) {
   const x = state.xport;
   const stepMs = 60000 / x.bpm / 4;
-  const n = stepCount();
-  const pos = ((abs % n) + n) % n;
+  // each machine wraps the same absolute step around its OWN loop length —
+  // that one line is the whole polymeter feature
+  const nD = stepCount("drums"), nS = stepCount("synth");
+  const pos = ((abs % nD) + nD) % nD;
+  const posS = ((abs % nS) + nS) % nS;
   const mx = state.dev.mixer;
 
   // ---- a queued drum pattern commits at the top of its named bar ----
@@ -397,7 +406,7 @@ function fireStep(abs, at) {
     const dur = Math.max(0.05, (stepMs / 1000) * (ar.gate * 3));
     const ag = curGrid("synth");
     for (let r = 0; r < ag.length; r++) {
-      if (!ag[r][pos]) continue;
+      if (!ag[r][posS]) continue;
       // the grid is drawn with low notes at the bottom, so flip the row index
       const degree = (ag.length - 1) - r;
       A.note(arpMidi(degree), at, dur, {
@@ -444,12 +453,12 @@ export function startScheduler() {
   timer = setInterval(tick, TICK_MS);
 }
 
-// where the playhead is right now, for drawing it
-export function playhead() {
+// where a machine's playhead is right now, for drawing it
+export function playhead(id = "drums") {
   const x = state.xport;
   if (!x.playing || !x.epoch) return -1;
   const stepMs = 60000 / x.bpm / 4;
-  return Math.floor((clock.now() - x.epoch) / stepMs) % stepCount();
+  return Math.floor((clock.now() - x.epoch) / stepMs) % stepCount(id);
 }
 
 /* ---------- push mixer state into the audio graph ---------- */

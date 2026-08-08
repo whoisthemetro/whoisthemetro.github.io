@@ -839,7 +839,9 @@ body.in-club #flight-strip { display: none; }
 }
 .pads-controls { display: flex; gap: 6px; flex: none; }
 .pads-btn {
-  flex: 1; padding: 12px 0; border-radius: 9px; cursor: pointer;
+  /* min-width: 0 keeps long labels (CLR ALL) from stretching their button
+     wider than their row-mates — every button in a row splits it evenly */
+  flex: 1; min-width: 0; padding: 12px 0; border-radius: 9px; cursor: pointer; white-space: nowrap;
   background: #141a20; border: 1px solid #2c353d; color: var(--ink);
   font: 700 12px/1 inherit; letter-spacing: 0.06em;
   -webkit-tap-highlight-color: transparent; touch-action: manipulation;
@@ -887,9 +889,31 @@ body.in-club #flight-strip { display: none; }
   background: #0d1116; border: 1px solid #232a30;
 }
 .sampler-row { display: flex; align-items: center; gap: 10px; flex: none; }
-.sampler-row span { width: 46px; flex: none; color: var(--dim); font-size: 10px; letter-spacing: 0.08em; }
-.sampler-row b { width: 44px; flex: none; color: var(--ink); font-size: 11px; text-align: right; font-weight: 600; }
-.sampler-row input[type="range"] { flex: 1; accent-color: var(--amber); min-width: 0; }
+.sampler-row span { width: 46px; flex: none; color: var(--dim); font-size: 11px; letter-spacing: 0.08em; }
+.sampler-row b { width: 48px; flex: none; color: var(--ink); font-size: 13px; text-align: right; font-weight: 600; }
+/* sliders built for thumbs: a tall hit area, a fat track, a thumb you can
+   actually grab. the default range control is sized for a mouse. */
+.sampler-row input[type="range"] {
+  flex: 1; min-width: 0; height: 48px; margin: 0;
+  -webkit-appearance: none; appearance: none; background: transparent;
+  touch-action: pan-x;   /* dragging a slider must never scroll the page */
+}
+.sampler-row input[type="range"]::-webkit-slider-runnable-track {
+  height: 14px; border-radius: 7px; background: #1d252c; border: 1px solid #2c353d;
+}
+.sampler-row input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 36px; height: 36px; border-radius: 50%; border: none;
+  background: var(--amber); margin-top: -12px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.55);
+}
+.sampler-row input[type="range"]::-moz-range-track {
+  height: 14px; border-radius: 7px; background: #1d252c; border: 1px solid #2c353d;
+}
+.sampler-row input[type="range"]::-moz-range-thumb {
+  width: 36px; height: 36px; border-radius: 50%; border: none;
+  background: var(--amber); box-shadow: 0 2px 10px rgba(0, 0, 0, 0.55);
+}
 
 /* the studio is a separate room: the cat and LAX stay home */
 body.in-studio #cat-pill, body.in-studio #flight-strip { display: none; }

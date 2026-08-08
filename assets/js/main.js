@@ -2151,9 +2151,10 @@ function applyStudioHit(kind, hit) {
     sAct.setPattern(hit.i);
     toast(`pattern ${"ABCD"[hit.i] || hit.i + 1}`);
   } else if (hit.type === "steps") {
-    const n = Math.max(1, Math.min(S_MAX_STEPS, sStepCount() + hit.d));
-    sAct.setSteps(n);
-    toast(`${n} step${n === 1 ? "" : "s"}`);
+    const id = hit.id === "synth" ? "synth" : "drums";
+    const n = Math.max(1, Math.min(S_MAX_STEPS, sStepCount(id) + hit.d));
+    sAct.setSteps(n, id);
+    toast(`${id === "synth" ? "synth" : "drums"}: ${n} step${n === 1 ? "" : "s"}`);
   }
   else if (hit.type === "mute") sAct.toggleMute(hit.id);
   else if (hit.type === "clip") sAct.launchClip(hit.index);
@@ -4278,7 +4279,7 @@ xrRef = xr;   // helpers above can reach it now that it exists
 window.METRO_DEBUG = { renderer, camera, world, controls, xr,
   // a hand on the sequencer, same habit as the rest of the room
   studio: { state: sState, act: sAct, rec: sRec, hit: sHitPanel, apply: applyStudioHit,
-            steps: sStepCount, percReady: () => SA.percReady(), percLast: () => SA.percLast() }, THREE, cat, bartender, ghosts, voice, screen, stream, setScreen, clearScreen, room: () => aRoomNow(), jump: adminJump, mirror, openPicker, analytics: analyticsBuffer, notesWall,
+            steps: sStepCount, playhead: sPlayhead, percReady: () => SA.percReady(), percLast: () => SA.percLast() }, THREE, cat, bartender, ghosts, voice, screen, stream, setScreen, clearScreen, room: () => aRoomNow(), jump: adminJump, mirror, openPicker, analytics: analyticsBuffer, notesWall,
   layout: { set: setLayoutMode, select: layoutSelect, nudge: layoutNudge, scale: layoutScale, click: layoutClick, on: () => layoutMode, sel: () => layoutSel },
   uid: identity.uid, pool: poolGame, pool2: poolGame2, sitAtPool, leavePool,
   toy: () => toy, grabToy, throwToy,
@@ -4414,7 +4415,7 @@ renderer.setAnimationLoop(() => {
     }
   }
   if (inStudio) {
-    world.studio.update(dt, sPlayhead());
+    world.studio.update(dt, sPlayhead(), sPlayhead("synth"));
     // stepping into the doorway counts as using it
     const dp = world.studio.doorPos;
     if (Math.hypot(controls.pos.x - dp.x, controls.pos.z - dp.z) < 0.6) goHome();

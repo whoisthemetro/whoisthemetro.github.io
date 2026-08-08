@@ -277,16 +277,20 @@ export function buildRoom(opts = {}) {
 
   /* ---------- per-frame ---------- */
 
-  function update(dt, playStep) {
+  function update(dt, playStep, synthStep) {
+    // the two grid machines run their own loop lengths, so each face follows
+    // its own playhead; callers that don't care pass one number for both
+    if (synthStep == null) synthStep = playStep;
     for (const p of panels) {
+      const step = (p.kind === "synth" || p.kind === "launch") ? synthStep : playStep;
       // redraw only when something actually changed — repainting four 1024px
       // canvases every frame is the fastest way to make a music app stutter,
       // and a stuttering music app is a broken one
-      if (p.dirty || p.lastStep !== playStep) {
-        drawPanel(p.kind, p.g, playStep);
+      if (p.dirty || p.lastStep !== step) {
+        drawPanel(p.kind, p.g, step);
         p.tex.needsUpdate = true;
         p.dirty = false;
-        p.lastStep = playStep;
+        p.lastStep = step;
       }
       p.glow.intensity += (p.base - p.glow.intensity) * Math.min(1, dt * 8);
     }
