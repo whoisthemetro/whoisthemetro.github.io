@@ -558,8 +558,10 @@ export function note(midi, at, dur = 0.3, opts = {}) {
   const { voice = "saw", cutoff = 1800, res = 6, level = 0.2, out = null } = opts;
   if (voice === "plaits") {
     // the macro-oscillator plays this one; its own LPG shapes the tail
-    if (miMode === "on") plaitsNote(midi, at, dur, Math.min(1, level * 4));
-    else if (miMode === "off") initMI();   // first ask wakes it; this note stays silent
+    if (miMode === "on") { plaitsNote(midi, at, dur, Math.min(1, level * 4)); return; }
+    if (miMode === "off") initMI();        // first ask wakes it
+    // wasm never came up? fall back to the saw so the room is never mute
+    if (miMode === "failed") note(midi, at, dur, { ...opts, voice: "saw" });
     return;
   }
   const dest = (out || channel("synth")).input;

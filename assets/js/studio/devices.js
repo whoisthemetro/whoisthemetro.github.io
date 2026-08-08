@@ -92,7 +92,7 @@ export const state = {
     // sends now — they were on the master, where they belonged to nothing.
     synth: { v: 0, by: "", pats: pats(8, SYNTH_PATS), sel: 0, active: 0, queued: -1, atStep: -1,
              steps: STEPS,   // its own loop length, independent of the drums'
-             root: 45, oct: 0, scale: "minor", voice: "saw",
+             root: 45, oct: 0, scale: "minor", voice: "plaits",
              cutoff: 1800, res: 6, gate: 0.6, delay: 0, reverb: 0, mute: false,
              // plaits, when it's the voice: the four panel knobs, the two
              // "hidden" ones, and which of the 24 engines is lit
