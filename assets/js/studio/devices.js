@@ -93,10 +93,18 @@ export const state = {
     synth: { v: 0, by: "", pats: pats(8, SYNTH_PATS), sel: 0, active: 0, queued: -1, atStep: -1,
              steps: STEPS,   // its own loop length, independent of the drums'
              root: 45, oct: 0, scale: "minor", voice: "saw",
-             cutoff: 1800, res: 6, gate: 0.6, delay: 0, reverb: 0, mute: false },
+             cutoff: 1800, res: 6, gate: 0.6, delay: 0, reverb: 0, mute: false,
+             // plaits, when it's the voice: the four panel knobs, the two
+             // "hidden" ones, and which of the 24 engines is lit
+             pEngine: 8, pHarm: 0.5, pTimbre: 0.5, pMorph: 0.5, pDecay: 0.6, pLpg: 0.4 },
     mixer: { v: 0, by: "",
              ch: { drums: { gain: 0.9, mute: false }, synth: { gain: 0.75, mute: false } },
-             cutoff: 20000, master: 0.85 },
+             cutoff: 20000, master: 0.85,
+             // clouds across the master: position/size/pitch/density/texture,
+             // the four blend params, freeze, and the playback mode. wet
+             // starts at zero — the room is dry until somebody reaches in.
+             clPos: 0, clSize: 0.5, clPitch: 0, clDens: 0.5, clTex: 0.5,
+             clWet: 0, clSpread: 0.5, clFb: 0, clVerb: 0, clFreeze: false, clMode: 0 },
   },
 };
 
@@ -483,4 +491,12 @@ export function applyMixer() {
   // which is what lets the effects be off until somebody turns them on.
   const beat = 60 / state.xport.bpm;
   A.setFx({ delayTime: beat * 0.75, feedback: 0.34, reverbAmount: 1, masterGain: m.master });
+
+  // ---- the mutable pair rides the same sync point ----
+  const sy2 = state.dev.synth;
+  A.setPlaits({ harmonics: sy2.pHarm, timbre: sy2.pTimbre, morph: sy2.pMorph,
+                decay: sy2.pDecay, lpg: sy2.pLpg, engine: sy2.pEngine });
+  A.setClouds({ pos: m.clPos, size: m.clSize, pitch: m.clPitch, dens: m.clDens,
+                tex: m.clTex, wet: m.clWet, spread: m.clSpread, fb: m.clFb,
+                verb: m.clVerb, freeze: m.clFreeze, mode: m.clMode });
 }

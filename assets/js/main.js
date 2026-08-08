@@ -2046,13 +2046,17 @@ async function bootStudio() {
   studioBooted = true;
   const sUid = identity.uid + "." + Math.random().toString(36).slice(2, 7);
   SA.initAudio();                       // rides the click that got us here
+  // wake the mutable pair (plaits + clouds, wasm) and push the room's
+  // current knob positions once the worklets are actually listening
+  SA.initMI().then(() => sApplyMixer()).catch(() => {});
   SA.loadPerc();                        // 77 dumbek one-shots, pulled in the background
   sBind({
     uid: sUid,
     onLocalEdit: (id, data) => sNet.pushPatch(id, data),
     onStateChange: (id) => {
       world.studio.markDirty(id);
-      if (id === "mixer" || id === "*" || id === "xport") sApplyMixer();
+      // synth included: the plaits knobs ride applyMixer to the worklet
+      if (id !== "drums") sApplyMixer();
     },
   });
   let adopted = false;
@@ -2165,9 +2169,21 @@ function applyStudioHit(kind, hit) {
     else if (hit.key === "swing") sAct.setSwing(hit.value);
     else if (hit.ch) sAct.setChannel(hit.ch, hit.key, hit.value);
     else sAct.setParam(hit.dev, hit.key, hit.value);
-    // the synth's sends and the master's filter only reach the audio graph
-    // through applyMixer, so nudge it whenever one of them moves
-    if (hit.dev === "mixer" || hit.key === "delay" || hit.key === "reverb") sApplyMixer();
+    // everything that isn't a note reaches the audio graph through
+    // applyMixer — sends, master filter, plaits knobs, clouds knobs
+    sApplyMixer();
+  } else if (hit.type === "pengine") {
+    const cur = sState.dev.synth.pEngine || 0;
+    const next = Math.max(0, Math.min(23, cur + hit.d));
+    sAct.setParam("synth", "pEngine", next);
+    sApplyMixer();
+  } else if (hit.type === "clfreeze") {
+    sAct.setParam("mixer", "clFreeze", !sState.dev.mixer.clFreeze);
+    sApplyMixer();
+    toast(sState.dev.mixer.clFreeze ? "❄ frozen — the buffer holds what it heard" : "recording again");
+  } else if (hit.type === "clmode") {
+    sAct.setParam("mixer", "clMode", ((sState.dev.mixer.clMode || 0) + 1) & 3);
+    sApplyMixer();
   } else if (hit.type === "cycle") {
     const a = sState.dev.synth;
     const cyc = (list, cur) => list[(list.indexOf(cur) + 1) % list.length];
@@ -4279,7 +4295,7 @@ xrRef = xr;   // helpers above can reach it now that it exists
 window.METRO_DEBUG = { renderer, camera, world, controls, xr,
   // a hand on the sequencer, same habit as the rest of the room
   studio: { state: sState, act: sAct, rec: sRec, hit: sHitPanel, apply: applyStudioHit,
-            steps: sStepCount, playhead: sPlayhead, percReady: () => SA.percReady(), percLast: () => SA.percLast() }, THREE, cat, bartender, ghosts, voice, screen, stream, setScreen, clearScreen, room: () => aRoomNow(), jump: adminJump, mirror, openPicker, analytics: analyticsBuffer, notesWall,
+            steps: sStepCount, playhead: sPlayhead, mi: () => SA.miStatus(), percReady: () => SA.percReady(), percLast: () => SA.percLast() }, THREE, cat, bartender, ghosts, voice, screen, stream, setScreen, clearScreen, room: () => aRoomNow(), jump: adminJump, mirror, openPicker, analytics: analyticsBuffer, notesWall,
   layout: { set: setLayoutMode, select: layoutSelect, nudge: layoutNudge, scale: layoutScale, click: layoutClick, on: () => layoutMode, sel: () => layoutSel },
   uid: identity.uid, pool: poolGame, pool2: poolGame2, sitAtPool, leavePool,
   toy: () => toy, grabToy, throwToy,

@@ -101,6 +101,22 @@ const RANGE = {
   "synth.gate":      { lo: 0.1, hi: 1.6 },
   "synth.delay":     { lo: 0,   hi: 0.6 },
   "synth.reverb":    { lo: 0,   hi: 0.6 },
+  // plaits: the panel knobs are all normalized, like the hardware's CVs
+  "synth.pHarm":     { lo: 0,   hi: 1 },
+  "synth.pTimbre":   { lo: 0,   hi: 1 },
+  "synth.pMorph":    { lo: 0,   hi: 1 },
+  "synth.pDecay":    { lo: 0,   hi: 1 },
+  "synth.pLpg":      { lo: 0,   hi: 1 },
+  // clouds: hardware ranges — pitch is the one bipolar knob
+  "mixer.clPos":     { lo: 0,   hi: 1 },
+  "mixer.clSize":    { lo: 0,   hi: 1 },
+  "mixer.clPitch":   { lo: -24, hi: 24 },
+  "mixer.clDens":    { lo: 0,   hi: 1 },
+  "mixer.clTex":     { lo: 0,   hi: 1 },
+  "mixer.clWet":     { lo: 0,   hi: 1 },
+  "mixer.clSpread":  { lo: 0,   hi: 1 },
+  "mixer.clFb":      { lo: 0,   hi: 1 },
+  "mixer.clVerb":    { lo: 0,   hi: 1 },
 };
 
 const rangeOf = (h) => RANGE[`${h.dev}.${h.key}`];
@@ -336,10 +352,14 @@ const ARP_SLIDERS = [
 ];
 
 const STRIP_H = 158;
+const PLAITS_STRIP_H = 236;   // the hardware panel needs a taller band
+
+const isPlaits = () => state.dev.synth.voice === "plaits";
+const stripH = () => (isPlaits() ? PLAITS_STRIP_H : STRIP_H);
 
 function arpLayout() {
   const top = PANEL_H * HEAD;
-  const stripTop = PANEL_H - STRIP_H;
+  const stripTop = PANEL_H - stripH();
   const gy = top + 12;
   const gh = stripTop - gy - 10;
   const pad = 16, gap = 10;
@@ -374,10 +394,154 @@ function fmtSlider(key, v) {
   return "";
 }
 
+/* ---------- plaits: the hardware panel, laid on its side ----------
+   The real module is 12HP of portrait Eurorack: FREQUENCY and HARMONICS
+   up top, TIMBRE and MORPH below, a column of eight LEDs down the
+   centre with a model button on each side, and the hidden DECAY/LPG
+   pair behind a button-hold. Our strip is landscape, so the column
+   stays a column and everything else files past it in hardware order.
+   FREQUENCY's job (base pitch) already belongs to KEY/OCT + the grid. */
+
+const PLAITS_ENGINES = [
+  // bank 1 — firmware 1.2's additions (yellow on the hardware)
+  "VA VCF", "PHASE DIST", "6-OP FM 1", "6-OP FM 2", "6-OP FM 3", "WAVE TERRAIN", "STRING MACH", "CHIPTUNE",
+  // bank 2 — the classic green bank
+  "VIRT ANALOG", "WAVESHAPER", "2-OP FM", "GRANULAR", "ADDITIVE", "WAVETABLE", "CHORD", "SPEECH",
+  // bank 3 — noisy and percussive (red)
+  "SWARM", "FILT NOISE", "PARTICLE", "STRING", "MODAL", "BASS DRUM", "SNARE", "HI-HAT",
+];
+const BANK_COLOR = ["#ffd76a", "#7dffa8", "#ff7d6a"];
+
+// the four big panel knobs and the hidden pair, in hardware order
+const PLAITS_KNOBS = [
+  { key: "pHarm",   label: "HARMONICS", big: true },
+  { key: "pTimbre", label: "TIMBRE",    big: true },
+  { key: "pMorph",  label: "MORPH",     big: true },
+  { key: "pDecay",  label: "DECAY" },
+  { key: "pLpg",    label: "LPG" },
+];
+const PLAITS_SLIDERS = [
+  { key: "gate",   label: "LENGTH" },
+  { key: "delay",  label: "DELAY" },
+  { key: "reverb", label: "REVERB" },
+];
+
+// one rotary, everywhere: 270° sweep from 7:30 round to 4:30
+function drawKnob(g, cx, cy, rad, frac, color, lbl, val) {
+  const a0 = Math.PI * 0.75, a1 = Math.PI * 2.25;
+  g.fillStyle = "#151b23";
+  g.beginPath(); g.arc(cx, cy, rad, 0, Math.PI * 2); g.fill();
+  g.strokeStyle = C.line; g.lineWidth = 3;
+  g.beginPath(); g.arc(cx, cy, rad, 0, Math.PI * 2); g.stroke();
+  g.strokeStyle = "rgba(255,255,255,0.12)"; g.lineWidth = 5;
+  g.beginPath(); g.arc(cx, cy, rad + 7, a0, a1); g.stroke();
+  g.strokeStyle = color; g.lineWidth = 5;
+  g.beginPath(); g.arc(cx, cy, rad + 7, a0, a0 + (a1 - a0) * clamp01(frac)); g.stroke();
+  const a = a0 + (a1 - a0) * clamp01(frac);
+  g.strokeStyle = C.text; g.lineWidth = 4; g.lineCap = "round";
+  g.beginPath(); g.moveTo(cx + Math.cos(a) * rad * 0.35, cy + Math.sin(a) * rad * 0.35);
+  g.lineTo(cx + Math.cos(a) * rad * 0.86, cy + Math.sin(a) * rad * 0.86); g.stroke();
+  g.lineCap = "butt";
+  label(g, lbl, cx, cy + rad + 22, 14, C.dim, "center");
+  if (val != null) label(g, val, cx, cy - rad - 14, 14, C.cool, "center");
+}
+
+// where a click on the knob face lands, as 0..1 around the same sweep
+function knobFrac(cx, cy, px, py) {
+  let a = Math.atan2(py - cy, px - cx);
+  if (a < Math.PI * 0.75 && a > -Math.PI) a += Math.PI * 2;
+  return clamp01((a - Math.PI * 0.75) / (Math.PI * 1.5));
+}
+
+function plaitsLayout() {
+  const L = arpLayout();
+  const rowY = L.btnY + L.btnH + 16;              // the knob band
+  const ledX = L.pad + 26;                        // ◀ [LEDs] ▶ cluster
+  const knobR = 34, smallR = 26;
+  const knobY = rowY + 46;
+  const slY = rowY + 112, slH = 56;               // the sends row below
+  return { ...L, rowY, ledX, knobR, smallR, knobY, slY, slH };
+}
+
+function drawPlaitsStrip(g) {
+  const L = plaitsLayout();
+  const d = state.dev.synth;
+  const eng = Math.max(0, Math.min(23, d.pEngine || 0));
+  const bank = Math.floor(eng / 8), idx = eng % 8;
+
+  // model selector: a button each side of the LED column, like the panel
+  const btnW = 40, btnH = 84, colX = L.ledX + btnW + 14;
+  const topY = L.rowY + 2;
+  g.fillStyle = C.btn; rr(g, L.ledX, topY, btnW, btnH, 8); g.fill();
+  label(g, "◀", L.ledX + btnW / 2, topY + btnH / 2, 22, C.dim, "center");
+  for (let i = 0; i < 8; i++) {
+    g.fillStyle = i === idx ? BANK_COLOR[bank] : "#26303c";
+    g.beginPath(); g.arc(colX + 6, topY + 6 + i * 10.4, 4.4, 0, Math.PI * 2); g.fill();
+  }
+  g.fillStyle = C.btn; rr(g, colX + 22, topY, btnW, btnH, 8); g.fill();
+  label(g, "▶", colX + 22 + btnW / 2, topY + btnH / 2, 22, C.dim, "center");
+  label(g, PLAITS_ENGINES[eng], L.ledX + (btnW * 2 + 36 + 12) / 2, topY + btnH + 18, 15, BANK_COLOR[bank], "center");
+
+  // the knobs, filing past the column in hardware order
+  let x = colX + 22 + btnW + 64;
+  for (const k of PLAITS_KNOBS) {
+    const r = k.big ? L.knobR : L.smallR;
+    const h = { dev: "synth", key: k.key };
+    drawKnob(g, x, L.knobY, r, toFrac(h, readValue(h)), C.cool, k.label,
+             Math.round(readValue(h) * 100) + "");
+    x += k.big ? 128 : 100;
+  }
+
+  // gate length and the two sends keep their slider shape below
+  const slW = (PANEL_W - L.pad * 2 - L.gap * 2) / PLAITS_SLIDERS.length;
+  for (let i = 0; i < PLAITS_SLIDERS.length; i++) {
+    const sl = PLAITS_SLIDERS[i];
+    const rx = L.pad + i * (slW + L.gap);
+    const h = { dev: "synth", key: sl.key };
+    label(g, sl.label, rx + 14, L.slY + 12, 14, C.dim);
+    drawBar(g, rx + 14, L.slY + 24, slW - 28, 20, toFrac(h, readValue(h)), C.cool);
+  }
+}
+
+function hitPlaitsStrip(px, py) {
+  const L = plaitsLayout();
+  if (py < L.stripTop) return null;
+  for (let i = 0; i < ARP_BTNS.length; i++) {
+    const r = arpBtnRect(L, i);
+    if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) {
+      return { type: "cycle", dev: "synth", key: ARP_BTNS[i].key };
+    }
+  }
+  const btnW = 40, btnH = 84, colX = L.ledX + btnW + 14, topY = L.rowY + 2;
+  if (py >= topY && py <= topY + btnH) {
+    if (px >= L.ledX && px <= L.ledX + btnW) return { type: "pengine", d: -1 };
+    if (px >= colX + 22 && px <= colX + 22 + btnW) return { type: "pengine", d: 1 };
+  }
+  let x = colX + 22 + btnW + 64;
+  for (const k of PLAITS_KNOBS) {
+    const r = (k.big ? L.knobR : L.smallR) + 14;
+    if (Math.hypot(px - x, py - L.knobY) <= r) {
+      const h = { dev: "synth", key: k.key };
+      return { type: "slider", ...h, value: fromFrac(h, knobFrac(x, L.knobY, px, py)) };
+    }
+    x += k.big ? 128 : 100;
+  }
+  if (py >= L.slY) {
+    const slW = (PANEL_W - L.pad * 2 - L.gap * 2) / PLAITS_SLIDERS.length;
+    const i = Math.floor((px - L.pad) / (slW + L.gap));
+    if (i >= 0 && i < PLAITS_SLIDERS.length) {
+      const rx = L.pad + i * (slW + L.gap);
+      const h = { dev: "synth", key: PLAITS_SLIDERS[i].key };
+      return { type: "slider", ...h, value: fromFrac(h, (px - rx - 14) / (slW - 28)) };
+    }
+  }
+  return { type: "none" };
+}
+
 function drawArpStrip(g) {
   const L = arpLayout();
   g.fillStyle = C.head;
-  g.fillRect(0, L.stripTop, PANEL_W, STRIP_H);
+  g.fillRect(0, L.stripTop, PANEL_W, stripH());
   g.fillStyle = "rgba(126,200,255,0.30)";
   g.fillRect(0, L.stripTop, PANEL_W, 2);
 
@@ -388,6 +552,8 @@ function drawArpStrip(g) {
     label(g, b.label, r.x + r.w / 2, r.y + 16, 14, C.dim, "center");
     label(g, arpBtnValue(b.key), r.x + r.w / 2, r.y + 37, 24, C.text, "center");
   }
+
+  if (isPlaits()) { drawPlaitsStrip(g); return; }
 
   for (let i = 0; i < ARP_SLIDERS.length; i++) {
     const s = ARP_SLIDERS[i];
@@ -401,6 +567,7 @@ function drawArpStrip(g) {
 }
 
 function hitArpStrip(px, py) {
+  if (isPlaits()) return hitPlaitsStrip(px, py);
   const L = arpLayout();
   if (py < L.stripTop) return null;
   for (let i = 0; i < ARP_BTNS.length; i++) {
@@ -497,12 +664,121 @@ const FX_ROWS = [
 const CH_NAMES = ["drums", "synth"];
 const CH_LABEL = { drums: "DRUMS", synth: "SYNTH" };
 
+// the strips squeeze left so clouds can live on the right half — the way a
+// granular processor bolts onto the end of a mixer in a real rack
 function mixerLayout() {
   const top = PANEL_H * HEAD;
   const chTop = top + 16, chH = 46, chGap = 12;
   const fxTop = chTop + CH_NAMES.length * (chH + chGap) + 14;
   const fxH = 40, fxGap = 10;
-  return { top, chTop, chH, chGap, fxTop, fxH, fxGap, x: 132, w: PANEL_W - 132 - 96 };
+  return { top, chTop, chH, chGap, fxTop, fxH, fxGap, x: 110, w: 258 };
+}
+
+/* ---------- clouds, across the whole mix ----------
+   The hardware groups its panel as: the three big knobs (POSITION, SIZE,
+   PITCH), the texture pair (DENSITY, TEXTURE), one BLEND knob that a
+   button cycles through four meanings, and FREEZE. We keep the grouping
+   and give each blend meaning its own small slider — four labelled
+   sliders beat one knob you have to interrogate. */
+const CLOUDS_KNOBS = [
+  { key: "clPos",  label: "POSITION", big: true },
+  { key: "clSize", label: "SIZE",     big: true },
+  { key: "clPitch", label: "PITCH",   big: true, bipolar: true },
+  { key: "clDens", label: "DENSITY" },
+  { key: "clTex",  label: "TEXTURE" },
+];
+const CLOUDS_BLEND = [
+  { key: "clWet",    label: "DRY/WET" },
+  { key: "clSpread", label: "SPREAD" },
+  { key: "clFb",     label: "FEEDBK" },
+  { key: "clVerb",   label: "REVERB" },
+];
+const CLOUDS_MODES = ["GRANULAR", "STRETCH", "LOOP DELAY", "SPECTRAL"];
+
+function drawClouds(g) {
+  const m = state.dev.mixer;
+  const x0 = 476, w = PANEL_W - x0 - 18;
+  g.strokeStyle = C.line; g.lineWidth = 2;
+  g.beginPath(); g.moveTo(x0 - 18, PANEL_H * HEAD + 10); g.lineTo(x0 - 18, PANEL_H - 14); g.stroke();
+  label(g, "CLOUDS", x0, PANEL_H * HEAD + 26, 20, C.amber);
+  label(g, "granular · the whole mix", x0 + 108, PANEL_H * HEAD + 26, 13, C.faint);
+
+  // knob row 1: the three big ones
+  const y1 = PANEL_H * HEAD + 96;
+  let x = x0 + 44;
+  for (const k of CLOUDS_KNOBS.slice(0, 3)) {
+    const h = { dev: "mixer", key: k.key };
+    const v = readValue(h);
+    drawKnob(g, x, y1, 30, toFrac(h, v), C.amber, k.label,
+             k.bipolar ? (v > 0 ? "+" : "") + Math.round(v) : Math.round(v * 100) + "");
+    x += 118;
+  }
+  // knob row 2: density + texture, then freeze and the mode
+  const y2 = y1 + 118;
+  x = x0 + 44;
+  for (const k of CLOUDS_KNOBS.slice(3)) {
+    const h = { dev: "mixer", key: k.key };
+    drawKnob(g, x, y2, 24, toFrac(h, readValue(h)), C.amber, k.label,
+             Math.round(readValue(h) * 100) + "");
+    x += 108;
+  }
+  const bx = x - 26, bw = 130, bh = 40;
+  g.fillStyle = m.clFreeze ? C.cool : C.btn;
+  rr(g, bx, y2 - 44, bw, bh, 8); g.fill();
+  label(g, m.clFreeze ? "FROZEN" : "FREEZE", bx + bw / 2, y2 - 44 + bh / 2, 17, m.clFreeze ? "#0b0d10" : C.dim, "center");
+  g.fillStyle = C.btn;
+  rr(g, bx, y2 + 6, bw, bh, 8); g.fill();
+  label(g, CLOUDS_MODES[m.clMode & 3], bx + bw / 2, y2 + 6 + bh / 2, 15, C.amber, "center");
+
+  // the blend row: four small sliders where the hardware has one knob
+  const by = PANEL_H - 74;
+  const bsW = (w - 12 * 3) / 4;
+  for (let i = 0; i < CLOUDS_BLEND.length; i++) {
+    const rx = x0 + i * (bsW + 12);
+    const h = { dev: "mixer", key: CLOUDS_BLEND[i].key };
+    label(g, CLOUDS_BLEND[i].label, rx + 2, by, 13, C.dim);
+    drawBar(g, rx, by + 12, bsW, 20, toFrac(h, readValue(h)), C.amber);
+  }
+}
+
+function hitClouds(px, py) {
+  const m = state.dev.mixer;
+  const x0 = 476, w = PANEL_W - x0 - 18;
+  if (px < x0 - 10) return null;
+  const y1 = PANEL_H * HEAD + 96;
+  let x = x0 + 44;
+  for (const k of CLOUDS_KNOBS.slice(0, 3)) {
+    if (Math.hypot(px - x, py - y1) <= 44) {
+      const h = { dev: "mixer", key: k.key };
+      return { type: "slider", ...h, value: fromFrac(h, knobFrac(x, y1, px, py)) };
+    }
+    x += 118;
+  }
+  const y2 = y1 + 118;
+  x = x0 + 44;
+  for (const k of CLOUDS_KNOBS.slice(3)) {
+    if (Math.hypot(px - x, py - y2) <= 38) {
+      const h = { dev: "mixer", key: k.key };
+      return { type: "slider", ...h, value: fromFrac(h, knobFrac(x, y2, px, py)) };
+    }
+    x += 108;
+  }
+  const bx = x - 26, bw = 130, bh = 40;
+  if (px >= bx && px <= bx + bw) {
+    if (py >= y2 - 44 && py <= y2 - 44 + bh) return { type: "clfreeze" };
+    if (py >= y2 + 6 && py <= y2 + 6 + bh) return { type: "clmode" };
+  }
+  const by = PANEL_H - 74;
+  if (py >= by && py <= by + 40) {
+    const bsW = (w - 12 * 3) / 4;
+    const i = Math.floor((px - x0) / (bsW + 12));
+    if (i >= 0 && i < 4) {
+      const rx = x0 + i * (bsW + 12);
+      const h = { dev: "mixer", key: CLOUDS_BLEND[i].key };
+      return { type: "slider", ...h, value: fromFrac(h, (px - rx) / bsW) };
+    }
+  }
+  return { type: "none" };
 }
 
 function drawMixer(g) {
@@ -515,7 +791,7 @@ function drawMixer(g) {
     const h = { dev: "mixer", ch: name, key: "gain" };
     label(g, CH_LABEL[name], L.x - 16, y + L.chH / 2, 20, C.dim, "right");
     drawBar(g, L.x, y + 10, L.w, L.chH - 20, toFrac(h, readValue(h)), ACCENT[name]);
-    const bw = 74, bx = PANEL_W - bw - 18;
+    const bw = 74, bx = L.x + L.w + 10;
     const muted = state.dev.mixer.ch[name].mute;
     g.fillStyle = muted ? C.hot : C.btn;
     rr(g, bx, y + 6, bw, L.chH - 12, 7); g.fill();
@@ -528,18 +804,21 @@ function drawMixer(g) {
     label(g, FX_ROWS[i].label, L.x - 16, y + L.fxH / 2, 18, C.dim, "right");
     drawBar(g, L.x, y + 9, L.w, L.fxH - 18, toFrac(h, readValue(h)), C.amber);
   }
+  drawClouds(g);
 }
 
 function hitMixer(px, py) {
   const head = hitHead("mixer", px, py);
   if (head) return head;
+  const cl = hitClouds(px, py);
+  if (cl && cl.type !== "none") return cl;
   const L = mixerLayout();
 
   for (let i = 0; i < CH_NAMES.length; i++) {
     const y = L.chTop + i * (L.chH + L.chGap);
     if (py < y || py > y + L.chH) continue;
-    const bw = 74, bx = PANEL_W - bw - 18;
-    if (px >= bx) return { type: "chmute", name: CH_NAMES[i] };
+    const bw = 74, bx = L.x + L.w + 10;
+    if (px >= bx && px <= bx + bw) return { type: "chmute", name: CH_NAMES[i] };
     const h = { dev: "mixer", ch: CH_NAMES[i], key: "gain" };
     return { type: "slider", ...h, value: fromFrac(h, (px - L.x) / L.w) };
   }

@@ -108,6 +108,60 @@ export function initAudio() {
 export const audioCtx = () => ctx;
 export const audioTime = () => (ctx ? ctx.currentTime : 0);
 
+/* ---------- mutable instruments, via wasm ----------
+   Plaits (the 24-engine macro-oscillator) becomes a synth voice, and
+   Clouds (the granular processor) sits across the whole master bus —
+   everything the room makes passes through it. Both are Émilie
+   Gillet's MIT-licensed DSP compiled to assets/wasm/mi.wasm; the
+   module is compiled here and instantiated on the audio thread
+   (mi-worklet.js). If any step fails we quietly stay on the
+   hand-rolled voices and the dry master. */
+
+let miMode = "off";     // off -> loading -> on | failed
+let plaitsNode = null, cloudsNode = null;
+
+export async function initMI() {
+  if (miMode !== "off" || !ctx || !ctx.audioWorklet) { if (!ctx || !ctx.audioWorklet) miMode = "failed"; return; }
+  miMode = "loading";
+  try {
+    const [bytes] = await Promise.all([
+      fetch("/assets/wasm/mi.wasm").then(r => r.arrayBuffer()),
+      ctx.audioWorklet.addModule("/assets/js/studio/mi-worklet.js"),
+    ]);
+    const module = await WebAssembly.compile(bytes);
+    plaitsNode = new AudioWorkletNode(ctx, "mi-plaits", {
+      numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [1],
+      processorOptions: { module },
+    });
+    plaitsNode.connect(channel("synth").input);
+    cloudsNode = new AudioWorkletNode(ctx, "mi-clouds", {
+      numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2],
+      processorOptions: { module },
+    });
+    // splice clouds between the master fader and the compressor: the whole
+    // room — drums, synth, sends, even the metronome — grains together
+    master.disconnect(comp);
+    master.connect(cloudsNode);
+    cloudsNode.connect(comp);
+    miMode = "on";
+  } catch (e) {
+    miMode = "failed";
+    try { master.connect(comp); } catch (e2) {}   // never leave the room silent
+  }
+}
+export const miReady = () => miMode === "on";
+export const miStatus = () => miMode;
+
+export function plaitsNote(midi, at, dur, level = 0.6) {
+  if (plaitsNode) plaitsNode.port.postMessage({ t: "note", midi, at, dur, level });
+}
+export function setPlaits(p) {
+  if (plaitsNode) plaitsNode.port.postMessage({ t: "set", ...p });
+}
+export function setClouds(p) {
+  if (cloudsNode) cloudsNode.port.postMessage({ t: "set", ...p });
+}
+
 /* ---------- channels ---------- */
 
 // every device gets its own strip: a filter, a fader, and two sends.
@@ -466,10 +520,10 @@ export function drum(name, at, vel = 1, out = null) {
 
 /* ---------- pitched voices ---------- */
 
-export const VOICES = ["saw", "square", "pluck", "pad", "bell", "bass", "organ", "fm"];
+export const VOICES = ["saw", "square", "pluck", "pad", "bell", "bass", "organ", "fm", "plaits"];
 export const VOICE_LABEL = {
   saw: "SAW", square: "SQUARE", pluck: "PLUCK", pad: "PAD",
-  bell: "BELL", bass: "BASS", organ: "ORGAN", fm: "FM",
+  bell: "BELL", bass: "BASS", organ: "ORGAN", fm: "FM", plaits: "PLAITS",
 };
 // a pad stacks three oscillators and an organ stacks four, so without a trim
 // per voice, switching timbre mid-jam doubles the level and ducks the drums
@@ -502,6 +556,12 @@ function sweep(f, at, span, cutoff, res, open, close) {
 export function note(midi, at, dur = 0.3, opts = {}) {
   if (!ctx) return;
   const { voice = "saw", cutoff = 1800, res = 6, level = 0.2, out = null } = opts;
+  if (voice === "plaits") {
+    // the macro-oscillator plays this one; its own LPG shapes the tail
+    if (miMode === "on") plaitsNote(midi, at, dur, Math.min(1, level * 4));
+    else if (miMode === "off") initMI();   // first ask wakes it; this note stays silent
+    return;
+  }
   const dest = (out || channel("synth")).input;
   const hz = midiToHz(midi);
 
