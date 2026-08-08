@@ -175,7 +175,55 @@ function env(node, at, peak, attack, decay, hold = 0) {
 
 /* ---------- drums ---------- */
 
-export const DRUM_ROWS = ["kick", "snare", "clap", "hat", "openhat", "tomLo", "tomHi", "rim"];
+/* ---------- the percussion row: real dumbek, never the same twice ----------
+   77 one-shots recorded off a dumbek. They load in the background the first
+   time the studio wakes up, and play from a SHUFFLE BAG rather than plain
+   random: draw without replacement until the bag is empty, then reshuffle —
+   and never let a reshuffle hand you the sample you just heard. Plain
+   Math.random() repeats far more often than people expect. */
+const PERC_N = 77;
+const percBufs = [];
+let percLoading = false, percBag = [], percLastIdx = -1;
+
+export function loadPerc() {
+  if (percLoading || !ctx) return;
+  percLoading = true;
+  // callback form: Safari never implemented the promise flavour properly
+  const decode = (arr) => new Promise((ok, no) => ctx.decodeAudioData(arr, ok, no));
+  const url = (i) => `/assets/audio/dumbek/dumbek-${String(i + 1).padStart(2, "0")}.wav`;
+  let next = 0;
+  const worker = async () => {
+    while (next < PERC_N) {
+      const i = next++;
+      try { percBufs[i] = await decode(await fetch(url(i)).then(r => r.arrayBuffer())); }
+      catch (e) { /* a sample that won't fetch just isn't in the bag */ }
+    }
+  };
+  // six in flight — they're ~35KB each and we want the first hits playable fast
+  for (let k = 0; k < 6; k++) worker();
+}
+export const percReady = () => percBufs.filter(Boolean).length;
+export const percLast = () => percLastIdx;   // which one you just heard (debug/tests)
+
+function nextPerc() {
+  const loaded = percBufs.map((b, i) => (b ? i : -1)).filter(i => i >= 0);
+  if (!loaded.length) return null;
+  if (!percBag.length) {
+    percBag = loaded.slice();
+    for (let i = percBag.length - 1; i > 0; i--) {          // Fisher-Yates
+      const j = (Math.random() * (i + 1)) | 0;
+      [percBag[i], percBag[j]] = [percBag[j], percBag[i]];
+    }
+    // a fresh bag must not open with the hit we just played
+    if (percBag.length > 1 && percBag[percBag.length - 1] === percLastIdx) {
+      [percBag[0], percBag[percBag.length - 1]] = [percBag[percBag.length - 1], percBag[0]];
+    }
+  }
+  percLastIdx = percBag.pop();
+  return percBufs[percLastIdx];
+}
+
+export const DRUM_ROWS = ["kick", "snare", "perc", "hat", "openhat", "tomLo", "tomHi", "rim"];
 
 export function drum(name, at, vel = 1, out = null) {
   if (!ctx) return;
@@ -209,8 +257,20 @@ export function drum(name, at, vel = 1, out = null) {
     env(og, at, 0.34 * v, 0.001, 0.10);
     o.connect(og); og.connect(dest); o.start(at); o.stop(at + 0.2);
 
-  } else if (name === "clap") {
-    // three quick slaps and a tail — that spacing IS the clap
+  } else if (name === "perc") {
+    // a real dumbek hit, drawn from the shuffle bag
+    const buf = nextPerc();
+    if (buf) {
+      const src = ctx.createBufferSource(); src.buffer = buf;
+      const g = ctx.createGain();
+      // a little hit-to-hit dynamics so a run of them breathes
+      g.gain.value = v * (0.78 + Math.random() * 0.22);
+      src.connect(g); g.connect(dest);
+      src.start(at);
+      return;
+    }
+    // still warming up: fall back to the old synthesised clap for this hit
+    loadPerc();
     [0, 0.009, 0.019].forEach((off, i) => {
       const n = noise(); const f = ctx.createBiquadFilter(); const g = ctx.createGain();
       f.type = "bandpass"; f.frequency.value = 1150; f.Q.value = 1.1;

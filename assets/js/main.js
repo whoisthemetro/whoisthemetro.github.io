@@ -38,6 +38,7 @@ import {
   state as sState, act as sAct, bindDevices as sBind, seedTransport as sSeed,
   mergeRemote as sMerge, snapshot as sSnap, adoptSnapshot as sAdopt,
   startScheduler as sStartScheduler, playhead as sPlayhead, applyMixer as sApplyMixer,
+  stepCount as sStepCount, rec as sRec, MAX_STEPS as S_MAX_STEPS,
 } from "./studio/devices.js";
 import { hitPanel as sHitPanel } from "./studio/panels.js";
 import { clock as sClock } from "./studio/clock.js";
@@ -2042,6 +2043,7 @@ async function bootStudio() {
   studioBooted = true;
   const sUid = identity.uid + "." + Math.random().toString(36).slice(2, 7);
   SA.initAudio();                       // rides the click that got us here
+  SA.loadPerc();                        // 77 dumbek one-shots, pulled in the background
   sBind({
     uid: sUid,
     onLocalEdit: (id, data) => sNet.pushPatch(id, data),
@@ -2088,7 +2090,7 @@ function setupStudio() {
   world.studio.root.visible = true;
   controls.pos.x = world.STUDIO.x;
   controls.pos.z = world.STUDIO.z + 2.6;
-  controls.yaw = Math.PI;                 // facing the drum machine
+  controls.yaw = 0;                       // facing the drum machine (forward is -z here)
   setRoomTone(false);                     // the bedroom stays behind, fully
   refreshNoteVisibility();
   bootStudio();
@@ -2109,6 +2111,17 @@ function leaveStudio() {
 function applyStudioHit(kind, hit) {
   if (!hit || hit.type === "none") return;
   if (hit.type === "step") sAct.toggleStep(hit.id, hit.row, hit.step);
+  else if (hit.type === "pad") sAct.trigger(hit.id, hit.row);     // played by hand, recorded if armed
+  else if (hit.type === "rec") {
+    toast(sRec.toggle() ? "REC armed — tap the pads to lay it in" : "REC off");
+  } else if (hit.type === "pattern") {
+    sAct.setPattern(hit.i);
+    toast(`pattern ${"ABCD"[hit.i] || hit.i + 1}`);
+  } else if (hit.type === "steps") {
+    const n = Math.max(1, Math.min(S_MAX_STEPS, sStepCount() + hit.d));
+    sAct.setSteps(n);
+    toast(`${n} step${n === 1 ? "" : "s"}`);
+  }
   else if (hit.type === "mute") sAct.toggleMute(hit.id);
   else if (hit.type === "clip") sAct.launchClip(hit.index);
   else if (hit.type === "chmute") sAct.setChannel(hit.name, "mute", !sState.dev.mixer.ch[hit.name].mute);
@@ -4223,7 +4236,10 @@ const xr = setupXR({
 
 xrRef = xr;   // helpers above can reach it now that it exists
 
-window.METRO_DEBUG = { renderer, camera, world, controls, xr, THREE, cat, bartender, ghosts, voice, screen, stream, setScreen, clearScreen, room: () => aRoomNow(), jump: adminJump, mirror, openPicker, analytics: analyticsBuffer, notesWall,
+window.METRO_DEBUG = { renderer, camera, world, controls, xr,
+  // a hand on the sequencer, same habit as the rest of the room
+  studio: { state: sState, act: sAct, rec: sRec, hit: sHitPanel, apply: applyStudioHit,
+            steps: sStepCount, percReady: () => SA.percReady(), percLast: () => SA.percLast() }, THREE, cat, bartender, ghosts, voice, screen, stream, setScreen, clearScreen, room: () => aRoomNow(), jump: adminJump, mirror, openPicker, analytics: analyticsBuffer, notesWall,
   layout: { set: setLayoutMode, select: layoutSelect, nudge: layoutNudge, scale: layoutScale, click: layoutClick, on: () => layoutMode, sel: () => layoutSel },
   uid: identity.uid, pool: poolGame, pool2: poolGame2, sitAtPool, leavePool,
   toy: () => toy, grabToy, throwToy,

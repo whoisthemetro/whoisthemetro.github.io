@@ -23,8 +23,25 @@
 import { clock } from "./clock.js";
 import * as A from "./audio.js";
 
-export const STEPS = 16;                 // one bar of 16ths
+export const MAX_STEPS = 32;             // grids are allocated this wide…
+export const STEPS = 16;                 // …and this many are live by default
+export const N_PATS = 4;                 // A B C D
 export const CLIP_SLOTS = 8;
+
+// how long the loop actually is right now. everything — drawing, hit
+// testing, the scheduler's wrap — asks this rather than assuming 16, which
+// is what makes an odd meter like 7 work everywhere at once.
+export const stepCount = () => {
+  const n = state.xport && state.xport.steps;
+  return Math.max(1, Math.min(MAX_STEPS, n || STEPS));
+};
+// the grid a device is showing/playing: patterns are per-device, but which
+// pattern is live is a transport-wide thing, so the whole room switches together
+export const curGrid = (id) => {
+  const d = state.dev[id];
+  const i = Math.max(0, Math.min(N_PATS - 1, (state.xport && state.xport.pat) || 0));
+  return d.pats[i];
+};
 
 const LOOKAHEAD_MS = 220;                // how far ahead we schedule audio
 const TICK_MS = 25;                      // how often we wake up to do it
@@ -35,15 +52,21 @@ const TICK_MS = 25;                      // how often we wake up to do it
 // conflict resolution story: higher version wins, and if two people bump to
 // the same version in the same instant, the higher uid wins so that every
 // browser breaks the tie the same way and nobody ends up out of step.
-function grid(rows, steps = STEPS) {
+function grid(rows, steps = MAX_STEPS) {
   return Array.from({ length: rows }, () => new Array(steps).fill(0));
+}
+// four patterns per device, each allocated full width so shortening the loop
+// hides steps rather than destroying them — lengthen it again and your old
+// tail is still there
+function pats(rows) {
+  return Array.from({ length: N_PATS }, () => grid(rows));
 }
 
 export const state = {
-  xport: { epoch: 0, bpm: 112, playing: true, swing: 0.12, v: 0, by: "" },
+  xport: { epoch: 0, bpm: 112, playing: true, swing: 0.12, steps: STEPS, pat: 0, v: 0, by: "" },
   dev: {
-    drums: { v: 0, by: "", grid: grid(A.DRUM_ROWS.length), mute: false },
-    arp:   { v: 0, by: "", grid: grid(8), root: 45, oct: 0, scale: "minor", voice: "saw",
+    drums: { v: 0, by: "", pats: pats(A.DRUM_ROWS.length), mute: false },
+    arp:   { v: 0, by: "", pats: pats(8), root: 45, oct: 0, scale: "minor", voice: "saw",
              cutoff: 1800, res: 6, gate: 0.6, mute: false },
     clips: { v: 0, by: "", active: -1, queued: -1, atStep: -1,
              slots: Array.from({ length: CLIP_SLOTS }, () => null), mute: false },
@@ -100,7 +123,7 @@ export function seedTransport() {
   state.xport.by = myUid;
 
   // and a starting groove, so the door opens onto music
-  const d = state.dev.drums.grid;
+  const d = curGrid("drums");
   const R = (n) => A.DRUM_ROWS.indexOf(n);
   [0, 8].forEach(i => d[R("kick")][i] = 1);
   [4, 12].forEach(i => d[R("snare")][i] = 1);
@@ -125,9 +148,50 @@ function edit(id, fn) {
   onChange(id);
 }
 
+// record arm is deliberately LOCAL: it's about what your hands are doing,
+// not what the room is doing, so it never goes over the wire.
+let recArmed = false;
+export const rec = {
+  on: () => recArmed,
+  toggle() { recArmed = !recArmed; onChange("drums"); return recArmed; },
+};
+
 export const act = {
   toggleStep(id, row, step) {
-    edit(id, d => { d.grid[row][step] = d.grid[row][step] ? 0 : 1; });
+    edit(id, () => { const g = curGrid(id); g[row][step] = g[row][step] ? 0 : 1; });
+  },
+  // the loop length. shortening never erases: the columns past the end are
+  // just not played or drawn until you lengthen it again.
+  setSteps(n) {
+    const v = Math.max(1, Math.min(MAX_STEPS, Math.round(n)));
+    edit("xport", d => { d.steps = v; });
+    resetSchedule();
+  },
+  setPattern(i) {
+    const v = Math.max(0, Math.min(N_PATS - 1, Math.round(i)));
+    edit("xport", d => { d.pat = v; });
+    onChange("*");
+  },
+  // a pad struck by hand. always audible immediately; if the player has
+  // record armed it also lands on the nearest step, quantised, so you can
+  // tap a pattern in rather than drawing it.
+  trigger(id, row, { record = recArmed } = {}) {
+    if (id === "drums") A.drum(A.DRUM_ROWS[row], A.audioTime() + 0.001, 1, A.channel("drums"));
+    else if (id === "arp") {
+      const degree = (curGrid("arp").length - 1) - row;
+      const d = state.dev.arp;
+      A.note(arpMidi(degree), A.audioTime() + 0.001, 0.18,
+        { voice: d.voice, cutoff: d.cutoff, res: d.res, level: 0.18, out: A.channel("arp") });
+    }
+    if (!record) return;
+    // quantise to the nearest step, not the one just gone — a hit a hair
+    // early belongs to the beat you were aiming at
+    const x = state.xport;
+    const stepMs = 60000 / x.bpm / 4;
+    const n = stepCount();
+    const at = Math.round((clock.now() - x.epoch) / stepMs);
+    const pos = ((at % n) + n) % n;
+    edit(id, () => { curGrid(id)[row][pos] = 1; });
   },
   setParam(id, key, value) {
     edit(id, d => { d[key] = value; });
@@ -165,12 +229,13 @@ export const act = {
     const x = state.xport;
     const stepMs = 60000 / x.bpm / 4;
     const cur = Math.floor((clock.now() - x.epoch) / stepMs);
-    const nextBar = (Math.floor(cur / STEPS) + 1) * STEPS;
+    const n = stepCount();
+    const nextBar = (Math.floor(cur / n) + 1) * n;
     edit("clips", d => { d.queued = idx; d.atStep = nextBar; });
   },
   setClipNote(slot, step, degree) {
     edit("clips", d => {
-      if (!d.slots[slot]) d.slots[slot] = { name: "SLOT " + (slot + 1), notes: new Array(STEPS).fill(null) };
+      if (!d.slots[slot]) d.slots[slot] = { name: "SLOT " + (slot + 1), notes: new Array(MAX_STEPS).fill(null) };
       d.slots[slot].notes[step] = degree;
     });
   },
@@ -232,7 +297,8 @@ function stepTimeMs(abs) {
 function fireStep(abs, at) {
   const x = state.xport;
   const stepMs = 60000 / x.bpm / 4;
-  const pos = ((abs % STEPS) + STEPS) % STEPS;
+  const n = stepCount();
+  const pos = ((abs % n) + n) % n;
   const mx = state.dev.mixer;
 
   // ---- clips commit on their named step, wherever we are ----
@@ -247,8 +313,9 @@ function fireStep(abs, at) {
   // ---- drums ----
   const dr = state.dev.drums;
   if (!dr.mute && !mx.ch.drums.mute) {
+    const dg = curGrid("drums");
     for (let r = 0; r < A.DRUM_ROWS.length; r++) {
-      if (dr.grid[r][pos]) A.drum(A.DRUM_ROWS[r], at, 1, A.channel("drums"));
+      if (dg[r][pos]) A.drum(A.DRUM_ROWS[r], at, 1, A.channel("drums"));
     }
   }
 
@@ -256,10 +323,11 @@ function fireStep(abs, at) {
   const ar = state.dev.arp;
   if (!ar.mute && !mx.ch.arp.mute) {
     const dur = Math.max(0.05, (stepMs / 1000) * (ar.gate * 3));
-    for (let r = 0; r < ar.grid.length; r++) {
-      if (!ar.grid[r][pos]) continue;
+    const ag = curGrid("arp");
+    for (let r = 0; r < ag.length; r++) {
+      if (!ag[r][pos]) continue;
       // the grid is drawn with low notes at the bottom, so flip the row index
-      const degree = (ar.grid.length - 1) - r;
+      const degree = (ag.length - 1) - r;
       A.note(arpMidi(degree), at, dur, {
         voice: ar.voice, cutoff: ar.cutoff, res: ar.res, level: 0.18, out: A.channel("arp"),
       });
@@ -320,7 +388,7 @@ export function playhead() {
   const x = state.xport;
   if (!x.playing || !x.epoch) return -1;
   const stepMs = 60000 / x.bpm / 4;
-  return Math.floor((clock.now() - x.epoch) / stepMs) % STEPS;
+  return Math.floor((clock.now() - x.epoch) / stepMs) % stepCount();
 }
 
 /* ---------- push mixer state into the audio graph ---------- */

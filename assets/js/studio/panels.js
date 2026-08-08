@@ -12,7 +12,7 @@
    grabbing one can latch onto it by identity. See sliderValue().
    ============================================================ */
 
-import { state, STEPS, CLIP_SLOTS, arpMidi } from "./devices.js";
+import { state, STEPS, MAX_STEPS, N_PATS, CLIP_SLOTS, arpMidi, stepCount, curGrid, rec } from "./devices.js";
 import { DRUM_ROWS, SCALES, VOICES, VOICE_LABEL, noteName } from "./audio.js";
 
 export const PANEL_W = 1024;
@@ -129,7 +129,7 @@ function drawHead(g, kind, extra = "") {
   g.fillRect(0, 0, PANEL_W, h);
   g.fillStyle = ACCENT[kind];
   g.fillRect(0, h - 3, PANEL_W, 3);
-  label(g, TITLE[kind], 22, h / 2, 30, C.text);
+  label(g, TITLE[kind], 22, h / 2, 26, C.text);
 
   const dev = state.dev[kind];
   // mute lives top-right on every machine, same place every time
@@ -139,7 +139,69 @@ function drawHead(g, kind, extra = "") {
   label(g, dev.mute ? "MUTED" : "MUTE", mx + mw / 2, h / 2, 20, dev.mute ? "#0b0d10" : C.dim, "center");
 
   if (extra) label(g, extra, PANEL_W - mw - 44, h / 2, 20, C.dim, "right");
+  if (kind === "drums" || kind === "arp") drawXportBits(g, kind, h);
   return h;
+}
+
+/* ---------- pattern · loop length · record ----------
+   these live on the transport, not the device: switching pattern or changing
+   the bar length moves the whole room at once, which is the same promise the
+   shared clock makes. drawn on the two grid machines because that's where
+   you're looking when you want them. */
+const PAT_NAMES = ["A", "B", "C", "D"];
+function xportLayout(h) {
+  const bh = Math.round(h * 0.56), by = Math.round((h - bh) / 2);
+  const pw = 34, gap = 5, nudge = 32, numW = 46;
+  const patX = 296;                                   // clear of the title
+  const labelX = patX + N_PATS * (pw + gap) + 52;     // "STEPS" ends here
+  const stepX = labelX + 12;                          // then − n +
+  const recX = stepX + nudge + 4 + numW + 4 + nudge + 22;
+  return { bh, by, pw, gap, patX, labelX, stepX, nudge, numW, recX, recW: 66 };
+}
+
+function drawXportBits(g, kind, h) {
+  const L = xportLayout(h);
+  const cur = (state.xport && state.xport.pat) || 0;
+  for (let i = 0; i < N_PATS; i++) {
+    const x = L.patX + i * (L.pw + L.gap);
+    g.fillStyle = i === cur ? ACCENT[kind] : C.btn;
+    rr(g, x, L.by, L.pw, L.bh, 7); g.fill();
+    label(g, PAT_NAMES[i], x + L.pw / 2, h / 2, 20, i === cur ? "#0b0d10" : C.dim, "center");
+  }
+  // − n +
+  const n = stepCount();
+  g.fillStyle = C.btn;
+  rr(g, L.stepX, L.by, L.nudge, L.bh, 7); g.fill();
+  label(g, "−", L.stepX + L.nudge / 2, h / 2, 24, C.dim, "center");
+  g.fillStyle = C.slot;
+  rr(g, L.stepX + L.nudge + 4, L.by, L.numW, L.bh, 7); g.fill();
+  label(g, String(n), L.stepX + L.nudge + 4 + L.numW / 2, h / 2, 21, C.text, "center");
+  g.fillStyle = C.btn;
+  rr(g, L.stepX + L.nudge + 4 + L.numW + 4, L.by, L.nudge, L.bh, 7); g.fill();
+  label(g, "+", L.stepX + L.nudge + 4 + L.numW + 4 + L.nudge / 2, h / 2, 24, C.dim, "center");
+  label(g, "STEPS", L.labelX, h / 2, 15, C.faint, "right");
+
+  if (kind === "drums") {
+    const armed = rec.on();
+    g.fillStyle = armed ? C.hot : C.btn;
+    rr(g, L.recX, L.by, L.recW, L.bh, 7); g.fill();
+    label(g, "REC", L.recX + L.recW / 2, h / 2, 19, armed ? "#0b0d10" : C.dim, "center");
+  }
+}
+
+function hitXportBits(kind, px, py, h) {
+  if (kind !== "drums" && kind !== "arp") return null;
+  const L = xportLayout(h);
+  if (py < L.by || py > L.by + L.bh) return null;
+  for (let i = 0; i < N_PATS; i++) {
+    const x = L.patX + i * (L.pw + L.gap);
+    if (px >= x && px <= x + L.pw) return { type: "pattern", i };
+  }
+  if (px >= L.stepX && px <= L.stepX + L.nudge) return { type: "steps", d: -1 };
+  const plusX = L.stepX + L.nudge + 4 + L.numW + 4;
+  if (px >= plusX && px <= plusX + L.nudge) return { type: "steps", d: 1 };
+  if (kind === "drums" && px >= L.recX && px <= L.recX + L.recW) return { type: "rec" };
+  return null;
 }
 
 function hitHead(kind, px, py) {
@@ -147,6 +209,8 @@ function hitHead(kind, px, py) {
   if (py > h) return null;
   const mw = 108, mh = h * 0.56, mx = PANEL_W - mw - 18, my = (h - mh) / 2;
   if (px >= mx && px <= mx + mw && py >= my && py <= my + mh) return { type: "mute", id: kind };
+  const xb = hitXportBits(kind, px, py, h);
+  if (xb) return xb;
   return { type: "none" };
 }
 
@@ -164,15 +228,31 @@ function gridBox(kind) {
   return { x: GUT, y, w: PANEL_W - GUT - 18, h: PANEL_H - y - 16 };
 }
 
+// a tappable pad in the gutter, left of each drum's name: hit it and the
+// drum sounds now, wherever the loop happens to be.
+const PAD = { x: 8, w: 40 };
+
 function drawGrid(g, kind, rows, rowLabels, playStep) {
   const B = gridBox(kind);
-  const cw = B.w / STEPS, chh = B.h / rows;
-  const grid = state.dev[kind].grid;
+  const steps = stepCount();
+  const cw = B.w / steps, chh = B.h / rows;
+  const grid = curGrid(kind);
   const accent = ACCENT[kind];
+  const pads = kind === "drums";
 
   for (let r = 0; r < rows; r++) {
-    label(g, rowLabels[r], GUT - 14, B.y + chh * (r + 0.5), kind === "arp" ? 15 : 17, C.dim, "right");
-    for (let s = 0; s < STEPS; s++) {
+    if (pads) {
+      const ph = Math.min(chh - 10, 42), py = B.y + chh * (r + 0.5) - ph / 2;
+      g.fillStyle = C.btn;
+      rr(g, PAD.x, py, PAD.w, ph, 8); g.fill();
+      g.strokeStyle = accent; g.lineWidth = 2;
+      rr(g, PAD.x + 1, py + 1, PAD.w - 2, ph - 2, 7); g.stroke();
+      // a dot so it reads as something to strike rather than a colour swatch
+      g.fillStyle = accent;
+      g.beginPath(); g.arc(PAD.x + PAD.w / 2, py + ph / 2, Math.min(7, ph * 0.2), 0, Math.PI * 2); g.fill();
+    }
+    label(g, rowLabels[r], GUT - 8, B.y + chh * (r + 0.5), kind === "arp" ? 15 : 16, C.dim, "right");
+    for (let s = 0; s < steps; s++) {
       const x = B.x + s * cw + 3, y = B.y + r * chh + 3;
       const w = cw - 6, h = chh - 6;
       const on = grid[r][s];
@@ -189,7 +269,7 @@ function drawGrid(g, kind, rows, rowLabels, playStep) {
   }
 
   // the playhead — a column wash rather than a line, so it reads at a distance
-  if (playStep >= 0) {
+  if (playStep >= 0 && playStep < steps) {
     g.fillStyle = "rgba(255,255,255,0.10)";
     g.fillRect(B.x + playStep * cw, B.y - 8, cw, B.h + 8);
     g.fillStyle = accent;
@@ -201,10 +281,15 @@ function hitGrid(kind, rows, px, py) {
   const head = hitHead(kind, px, py);
   if (head) return head;
   const B = gridBox(kind);
-  if (px < B.x) return { type: "none" };
-  const s = Math.floor((px - B.x) / (B.w / STEPS));
+  const steps = stepCount();
   const r = Math.floor((py - B.y) / (B.h / rows));
-  if (s < 0 || s >= STEPS || r < 0 || r >= rows) return { type: "none" };
+  // the play pads live in the gutter, left of the grid
+  if (kind === "drums" && px >= PAD.x && px <= PAD.x + PAD.w && r >= 0 && r < rows) {
+    return { type: "pad", id: kind, row: r };
+  }
+  if (px < B.x) return { type: "none" };
+  const s = Math.floor((px - B.x) / (B.w / steps));
+  if (s < 0 || s >= steps || r < 0 || r >= rows) return { type: "none" };
   return { type: "step", id: kind, row: r, step: s };
 }
 
@@ -335,8 +420,8 @@ function drawClips(g, playStep) {
 
     // a little piano-roll thumbnail so the pads aren't interchangeable
     if (slot) {
-      const sw = (w - 32) / STEPS;
-      for (let s = 0; s < STEPS; s++) {
+      const sw = (w - 32) / stepCount();
+      for (let s = 0; s < stepCount(); s++) {
         if (slot.notes[s] == null) continue;
         const bh = 4 + Math.min(slot.notes[s], 9) * 2.2;
         g.fillStyle = active ? "rgba(8,18,15,0.65)" : "rgba(143,251,230,0.85)";
