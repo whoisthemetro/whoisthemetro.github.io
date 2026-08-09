@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-whoisthemetro.com — "THE METRO", a persistent 3D hangout world built with vanilla ES modules + three.js 0.160 (via importmap CDN, `three/addons/` for loaders/postprocessing). No bundler, no framework, no build step, no test framework. All geometry and textures are procedural (canvas textures); the only binary assets are `assets/img/` and the self-hosted DOOM bundle `assets/games/doom.jsdos` (CDN bundles are CORS-blocked).
+whoisthemetro.com — "THE METRO", a persistent 3D hangout world built with vanilla ES modules + three.js 0.160 (via importmap CDN, `three/addons/` for loaders/postprocessing). No bundler, no framework, no build step, no test framework. All geometry and textures are procedural (canvas textures); binary assets live in `assets/img/`, `assets/models/` (GLB props — e.g. the scanned TRON cabinet that swaps in over the procedural stand-in when loaded), `assets/audio/dumbek/` and `assets/wasm/`. The arcade's games (defender, pac, tron, pong) are hand-written canvas games in arcade.js — DOOM and js-dos are gone, PAC-MAN (an original maze-chase homage) lives in that cabinet now.
 
 Note: README.md describes an older "metro station" concept — the world is now a bedroom home-studio + three secret rooms (see Architecture).
 

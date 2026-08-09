@@ -154,7 +154,7 @@ create table if not exists public.events (
   created_at timestamptz not null default now(),
   type       text not null check (type in (
     'visit', 'note', 'photo', 'link', 'dm', 'chat',
-    'arcade_defender', 'arcade_doom', 'arcade_tron', 'arcade_pong',
+    'arcade_defender', 'arcade_doom', 'arcade_tron', 'arcade_pong', 'arcade_pac',
     'boat', 'pet', 'feed', 'clean', 'curtains', 'piano', 'light', 'studio'))
 );
 create index if not exists events_at on public.events (created_at);

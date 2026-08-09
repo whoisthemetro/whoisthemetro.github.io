@@ -32,7 +32,7 @@ body {
 /* touch-action doesn't inherit, so every full-screen play surface must say it
    itself: no pinch- or double-tap-zoom anywhere in the world or the arcade.
    only a portrait/landscape flip is allowed to change the dimensions. */
-#arcade, #dosbox, #dosbox .emulator-canvas, #dosbox .emulator-mouse-overlay { touch-action: none; }
+#arcade { touch-action: none; }
 
 /* ---------- overlays ---------- */
 .overlay {
@@ -527,13 +527,7 @@ textarea:focus, input:focus { border-color: var(--amber); }
   content: ""; position: absolute; inset: 18px; pointer-events: none;
   background: repeating-linear-gradient(0deg, rgba(0,0,0,0.18) 0 1px, transparent 1px 3px);
 }
-#dosbox {
-  width: min(94vw, 134vh, 720px);
-  height: calc(min(94vw, 134vh, 720px) / 1.6);
-  background: #000; border: 2px solid #2a2a3a;
-}
-#dosbox .background-image { left: 0 !important; }   /* no dark strip where the kiosk'd sidebar was */
-#dosbox.hidden, #arcade-canvas.hidden { display: none; }
+#arcade-canvas.hidden { display: none; }
 .dos-loading {
   height: 100%; display: flex; align-items: center; justify-content: center;
   color: #9ff; font-family: monospace; font-size: 13px; letter-spacing: 0.15em;

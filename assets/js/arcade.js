@@ -3,7 +3,7 @@
    Four playable cabinets, written from scratch:
      DEFENDER — the full liturgy: wrap world, landers, mutants,
                 smart bombs, scanner. Single player.
-     DOOM     — a raycast corridor shooter homage. Single player.
+     PAC-MAN  — an original maze-chase homage. Single player.
      TRON     — light cycles. 2-PLAYER: anyone in the room who
                 clicks the same cabinet becomes player 2.
      PONG     — same deal: solo vs AI until a stranger sits down.
@@ -317,259 +317,297 @@ const Defender = (() => {
   };
 })();
 
-/* ================= DOOM — the real one, via js-dos =================
-   Runs the actual shareware DOOM (DOOM1.WAD, freely distributable)
-   in a DOSBox-wasm emulator. If the CDN is unreachable, the BOOM
-   raycaster below quietly takes its place. */
+/* ================= PAC-MAN (homage, single player) =================
+   An original implementation with an original maze — the shape of the
+   thing (chomping through a maze while four ghosts with four different
+   ideas about how to catch you close in) with none of anyone's assets.
+   Ghost temperaments, in the classic spirit: one chases your tile, one
+   aims ahead of you, one flanks off the chaser's position, one loses
+   its nerve up close. Scatter and chase alternate on a clock; power
+   pellets flip the hunt. ================= */
 
-const DOS_JS = "https://v8.js-dos.com/latest/js-dos.js";
-const DOS_CSS = "https://v8.js-dos.com/latest/js-dos.css";
-// self-hosted shareware bundle (DOOM1.WAD is freely distributable) —
-// same-origin, so no CORS surprises
-const DOOM_BUNDLE = "assets/games/doom.jsdos";
-let dosProps = null;
-let dosLoaded = false;
-
-function loadJsDos() {
-  return new Promise((resolve, reject) => {
-    if (dosLoaded && window.Dos) return resolve();
-    const css = document.createElement("link");
-    css.rel = "stylesheet";
-    css.href = DOS_CSS;
-    document.head.appendChild(css);
-    const s = document.createElement("script");
-    s.src = DOS_JS;
-    const timeout = setTimeout(() => reject(new Error("js-dos timeout")), 10000);
-    s.onload = () => { clearTimeout(timeout); dosLoaded = true; resolve(); };
-    s.onerror = () => { clearTimeout(timeout); reject(new Error("js-dos failed")); };
-    document.head.appendChild(s);
-  });
-}
-
-async function openRealDoom() {
-  const box = document.getElementById("dosbox");
-  const help = document.querySelector("#arcade .arcade-help");
-  cv.classList.add("hidden");
-  box.classList.remove("hidden");
-  box.innerHTML = "<div class='dos-loading'>FIRING UP THE DOS MACHINE…</div>";
-  help.textContent = "the actual 1993 DOOM · arrows move · ctrl fire · space open · use the × up top to walk away (ESC is DOOM's own menu)";
-  document.getElementById("arcade").classList.add("show");
-  try {
-    await loadJsDos();
-    box.innerHTML = "";
-    // kiosk + noCloud strip the js-dos chrome — sidebar, save/keyboard/cycles
-    // buttons, the F-key bar and the collapse arrow — leaving just the game
-    // and its own on-screen movement/fire touch controls.
-    dosProps = await window.Dos(box, {
-      url: DOOM_BUNDLE, autoStart: true, kiosk: true, noCloud: true,
-    });
-  } catch (e) {
-    // CDN down — the homage engine steps in
-    box.classList.add("hidden");
-    box.innerHTML = "";
-    cv.classList.remove("hidden");
-    current = Boom;
-    current.init();
-    help.textContent = current.help + " · ESC to walk away";
-    startLoop();
-  }
-}
-
-/* ================= BOOM (raycast fallback, single player) ================= */
-
-const Boom = (() => {
-  const MAP = [
-    "################",
-    "#..............#",
-    "#.####.###.##..#",
-    "#.#  #.# #..#..#",
-    "#.#..#.#.#..##.#",
-    "#.#..........#.#",
-    "#.####.####..#.#",
-    "#......#  #....#",
-    "#.##.#.#..#.##.#",
-    "#.#..#.##.#..#.#",
-    "#.#..#....#..#.#",
-    "#.#.########.#.#",
-    "#.#..........#.#",
-    "#.##.######.##.#",
-    "#..............#",
-    "################",
-  ].map(r => r.split("").map(c => c === "#" ? 1 : 0));
-  const MS = 16;
+const Pacman = (() => {
+  // 21 wide, 23 tall. #=wall .=pellet o=power  =empty T=tunnel row
+  // G=ghost house door area, original symmetric layout
+  const RAW = [
+    "#####################",
+    "#........#..........#",
+    "#o##.###.#.###.##..o#",
+    "#...................#",
+    "#.##.#.#####.#.##.###",
+    "#....#...#...#......#",
+    "####.###.#.###.####.#",
+    "   #.#.......#.#    #",
+    "####.#.##G##.#.####.#",
+    "T....#.#   #.#.....T#",
+    "####.#.#####.#.####.#",
+    "   #.#.......#.#    #",
+    "####.#.#####.#.####.#",
+    "#........#..........#",
+    "#.##.###.#.###.##...#",
+    "#o.#.....P.......#.o#",
+    "##.#.#.#####.#.#.#.##",
+    "#....#...#...#.....##",
+    "#.######.#.######...#",
+    "#...................#",
+    "#####################",
+  ];
+  const GW2 = RAW[0].length, GH2 = RAW.length, TS = 18;
+  const OX = (W - GW2 * TS) / 2, OY = 12;
   let st;
-  const wall = (x, y) => (MAP[y | 0] && MAP[y | 0][x | 0]) ? 1 : 0;
 
-  function init() {
+  const wallAt = (x, y) => {
+    if (y < 0 || y >= GH2) return true;
+    const row = RAW[y];
+    const c = row[((x % GW2) + GW2) % GW2];
+    return c === "#" || c === " " && row[Math.max(0, Math.min(GW2 - 1, x))] === "#";
+  };
+  const solid = (x, y) => {
+    if (y < 0 || y >= GH2) return true;
+    const c = RAW[y][((x % GW2) + GW2) % GW2];
+    return c === "#" || c === " ";
+  };
+
+  function freshDots() {
+    const dots = new Set(), power = new Set();
+    for (let y = 0; y < GH2; y++) for (let x = 0; x < GW2; x++) {
+      const c = RAW[y][x];
+      if (c === "." || c === "T") dots.add(y * GW2 + x);
+      else if (c === "o") power.add(y * GW2 + x);
+    }
+    return { dots, power };
+  }
+
+  const GHOSTS = [
+    { name: "chaser", color: "#ff3434" },   // aims at your tile
+    { name: "ambush", color: "#ffb0de" },   // aims 4 tiles ahead of you
+    { name: "flank",  color: "#2ad4d4" },   // mirrors the chaser through you
+    { name: "shy",    color: "#ffa044" },   // hunts far, flees near
+  ];
+
+  function spawnGhost(i) {
+    return { x: 9 + (i % 3), y: 9, dx: 0, dy: -1, frac: 0, dead: false, i,
+             inHouse: i > 0, wait: i * 3.2 };
+  }
+
+  function init(level = 1, score = 0, lives = 3) {
+    const { dots, power } = freshDots();
     st = {
-      x: 1.5, y: 1.5, a: 0.8, hp: 100, ammo: 40, score: 0, over: false, won: false,
-      flash: 0, hurt: 0, kills: 0,
-      imps: [], t: 0,
+      level, score, lives, dots, power,
+      p: { x: 9, y: 15, dx: 0, dy: 0, wantDx: 0, wantDy: 0, frac: 0, mouth: 0 },
+      ghosts: GHOSTS.map((g, i) => spawnGhost(i)),
+      fright: 0, eatChain: 0, phase: 0, phaseT: 0,
+      dead: 0, over: false, won: 0, t: 0,
     };
-    // scatter imps in open cells away from spawn
-    let placed = 0;
-    for (let tries = 0; tries < 500 && placed < 10; tries++) {
-      const x = 1.5 + Math.random() * 13, y = 1.5 + Math.random() * 13;
-      if (!wall(x, y) && Math.hypot(x - st.x, y - st.y) > 4) {
-        st.imps.push({ x, y, hp: 2, t: Math.random() * 9, pain: 0 });
-        placed++;
+  }
+
+  const SCAT = [[1, 1], [GW2 - 2, 1], [1, GH2 - 2], [GW2 - 2, GH2 - 2]];
+
+  function ghostTarget(g) {
+    const p = st.p;
+    if (st.fright > 0) return null;                       // random flight
+    const scatter = st.phase % 2 === 0;
+    if (scatter) return SCAT[g.i];
+    if (g.i === 0) return [p.x, p.y];
+    if (g.i === 1) return [p.x + p.dx * 4, p.y + p.dy * 4];
+    if (g.i === 2) { const c = st.ghosts[0]; return [p.x * 2 - c.x, p.y * 2 - c.y]; }
+    const d = Math.hypot(g.x - p.x, g.y - p.y);
+    return d > 7 ? [p.x, p.y] : SCAT[3];
+  }
+
+  function stepGhost(g, dt) {
+    if (g.wait > 0) { g.wait -= dt; return; }
+    if (g.inHouse) { g.inHouse = false; g.x = 9; g.y = 7; g.dx = 0; g.dy = -1; }
+    const speed = g.dead ? 9 : st.fright > 0 ? 2.6 : 3.6 + st.level * 0.25;
+    g.frac += speed * dt;
+    while (g.frac >= 1) {
+      g.frac -= 1;
+      g.x = ((g.x + g.dx) % GW2 + GW2) % GW2; g.y += g.dy;
+      if (g.dead && g.x === 9 && g.y === 9) { g.dead = false; g.dy = -1; }
+      // pick a turn at each tile: toward the target, never straight back
+      const target = g.dead ? [9, 9] : ghostTarget(g);
+      const opts = [];
+      for (const [dx, dy] of [[0, -1], [-1, 0], [0, 1], [1, 0]]) {
+        if (dx === -g.dx && dy === -g.dy) continue;
+        if (solid(g.x + dx, g.y + dy)) continue;
+        opts.push([dx, dy]);
       }
+      if (!opts.length) { g.dx = -g.dx; g.dy = -g.dy; continue; }
+      let pick;
+      if (!target) pick = opts[(Math.random() * opts.length) | 0];
+      else {
+        let best = 1e9;
+        for (const o of opts) {
+          const d = (g.x + o[0] - target[0]) ** 2 + (g.y + o[1] - target[1]) ** 2;
+          if (d < best) { best = d; pick = o; }
+        }
+      }
+      g.dx = pick[0]; g.dy = pick[1];
     }
   }
 
   function update(dt) {
-    st.t += dt;
-    st.flash = Math.max(0, st.flash - dt * 6);
-    st.hurt = Math.max(0, st.hurt - dt * 2);
     if (st.over) { if (keys.Enter) init(); return; }
-
-    const turn = (keys.ArrowLeft ? -1 : 0) + (keys.ArrowRight ? 1 : 0);
-    st.a += turn * 2.4 * dt;
-    const mv = (keys.ArrowUp || keys.KeyW ? 1 : 0) - (keys.ArrowDown || keys.KeyS ? 1 : 0);
-    const strafe = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0);
-    const sp = 3.1 * dt;
-    const nx = st.x + (Math.cos(st.a) * mv - Math.sin(st.a) * strafe) * sp;
-    const ny = st.y + (Math.sin(st.a) * mv + Math.cos(st.a) * strafe) * sp;
-    if (!wall(nx, st.y)) st.x = nx;
-    if (!wall(st.x, ny)) st.y = ny;
-
-    if (keys.Space && !keys._fired) {
-      keys._fired = true;
-      if (st.ammo > 0) {
-        st.ammo--;
-        st.flash = 1;
-        beep(160, 0.12, "square", 0.07, 50);
-        // hitscan down the view ray
-        let best = null, bestD = 1e9;
-        for (const imp of st.imps) {
-          const d = Math.hypot(imp.x - st.x, imp.y - st.y);
-          const ang = Math.atan2(imp.y - st.y, imp.x - st.x);
-          let da = ang - st.a;
-          da = Math.atan2(Math.sin(da), Math.cos(da));
-          if (Math.abs(da) < 0.12 && d < bestD && clearLine(imp)) { best = imp; bestD = d; }
-        }
-        if (best) {
-          best.hp--; best.pain = 0.25;
-          if (best.hp <= 0) {
-            st.imps = st.imps.filter(i => i !== best);
-            st.kills++; st.score += 100;
-            beep(80, 0.3, "sawtooth", 0.06, 20);
-            if (!st.imps.length) { st.over = true; st.won = true; saveHi(st.score + st.hp); }
-          }
-        }
-      } else beep(900, 0.05, "square", 0.02);
+    if (st.won > 0) {
+      st.won -= dt;
+      if (st.won <= 0) init(st.level + 1, st.score, st.lives);
+      return;
     }
-    if (!keys.Space) keys._fired = false;
-
-    function clearLine(imp) {
-      const steps = 24;
-      for (let i = 1; i < steps; i++) {
-        const t = i / steps;
-        if (wall(st.x + (imp.x - st.x) * t, st.y + (imp.y - st.y) * t)) return false;
-      }
-      return true;
-    }
-
-    for (const imp of st.imps) {
-      imp.t += dt; imp.pain = Math.max(0, imp.pain - dt);
-      const d = Math.hypot(imp.x - st.x, imp.y - st.y);
-      if (d < 7 && clearLine(imp)) {
-        const a = Math.atan2(st.y - imp.y, st.x - imp.x);
-        const sp2 = 1.1 * dt;
-        const ix = imp.x + Math.cos(a) * sp2, iy = imp.y + Math.sin(a) * sp2;
-        if (!wall(ix, imp.y)) imp.x = ix;
-        if (!wall(imp.x, iy)) imp.y = iy;
-        if (d < 0.7 && Math.random() < dt * 2) {
-          st.hp -= 8; st.hurt = 1;
-          beep(60, 0.2, "sawtooth", 0.07, 30);
-          if (st.hp <= 0) { st.over = true; st.won = false; saveHi(st.score); }
+    if (st.dead > 0) {
+      st.dead -= dt;
+      if (st.dead <= 0) {
+        st.lives--;
+        if (st.lives <= 0) { st.over = true; saveHi(st.score); }
+        else {
+          st.p = { x: 9, y: 15, dx: 0, dy: 0, wantDx: 0, wantDy: 0, frac: 0, mouth: 0 };
+          st.ghosts = GHOSTS.map((g, i) => spawnGhost(i));
+          st.fright = 0;
         }
       }
+      return;
     }
-    // ammo trickle so it never soft-locks
-    if (st.ammo < 10 && Math.random() < dt * 0.2) st.ammo += 5;
+    st.t += dt;
+    st.phaseT += dt;
+    // scatter 6s / chase 18s, forever — the tide coming in and out
+    if (st.phaseT > (st.phase % 2 === 0 ? 6 : 18)) { st.phase++; st.phaseT = 0; }
+    if (st.fright > 0) st.fright -= dt;
+
+    const p = st.p;
+    if (keys.ArrowUp || keys.KeyW) { p.wantDx = 0; p.wantDy = -1; }
+    else if (keys.ArrowDown || keys.KeyS) { p.wantDx = 0; p.wantDy = 1; }
+    else if (keys.ArrowLeft || keys.KeyA) { p.wantDx = -1; p.wantDy = 0; }
+    else if (keys.ArrowRight || keys.KeyD) { p.wantDx = 1; p.wantDy = 0; }
+    if (touch.swipe) {
+      const [sx, sy] = touch.swipe;
+      if (Math.abs(sx) > Math.abs(sy)) { p.wantDx = Math.sign(sx); p.wantDy = 0; }
+      else { p.wantDx = 0; p.wantDy = Math.sign(sy); }
+      touch.swipe = null;
+    }
+
+    const speed = 4.4 + st.level * 0.15;
+    p.frac += speed * dt;
+    while (p.frac >= 1) {
+      p.frac -= 1;
+      if ((p.wantDx || p.wantDy) && !solid(p.x + p.wantDx, p.y + p.wantDy)) {
+        p.dx = p.wantDx; p.dy = p.wantDy;
+      }
+      if (solid(p.x + p.dx, p.y + p.dy)) { p.dx = 0; p.dy = 0; }
+      p.x = ((p.x + p.dx) % GW2 + GW2) % GW2; p.y += p.dy;
+      const key = p.y * GW2 + p.x;
+      if (st.dots.delete(key)) { st.score += 10; if (st.dots.size % 4 === 0) beep(880, 0.02, "square", 0.015); }
+      if (st.power.delete(key)) {
+        st.score += 50; st.fright = Math.max(3, 7 - st.level * 0.5); st.eatChain = 0;
+        beep(320, 0.15, "square", 0.04);
+      }
+      if (!st.dots.size && !st.power.size) { st.won = 1.5; beep(660, 0.3, "square", 0.05); }
+    }
+    p.mouth += dt * 9;
+
+    for (const g of st.ghosts) stepGhost(g, dt);
+
+    // collisions on near-tile overlap
+    for (const g of st.ghosts) {
+      if (g.wait > 0 || g.dead) continue;
+      const dx = (g.x + g.dx * g.frac) - (p.x + p.dx * p.frac);
+      const dy = (g.y + g.dy * g.frac) - (p.y + p.dy * p.frac);
+      if (dx * dx + dy * dy > 0.6) continue;
+      if (st.fright > 0) {
+        g.dead = true;
+        st.eatChain++;
+        st.score += 100 * Math.pow(2, st.eatChain);
+        beep(1200, 0.1, "square", 0.05);
+      } else {
+        st.dead = 1.4;
+        beep(140, 0.6, "sawtooth", 0.06);
+        break;
+      }
+    }
   }
+
+  function tile(x, y) { return [OX + x * TS + TS / 2, OY + y * TS + TS / 2]; }
 
   function draw() {
-    // ceiling / floor
-    g2.fillStyle = "#1a1012"; g2.fillRect(0, 0, W, H / 2);
-    g2.fillStyle = "#26201a"; g2.fillRect(0, H / 2, W, H / 2);
-    const FOV = 1.05, COLS = 160, cw = W / COLS;
-    const depth = new Array(COLS);
-    for (let c = 0; c < COLS; c++) {
-      const ra = st.a - FOV / 2 + (c / COLS) * FOV;
-      const cos = Math.cos(ra), sin = Math.sin(ra);
-      let d = 0, hit = 0, side = 0;
-      while (d < 20 && !hit) {
-        d += 0.02;
-        const px = st.x + cos * d, py = st.y + sin * d;
-        if (wall(px, py)) {
-          hit = 1;
-          side = Math.abs((px % 1) - 0.5) > Math.abs((py % 1) - 0.5) ? 0 : 1;
-        }
-      }
-      const cd = d * Math.cos(ra - st.a);
-      depth[c] = cd;
-      const hh = Math.min(H, (H * 0.9) / cd);
-      const shade = Math.max(0, 1 - cd / 12) * (side ? 0.75 : 1);
-      g2.fillStyle = `rgb(${110 * shade | 0},${42 * shade | 0},${30 * shade | 0})`;
-      g2.fillRect(c * cw, (H - hh) / 2, cw + 1, hh);
+    g2.fillStyle = "#000"; g2.fillRect(0, 0, W, H);
+    // walls: rounded neon-blue strokes, one per wall tile edge cluster
+    g2.strokeStyle = "#2233dd"; g2.lineWidth = 3;
+    for (let y = 0; y < GH2; y++) for (let x = 0; x < GW2; x++) {
+      if (!solid(x, y)) continue;
+      const [cx, cy] = tile(x, y);
+      // draw wall edges only where they border walkable space
+      g2.beginPath();
+      if (!solid(x, y - 1) && y > 0) { g2.moveTo(cx - TS / 2, cy - TS / 2 + 2); g2.lineTo(cx + TS / 2, cy - TS / 2 + 2); }
+      if (!solid(x, y + 1) && y < GH2 - 1) { g2.moveTo(cx - TS / 2, cy + TS / 2 - 2); g2.lineTo(cx + TS / 2, cy + TS / 2 - 2); }
+      if (!solid(x - 1, y)) { g2.moveTo(cx - TS / 2 + 2, cy - TS / 2); g2.lineTo(cx - TS / 2 + 2, cy + TS / 2); }
+      if (!solid(x + 1, y)) { g2.moveTo(cx + TS / 2 - 2, cy - TS / 2); g2.lineTo(cx + TS / 2 - 2, cy + TS / 2); }
+      g2.stroke();
     }
-    // imps as billboard sprites, far to near
-    const sorted = [...st.imps].sort((a, b) =>
-      Math.hypot(b.x - st.x, b.y - st.y) - Math.hypot(a.x - st.x, a.y - st.y));
-    for (const imp of sorted) {
-      const dx = imp.x - st.x, dy = imp.y - st.y;
-      const d = Math.hypot(dx, dy);
-      let da = Math.atan2(dy, dx) - st.a;
-      da = Math.atan2(Math.sin(da), Math.cos(da));
-      if (Math.abs(da) > 0.7 || d < 0.2) continue;
-      const sx = W / 2 + (da / 1.05) * W;
-      const col = Math.floor(sx / (W / 160));
-      if (depth[col] && depth[col] < d) continue;   // behind a wall
-      const size = Math.min(300, 130 / d);
-      const bob = Math.sin(imp.t * 6) * size * 0.06;
-      g2.fillStyle = imp.pain > 0 ? "#fff" : "#8a3a1e";
-      g2.fillRect(sx - size / 4, H / 2 - size / 3 + bob, size / 2, size * 0.66);
-      g2.fillStyle = imp.pain > 0 ? "#fff" : "#b8542a";
-      g2.beginPath(); g2.arc(sx, H / 2 - size / 3 + bob, size / 4, 0, 7); g2.fill();
-      g2.fillStyle = "#ffd23c";
-      g2.fillRect(sx - size / 9, H / 2 - size / 3 + bob - size * 0.05, size / 16, size / 16);
-      g2.fillRect(sx + size / 16, H / 2 - size / 3 + bob - size * 0.05, size / 16, size / 16);
+    // pellets
+    g2.fillStyle = "#ffd9a8";
+    for (const k of st.dots) {
+      const [cx, cy] = tile(k % GW2, (k / GW2) | 0);
+      g2.fillRect(cx - 1.5, cy - 1.5, 3, 3);
     }
-    // muzzle flash + gun
-    if (st.flash > 0.4) {
-      g2.fillStyle = "rgba(255,220,120,0.7)";
-      g2.beginPath(); g2.arc(W / 2, H - 90, 36, 0, 7); g2.fill();
+    for (const k of st.power) {
+      const [cx, cy] = tile(k % GW2, (k / GW2) | 0);
+      if (Math.floor(st.t * 6) % 2) { g2.beginPath(); g2.arc(cx, cy, 5, 0, Math.PI * 2); g2.fill(); }
     }
-    g2.fillStyle = "#222";
-    g2.fillRect(W / 2 - 14, H - 80, 28, 80);
-    g2.fillStyle = "#3a3a3a";
-    g2.fillRect(W / 2 - 8, H - 96, 16, 24);
-    g2.fillStyle = "#9ff";
-    g2.fillRect(W / 2 - 1, H / 2 - 8, 2, 16);
-    g2.fillRect(W / 2 - 8, H / 2 - 1, 16, 2);
-    if (st.hurt > 0) {
-      g2.fillStyle = `rgba(255,0,0,${st.hurt * 0.25})`;
-      g2.fillRect(0, 0, W, H);
+    // our hero: the chomping wedge
+    const p = st.p;
+    const [px, py] = tile(p.x + p.dx * p.frac, p.y + p.dy * p.frac);
+    const ang = Math.atan2(p.dy, p.dx || 0.0001);
+    const jaw = st.dead > 0 ? Math.min(Math.PI, (1.4 - st.dead) * 3) : (0.15 + 0.32 * Math.abs(Math.sin(p.mouth)));
+    g2.fillStyle = "#ffe737";
+    g2.beginPath();
+    g2.moveTo(px, py);
+    g2.arc(px, py, TS * 0.48, ang + jaw, ang - jaw + Math.PI * 2);
+    g2.fill();
+    // the four temperaments
+    for (const g of st.ghosts) {
+      if (g.wait > 0) continue;
+      const [gx, gy] = tile(g.x + g.dx * g.frac, g.y + g.dy * g.frac);
+      const R = TS * 0.46;
+      const frightened = st.fright > 0 && !g.dead;
+      g2.fillStyle = g.dead ? "rgba(200,220,255,0.25)"
+        : frightened ? (st.fright < 2 && Math.floor(st.t * 8) % 2 ? "#dde" : "#2233dd")
+        : GHOSTS[g.i].color;
+      g2.beginPath();
+      g2.arc(gx, gy - R * 0.15, R, Math.PI, 0);
+      g2.lineTo(gx + R, gy + R * 0.7);
+      for (let i = 2; i >= -2; i--) g2.lineTo(gx + (i / 2.5) * R, gy + R * (i % 2 === 0 ? 0.7 : 0.5));
+      g2.fill();
+      // eyes always know where they're going
+      g2.fillStyle = "#fff";
+      g2.beginPath(); g2.arc(gx - R * 0.35, gy - R * 0.25, R * 0.24, 0, Math.PI * 2);
+      g2.arc(gx + R * 0.35, gy - R * 0.25, R * 0.24, 0, Math.PI * 2); g2.fill();
+      g2.fillStyle = "#223";
+      g2.beginPath(); g2.arc(gx - R * 0.35 + g.dx * 2, gy - R * 0.25 + g.dy * 2, R * 0.12, 0, Math.PI * 2);
+      g2.arc(gx + R * 0.35 + g.dx * 2, gy - R * 0.25 + g.dy * 2, R * 0.12, 0, Math.PI * 2); g2.fill();
     }
-    g2.font = "900 18px monospace"; g2.textAlign = "left";
-    g2.fillStyle = "#f33"; g2.fillText(`HP ${Math.max(0, st.hp)}`, 12, H - 14);
-    g2.fillStyle = "#ffd23c"; g2.fillText(`AMMO ${st.ammo}`, 120, H - 14);
-    g2.textAlign = "right";
-    g2.fillStyle = "#9ff"; g2.fillText(`DEMONS ${st.imps.length}`, W - 12, H - 14);
+    // chrome
+    g2.font = "900 14px monospace"; g2.textAlign = "left";
+    g2.fillStyle = "#9ff"; g2.fillText(`SCORE ${st.score}`, 10, H - 8);
+    g2.textAlign = "right"; g2.fillText(`L${st.level}`, W - 10, H - 8);
+    g2.fillStyle = "#ffe737";
+    for (let i = 0; i < st.lives - 1; i++) {
+      g2.beginPath(); g2.arc(W / 2 - 30 + i * 22, H - 12, 7, 0.5, Math.PI * 2 - 0.5); g2.lineTo(W / 2 - 30 + i * 22, H - 12); g2.fill();
+    }
+    if (st.won > 0) {
+      g2.textAlign = "center"; g2.font = "900 30px monospace"; g2.fillStyle = "#3f3";
+      g2.fillText("MAZE CLEARED", W / 2, 200);
+    }
     if (st.over) {
-      g2.textAlign = "center"; g2.font = "900 34px monospace";
-      g2.fillStyle = st.won ? "#3f3" : "#f33";
-      g2.fillText(st.won ? "AREA CLEARED" : "YOU DIED", W / 2, 170);
+      g2.textAlign = "center"; g2.font = "900 34px monospace"; g2.fillStyle = "#f33";
+      g2.fillText("GAME OVER", W / 2, 190);
       g2.font = "14px monospace"; g2.fillStyle = "#fff";
-      g2.fillText("PRESS ENTER", W / 2, 200);
+      g2.fillText(`FINAL SCORE ${st.score} · PRESS ENTER`, W / 2, 220);
     }
   }
+
   return {
-    init, update, draw,
-    pad: { dpad: true, btns: [{ code: "Space", label: "FIRE", fire: true }] },
-    help: "WASD move · ← → turn · SPACE shoot",
+    init: () => init(),
+    update, draw,
+    pad: { swipe: true },
+    help: "arrows or swipe to steer · eat everything · power pellets turn the tables",
   };
 })();
 
@@ -786,7 +824,7 @@ const Tron = (() => {
   };
 })();
 
-const GAMES = { defender: Defender, pong: Pong, tron: Tron };
+const GAMES = { defender: Defender, pong: Pong, tron: Tron, pac: Pacman };
 
 /* ================= multiplayer plumbing ================= */
 
@@ -990,16 +1028,8 @@ export function openArcade(id, netAdapter) {
   addEventListener("keydown", keydown);
   addEventListener("keyup", keyup);
 
-  if (id === "doom") {
-    current = null;
-    buildPads(null);          // DOOM rides js-dos's own on-screen touch controls
-    openRealDoom();
-    return;
-  }
-
   current = GAMES[id];
   if (!current) return;
-  document.getElementById("dosbox").classList.add("hidden");
   cv.classList.remove("hidden");
   current.init();
   document.querySelector("#arcade .arcade-help").textContent =
@@ -1036,13 +1066,6 @@ export function closeArcade() {
   if (netTimer) clearInterval(netTimer);
   netTimer = null;
   if (current?.mp && net) net.send({ game: gameId, sub: "leave" });
-  if (dosProps) {
-    try { dosProps.stop?.(); } catch (e) {}
-    dosProps = null;
-  }
-  const box = document.getElementById("dosbox");
-  box.classList.add("hidden");
-  box.innerHTML = "";
   const ov = document.getElementById("arcade");
   ov.removeEventListener("pointerdown", ovDown);
   ov.removeEventListener("pointermove", ovMove);

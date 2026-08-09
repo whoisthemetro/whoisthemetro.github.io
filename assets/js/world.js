@@ -3441,13 +3441,41 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     grp.position.set(x, 0, z);
     grp.rotation.y = rotY;
     add(grp);
+    return grp;
   }
   // the four classic machines: a row along the back (west) wall, screens
   // facing east down the length of the hall toward whoever walks in
   cabinet("defender", "DEFENDER", "#ff3434", AR.x0 + 0.42, -3.0, Math.PI / 2);
-  cabinet("doom", "DOOM", "#ff7320", AR.x0 + 0.42, -1.1, Math.PI / 2);
-  cabinet("tron", "TRON", "#22d4ff", AR.x0 + 0.42, 0.8, Math.PI / 2);
+  cabinet("pac", "PAC-MAN", "#ffe737", AR.x0 + 0.42, -1.1, Math.PI / 2);
+  const tronGrp = cabinet("tron", "TRON", "#22d4ff", AR.x0 + 0.42, 0.8, Math.PI / 2);
   cabinet("pong", "PONG", "#e8e8e8", AR.x0 + 0.42, 2.7, Math.PI / 2);
+
+  /* --- the real Bally Midway TRON cabinet (a 4MB scanned model) swaps in
+     over the procedural stand-in when it loads. Async on purpose: the wasm
+     of a page is its first paint, so the hero prop arrives late and quietly.
+     Matched to the stand-in's height so it can't load in giant. --- */
+  {
+    import("three/addons/loaders/GLTFLoader.js").then(({ GLTFLoader }) =>
+      new GLTFLoader().loadAsync("assets/models/tron_cabinet.glb")
+    ).then((gltf) => {
+      const model = gltf.scene;
+      const box = new THREE.Box3().setFromObject(model);
+      const h = box.max.y - box.min.y;
+      if (h > 0.05) model.scale.setScalar(1.78 / h);       // cabinet-with-marquee height
+      const box2 = new THREE.Box3().setFromObject(model);
+      const c = box2.getCenter(new THREE.Vector3());
+      model.position.x -= c.x;
+      model.position.z -= c.z;
+      model.position.y -= box2.min.y;                      // feet on the carpet
+      model.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+      // the stand-in's screens face +Z before the group turns; sketchfab
+      // scans usually agree, and the group's rotation carries both
+      for (const child of [...tronGrp.children]) {
+        if (!child.userData.arcade) tronGrp.remove(child); // keep the click target
+      }
+      tronGrp.add(model);
+    }).catch(() => {});                                    // no model, no drama — stand-in stays
+  }
 
   // HIGH SCORES board on the north wall — shared, all-time
   const scoreCanvas = document.createElement("canvas");
