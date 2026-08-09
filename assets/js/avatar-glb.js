@@ -44,6 +44,85 @@ function looksLikeVrm0(gltf) {
   } catch (e) { return false; }
 }
 
+// Which way does this body actually face? The spec says +Z, but files come
+// from everywhere (Sketchfab FBX conversions, exporters with baked roots)
+// and lie freely. So ask the geometry: on a standing humanoid the TOES stick
+// out in front — take every vertex in the bottom slice of the model (the
+// feet) and see whether that mass leans +Z or -Z. Hair, capes and backpacks
+// live too high to vote. Returns +1 (faces +Z), -1 (faces -Z), or 0 (can't
+// tell — trust the spec).
+// the most trustworthy witnesses are the BONES: on every humanoid rig the
+// ankle→toe vector points where the feet point, and the head→eyes vector
+// points where the face looks. coats, bases and hair can't fool a skeleton.
+function boneForward(node, height) {
+  const toes = [], eyes = [];
+  let head = null;
+  node.traverse((o) => {
+    const nm = o.name || "";
+    if (/eye/i.test(nm)) { if (o.isBone) eyes.push(o); return; }   // guards "Eyeball" from the toe test too
+    if (/toe|ball/i.test(nm) && o.parent && /foot|ankle/i.test(o.parent.name || "")) toes.push(o);
+    if (!head && o.isBone && /head/i.test(nm)) head = o;
+  });
+  const a = new THREE.Vector3(), b = new THREE.Vector3();
+  let z = 0, n = 0;
+  for (const t of toes) {
+    t.getWorldPosition(a); t.parent.getWorldPosition(b);
+    z += a.z - b.z; n++;
+  }
+  if (n && Math.abs(z / n) > height * 0.004) return z > 0 ? 1 : -1;
+  if (eyes.length >= 2 && head) {
+    a.set(0, 0, 0);
+    for (const e of eyes) { e.getWorldPosition(b); a.add(b); }
+    a.divideScalar(eyes.length);
+    head.getWorldPosition(b);
+    const dz = a.z - b.z;
+    if (Math.abs(dz) > height * 0.003) return dz > 0 ? 1 : -1;
+  }
+  return 0;
+}
+
+export function detectFacing(node) {
+  node.updateMatrixWorld(true);
+  {
+    const box = new THREE.Box3().setFromObject(node);
+    const bones = boneForward(node, Math.max(0.1, box.max.y - box.min.y));
+    if (bones !== 0) return bones;
+  }
+  // the vertex BUFFER holds the bind pose, but bones can turn the rendered
+  // body any way they like (Sketchfab FBX conversions do this constantly).
+  // so read each vertex the way the renderer will: skinning applied.
+  const v = new THREE.Vector3();
+  const samples = [];
+  node.traverse((o) => {
+    if (!o.isMesh && !o.isSkinnedMesh) return;
+    const pos = o.geometry && o.geometry.attributes && o.geometry.attributes.position;
+    if (!pos) return;
+    if (o.isSkinnedMesh && o.skeleton && o.skeleton.update) o.skeleton.update();
+    const step = Math.max(1, Math.floor(pos.count / 4000));   // sampling is plenty
+    for (let i = 0; i < pos.count; i += step) {
+      if (o.isSkinnedMesh) { o.boneTransform(i, v); v.applyMatrix4(o.matrixWorld); }
+      else v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld);
+      samples.push([v.y, v.z]);
+    }
+  });
+  if (samples.length < 60) return 0;
+  let minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  for (const [y, z] of samples) {
+    if (y < minY) minY = y; if (y > maxY) maxY = y;
+    if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+  }
+  const h = maxY - minY;
+  if (h < 0.1) return 0;
+  const footTop = minY + h * 0.12, centerZ = (maxZ + minZ) / 2;
+  let sum = 0, n = 0;
+  for (const [y, z] of samples) if (y <= footTop) { sum += z - centerZ; n++; }
+  if (n < 30) return 0;                       // no feet to read (floating orb, etc)
+  const lean = sum / n / h;                   // normalized: toes are ~2-6% of height
+  if (lean > 0.008) return 1;
+  if (lean < -0.008) return -1;
+  return 0;
+}
+
 // a fresh instance for one ghost. returns a node ready to drop into the
 // ghost group: feet at y=0, facing +Z, real-world scale. `flip` turns a
 // backwards model around; on top of the VRM auto-flip it's an XOR, so the
@@ -51,7 +130,12 @@ function looksLikeVrm0(gltf) {
 export function instanceGlbAvatar(gltf, { flip = false } = {}) {
   if (!gltf || !gltf.scene) return null;
   const node = skeletonClone(gltf.scene);
-  if (flip !== looksLikeVrm0(gltf)) node.rotation.y = Math.PI;
+  // who do we believe about which way is forward? the geometry first (toes
+  // don't lie), then the VRM convention, then the spec. the manual flip
+  // XORs on top so a person can always override a wrong guess.
+  const toes = detectFacing(node);
+  const backwards = toes !== 0 ? toes < 0 : looksLikeVrm0(gltf);
+  if (flip !== backwards) node.rotation.y = Math.PI;
 
   node.traverse((o) => {
     if (o.isMesh || o.isSkinnedMesh) {
