@@ -3446,36 +3446,44 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
   // the four classic machines: a row along the back (west) wall, screens
   // facing east down the length of the hall toward whoever walks in
   cabinet("defender", "DEFENDER", "#ff3434", AR.x0 + 0.42, -3.0, Math.PI / 2);
-  cabinet("pac", "PAC-MAN", "#ffe737", AR.x0 + 0.42, -1.1, Math.PI / 2);
+  const pacGrp = cabinet("pac", "PAC-MAN", "#ffe737", AR.x0 + 0.42, -1.1, Math.PI / 2);
   const tronGrp = cabinet("tron", "TRON", "#22d4ff", AR.x0 + 0.42, 0.8, Math.PI / 2);
   cabinet("pong", "PONG", "#e8e8e8", AR.x0 + 0.42, 2.7, Math.PI / 2);
 
-  /* --- the real Bally Midway TRON cabinet (a 4MB scanned model) swaps in
-     over the procedural stand-in when it loads. Async on purpose: the wasm
-     of a page is its first paint, so the hero prop arrives late and quietly.
-     Matched to the stand-in's height so it can't load in giant. --- */
-  {
+  /* --- real scanned cabinets swap in over the procedural stand-ins when
+     they load. Async on purpose: a page's first paint owes nothing to a
+     hero prop. Height-matched so nothing can load in giant; if a model
+     fails, the stand-in just stays. Models with animations (the pac
+     cabinet's screen attract loop) get a mixer ticked by the world. --- */
+  const cabinetMixers = [];
+  function swapCabinetModel(grp, url, height, rotY = 0) {
     import("three/addons/loaders/GLTFLoader.js").then(({ GLTFLoader }) =>
-      new GLTFLoader().loadAsync("assets/models/tron_cabinet.glb")
+      new GLTFLoader().loadAsync(url)
     ).then((gltf) => {
       const model = gltf.scene;
+      if (rotY) model.rotation.y = rotY;
       const box = new THREE.Box3().setFromObject(model);
       const h = box.max.y - box.min.y;
-      if (h > 0.05) model.scale.setScalar(1.78 / h);       // cabinet-with-marquee height
+      if (h > 0.05) model.scale.setScalar(height / h);
       const box2 = new THREE.Box3().setFromObject(model);
       const c = box2.getCenter(new THREE.Vector3());
       model.position.x -= c.x;
       model.position.z -= c.z;
       model.position.y -= box2.min.y;                      // feet on the carpet
       model.traverse((o) => { if (o.isMesh) o.castShadow = true; });
-      // the stand-in's screens face +Z before the group turns; sketchfab
-      // scans usually agree, and the group's rotation carries both
-      for (const child of [...tronGrp.children]) {
-        if (!child.userData.arcade) tronGrp.remove(child); // keep the click target
+      for (const child of [...grp.children]) {
+        if (!child.userData.arcade) grp.remove(child);     // keep the click target
       }
-      tronGrp.add(model);
-    }).catch(() => {});                                    // no model, no drama — stand-in stays
+      grp.add(model);
+      if (gltf.animations && gltf.animations.length) {
+        const mixer = new THREE.AnimationMixer(model);
+        mixer.clipAction(gltf.animations[0]).play();
+        cabinetMixers.push(mixer);
+      }
+    }).catch(() => {});
   }
+  swapCabinetModel(tronGrp, "assets/models/tron_cabinet.glb", 1.78);
+  swapCabinetModel(pacGrp, "assets/models/pac_cabinet.glb", 1.78);
 
   // HIGH SCORES board on the north wall — shared, all-time
   const scoreCanvas = document.createElement("canvas");
@@ -6179,6 +6187,7 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
 
   function tick(dt, ppos) {
     elapsed += dt;
+    for (const m of cabinetMixers) m.update(dt);   // the pac cabinet's attract loop
     tickNeuro(elapsed, dt);
     tickKuko(elapsed);
     if (grimeDirty && elapsed - grimeUpAt > 0.1) {
