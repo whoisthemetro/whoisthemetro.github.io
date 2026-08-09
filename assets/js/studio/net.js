@@ -115,13 +115,18 @@ function wireLocal() {
 
 /* ---------- pose ---------- */
 
+let lastPoseAt = 0;
 function posePump() {
   setInterval(() => {
     if (!getPose) return;
     const p = getPose();
     const key = `${p.x.toFixed(2)},${p.z.toFixed(2)},${p.yaw.toFixed(2)}`;
-    if (key === lastPose) return;             // standing still costs nothing
+    // standing still costs almost nothing — one pose per 2.5s keeps the
+    // stillness visible to whoever walks in late
+    const now = Date.now();
+    if (key === lastPose && now - lastPoseAt < 2500) return;
     lastPose = key;
+    lastPoseAt = now;
     send("pose", { x: p.x, y: p.y || 0, z: p.z, yaw: p.yaw });
   }, 1000 / POSE_HZ);
 }

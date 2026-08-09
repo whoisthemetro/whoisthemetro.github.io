@@ -44,13 +44,20 @@ function emitPose(uid, pose) {
   poseListeners.forEach(fn => { try { fn(uid, pose); } catch (e) {} });
 }
 
+let lastSentAt = 0;
 function sendPoseLoop() {
   setInterval(() => {
     if (!getPose) return;
     const p = getPose();
     const key = `${p.x.toFixed(2)},${(p.y || 0).toFixed(2)},${p.z.toFixed(2)},${p.yaw.toFixed(2)}`;
-    if (key === lastSent) return;     // idle — save bandwidth
+    // idle still saves bandwidth — but not FOREVER. ghosts only render a peer
+    // once a live pose arrives (the phantom filter), so someone standing
+    // still has to keep whispering "I'm here" or every late joiner walks
+    // into what looks like an empty room. one pose per 2.5s of stillness.
+    const now = Date.now();
+    if (key === lastSent && now - lastSentAt < 2500) return;
     lastSent = key;
+    lastSentAt = now;
     const msg = { uid: me.uid, x: p.x, y: p.y || 0, z: p.z, yaw: p.yaw };
     if (chan) chan.send({ type: "broadcast", event: "pose", payload: msg });
     else bc?.postMessage({ type: "pose", ...msg });
@@ -71,12 +78,16 @@ function wireSupabase(name) {
   const ch = store.client.channel(name, { config: { presence: { key: me.uid }, broadcast: { self: false } } });
   ch.on("presence", { event: "sync" }, () => {
       const state = ch.presenceState();
+      const before = new Set(peers.keys());
       peers.clear();
       for (const uid of Object.keys(state)) {
         if (uid === me.uid) continue;
         const meta = state[uid][0] || {};
         peers.set(uid, { name: meta.name || "", color: meta.color || "#ffb347", avatar: meta.avatar || null, outfit: meta.outfit || null });
       }
+      // someone NEW walked in → they've heard nothing about where anyone
+      // stands. break the idle dedupe so our next tick tells them at once.
+      for (const uid of peers.keys()) if (!before.has(uid)) { lastSent = ""; break; }
       emitPeers();
     })
     .on("broadcast", { event: "pose" }, ({ payload }) => { if (payload.uid !== me.uid) emitPose(payload.uid, payload); })
@@ -98,7 +109,7 @@ function wireLocal(name) {
     if (m.type === "hb") {
       const known = peers.has(m.uid);
       peers.set(m.uid, { name: m.name, color: m.color, avatar: m.avatar || null, outfit: m.outfit || null, lastSeen: Date.now() });
-      if (!known) emitPeers();
+      if (!known) { lastSent = ""; emitPeers(); }   // a newcomer needs our pose now, not when we next move
     } else if (m.type === "pose") { emitPose(m.uid, m); }
     else if (m.type === "note") { noteListeners.forEach(fn => { try { fn(m.uid, m.i, m.v); } catch (e) {} }); }
     else if (m.type === "act") { actListeners.forEach(fn => { try { fn(m.payload); } catch (e) {} }); }
