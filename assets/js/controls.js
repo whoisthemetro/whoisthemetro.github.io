@@ -40,6 +40,11 @@ export class Controls {
     // primary button held (free-roam basketball reads this to wind up a shot);
     // on desktop it's the mouse button, on touch a dedicated SHOOT button sets it
     this.pointerDown = false;
+    // a hand on a studio knob: the camera holds still and the mouse's motion
+    // feeds the knob instead (main.js runs the grab)
+    this.dragLock = false;
+    this.dragDX = 0;
+    this.dragDY = 0;
     // on-foot basketball (THE GYM): jump + sprint stamina layered over the walk
     this.gym = false;
     this.gymY = 0;            // height above the floor (0 = grounded)
@@ -156,6 +161,7 @@ export class Controls {
       if (!this.locked) return;
       if (this.pooling) { this.poolRotate -= e.movementX * 0.0032; return; }   // aim, not look
       if (this.aiming) { this.aimDX -= e.movementX * 0.0026; this.aimDY -= e.movementY * 0.0026; return; }
+      if (this.dragLock) { this.dragDX += e.movementX; this.dragDY += e.movementY; return; }   // turn the knob, not the head
       this.yaw -= e.movementX * 0.0023;
       this.pitch = clamp(this.pitch - e.movementY * 0.0023, -1.25, 1.25);
     });

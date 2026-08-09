@@ -352,7 +352,7 @@ const ARP_SLIDERS = [
 ];
 
 const STRIP_H = 158;
-const PLAITS_STRIP_H = 236;   // the hardware panel needs a taller band
+const PLAITS_STRIP_H = 200;   // the hardware band: models + knobs, nothing else
 
 const isPlaits = () => state.dev.synth.voice === "plaits";
 const stripH = () => (isPlaits() ? PLAITS_STRIP_H : STRIP_H);
@@ -420,12 +420,6 @@ const PLAITS_KNOBS = [
   { key: "pDecay",  label: "DECAY" },
   { key: "pLpg",    label: "LPG" },
 ];
-const PLAITS_SLIDERS = [
-  { key: "gate",   label: "LENGTH" },
-  { key: "delay",  label: "DELAY" },
-  { key: "reverb", label: "REVERB" },
-];
-
 // one rotary, everywhere: 270° sweep from 7:30 round to 4:30
 function drawKnob(g, cx, cy, rad, frac, color, lbl, val) {
   const a0 = Math.PI * 0.75, a1 = Math.PI * 2.25;
@@ -455,12 +449,11 @@ function knobFrac(cx, cy, px, py) {
 
 function plaitsLayout() {
   const L = arpLayout();
-  const rowY = L.btnY + L.btnH + 16;              // the knob band
+  const rowY = L.btnY + L.btnH + 14;              // the knob band
   const ledX = L.pad + 26;                        // ◀ [LEDs] ▶ cluster
-  const knobR = 34, smallR = 26;
-  const knobY = rowY + 46;
-  const slY = rowY + 112, slH = 56;               // the sends row below
-  return { ...L, rowY, ledX, knobR, smallR, knobY, slY, slH };
+  const knobR = 42, smallR = 33;                  // big enough to actually grab
+  const knobY = rowY + 52;
+  return { ...L, rowY, ledX, knobR, smallR, knobY };
 }
 
 function drawPlaitsStrip(g) {
@@ -482,24 +475,15 @@ function drawPlaitsStrip(g) {
   label(g, "▶", colX + 22 + btnW / 2, topY + btnH / 2, 22, C.dim, "center");
   label(g, PLAITS_ENGINES[eng], L.ledX + (btnW * 2 + 36 + 12) / 2, topY + btnH + 18, 15, BANK_COLOR[bank], "center");
 
-  // the knobs, filing past the column in hardware order
-  let x = colX + 22 + btnW + 64;
+  // the knobs, filing past the column in hardware order — grab one and
+  // drag; the camera holds still while you turn it
+  let x = colX + 22 + btnW + 82;
   for (const k of PLAITS_KNOBS) {
     const r = k.big ? L.knobR : L.smallR;
     const h = { dev: "synth", key: k.key };
     drawKnob(g, x, L.knobY, r, toFrac(h, readValue(h)), C.cool, k.label,
              Math.round(readValue(h) * 100) + "");
-    x += k.big ? 128 : 100;
-  }
-
-  // gate length and the two sends keep their slider shape below
-  const slW = (PANEL_W - L.pad * 2 - L.gap * 2) / PLAITS_SLIDERS.length;
-  for (let i = 0; i < PLAITS_SLIDERS.length; i++) {
-    const sl = PLAITS_SLIDERS[i];
-    const rx = L.pad + i * (slW + L.gap);
-    const h = { dev: "synth", key: sl.key };
-    label(g, sl.label, rx + 14, L.slY + 12, 14, C.dim);
-    drawBar(g, rx + 14, L.slY + 24, slW - 28, 20, toFrac(h, readValue(h)), C.cool);
+    x += k.big ? 156 : 122;
   }
 }
 
@@ -517,23 +501,17 @@ function hitPlaitsStrip(px, py) {
     if (px >= L.ledX && px <= L.ledX + btnW) return { type: "pengine", d: -1 };
     if (px >= colX + 22 && px <= colX + 22 + btnW) return { type: "pengine", d: 1 };
   }
-  let x = colX + 22 + btnW + 64;
+  let x = colX + 22 + btnW + 82;
   for (const k of PLAITS_KNOBS) {
-    const r = (k.big ? L.knobR : L.smallR) + 14;
+    const r = (k.big ? L.knobR : L.smallR) + 18;
     if (Math.hypot(px - x, py - L.knobY) <= r) {
       const h = { dev: "synth", key: k.key };
-      return { type: "slider", ...h, value: fromFrac(h, knobFrac(x, L.knobY, px, py)) };
+      // knob: true tells the click path a tap should NOT jump the value —
+      // knobs are for grabbing and turning, not for teleporting
+      return { type: "slider", knob: true, ...h,
+               value: fromFrac(h, knobFrac(x, L.knobY, px, py)) };
     }
-    x += k.big ? 128 : 100;
-  }
-  if (py >= L.slY) {
-    const slW = (PANEL_W - L.pad * 2 - L.gap * 2) / PLAITS_SLIDERS.length;
-    const i = Math.floor((px - L.pad) / (slW + L.gap));
-    if (i >= 0 && i < PLAITS_SLIDERS.length) {
-      const rx = L.pad + i * (slW + L.gap);
-      const h = { dev: "synth", key: PLAITS_SLIDERS[i].key };
-      return { type: "slider", ...h, value: fromFrac(h, (px - rx - 14) / (slW - 28)) };
-    }
+    x += k.big ? 156 : 122;
   }
   return { type: "none" };
 }
@@ -750,7 +728,7 @@ function hitClouds(px, py) {
   for (const k of CLOUDS_KNOBS.slice(0, 3)) {
     if (Math.hypot(px - x, py - y1) <= 44) {
       const h = { dev: "mixer", key: k.key };
-      return { type: "slider", ...h, value: fromFrac(h, knobFrac(x, y1, px, py)) };
+      return { type: "slider", knob: true, ...h, value: fromFrac(h, knobFrac(x, y1, px, py)) };
     }
     x += 118;
   }
@@ -759,7 +737,7 @@ function hitClouds(px, py) {
   for (const k of CLOUDS_KNOBS.slice(3)) {
     if (Math.hypot(px - x, py - y2) <= 38) {
       const h = { dev: "mixer", key: k.key };
-      return { type: "slider", ...h, value: fromFrac(h, knobFrac(x, y2, px, py)) };
+      return { type: "slider", knob: true, ...h, value: fromFrac(h, knobFrac(x, y2, px, py)) };
     }
     x += 108;
   }
@@ -881,6 +859,13 @@ export function sliderValue(kind, h, u) {
     return fromFrac(h, (px - bar.x) / bar.w);
   }
   return null;
+}
+
+// Turn a grabbed control by a FRACTION of its travel, from wherever it was
+// when the hand landed. Working in fraction space keeps log-scaled params
+// (cutoff) turning evenly under the hand.
+export function dragValue(h, startValue, deltaFrac) {
+  return fromFrac(h, clamp01(toFrac(h, startValue) + deltaFrac));
 }
 
 export const CYCLE = { SCALES: Object.keys(SCALES), VOICES };

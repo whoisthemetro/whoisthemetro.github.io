@@ -41,7 +41,7 @@ import {
   stepCount as sStepCount, rec as sRec, MAX_STEPS as S_MAX_STEPS, N_PATS as S_NPATS,
   onStep as sOnStep, curGrid as sCurGrid,
 } from "./studio/devices.js";
-import { hitPanel as sHitPanel } from "./studio/panels.js";
+import { hitPanel as sHitPanel, dragValue as sDragValue } from "./studio/panels.js";
 import { clock as sClock } from "./studio/clock.js";
 import { net as sNet } from "./studio/net.js";
 import { setupPads } from "./studio/pads.js";
@@ -2130,12 +2130,76 @@ function setupStudio() {
 
 function leaveStudio() {
   inStudio = false;
+  endStudioDrag();
   document.body.classList.remove("in-studio");
   try { setRain((world.getWeather() && world.getWeather().rain) || 0); } catch (e) {}   // weather back
   if (pads) { pads.close(); pads.showButton(false); }
   world.studio.root.visible = false;
   try { SA.setFx({ masterGain: 0 }); } catch (e) {}   // the loop keeps running, you just can't hear it
 }
+
+/* ---- grabbing a knob: hold the mouse on it and drag; the camera stays
+   put and the motion turns the control. fine, relative, like hardware.
+   taps still set bars by position — but a tap can't jump a knob. ---- */
+let studioDrag = null;          // { kind, h, startValue, value, moved }
+let studioDragClickGuard = 0;   // swallow the click that trails a real drag
+
+function studioDragRead(h) {
+  if (h.key === "bpm" || h.key === "swing") return sState.xport[h.key];
+  return h.ch ? sState.dev.mixer.ch[h.ch][h.key] : sState.dev[h.dev][h.key];
+}
+function studioDragWrite(h, v) {
+  // live preview: straight into state, no version bump — the commit on
+  // release is the one edit the room hears about
+  if (h.key === "bpm" || h.key === "swing") sState.xport[h.key] = v;
+  else if (h.ch) sState.dev.mixer.ch[h.ch][h.key] = v;
+  else sState.dev[h.dev][h.key] = v;
+}
+function beginStudioDrag(kind, h) {
+  studioDrag = { kind, h, startValue: studioDragRead(h), value: studioDragRead(h), moved: false };
+  controls.dragLock = true;
+  controls.dragDX = 0; controls.dragDY = 0;
+}
+function tickStudioDrag() {
+  if (!studioDrag) return;
+  const d = studioDrag;
+  if (Math.abs(controls.dragDX) + Math.abs(controls.dragDY) > 3) d.moved = true;
+  if (!d.moved) return;
+  // right or up turns it clockwise; 320px of hand = the full sweep
+  const frac = (controls.dragDX - controls.dragDY) / 320;
+  d.value = sDragValue(d.h, d.startValue, frac);
+  if (d.h.key === "bpm") d.value = Math.round(d.value);
+  studioDragWrite(d.h, d.value);
+  world.studio.markDirty(d.kind);
+  // bpm moves the shared clock, so it only applies on release; everything
+  // else is safe to hear while you turn it
+  if (d.h.key !== "bpm") sApplyMixer();
+}
+function endStudioDrag() {
+  const d = studioDrag;
+  studioDrag = null;
+  controls.dragLock = false;
+  if (!d) return;
+  if (!d.moved) return;                       // a tap — the click path owns it
+  studioDragClickGuard = performance.now();
+  // put the start value back so the committed edit computes from the truth
+  studioDragWrite(d.h, d.startValue);
+  if (d.h.key === "bpm") sAct.setBpm(d.value);
+  else if (d.h.key === "swing") sAct.setSwing(d.value);
+  else if (d.h.ch) sAct.setChannel(d.h.ch, d.h.key, d.value);
+  else sAct.setParam(d.h.dev, d.h.key, d.value);
+  sApplyMixer();
+}
+document.addEventListener("mousedown", () => {
+  if (!inStudio || !controls.locked || modalOpen || renderer.xr.isPresenting) return;
+  const hit = castAt(0, 0);
+  if (hit && hit.object.userData.kind && hit.uv && hit.distance < 5.5) {
+    const k = hit.object.userData.kind;
+    const h = sHitPanel(k, hit.uv.x, hit.uv.y);
+    if (h && h.type === "slider") beginStudioDrag(k, h);
+  }
+});
+document.addEventListener("mouseup", () => endStudioDrag());
 
 // the machines answer a click the same way they did on the old page
 function applyStudioHit(kind, hit) {
@@ -2164,6 +2228,11 @@ function applyStudioHit(kind, hit) {
   else if (hit.type === "clip") sAct.launchClip(hit.index);
   else if (hit.type === "chmute") sAct.setChannel(hit.name, "mute", !sState.dev.mixer.ch[hit.name].mute);
   else if (hit.type === "slider") {
+    // the click that trails a finished drag must not re-set the value from
+    // wherever the cursor happened to land
+    if (performance.now() - studioDragClickGuard < 250) return;
+    // a tap can nudge a bar to a spot, but a knob only answers to a drag
+    if (hit.knob) return;
     // tempo and swing are transport, not device — they have their own actions
     if (hit.key === "bpm") sAct.setBpm(hit.value);
     else if (hit.key === "swing") sAct.setSwing(hit.value);
@@ -4295,7 +4364,8 @@ xrRef = xr;   // helpers above can reach it now that it exists
 window.METRO_DEBUG = { renderer, camera, world, controls, xr,
   // a hand on the sequencer, same habit as the rest of the room
   studio: { state: sState, act: sAct, rec: sRec, hit: sHitPanel, apply: applyStudioHit,
-            steps: sStepCount, playhead: sPlayhead, mi: () => SA.miStatus(), percReady: () => SA.percReady(), percLast: () => SA.percLast() }, THREE, cat, bartender, ghosts, voice, screen, stream, setScreen, clearScreen, room: () => aRoomNow(), jump: adminJump, mirror, openPicker, analytics: analyticsBuffer, notesWall,
+            steps: sStepCount, playhead: sPlayhead, mi: () => SA.miStatus(),
+            dragBegin: beginStudioDrag, dragTick: tickStudioDrag, dragEnd: endStudioDrag, percReady: () => SA.percReady(), percLast: () => SA.percLast() }, THREE, cat, bartender, ghosts, voice, screen, stream, setScreen, clearScreen, room: () => aRoomNow(), jump: adminJump, mirror, openPicker, analytics: analyticsBuffer, notesWall,
   layout: { set: setLayoutMode, select: layoutSelect, nudge: layoutNudge, scale: layoutScale, click: layoutClick, on: () => layoutMode, sel: () => layoutSel },
   uid: identity.uid, pool: poolGame, pool2: poolGame2, sitAtPool, leavePool,
   toy: () => toy, grabToy, throwToy,
@@ -4371,6 +4441,7 @@ renderer.setAnimationLoop(() => {
   }
   // the club lights dance to the set; everywhere else energy stays at zero
   world.setClubEnergy(inClub ? voice.djLevel() : 0);
+  tickStudioDrag();               // a held knob follows the hand each frame
   world.tick(dt, controls.pos);
   // each radio rides its own room — full up close, gone by ~7 m, and paused
   // (radio.js cuts the live feed at gain 0) anywhere it isn't audible
