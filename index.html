@@ -342,15 +342,23 @@
   </div>
 </div>
 
-<!-- ====== the wardrobe: a real avatar creator (needs keys in config.js) ====== -->
+<!-- ====== the wardrobe: wear any .glb you can link to ====== -->
 <div id="wardrobe" class="overlay">
-  <div class="wardrobe-shell">
+  <div class="wardrobe-shell slim">
     <div class="wardrobe-head">
-      <span>MAKE YOURSELF</span>
-      <span class="wardrobe-hint" id="wardrobe-hint">build your avatar, then hit its export button — it becomes you in here</span>
+      <span>WEAR A 3D AVATAR</span>
       <button class="x" id="wardrobe-close">×</button>
     </div>
-    <iframe id="wardrobe-frame" allow="fullscreen; camera *; microphone *" title="avatar creator"></iframe>
+    <div class="wardrobe-body">
+      <p>paste a direct, public link to a <b>.glb</b> — made anywhere: Blender, VRoid, a phone scan, any exporter. it becomes you, for everyone in the room.</p>
+      <input type="url" id="wardrobe-url" placeholder="https://…/me.glb" spellcheck="false" autocomplete="off">
+      <p class="wardrobe-status" id="wardrobe-status"></p>
+      <div class="wardrobe-row">
+        <button class="pads-btn" id="wardrobe-set">WEAR IT</button>
+        <button class="pads-btn danger" id="wardrobe-off">BACK TO BLOCKS</button>
+      </div>
+      <p class="wardrobe-fine">tip: a file in a public GitHub repo works — use its raw link. the model is checked before it's worn.</p>
+    </div>
   </div>
 </div>
 

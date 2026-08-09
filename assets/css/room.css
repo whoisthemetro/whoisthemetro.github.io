@@ -930,14 +930,25 @@ body.in-studio #cat-pill, body.in-studio #flight-strip { display: none; }
 
 /* ---- the wardrobe: the avatar creator wearing our chrome ---- */
 #wardrobe .wardrobe-shell {
-  width: min(96vw, 1100px); height: min(92vh, 92dvh, 820px);
+  width: min(94vw, 480px);
   display: flex; flex-direction: column;
   background: #0a0d10; border: 1px solid #232a30; border-radius: 14px; overflow: hidden;
 }
+.wardrobe-body { padding: 4px 16px 16px; display: flex; flex-direction: column; gap: 12px; }
+.wardrobe-body p { color: var(--dim); font-size: 13px; line-height: 1.55; }
+.wardrobe-body b { color: var(--ink); }
+#wardrobe-url {
+  width: 100%; padding: 12px 14px; border-radius: 8px;
+  background: #0d1116; border: 1px solid #2c353d; color: var(--ink);
+  font: 500 13px/1 "SF Mono", ui-monospace, Menlo, Consolas, monospace; outline: none;
+}
+#wardrobe-url:focus { border-color: var(--amber); }
+.wardrobe-status { min-height: 16px; color: var(--amber); font-size: 12px; }
+.wardrobe-row { display: flex; gap: 8px; }
+.wardrobe-fine { font-size: 11px; color: #5d6a76; }
 .wardrobe-head {
   display: flex; align-items: center; gap: 14px; padding: 12px 16px;
   font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
   color: var(--amber); font-size: 13px; letter-spacing: 0.14em; font-weight: 700;
 }
 .wardrobe-hint { flex: 1; color: var(--dim); font-size: 11px; letter-spacing: 0.03em; font-weight: 400; }
-#wardrobe-frame { flex: 1; border: 0; width: 100%; background: #0d1116; }

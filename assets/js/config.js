@@ -21,16 +21,6 @@ window.METRO_CONFIG = {
   POSTHOG_KEY: "",
   POSTHOG_HOST: "https://us.i.posthog.com",
 
-  // MetaPerson avatar creator (optional). Register a free developer account
-  // at https://accounts.avatarsdk.com, create an app, and paste its Client ID
-  // and Client Secret here. This unlocks "real avatar" in the mirror: a 3D
-  // avatar creator whose exported model becomes your in-world figure. These
-  // credentials authorize the CREATOR IFRAME only (that's the vendor's own
-  // integration model — they're semi-public by design, like the anon key).
-  // Leave empty and the mirror simply doesn't offer it.
-  METAPERSON_CLIENT_ID: "",
-  METAPERSON_CLIENT_SECRET: "",
-
   // Venue screen-share TURN servers. Normally left unset: the `turn` edge
   // function mints short-lived Cloudflare credentials at boot (the secret stays
   // server-side). Only set this to hard-code your own ICE servers, e.g.

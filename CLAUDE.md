@@ -61,7 +61,7 @@ Dual mode: Supabase when `config.js` has keys, otherwise localStorage + Broadcas
 
 ### Real avatars — avatar-glb.js + the wardrobe
 
-`meta.avatar` (a GLB URL) is the top look tier in ghosts.js (above `outfit` blocks and the glow-blob): loaded via GLTFLoader, cached per URL, cloned per ghost with SkeletonUtils, height-normalized to 1.72m, swaps in async over the fallback figure. The creator is MetaPerson (avatarsdk.com) in the `#wardrobe` overlay — reached from the mirror's outfit picker, shown only when `METAPERSON_CLIENT_ID/SECRET` are set in config.js (register free at accounts.avatarsdk.com). Protocol: on `unity_loaded` postMessage `authenticate` + `set_export_parameters` (glb, lod 2, 1K.jpg, no zip); `model_exported` → `adoptAvatarExport(url)` → localStorage `metro.avatarGlb` + `identity.avatar` + presence meta. Saving a block outfit takes the scanned avatar off. Strict `e.origin` check on the message listener.
+`meta.avatar` (a GLB URL) is the top look tier in ghosts.js (above `outfit` blocks and the glow-blob): loaded via GLTFLoader, cached per URL, cloned per ghost with SkeletonUtils, height-normalized to 1.72m, swaps in async over the fallback figure. The `#wardrobe` overlay (reached from the mirror's outfit picker, always offered) is **bring-your-own**: paste a public https link to any .glb — hosted creators were all dead ends (RPM shut down by Netflix Jan 2026; Avaturn wants per-visitor logins; MetaPerson charges ~$800), so the URL is the interface. `adoptAvatarExport(url)` loads the model FIRST and only a parse-clean GLB is worn → localStorage `metro.avatarGlb` + `identity.avatar` + presence meta. Saving a block outfit takes it off again.
 
 ### Presence — presence.js
 
