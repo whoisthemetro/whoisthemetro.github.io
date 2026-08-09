@@ -162,6 +162,7 @@ function aRoomNow() {
 function roomScopeOfPos(x, y, z) {
   if ((y || 0) > 40) return "crew";
   if (z > 40) return "gym";                  // the gym sits far out in +z
+  if (z < -40) return "studio";              // and the studio far out in -z
   if (x > 20) return "desi";
   if (x < -20) return "venue";
   return "home";
