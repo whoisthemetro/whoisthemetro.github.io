@@ -123,6 +123,41 @@ export function detectFacing(node) {
   return 0;
 }
 
+// Sketchfab-style character models often ship an ARTISTIC pose — head
+// turned, eyes off to the side. In a room where the figure stands for a
+// real person's gaze, that reads as "looking away from whoever they're
+// talking to". So: find the eyes, measure how far off the body's forward
+// they point, and turn the head bone until the gaze lines up. Yaw only —
+// a slight up/down tilt is character, a sideways stare is a bug.
+function straightenGaze(node) {
+  node.updateMatrixWorld(true);
+  const eyes = [];
+  node.traverse((o) => { if (o.isBone && /eye/i.test(o.name || "")) eyes.push(o); });
+  if (eyes.length < 2) return;
+  // the head is the nearest ancestor of an eye that calls itself one —
+  // matching by name alone can pick a sibling rig the eyes don't follow
+  let head = null;
+  for (let a = eyes[0].parent; a; a = a.parent) {
+    if (/head/i.test(a.name || "")) { head = a; break; }
+  }
+  if (!head) return;
+  const hp = new THREE.Vector3(); head.getWorldPosition(hp);
+  const em = new THREE.Vector3(), t = new THREE.Vector3();
+  for (const e of eyes) { e.getWorldPosition(t); em.add(t); }
+  em.divideScalar(eyes.length);
+  const fwd = em.sub(hp);
+  const yawErr = Math.atan2(fwd.x, fwd.z);
+  const deg = Math.abs(yawErr) * 180 / Math.PI;
+  if (deg < 4 || deg > 75) return;          // straight enough — or nonsense; leave it
+  // turn the head about the WORLD up axis, expressed in its parent's space
+  // so the bone's own bind axes never enter into it
+  const parentQ = new THREE.Quaternion();
+  head.parent.getWorldQuaternion(parentQ);
+  const fix = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -yawErr);
+  head.quaternion.premultiply(parentQ.clone().invert().multiply(fix).multiply(parentQ));
+  node.updateMatrixWorld(true);
+}
+
 // a fresh instance for one ghost. returns a node ready to drop into the
 // ghost group: feet at y=0, facing +Z, real-world scale. `flip` turns a
 // backwards model around; on top of the VRM auto-flip it's an XOR, so the
@@ -136,6 +171,7 @@ export function instanceGlbAvatar(gltf, { flip = false } = {}) {
   const toes = detectFacing(node);
   const backwards = toes !== 0 ? toes < 0 : looksLikeVrm0(gltf);
   if (flip !== backwards) node.rotation.y = Math.PI;
+  straightenGaze(node);
 
   node.traverse((o) => {
     if (o.isMesh || o.isSkinnedMesh) {
