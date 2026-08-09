@@ -392,6 +392,20 @@ async function saveRoomFlag(key, val) {
   } catch (e) {}
 }
 
+/* ---- avatar files: a dropped .glb needs a public address before anyone
+   else can wear-see it. supabase storage gives it one; local mode has no
+   "everyone" to serve, so it says so instead of pretending. ---- */
+async function uploadAvatar(uid, buf) {
+  if (mode !== "supabase") throw new Error("local mode — a dropped file has nowhere public to live; paste a link instead");
+  const path = `${uid}.glb`;   // one hook per person: re-drops replace, storage stays tidy
+  const { error } = await sb.storage.from("avatars")
+    .upload(path, buf, { upsert: true, contentType: "model/gltf-binary", cacheControl: "60" });
+  if (error) throw error;
+  const { data } = sb.storage.from("avatars").getPublicUrl(path);
+  // a cache-buster so re-drops actually change what peers fetch
+  return data.publicUrl + "?v=" + Date.now();
+}
+
 /* ---- the booth: who's been handed the decks (admin-gated, persists) ---- */
 async function getDJ() {
   if (mode === "supabase") {
@@ -530,7 +544,7 @@ function subscribeScores() {
 
 export const store = {
   getRoomLight, saveRoomLight, logEvent,
-  getRoomFlags, saveRoomFlag,
+  getRoomFlags, saveRoomFlag, uploadAvatar,
   castBottle, readBottle,
   onRoomLight: fn => { roomLightListeners.add(fn); return () => roomLightListeners.delete(fn); },
   getDJ, saveDJ,

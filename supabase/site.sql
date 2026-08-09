@@ -337,3 +337,25 @@ begin
     created_at = now();
 end;
 $$;
+
+-- ---------- avatar storage: dropped .glb files get a public home ----------
+-- (mirrors the live migration `avatar_storage`)
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('avatars', 'avatars', true, 16777216, array['model/gltf-binary', 'application/octet-stream'])
+on conflict (id) do update set public = true, file_size_limit = 16777216,
+  allowed_mime_types = array['model/gltf-binary', 'application/octet-stream'];
+
+drop policy if exists "anyone may hang an avatar" on storage.objects;
+create policy "anyone may hang an avatar"
+  on storage.objects for insert to anon, authenticated
+  with check (bucket_id = 'avatars');
+
+drop policy if exists "anyone may rehang their avatar" on storage.objects;
+create policy "anyone may rehang their avatar"
+  on storage.objects for update to anon, authenticated
+  using (bucket_id = 'avatars') with check (bucket_id = 'avatars');
+
+drop policy if exists "avatars are public" on storage.objects;
+create policy "avatars are public"
+  on storage.objects for select to anon, authenticated
+  using (bucket_id = 'avatars');

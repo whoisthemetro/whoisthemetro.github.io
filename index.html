@@ -350,8 +350,12 @@
       <button class="x" id="wardrobe-close">×</button>
     </div>
     <div class="wardrobe-body">
-      <p>paste a direct, public link to a <b>.glb</b> — made anywhere: Blender, VRoid, a phone scan, any exporter. it becomes you, for everyone in the room.</p>
-      <input type="url" id="wardrobe-url" placeholder="https://…/me.glb" spellcheck="false" autocomplete="off">
+      <p>drop a <b>.glb</b> file here — or paste a direct, public link. made anywhere: Blender, VRoid, a phone scan, any exporter. it becomes you, for everyone in the room.</p>
+      <div class="wardrobe-drop" id="wardrobe-drop">
+        <span>drag a .glb here<br><em>or click to choose a file</em></span>
+        <input type="file" id="wardrobe-file" accept=".glb,model/gltf-binary">
+      </div>
+      <input type="url" id="wardrobe-url" placeholder="or https://…/me.glb" spellcheck="false" autocomplete="off">
       <p class="wardrobe-status" id="wardrobe-status"></p>
       <div class="wardrobe-row">
         <button class="pads-btn" id="wardrobe-set">WEAR IT</button>

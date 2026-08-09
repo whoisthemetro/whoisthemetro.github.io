@@ -8,6 +8,7 @@ import { Controls } from "./controls.js";
 import { NotesWall } from "./notes3d.js";
 import { Ghosts } from "./ghosts.js";
 import { loadGlbAvatar } from "./avatar-glb.js";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { store } from "./store.js";
 import { presence } from "./presence.js";
 import { startAmbience, citySound, pianoNote, semitoneToKey, audioNow, purr, setRain, setWater, setRoomTone, setClubTone, setClubBed, kettleBoil, setThruster, boostSound, discSound, goalHorn, meow, hiss, careSound, drumHit, setArcadeZone, punchSound, shieldClang, stunBuzz, edrumHit, guitarPluck, guitarNote, shotSound, smokeSound, setFx, setDelayTempo, setBusLevel, setGuitarFilter, startVacuum, stopVacuum, beep } from "./ambience.js";
@@ -626,6 +627,40 @@ async function adoptAvatarExport(url) {
   return true;
 }
 $("#wardrobe-set").addEventListener("click", () => adoptAvatarExport($("#wardrobe-url").value.trim()));
+
+// ---- a dropped file: prove it's a model, give it a public address, wear it ----
+async function wearFile(file) {
+  const st = $("#wardrobe-status");
+  if (!file) return false;
+  if (!/\.glb$/i.test(file.name) && file.type !== "model/gltf-binary") {
+    st.textContent = "that's not a .glb"; return false;
+  }
+  if (file.size > 16 * 1024 * 1024) {
+    st.textContent = "too big — keep it under 16MB (1K textures are plenty in here)"; return false;
+  }
+  try {
+    st.textContent = "checking the model…";
+    const buf = await file.arrayBuffer();
+    // parse before upload: broken files die here, not on everyone's screen
+    await new Promise((ok, no) => new GLTFLoader().parse(buf.slice(0), "", ok, no));
+    st.textContent = "hanging it up…";
+    const url = await store.uploadAvatar(identity.uid, buf);
+    return adoptAvatarExport(url);
+  } catch (e) {
+    st.textContent = (e && e.message) ? String(e.message).slice(0, 120) : "couldn't read that file";
+    return false;
+  }
+}
+{
+  const drop = $("#wardrobe-drop");
+  drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("armed"); });
+  drop.addEventListener("dragleave", () => drop.classList.remove("armed"));
+  drop.addEventListener("drop", (e) => {
+    e.preventDefault(); drop.classList.remove("armed");
+    wearFile(e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]);
+  });
+  $("#wardrobe-file").addEventListener("change", (e) => wearFile(e.target.files && e.target.files[0]));
+}
 $("#wardrobe-url").addEventListener("keydown", (e) => {
   if (e.key === "Enter") { e.preventDefault(); adoptAvatarExport($("#wardrobe-url").value.trim()); }
   e.stopPropagation();                        // typing an URL must not walk you around
@@ -4470,7 +4505,7 @@ window.METRO_DEBUG = { renderer, camera, world, controls, xr,
   studio: { state: sState, act: sAct, rec: sRec, hit: sHitPanel, apply: applyStudioHit,
             steps: sStepCount, playhead: sPlayhead, mi: () => SA.miStatus(),
             dragBegin: beginStudioDrag, dragTick: tickStudioDrag, dragEnd: endStudioDrag,
-            wardrobe: { adopt: adoptAvatarExport, open: openWardrobe }, percReady: () => SA.percReady(), percLast: () => SA.percLast() }, THREE, cat, bartender, ghosts, voice, screen, stream, setScreen, clearScreen, room: () => aRoomNow(), jump: adminJump, mirror, openPicker, analytics: analyticsBuffer, notesWall,
+            wardrobe: { adopt: adoptAvatarExport, open: openWardrobe, wearFile }, percReady: () => SA.percReady(), percLast: () => SA.percLast() }, THREE, cat, bartender, ghosts, voice, screen, stream, setScreen, clearScreen, room: () => aRoomNow(), jump: adminJump, mirror, openPicker, analytics: analyticsBuffer, notesWall,
   layout: { set: setLayoutMode, select: layoutSelect, nudge: layoutNudge, scale: layoutScale, click: layoutClick, on: () => layoutMode, sel: () => layoutSel },
   uid: identity.uid, pool: poolGame, pool2: poolGame2, sitAtPool, leavePool,
   toy: () => toy, grabToy, throwToy,

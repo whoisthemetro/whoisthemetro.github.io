@@ -952,3 +952,14 @@ body.in-studio #cat-pill, body.in-studio #flight-strip { display: none; }
   color: var(--amber); font-size: 13px; letter-spacing: 0.14em; font-weight: 700;
 }
 .wardrobe-hint { flex: 1; color: var(--dim); font-size: 11px; letter-spacing: 0.03em; font-weight: 400; }
+
+/* the wardrobe's drop zone: a big obvious landing pad for a file */
+.wardrobe-drop {
+  position: relative; border: 2px dashed #38465a; border-radius: 10px;
+  padding: 26px 12px; text-align: center; color: var(--dim);
+  font-size: 13px; line-height: 1.6; cursor: pointer;
+  transition: border-color .12s, background .12s;
+}
+.wardrobe-drop em { color: #5d6a76; font-style: normal; font-size: 11px; }
+.wardrobe-drop.armed { border-color: var(--amber); background: rgba(255, 179, 71, 0.06); color: var(--ink); }
+.wardrobe-drop input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
