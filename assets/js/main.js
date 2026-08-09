@@ -2035,6 +2035,7 @@ document.addEventListener("pointerdown", (e) => {
 /* ---------------- THE DESI: the boat room ---------------- */
 const BOAT_PASS_HASH = "7b917f679d49b06d44802d0c701bc923dd077cd94719999c48f850fc468d1c57";
 let inStudio = false;
+let studioPersistNow = () => {};   // bound once the engine boots
 let studioBooted = false;
 
 /* --- THE STUDIO ---
@@ -2052,7 +2053,7 @@ async function bootStudio() {
   SA.loadPerc();                        // 77 dumbek one-shots, pulled in the background
   sBind({
     uid: sUid,
-    onLocalEdit: (id, data) => sNet.pushPatch(id, data),
+    onLocalEdit: (id, data) => { sNet.pushPatch(id, data); scheduleStudioSave(); },
     onStateChange: (id) => {
       world.studio.markDirty(id);
       // synth included: the plaits knobs ride applyMixer to the worklet
@@ -2060,7 +2061,28 @@ async function bootStudio() {
     },
   });
   let adopted = false;
-  sNet.onPatch((id, data) => sMerge(id, data));
+
+  /* ---- the room remembers: the last state anyone left is the state the
+     next person finds. A live peer's snapshot always wins (it's newer by
+     definition); the database is for walking into an empty room. Saves are
+     debounced, and only the lowest uid present writes — one scribe, no
+     stampede of identical rows. ---- */
+  let saveTimer = null;
+  const persistStudio = () => {
+    if (!adopted) return;                      // never save a state we haven't joined
+    const uids = [sUid, ...sNet.peers().keys()].sort();
+    if (uids[0] !== sUid) return;              // someone else is the scribe
+    store.saveRoomFlag("studio", sSnap()).catch(() => {});
+  };
+  const scheduleStudioSave = () => {
+    if (!adopted) return;
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(persistStudio, 2500);
+  };
+  addEventListener("beforeunload", persistStudio);
+  studioPersistNow = persistStudio;            // leaveStudio flushes through this
+
+  sNet.onPatch((id, data) => { if (sMerge(id, data)) scheduleStudioSave(); });
   sNet.onWant((uid) => sNet.sendSnapshot(uid, sSnap()));
   sNet.onSnapshot((snap) => {
     if (adopted) return;                // first answer wins; the rest are echoes
@@ -2080,11 +2102,22 @@ async function bootStudio() {
       z: controls.pos.z - world.STUDIO.z, yaw: controls.yaw,
     }));
   } catch (e) {}
-  // nobody answered — we're first in, so it's on us to start something
-  setTimeout(() => {
+  // nobody answered — the room is empty. before starting from silence, ask
+  // the database what was playing when the last person left.
+  setTimeout(async () => {
     if (adopted) return;
+    let saved = null;
+    try { saved = (await store.getRoomFlags()).studio; } catch (e) {}
+    if (adopted) return;                       // a peer answered while we read
     adopted = true;
-    sSeed(); sApplyMixer();
+    if (saved && saved.xport) {
+      // a queued pattern change from a dead session must not fire on arrival
+      saved.xport.qpat = -1; saved.xport.qat = -1;
+      sAdopt(saved); sApplyMixer();
+      toast("the room remembered — picking up where it left off");
+    } else {
+      sSeed(); sApplyMixer();
+    }
     sNet.pushPatch("xport", sState.xport);
     sNet.pushPatch("drums", sState.dev.drums);
     sNet.pushPatch("synth", sState.dev.synth);
@@ -2131,6 +2164,7 @@ function setupStudio() {
 function leaveStudio() {
   inStudio = false;
   endStudioDrag();
+  studioPersistNow();              // the beat stays on the books
   document.body.classList.remove("in-studio");
   try { setRain((world.getWeather() && world.getWeather().rain) || 0); } catch (e) {}   // weather back
   if (pads) { pads.close(); pads.showButton(false); }
