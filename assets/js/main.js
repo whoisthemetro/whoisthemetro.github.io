@@ -565,6 +565,7 @@ function loadOutfit() {
 function saveOutfit(spec) { try { localStorage.setItem("metro.outfit", JSON.stringify(spec)); } catch (e) {} }
 let outfitSpec = loadOutfit();
 identity.outfit = outfitSpec;   // broadcast over presence so others see your fit
+identity.avatar = loadAvatarUrl();   // and the scanned avatar, if they made one
 
 // the arcade mirror — a framed panel that renders a live "you" (your dressed
 // figure + 8-bit face, driven by your mic level). click it to open the picker.
@@ -575,6 +576,74 @@ const mirror = makeSelfieMirror(renderer, outfitSpec);
   mirror.group.rotation.y = a.ry;
   world.scene.add(mirror.group);
 }
+/* ---------------- the wardrobe: a real avatar (MetaPerson) ----------------
+   The creator runs in their iframe; we authenticate it with the site's
+   developer keys (config.js) and listen for the exported GLB. The URL
+   becomes part of your identity: saved locally, broadcast over presence,
+   rendered by everyone's ghost system. No keys → the mirror simply
+   doesn't offer it. */
+const MP_ORIGIN = "https://metaperson.avatarsdk.com";
+const mpKeys = () => {
+  const c = window.METRO_CONFIG || {};
+  return c.METAPERSON_CLIENT_ID && c.METAPERSON_CLIENT_SECRET
+    ? { id: c.METAPERSON_CLIENT_ID, secret: c.METAPERSON_CLIENT_SECRET } : null;
+};
+function loadAvatarUrl() {
+  try { return localStorage.getItem("metro.avatarGlb") || null; } catch (e) { return null; }
+}
+function saveAvatarUrl(url) {
+  try { url ? localStorage.setItem("metro.avatarGlb", url) : localStorage.removeItem("metro.avatarGlb"); } catch (e) {}
+}
+let wardrobeOpen = false;
+function openWardrobe() {
+  if (vrBlocked("the wardrobe needs a flat screen")) return;
+  const keys = mpKeys();
+  if (!keys || wardrobeOpen) return;
+  wardrobeOpen = true; modalOpen = true; controls.unlock();
+  const frame = $("#wardrobe-frame");
+  frame.src = MP_ORIGIN + "/iframe.html";
+  show($("#wardrobe"));
+}
+function closeWardrobe() {
+  if (!wardrobeOpen) return;
+  wardrobeOpen = false; modalOpen = false;
+  hide($("#wardrobe"));
+  $("#wardrobe-frame").src = "about:blank";
+  if (entered) safeLock();
+}
+$("#wardrobe-close").addEventListener("click", closeWardrobe);
+
+// what an export means, wherever it comes from (the real creator, or a test)
+function adoptAvatarExport(url) {
+  if (!url || typeof url !== "string" || !/^https:/.test(url)) return;
+  saveAvatarUrl(url);
+  identity.avatar = url;                      // heartbeats carry it from here on
+  presence.updateMeta({ avatar: url });
+  toast("that's you now — everyone sees it");
+  closeWardrobe();
+}
+window.addEventListener("message", (e) => {
+  if (e.origin !== MP_ORIGIN) return;         // only the creator gets to speak here
+  let d = e.data;
+  if (typeof d === "string") { try { d = JSON.parse(d); } catch (err) { return; } }
+  if (!d || d.source !== "metaperson_creator") return;
+  const frame = $("#wardrobe-frame");
+  if (d.eventName === "unity_loaded" || d.eventName === "metaperson_creator_loaded") {
+    const keys = mpKeys();
+    if (!keys || !frame.contentWindow) return;
+    // their documented handshake: authenticate, then pin the export format
+    frame.contentWindow.postMessage(JSON.stringify({
+      eventName: "authenticate", clientId: keys.id, clientSecret: keys.secret,
+    }), MP_ORIGIN);
+    frame.contentWindow.postMessage(JSON.stringify({
+      eventName: "set_export_parameters", format: "glb", lod: 2,
+      textureProfile: "1K.jpg", useZip: false,
+    }), MP_ORIGIN);
+  } else if (d.eventName === "model_exported" && wardrobeOpen) {
+    adoptAvatarExport(d.url);
+  }
+});
+
 let pickerOpen = false;
 let pickerReturn = null;
 function openPicker() {
@@ -593,7 +662,14 @@ function openPicker() {
   camera.updateMatrixWorld(true);
   openOutfitPicker(outfitSpec, {
     onChange: (s) => mirror.setSpec(s),
-    onSave: (s) => { outfitSpec = s; saveOutfit(s); mirror.setSpec(s); presence.updateMeta({ outfit: s }); toast("look saved"); },
+    onSave: (s) => {
+      outfitSpec = s; saveOutfit(s); mirror.setSpec(s);
+      // choosing blocks again also takes the scanned avatar off
+      if (identity.avatar) { identity.avatar = null; saveAvatarUrl(null); presence.updateMeta({ avatar: null, outfit: s }); }
+      else presence.updateMeta({ outfit: s });
+      toast("look saved");
+    },
+    extra: mpKeys() ? { label: "✦ make a real avatar", onClick: () => openWardrobe() } : null,
     onClose: () => {
       pickerOpen = false; modalOpen = false; mirror.setSpec(outfitSpec);
       if (pickerReturn) { controls.pos.x = pickerReturn.x; controls.pos.z = pickerReturn.z; controls.yaw = pickerReturn.yaw; controls.pitch = pickerReturn.pitch; pickerReturn = null; }
@@ -4400,7 +4476,8 @@ window.METRO_DEBUG = { renderer, camera, world, controls, xr,
   // a hand on the sequencer, same habit as the rest of the room
   studio: { state: sState, act: sAct, rec: sRec, hit: sHitPanel, apply: applyStudioHit,
             steps: sStepCount, playhead: sPlayhead, mi: () => SA.miStatus(),
-            dragBegin: beginStudioDrag, dragTick: tickStudioDrag, dragEnd: endStudioDrag, percReady: () => SA.percReady(), percLast: () => SA.percLast() }, THREE, cat, bartender, ghosts, voice, screen, stream, setScreen, clearScreen, room: () => aRoomNow(), jump: adminJump, mirror, openPicker, analytics: analyticsBuffer, notesWall,
+            dragBegin: beginStudioDrag, dragTick: tickStudioDrag, dragEnd: endStudioDrag,
+            wardrobe: { adopt: adoptAvatarExport, open: openWardrobe, keys: mpKeys }, percReady: () => SA.percReady(), percLast: () => SA.percLast() }, THREE, cat, bartender, ghosts, voice, screen, stream, setScreen, clearScreen, room: () => aRoomNow(), jump: adminJump, mirror, openPicker, analytics: analyticsBuffer, notesWall,
   layout: { set: setLayoutMode, select: layoutSelect, nudge: layoutNudge, scale: layoutScale, click: layoutClick, on: () => layoutMode, sel: () => layoutSel },
   uid: identity.uid, pool: poolGame, pool2: poolGame2, sitAtPool, leavePool,
   toy: () => toy, grabToy, throwToy,

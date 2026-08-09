@@ -10,6 +10,7 @@
 import * as THREE from "three";
 import { makeFace } from "./face.js";
 import { buildAvatarFigure } from "./avatar-builder.js";
+import { loadGlbAvatar, instanceGlbAvatar } from "./avatar-glb.js";
 
 function nameSprite(name, color) {
   const c = document.createElement("canvas");
@@ -54,19 +55,37 @@ function makeBlob(color) {
   };
 }
 
-// build a peer's visual from their meta: their outfit if they've set one,
-// otherwise the glow-blob fallback
+// build a peer's visual from their meta, best look first: a real scanned
+// avatar (GLB url) beats a block outfit beats the glow-blob. The GLB loads
+// async, so the figure stands in as its fallback and swaps skins when the
+// model lands — nobody is ever invisible while a download runs.
 function buildPeerVisual(meta) {
-  if (meta.outfit) {
-    const a = buildAvatarFigure(meta.outfit);
-    return { node: a.group, setVoice: a.setVoice, dispose: a.dispose };
-  }
-  return makeBlob(meta.color || "#ffb347");
+  const base = meta.outfit
+    ? (() => { const a = buildAvatarFigure(meta.outfit); return { node: a.group, setVoice: a.setVoice, dispose: a.dispose }; })()
+    : makeBlob(meta.color || "#ffb347");
+  if (!meta.avatar) return base;
+
+  const shell = new THREE.Group();
+  shell.add(base.node);
+  const vis = { node: shell, setVoice: base.setVoice, dispose: base.dispose, dead: false };
+  loadGlbAvatar(meta.avatar).then((gltf) => {
+    if (vis.dead) return;
+    const real = instanceGlbAvatar(gltf);
+    if (!real) return;                        // bad url → keep the fallback look
+    shell.remove(base.node);
+    base.dispose && base.dispose();
+    shell.add(real);
+    vis.setVoice = null;                      // a scanned face doesn't flap; voice shows on the nameplate ring
+  });
+  const dispose0 = vis.dispose;
+  vis.dispose = () => { vis.dead = true; dispose0 && dispose0(); };
+  return vis;
 }
 
 // a key that changes when someone's look changes, so we rebuild only then
 function lookKey(meta) {
-  return meta.outfit ? "o:" + JSON.stringify(meta.outfit) : "c:" + (meta.color || "");
+  return (meta.avatar ? "g:" + meta.avatar + "|" : "") +
+         (meta.outfit ? "o:" + JSON.stringify(meta.outfit) : "c:" + (meta.color || ""));
 }
 
 export class Ghosts {
@@ -104,7 +123,7 @@ export class Ghosts {
       grp.position.copy(kept ? kept.pos : new THREE.Vector3(0, 0, 2.5));
       this.group.add(grp);
       this.byUid.set(uid, {
-        grp, setVoice: vis.setVoice, dispose: vis.dispose, lookKey: lookKey(meta),
+        grp, vis, dispose: vis.dispose, lookKey: lookKey(meta),
         target: kept ? kept.target : { x: 0, z: 2.5, yaw: 0 },
         bobSeed: Math.random() * 10,
       });
@@ -138,7 +157,7 @@ export class Ghosts {
   tick(dt, t, levelFn) {
     const k = Math.min(1, dt * 7);   // smoothing
     for (const [uid, g] of this.byUid) {
-      if (g.setVoice) g.setVoice(levelFn ? (levelFn(uid) || 0) : 0, dt);
+      if (g.vis && g.vis.setVoice) g.vis.setVoice(levelFn ? (levelFn(uid) || 0) : 0, dt);
       const px = g.grp.position.x, py = g.grp.position.y, pz = g.grp.position.z;
       g.grp.position.x += (g.target.x - g.grp.position.x) * k;
       g.grp.position.z += (g.target.z - g.grp.position.z) * k;

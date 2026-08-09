@@ -342,6 +342,18 @@
   </div>
 </div>
 
+<!-- ====== the wardrobe: a real avatar creator (needs keys in config.js) ====== -->
+<div id="wardrobe" class="overlay">
+  <div class="wardrobe-shell">
+    <div class="wardrobe-head">
+      <span>MAKE YOURSELF</span>
+      <span class="wardrobe-hint" id="wardrobe-hint">build your avatar, then hit its export button — it becomes you in here</span>
+      <button class="x" id="wardrobe-close">×</button>
+    </div>
+    <iframe id="wardrobe-frame" allow="fullscreen; camera *; microphone *" title="avatar creator"></iframe>
+  </div>
+</div>
+
 <!-- ====== the pads: an MPC for the drum machine (studio only) ====== -->
 <div id="pads" class="overlay">
   <div class="pads-shell">

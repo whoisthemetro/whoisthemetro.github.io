@@ -59,6 +59,10 @@ Postable walls are entries in `walls[]`: `{id, mesh, w, h, origin, uDir, vDir, n
 
 Dual mode: Supabase when `config.js` has keys, otherwise localStorage + BroadcastChannel ("local mode"). Everything privileged goes through **security-definer RPCs** with `set search_path = ''` (so pgcrypto is `extensions.crypt`) and IP rate limits via `private.post_log` with prefixed keys. Realtime: postgres_changes (notes, cat, scores, room_state) + presence channel.
 
+### Real avatars — avatar-glb.js + the wardrobe
+
+`meta.avatar` (a GLB URL) is the top look tier in ghosts.js (above `outfit` blocks and the glow-blob): loaded via GLTFLoader, cached per URL, cloned per ghost with SkeletonUtils, height-normalized to 1.72m, swaps in async over the fallback figure. The creator is MetaPerson (avatarsdk.com) in the `#wardrobe` overlay — reached from the mirror's outfit picker, shown only when `METAPERSON_CLIENT_ID/SECRET` are set in config.js (register free at accounts.avatarsdk.com). Protocol: on `unity_loaded` postMessage `authenticate` + `set_export_parameters` (glb, lod 2, 1K.jpg, no zip); `model_exported` → `adoptAvatarExport(url)` → localStorage `metro.avatarGlb` + `identity.avatar` + presence meta. Saving a block outfit takes the scanned avatar off. Strict `e.origin` check on the message listener.
+
 ### Presence — presence.js
 
 One channel (`metro-presence`) carries: `pose` (now includes `y` for zero-g), `note` (piano), `act` (curtains/closet/dimmer/pet/volca/disc/goal/chat-adjacent shared actions), `chat`, `arcade` (2P game lockstep). Local mode mirrors all of it over BroadcastChannel. Ghost rendering/smoothing is ghosts.js.

@@ -15,7 +15,7 @@ const LABELS = {
 };
 const TITLE = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
-export function openOutfitPicker(spec, { onChange, onSave, onClose } = {}) {
+export function openOutfitPicker(spec, { onChange, onSave, onClose, extra } = {}) {
   const work = { ...spec };
   document.getElementById("outfit-picker")?.remove();
 
@@ -108,6 +108,16 @@ export function openOutfitPicker(spec, { onChange, onSave, onClose } = {}) {
   chips("beard", OPTIONS.beard);
   swatches("faceColor", OPTIONS.faceColors);
   textField("logo", "METRO", 8);
+
+  // an optional doorway to something beyond the blocks (the real-avatar
+  // creator, when the site has keys for it)
+  if (extra && extra.label) {
+    const ex = document.createElement("button");
+    ex.textContent = extra.label;
+    ex.style.cssText = "width:100%;margin-top:10px;padding:11px;border-radius:10px;border:1px solid #6a5acd;cursor:pointer;font:800 14px Archivo;background:#241f38;color:#cfc4ff";
+    ex.onclick = () => { close(); extra.onClick && extra.onClick(); };
+    panel.appendChild(ex);
+  }
 
   const done = document.createElement("button");
   done.textContent = "✓ Save look";
