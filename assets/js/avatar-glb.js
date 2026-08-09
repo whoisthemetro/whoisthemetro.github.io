@@ -34,11 +34,24 @@ export function loadGlbAvatar(url) {
   return p;
 }
 
+// VRM 0.x files (VRoid and friends) face -Z, opposite the glTF spec's +Z.
+// the extension block tells us which world the file comes from, so those
+// flip themselves without anyone having to know why.
+function looksLikeVrm0(gltf) {
+  try {
+    const ext = gltf.parser.json.extensions || {};
+    return !!ext.VRM;                      // 0.x; VRMC_vrm (1.0) already faces +Z
+  } catch (e) { return false; }
+}
+
 // a fresh instance for one ghost. returns a node ready to drop into the
-// ghost group: feet at y=0, facing +Z, real-world scale.
-export function instanceGlbAvatar(gltf) {
+// ghost group: feet at y=0, facing +Z, real-world scale. `flip` turns a
+// backwards model around; on top of the VRM auto-flip it's an XOR, so the
+// manual switch can also UNDO a wrong guess.
+export function instanceGlbAvatar(gltf, { flip = false } = {}) {
   if (!gltf || !gltf.scene) return null;
   const node = skeletonClone(gltf.scene);
+  if (flip !== looksLikeVrm0(gltf)) node.rotation.y = Math.PI;
 
   node.traverse((o) => {
     if (o.isMesh || o.isSkinnedMesh) {

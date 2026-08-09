@@ -665,6 +665,16 @@ $("#wardrobe-url").addEventListener("keydown", (e) => {
   if (e.key === "Enter") { e.preventDefault(); adoptAvatarExport($("#wardrobe-url").value.trim()); }
   e.stopPropagation();                        // typing an URL must not walk you around
 });
+// worn backwards? one press turns you around (and presses again turn back)
+$("#wardrobe-flip").addEventListener("click", () => {
+  const cur = loadAvatarUrl();
+  if (!cur) { $("#wardrobe-status").textContent = "nothing worn yet — wear a model first"; return; }
+  const next = /#flip\b/.test(cur) ? cur.replace(/#flip\b/, "") : cur + "#flip";
+  saveAvatarUrl(next);
+  identity.avatar = next;
+  presence.updateMeta({ avatar: next });
+  toast("turned around — ask them if you're facing them now");
+});
 $("#wardrobe-off").addEventListener("click", () => {
   saveAvatarUrl(null); identity.avatar = null;
   presence.updateMeta({ avatar: null });

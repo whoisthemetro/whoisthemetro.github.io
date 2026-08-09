@@ -68,9 +68,12 @@ function buildPeerVisual(meta) {
   const shell = new THREE.Group();
   shell.add(base.node);
   const vis = { node: shell, setVoice: base.setVoice, dispose: base.dispose, dead: false };
-  loadGlbAvatar(meta.avatar).then((gltf) => {
+  // "#flip" on the url is the wearer saying "my model points backwards" —
+  // it rides presence like the rest of the look
+  const flip = /#flip\b/.test(meta.avatar);
+  loadGlbAvatar(meta.avatar.replace(/#.*$/, "")).then((gltf) => {
     if (vis.dead) return;
-    const real = instanceGlbAvatar(gltf);
+    const real = instanceGlbAvatar(gltf, { flip });
     if (!real) return;                        // bad url → keep the fallback look
     shell.remove(base.node);
     base.dispose && base.dispose();
