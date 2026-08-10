@@ -3251,11 +3251,17 @@ function discTick(dt) {
   const g = world.discGroup;
   if (disc.holder) {
     if (disc.holder === identity.uid) {
-      // riding my hand: just in front and below my gaze
-      const dir = new THREE.Vector3();
-      camera.getWorldDirection(dir);
-      disc.pos.copy(camera.position).addScaledVector(dir, 1.05);
-      disc.pos.y -= 0.3;
+      // in VR the disc sits IN the gripping hand; on desktop it rides
+      // just in front and below the gaze
+      const hp = xr.discHand && xr.discHand();
+      if (hp) {
+        disc.pos.set(hp.x, hp.y, hp.z);
+      } else {
+        const dir = new THREE.Vector3();
+        camera.getWorldDirection(dir);
+        disc.pos.copy(camera.position).addScaledVector(dir, 1.05);
+        disc.pos.y -= 0.3;
+      }
     } else {
       const ghostPos = ghosts.byUid.get(disc.holder)?.grp.position;
       if (ghostPos) disc.pos.set(ghostPos.x, ghostPos.y + 1.1, ghostPos.z);
@@ -4488,6 +4494,25 @@ addEventListener("keydown", (e) => {
 /* --- VR: phase one (see xr.js) --- */
 const xr = setupXR({
   renderer, camera, scene: world.scene, controls, world,
+  // the disc, for VR hands: Echo's momentary grip — held only while the
+  // grip button is down, thrown with the hand's own velocity on release
+  zerogDisc: {
+    free: () => inArena && !disc.holder,
+    pos: () => (inArena ? { x: disc.pos.x, y: disc.pos.y, z: disc.pos.z } : null),
+    grab: () => { if (inArena && !disc.holder) grabDisc(); },
+    throwVec: (p, v) => {
+      if (!inArena || disc.holder !== identity.uid) return;
+      disc.holder = null;
+      disc.pos.set(p.x, p.y, p.z);
+      disc.vel.set(v.x, v.y, v.z);
+      disc.thrownFrom = [p.x, p.y, p.z];   // the release point decides the points
+      discSound("throw");
+      presence.sendAct({
+        kind: "disc", sub: "throw",
+        p: [p.x, p.y, p.z], v: [v.x, v.y, v.z], t: disc.thrownFrom,
+      });
+    },
+  },
   canEnter: () => !inBoat && !inArena && !inClub && !inGym && !modalOpen,   // studio is fine — it walks
   onSelect: (controller) => {
     // an overlay is invisible in a session, so a stuck modalOpen would
@@ -4503,7 +4528,7 @@ const xr = setupXR({
 
 xrRef = xr;   // helpers above can reach it now that it exists
 
-window.METRO_DEBUG = { renderer, camera, world, controls, xr,
+window.METRO_DEBUG = { renderer, camera, world, controls, xr, disc,
   // a hand on the sequencer, same habit as the rest of the room
   studio: { state: sState, act: sAct, rec: sRec, hit: sHitPanel, apply: applyStudioHit,
             steps: sStepCount, playhead: sPlayhead, mi: () => SA.miStatus(),

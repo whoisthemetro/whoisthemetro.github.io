@@ -3494,10 +3494,14 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
       // old way paid for all of it in one stutter on the frame you first
       // looked at the cabinet (misery in a headset, where a long frame is
       // a lurch in the stomach rather than a hiccup).
-      return (renderer.compileAsync
+      // NOTE: inside an immersive session the page's rAF doesn't fire, and a
+      // stalled warm-up must never eat a cabinet — so the stagger runs on
+      // timers and the compile gets a deadline instead of a blank cheque.
+      const warm = renderer.compileAsync
         ? renderer.compileAsync(model, warmupCam, scene).catch(() => {})
-        : Promise.resolve()
-      ).then(() => new Promise((done) => {
+        : Promise.resolve();
+      const deadline = new Promise((ok) => setTimeout(ok, 2500));
+      return Promise.race([warm, deadline]).then(() => new Promise((done) => {
         const texs = [];
         model.traverse((o) => {
           const m = o.isMesh && o.material;
@@ -3510,7 +3514,7 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
           const t = texs.pop();
           if (!t) return done();
           try { renderer.initTexture(t); } catch (e) {}
-          requestAnimationFrame(next);
+          setTimeout(next, 16);   // NOT rAF — the page's rAF sleeps during VR
         };
         next();
       })).then(() => {

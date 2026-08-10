@@ -17,7 +17,7 @@ const SNAP = Math.PI / 6;        // 30° per flick — the comfort standard
 const SPEED = 2.2;               // m/s, gentler than desktop walking
 const DEAD = 0.15;               // stick deadzone
 
-export function setupXR({ renderer, camera, scene, controls, world, onSelect, canEnter = () => true }) {
+export function setupXR({ renderer, camera, scene, controls, world, onSelect, canEnter = () => true, zerogDisc = null }) {
   if (!("xr" in navigator)) return { presenting: () => false, tick() {}, showButton() {} };
 
   renderer.xr.enabled = true;
@@ -146,8 +146,11 @@ export function setupXR({ renderer, camera, scene, controls, world, onSelect, ca
      gaze); holding the RIGHT stick click is the brake. The right stick's
      x-axis still snap-turns. Everything writes controls.vel/pos/flyY, so
      desktop peers see a VR flyer exactly like any other flyer. ---- */
-  const handPrev = [null, null];       // last frame's world pos per hand
+  const handPrev = [null, null];       // last frame's PLAYSPACE pos per hand (the pull)
+  const worldPrev = [null, null];      // last frame's WORLD pos per hand (the throw)
+  const handVel = [new THREE.Vector3(), new THREE.Vector3()];   // smoothed world hand velocity
   const gripHeld = [false, false];
+  let discHand = -1;                   // which hand is holding the disc (-1: none)
   const pullVel = { x: 0, y: 0, z: 0 };
   let wasZeroG = false, boostCd = 0;
   const hw = new THREE.Vector3(), hq = new THREE.Quaternion(), hv = new THREE.Vector3();
@@ -170,13 +173,47 @@ export function setupXR({ renderer, camera, scene, controls, world, onSelect, ca
       const squeeze = btn(1), ax = btn(4), stick = btn(3);
       ctl.getWorldPosition(hw);
 
+      // the hand's WORLD velocity, smoothed over a few frames — it already
+      // contains the body's motion, so it IS the physics of a throw
+      const h0 = left ? 0 : 1;
+      if (worldPrev[h0] && dt > 0) {
+        hv.copy(hw).sub(worldPrev[h0]).divideScalar(dt);
+        handVel[h0].lerp(hv, 0.4);
+        worldPrev[h0].copy(hw);
+      } else worldPrev[h0] = hw.clone();
+
+      // --- the disc: Echo's rule exactly — it's yours only while the grip
+      // is down. squeeze near it to take it; open your hand and whatever
+      // your arm was doing becomes the throw (or the drop). ---
+      if (zerogDisc) {
+        if (squeeze && !stunned && discHand < 0 && zerogDisc.free()) {
+          const dp = zerogDisc.pos();
+          if (dp && Math.hypot(hw.x - dp.x, hw.y - dp.y, hw.z - dp.z) < 1.0) {
+            discHand = h0;
+            gripHeld[h0] = true;         // this grip is spoken for — not a wall grab
+            zerogDisc.grab();
+          }
+        } else if (discHand === h0 && !squeeze) {
+          discHand = -1;
+          gripHeld[h0] = false;
+          // a real swing tops out around 10 m/s; anything wilder is a
+          // tracking glitch, and the disc shouldn't teleport for it
+          const t = handVel[h0].clone().multiplyScalar(1.25);
+          const sp = t.length();
+          if (sp > 16) t.multiplyScalar(16 / sp);
+          zerogDisc.throwVec({ x: hw.x, y: hw.y, z: hw.z }, { x: t.x, y: t.y, z: t.z });
+        }
+      }
+
       // --- grab: hold GRIP near anything and your hand owns your body.
       // the pull is measured in PLAYSPACE space (ctl.position — the pose
       // three decodes from the headset), not world space: the rig chases
       // the body every frame, and a world-space hand would swallow its own
       // pull. local deltas rotate by the rig's yaw to face the room. ---
       const h = left ? 0 : 1;
-      if (squeeze && !stunned && world.arenaNearWall(hw.x, hw.y, hw.z, 1.3)) {
+      if (discHand === h) {
+        // this hand is carrying the disc — it doesn't also hold walls
+      } else if (squeeze && !stunned && world.arenaNearWall(hw.x, hw.y, hw.z, 1.3)) {
         if (!gripHeld[h]) { gripHeld[h] = true; handPrev[h] = ctl.position.clone(); controls.onGrab?.(); }
         else if (handPrev[h] && dt > 0) {
           hv.copy(ctl.position).sub(handPrev[h]).applyQuaternion(rig.quaternion);
@@ -409,6 +446,12 @@ export function setupXR({ renderer, camera, scene, controls, world, onSelect, ca
     presenting: () => renderer.xr.isPresenting,
     tick,
     showButton,
+    // while a hand carries the disc, the room should draw it at that hand
+    discHand: () => {
+      if (discHand < 0 || !controllers[discHand]) return null;
+      controllers[discHand].getWorldPosition(hv);
+      return { x: hv.x, y: hv.y, z: hv.z };
+    },
     // test rig: lets a headless harness drive the REAL step with a fake
     // session — the only way to exercise VR code without a headset
     _debug: { step, rig, controllers },
