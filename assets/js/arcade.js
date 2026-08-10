@@ -1076,6 +1076,7 @@ export function closeArcade() {
   current = null;
   gameId = null;
   keys = {};                    // never carry a stuck pad into the next game
+  vrLast = 0;
   touch.active = false;
   movePtr = null;
   hideStick();
@@ -1088,6 +1089,26 @@ export function closeArcade() {
 export function arcadeIsOpen() {
   return document.getElementById("arcade").classList.contains("show");
 }
+
+/* ---------- VR: the same games, different hands ----------
+   In a headset the DOM overlay is invisible, so the canvas gets textured
+   onto a panel in the room instead — and the page's rAF sleeps during a
+   session, so the world loop drives frames through vrFrame(). The stick
+   plays the arrows, buttons play the keys, via vrKey(). ---------- */
+let vrLast = 0;
+export function vrFrame(now) {
+  if (!current) return;
+  if (!vrLast) vrLast = now;
+  const dt = Math.min(0.05, (now - vrLast) / 1000);
+  vrLast = now;
+  current.update(dt);
+  current.draw();
+}
+export function vrKey(code, down) {
+  if (down) keys[code] = true;
+  else delete keys[code];
+}
+export const _debugKeys = () => keys;
 
 // test/debug introspection
 export const _arcadeDbg = () => ({ gameId, peerRole: peer ? peer.role : null });

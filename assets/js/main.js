@@ -25,7 +25,7 @@ import { makeSelfieMirror } from "./mirror.js";
 import { DEFAULT_SPEC } from "./avatar-builder.js";
 import { openOutfitPicker } from "./picker.js";
 import { initAnalytics, track, analyticsBuffer } from "./analytics.js";
-import { openArcade, closeArcade, arcadeIsOpen, arcadeWantsEsc, handleGameMessage, setScoreHook } from "./arcade.js";
+import { openArcade, closeArcade, arcadeIsOpen, arcadeWantsEsc, handleGameMessage, setScoreHook, vrFrame as arcadeVrFrame, vrKey as arcadeVrKey } from "./arcade.js";
 import { initPool } from "./pool.js";
 import { initBasket } from "./basketball.js";
 import { makeGymBall } from "./gymball.js";
@@ -1236,7 +1236,6 @@ controls.onAction((ndcX, ndcY) => {
   } else if (hit.object.userData.pool2 && hit.distance < 3.0) {
     sitAtPool(poolGame2);
   } else if (hit.object.userData.arcade && hit.distance < 3.2) {
-    if (vrBlocked("the cabinets need a flat screen")) return;
     modalOpen = true;
     controls.unlock();
     store.logEvent("arcade_" + hit.object.userData.arcade);
@@ -1247,6 +1246,12 @@ controls.onAction((ndcX, ndcY) => {
       send: (p) => presence.sendGame(p),
       myUid: identity.uid,
     });
+    // in a headset the overlay is invisible — the game plays on a panel
+    // floating in the room instead, and the controllers are the cabinet
+    if (inVR()) {
+      openVrArcadePanel();
+      xrRef.note("stick moves · A fires · trigger starts · GRIP walks away");
+    }
   } else if (hit.object.userData.arcadeSoon && hit.distance < 3.2) {
     toast(`${hit.object.userData.arcadeSoon} — cabinet's dark. coming soon.`);
   } else if (inStudio && hit.object.userData.kind && hit.uv && hit.distance < 5.5) {
@@ -4147,14 +4152,42 @@ $("#dm-send").addEventListener("click", async () => {
   }
 });
 
+/* ---- the VR cabinet screen: the game canvas on a panel in the room ---- */
+let vrArcade = null;
+function openVrArcadePanel() {
+  if (vrArcade) return;
+  const cvs = document.getElementById("arcade-canvas");
+  const tex = new THREE.CanvasTexture(cvs);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 1.0625),   // 640×400
+    new THREE.MeshBasicMaterial({ map: tex }));
+  const hp = new THREE.Vector3(); camera.getWorldPosition(hp);
+  const fwd = new THREE.Vector3(); camera.getWorldDirection(fwd);
+  fwd.y = 0; fwd.normalize();
+  mesh.position.copy(hp).addScaledVector(fwd, 1.7);
+  mesh.position.y = hp.y;
+  mesh.lookAt(hp.x, mesh.position.y, hp.z);
+  world.scene.add(mesh);
+  vrArcade = { mesh, tex };
+}
+function closeVrArcadePanel() {
+  if (!vrArcade) return;
+  world.scene.remove(vrArcade.mesh);
+  vrArcade.mesh.geometry.dispose();
+  vrArcade.mesh.material.dispose();
+  vrArcade.tex.dispose();
+  vrArcade = null;
+}
+
 function closeArcadeOverlay() {
   if (aArcadeGame) {
     track("arcade_game_ended", { game: aArcadeGame, seconds: Math.round((performance.now() - aArcadeStart) / 1000) });
     aArcadeGame = null;
   }
   closeArcade();
+  closeVrArcadePanel();
   modalOpen = false;
-  if (entered) safeLock();
+  if (entered && !renderer.xr.isPresenting) safeLock();
 }
 $("#arcade-close").addEventListener("click", closeArcadeOverlay);
 
@@ -4500,6 +4533,11 @@ const xr = setupXR({
   // grip button is down, thrown with the hand's own velocity on release
   // push-to-talk rides B/Y in a headset, the same contract as holding V:
   // live while held, off on release, never inside the venue (its own rules)
+  arcade: {
+    active: () => arcadeIsOpen() && !!vrArcade,
+    key: (code, down) => arcadeVrKey(code, down),
+    close: () => closeArcadeOverlay(),
+  },
   onTalk: (held) => {
     if (held) {
       if (inClub || voice.isOn()) return;
@@ -4547,6 +4585,7 @@ const xr = setupXR({
 xrRef = xr;   // helpers above can reach it now that it exists
 
 window.METRO_DEBUG = { renderer, camera, world, controls, xr, disc,
+  vrArcadePanel: { open: openVrArcadePanel, close: closeVrArcadePanel },
   // a hand on the sequencer, same habit as the rest of the room
   studio: { state: sState, act: sAct, rec: sRec, hit: sHitPanel, apply: applyStudioHit,
             steps: sStepCount, playhead: sPlayhead, mi: () => SA.miStatus(),
@@ -4628,6 +4667,12 @@ renderer.setAnimationLoop(() => {
   // the club lights dance to the set; everywhere else energy stays at zero
   world.setClubEnergy(inClub ? voice.djLevel() : 0);
   tickStudioDrag();               // a held knob follows the hand each frame
+  // the VR cabinet panel: the page's rAF sleeps in a session, so the world
+  // loop drives the game and refreshes its texture
+  if (vrArcade) {
+    arcadeVrFrame(performance.now());
+    vrArcade.tex.needsUpdate = true;
+  }
   world.tick(dt, controls.pos);
   // each radio rides its own room — full up close, gone by ~7 m, and paused
   // (radio.js cuts the live feed at gain 0) anywhere it isn't audible

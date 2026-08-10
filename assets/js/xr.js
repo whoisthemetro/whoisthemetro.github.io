@@ -17,7 +17,7 @@ const SNAP = Math.PI / 6;        // 30° per flick — the comfort standard
 const SPEED = 2.2;               // m/s, gentler than desktop walking
 const DEAD = 0.15;               // stick deadzone
 
-export function setupXR({ renderer, camera, scene, controls, world, onSelect, canEnter = () => true, zerogDisc = null, onTalk = null }) {
+export function setupXR({ renderer, camera, scene, controls, world, onSelect, canEnter = () => true, zerogDisc = null, onTalk = null, arcade = null }) {
   if (!("xr" in navigator)) return { presenting: () => false, tick() {}, showButton() {} };
 
   renderer.xr.enabled = true;
@@ -332,6 +332,7 @@ export function setupXR({ renderer, camera, scene, controls, world, onSelect, ca
     }
   }
   let talkHeld = false;
+  let arcadeGripPrev = false;
   function stepInner(dt, sessionOverride) {
     const session = sessionOverride || renderer.xr.getSession();
     if (!session) return;
@@ -346,6 +347,31 @@ export function setupXR({ renderer, camera, scene, controls, world, onSelect, ca
       }
       if (held !== talkHeld) { talkHeld = held; onTalk(held); }
     }
+
+    // --- a cabinet game is on the panel: the controllers ARE the cabinet.
+    // left stick plays the arrows, A/X is the fire button, trigger is
+    // start/enter, and a GRIP is walking away. nothing else moves. ---
+    if (arcade && arcade.active()) {
+      let lx = 0, ly = 0, fire = false, start = false, grip = false;
+      for (const src of session.inputSources) {
+        const gp = src.gamepad;
+        if (!gp) continue;
+        if (src.handedness === "left" && gp.axes.length >= 4) { lx = gp.axes[2]; ly = gp.axes[3]; }
+        if (gp.buttons[4] && gp.buttons[4].pressed) fire = true;
+        if (gp.buttons[0] && gp.buttons[0].pressed) start = true;
+        if (gp.buttons[1] && gp.buttons[1].pressed) grip = true;
+      }
+      arcade.key("ArrowLeft", lx < -0.45);
+      arcade.key("ArrowRight", lx > 0.45);
+      arcade.key("ArrowUp", ly < -0.45);
+      arcade.key("ArrowDown", ly > 0.45);
+      arcade.key("Space", fire);
+      arcade.key("Enter", start);
+      if (grip && !arcadeGripPrev) arcade.close();
+      arcadeGripPrev = grip;
+      return;   // the room waits while you play
+    }
+    arcadeGripPrev = false;
 
     // the boat (3) and arena (4) live on light layers; the desktop camera
     // enables them once, but the XR EYE cameras are three's own and ship
