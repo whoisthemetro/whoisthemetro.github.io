@@ -17,7 +17,7 @@ const SNAP = Math.PI / 6;        // 30° per flick — the comfort standard
 const SPEED = 2.2;               // m/s, gentler than desktop walking
 const DEAD = 0.15;               // stick deadzone
 
-export function setupXR({ renderer, camera, scene, controls, world, onSelect, canEnter = () => true, zerogDisc = null }) {
+export function setupXR({ renderer, camera, scene, controls, world, onSelect, canEnter = () => true, zerogDisc = null, onTalk = null }) {
   if (!("xr" in navigator)) return { presenting: () => false, tick() {}, showButton() {} };
 
   renderer.xr.enabled = true;
@@ -331,9 +331,21 @@ export function setupXR({ renderer, camera, scene, controls, world, onSelect, ca
       }
     }
   }
+  let talkHeld = false;
   function stepInner(dt, sessionOverride) {
     const session = sessionOverride || renderer.xr.getSession();
     if (!session) return;
+
+    // push-to-talk on B or Y (either hand's top face button) — held, like
+    // V on a keyboard. works in every room, walking or flying.
+    if (onTalk) {
+      let held = false;
+      for (const src of session.inputSources) {
+        const gp = src.gamepad;
+        if (gp && gp.buttons[5] && gp.buttons[5].pressed) held = true;
+      }
+      if (held !== talkHeld) { talkHeld = held; onTalk(held); }
+    }
 
     // the boat (3) and arena (4) live on light layers; the desktop camera
     // enables them once, but the XR EYE cameras are three's own and ship

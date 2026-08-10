@@ -4498,6 +4498,22 @@ const xr = setupXR({
   renderer, camera, scene: world.scene, controls, world,
   // the disc, for VR hands: Echo's momentary grip — held only while the
   // grip button is down, thrown with the hand's own velocity on release
+  // push-to-talk rides B/Y in a headset, the same contract as holding V:
+  // live while held, off on release, never inside the venue (its own rules)
+  onTalk: (held) => {
+    if (held) {
+      if (inClub || voice.isOn()) return;
+      voice.startTalk(false).then((ok) => {
+        if (!ok) { xrRef && xrRef.note("the mic said no"); return; }
+        xrRef && xrRef.note("🎤 live");
+        updateMicUI();
+      });
+    } else if (voice.mode() === "ptt") {
+      voice.stopTalk();
+      xrRef && xrRef.note("mic off");
+      updateMicUI();
+    }
+  },
   zerogDisc: {
     free: () => inArena && !disc.holder,
     pos: () => (inArena ? { x: disc.pos.x, y: disc.pos.y, z: disc.pos.z } : null),
