@@ -5475,19 +5475,13 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
      Laid out from the real top-down: a long hall split into orange and
      blue zones around MID, goal domes with backboards and 3-point
      bubbles at each end, floating island cubes to bank off, mid-wing
-     tunnels, and beyond each dome a set of numbered launch tubes with
-     yellow catapult handles feeding back to a team locker room with a
-     ready-up kiosk. Movement out there is pure momentum. --- */
+     tunnels. No lockers, no tubes — the room is for flying.
+     Movement out there is pure momentum. --- */
   const ARENA = { x: 0, y: 80, z: 0, hx: 30, hy: 11, hz: 14 };
   const A = ARENA;
   const DOME_R = 8;            // the goal domes capping each end
   const GOAL_X = 34;           // ring planes, inside the domes
   const BUBBLE_R = 14;         // outside this sphere a goal pays three
-  const TUBE_Z = [-3.6, 0, 3.6];   // spread so the fat tubes don't touch
-  const TUBE_R = 1.7;              // big enough to fly through without kissing the wall
-  const TUBE_Y = -4.2;         // tubes run under the goal, clean sightline
-  const TUBE_X0 = 38.5, TUBE_X1 = 49;
-  const LOCKER = { cx: 54.5, hx: 5.5, hy: 6, hz: 6 };
 
   const panelTex = canvasTex(512, 512, (g) => {
     g.fillStyle = "#3d4658";
@@ -5525,15 +5519,6 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     { t: "b", x0: -7, x1: 7, y0: -2.2, y1: 2.2, z0: A.hz - 1.5, z1: A.hz + 2.6 },   // mid-wing tunnels
     { t: "b", x0: -7, x1: 7, y0: -2.2, y1: 2.2, z0: -A.hz - 2.6, z1: -A.hz + 1.5 },
   ];
-  for (const s of [-1, 1]) {
-    for (const tz of TUBE_Z) {
-      // noDisc: the disc plays in the arena — it never rides the tubes
-      VOLS.push({ t: "b", noDisc: true, x0: Math.min(s * (TUBE_X0 - 2), s * (TUBE_X1 + 1.5)), x1: Math.max(s * (TUBE_X0 - 2), s * (TUBE_X1 + 1.5)),
-                  y0: TUBE_Y - 1.6, y1: TUBE_Y + 1.6, z0: tz - 1.6, z1: tz + 1.6 });
-    }
-    VOLS.push({ t: "b", noDisc: true, x0: s * LOCKER.cx - LOCKER.hx, x1: s * LOCKER.cx + LOCKER.hx,
-                y0: -LOCKER.hy, y1: LOCKER.hy, z0: -LOCKER.hz, z1: LOCKER.hz });
-  }
   // floating islands — the cube clusters from the top-down, mirrored
   const ISLES = [];
   for (const s of [-1, 1]) {
@@ -5644,26 +5629,10 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     addA(drum);
     const plateShape = new THREE.Shape();
     plateShape.absarc(0, 0, DOME_R, 0, Math.PI * 2, false);
-    for (const tz of TUBE_Z) {
-      const th = new THREE.Path();
-      th.absarc(tz, TUBE_Y, TUBE_R + 0.05, 0, Math.PI * 2, true);
-      plateShape.holes.push(th);
-    }
     const plate = new THREE.Mesh(new THREE.ShapeGeometry(plateShape, 24), endMat);
     plate.rotation.y = s > 0 ? -Math.PI / 2 : Math.PI / 2;
     plate.position.set(A.x + s * 38.5, A.y, A.z);
     addA(plate);
-    // the Echo look: glowing circles ringing each tube mouth on the
-    // back plate, a bright one tight to the hole and a soft echo of it
-    for (const tz of TUBE_Z) {
-      for (const [rr, tube2, op] of [[TUBE_R + 0.22, 0.05, 0.95], [TUBE_R + 0.55, 0.03, 0.4]]) {
-        const ring = new THREE.Mesh(new THREE.TorusGeometry(rr, tube2, 8, 36),
-          new THREE.MeshBasicMaterial({ color: 0x6fd8ff, transparent: true, opacity: op, depthWrite: false }));
-        ring.rotation.y = Math.PI / 2;
-        ring.position.set(A.x + s * 38.42, A.y + TUBE_Y, A.z + tz);
-        addA(ring);
-      }
-    }
   }
   // banking bevels along the four long edges
   for (const [by, bz] of [[A.hy, A.hz], [A.hy, -A.hz], [-A.hy, A.hz], [-A.hy, -A.hz]]) {
@@ -5789,159 +5758,48 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     }
   }
 
-  /* ---- launch tubes + catapults, under the goals ----
-     grab the yellow handholds behind the launch ring; when the round
-     starts the tunnel current carries you at 10 m/s — push (punch)
-     near the end to stack your own speed on top. drift into the wall
-     and you smear. main.js runs the current; we provide the shapes. ---- */
-  const grabHandles = [];
-  const tubeBarriers = [];
-  const tubeMat = new THREE.MeshBasicMaterial({ color: 0x2c3550, side: THREE.DoubleSide });
-  for (const s of [-1, 1]) {
-    const teamCol = s < 0 ? 0xff7320 : 0x22a4ff;
-    TUBE_Z.forEach((tz, ti) => {
-      const len = TUBE_X1 - TUBE_X0;
-      const tube = new THREE.Mesh(new THREE.CylinderGeometry(TUBE_R, TUBE_R, len, 14, 1, true), tubeMat);
-      tube.rotation.z = Math.PI / 2;
-      tube.position.set(A.x + s * (TUBE_X0 + len / 2), A.y + TUBE_Y, A.z + tz);
-      addA(tube);
-      for (const mx of [TUBE_X0, TUBE_X1]) {
-        const mouth = new THREE.Mesh(new THREE.TorusGeometry(TUBE_R, 0.09, 8, 28),
-          new THREE.MeshBasicMaterial({ color: teamCol }));
-        mouth.rotation.y = Math.PI / 2;
-        mouth.position.set(A.x + s * mx, A.y + TUBE_Y, A.z + tz);
-        addA(mouth);
-      }
-      // the launch ring — push past this one
-      const lring = new THREE.Mesh(new THREE.TorusGeometry(TUBE_R - 0.25, 0.06, 8, 24),
-        new THREE.MeshBasicMaterial({ color: 0x55e0d8, transparent: true, opacity: 0.85 }));
-      lring.rotation.y = Math.PI / 2;
-      lring.position.set(A.x + s * (TUBE_X1 - 3.4), A.y + TUBE_Y, A.z + tz);
-      addA(lring);
-      // yellow handholds BEHIND the ring (locker side)
-      const hx2 = s * (TUBE_X1 - 1.8);
-      for (const hz2 of [-0.95, 0.95]) {
-        const handle = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.55, 0.14),
-          new THREE.MeshBasicMaterial({ color: 0xffd23c }));
-        handle.position.set(A.x + hx2, A.y + TUBE_Y, A.z + tz + hz2);
-        handle.userData.launchHandle = { dir: -s, x: A.x + hx2, y: A.y + TUBE_Y, z: A.z + tz, tube: ti + 1 };
-        addA(handle);
-        grabHandles.push(handle);
-      }
-      // the barrier that drops when the round starts
-      const barrier = new THREE.Mesh(new THREE.CircleGeometry(TUBE_R - 0.05, 22),
-        new THREE.MeshBasicMaterial({ color: teamCol, transparent: true, opacity: 0.3, side: THREE.DoubleSide, depthWrite: false }));
-      barrier.rotation.y = Math.PI / 2;
-      barrier.position.set(A.x + s * (TUBE_X0 + 0.4), A.y + TUBE_Y, A.z + tz);
-      barrier.visible = false;
-      addA(barrier);
-      tubeBarriers.push(barrier);
-    });
-  }
-  function setTubeBarriers(on) { for (const b of tubeBarriers) b.visible = !!on; }
-  // which tube (if any) is this point inside? main.js runs the current
-  function inTube(x, y, z) {
-    const lx = x - A.x, ly = y - A.y - TUBE_Y, lz0 = z - A.z;
-    if (Math.abs(lx) < TUBE_X0 - 1 || Math.abs(lx) > TUBE_X1 + 0.5 || Math.abs(ly) > 1.7) return null;
-    for (const tz of TUBE_Z) {
-      const off = Math.hypot(ly, lz0 - tz);
-      if (off < 1.55) return { dir: -Math.sign(lx), off, exitX: A.x - Math.sign(lx) * (TUBE_X0 - 1) };
-    }
-    return null;
-  }
-
-  /* ---- locker rooms: spawn, kiosk, activation pods ---- */
+  /* ---- no lockers, no tubes, no ceremony: you spawn floating in the
+     hall, each team nudged toward its own end so two arrivals don't
+     share a skull. the room is for FLYING now. ---- */
+  const grabHandles = [];   // (kept for the api: the catapults are gone)
   const kiosks = [];
+  const setTubeBarriers = () => {};          // no tubes, no barriers
+  const inTube = () => false;                // nobody is ever in a tube now
+
+  /* ---- the way home: a glowing hatch mid-height on the north wall,
+     right where you spawn facing. click it, you're back at the lift. ---- */
   const arenaExits = [];
-  const lockerSpawns = {};
-  for (const [s, team, col, colHex] of [[-1, "o", 0xff7320, "#ff7320"], [1, "b", 0x22a4ff, "#22a4ff"]]) {
-    const lkMat = new THREE.MeshBasicMaterial({ color: 0x222b3c, side: THREE.DoubleSide });
-    for (const [w2, h2, px4, py4, pz4, rx4, ry4] of [
-      [LOCKER.hx * 2, LOCKER.hz * 2, A.x + s * LOCKER.cx, A.y - LOCKER.hy, A.z, -Math.PI / 2, 0],
-      [LOCKER.hx * 2, LOCKER.hz * 2, A.x + s * LOCKER.cx, A.y + LOCKER.hy, A.z, Math.PI / 2, 0],
-      [LOCKER.hx * 2, LOCKER.hy * 2, A.x + s * LOCKER.cx, A.y, A.z - LOCKER.hz, 0, 0],
-      [LOCKER.hx * 2, LOCKER.hy * 2, A.x + s * LOCKER.cx, A.y, A.z + LOCKER.hz, 0, Math.PI],
-      [LOCKER.hz * 2, LOCKER.hy * 2, A.x + s * (LOCKER.cx + LOCKER.hx), A.y, A.z, 0, s > 0 ? -Math.PI / 2 : Math.PI / 2],
-    ]) {
-      const lw = new THREE.Mesh(new THREE.PlaneGeometry(w2, h2), lkMat);
-      lw.position.set(px4, py4, pz4);
-      lw.rotation.x = rx4; lw.rotation.y = ry4;
-      addA(lw);
-    }
-    // tube-side wall: three round holes — look straight down the
-    // tunnels, through the goal pocket, into the hall
-    const lkShape = new THREE.Shape();
-    lkShape.moveTo(-LOCKER.hz, -LOCKER.hy); lkShape.lineTo(LOCKER.hz, -LOCKER.hy);
-    lkShape.lineTo(LOCKER.hz, LOCKER.hy); lkShape.lineTo(-LOCKER.hz, LOCKER.hy);
-    lkShape.closePath();
-    for (const tz of TUBE_Z) {
-      const lh = new THREE.Path();
-      lh.absarc(tz, TUBE_Y, TUBE_R + 0.05, 0, Math.PI * 2, true);
-      lkShape.holes.push(lh);
-    }
-    const lkWall = new THREE.Mesh(new THREE.ShapeGeometry(lkShape, 24), lkMat);
-    lkWall.rotation.y = s > 0 ? Math.PI / 2 : -Math.PI / 2;
-    lkWall.position.set(A.x + s * (LOCKER.cx - LOCKER.hx), A.y, A.z);
-    addA(lkWall);
-    // team glow strip around the room
-    for (const gy3 of [-1.8, 1.8]) {
-      const strip = new THREE.Mesh(new THREE.BoxGeometry(LOCKER.hx * 2 - 0.3, 0.08, 0.08),
-        new THREE.MeshBasicMaterial({ color: col }));
-      strip.position.set(A.x + s * LOCKER.cx, A.y + gy3, A.z + LOCKER.hz - 0.1);
-      addA(strip);
-      const strip2 = strip.clone(); strip2.position.z = A.z - LOCKER.hz + 0.1; addA(strip2);
-    }
-    const lamp = new THREE.PointLight(col, 90, 14, 2);
-    lamp.color.lerp(new THREE.Color(0xffffff), 0.45);   // team-tinted, not team-soaked
-    lamp.position.set(A.x + s * LOCKER.cx, A.y + 2.5, A.z);
-    addA(lamp);
-    // activation pods: five lit rings on the rear wall
-    for (let pi = 0; pi < 5; pi++) {
-      const pod = new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.07, 8, 20),
-        new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.7 }));
-      pod.rotation.y = Math.PI / 2;
-      pod.position.set(A.x + s * (LOCKER.cx + LOCKER.hx - 0.15), A.y + 0.6, A.z - 4 + pi * 2);
-      addA(pod);
-    }
-    // the ready-up kiosk
-    const kioskTex = canvasTex(256, 320, (g) => {
-      g.fillStyle = "#0a1018"; g.fillRect(0, 0, 256, 320);
-      g.strokeStyle = colHex; g.lineWidth = 8;
-      g.strokeRect(10, 10, 236, 300);
-      g.font = "900 44px monospace"; g.textAlign = "center";
-      g.fillStyle = colHex;
-      g.fillText("READY", 128, 130);
-      g.fillText("UP", 128, 185);
-      g.font = "16px monospace"; g.fillStyle = "#cfd8e4";
-      g.fillText("tap to start the match", 128, 250);
-    });
-    const kiosk = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 1.9),
-      new THREE.MeshBasicMaterial({ map: kioskTex }));
-    kiosk.position.set(A.x + s * (LOCKER.cx - 1), A.y, A.z + LOCKER.hz - 0.08);
-    kiosk.rotation.y = Math.PI;
-    kiosk.userData.kiosk = team;
-    addA(kiosk);
-    kiosks.push(kiosk);
-    // airlock home, one per locker
-    const lkExit = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 1.9), new THREE.MeshBasicMaterial({
-      map: canvasTex(128, 192, (g) => {
-        g.fillStyle = "#0a1018"; g.fillRect(0, 0, 128, 192);
-        g.strokeStyle = "#54e08a"; g.lineWidth = 6;
-        g.strokeRect(8, 8, 112, 176);
-        g.font = "900 22px monospace"; g.textAlign = "center";
-        g.fillStyle = "#54e08a";
-        g.fillText("AIRLOCK", 64, 90);
-        g.font = "13px monospace";
-        g.fillText("» ARCADE", 64, 116);
-      }),
-    }));
-    lkExit.position.set(A.x + s * (LOCKER.cx - 1), A.y, A.z - LOCKER.hz + 0.08);
-    lkExit.userData.arenaExit = true;
-    addA(lkExit);
-    arenaExits.push(lkExit);
-    lockerSpawns[team] = { x: A.x + s * LOCKER.cx, y: A.y, z: A.z, yaw: s < 0 ? -Math.PI / 2 : Math.PI / 2 };
+  {
+    const hatch = new THREE.Group();
+    const frame = new THREE.Mesh(new THREE.TorusGeometry(1.15, 0.09, 10, 32),
+      new THREE.MeshBasicMaterial({ color: 0x9fffb0 }));
+    hatch.add(frame);
+    const pane = new THREE.Mesh(new THREE.CircleGeometry(1.05, 28),
+      new THREE.MeshBasicMaterial({ color: 0x0d1f14, transparent: true, opacity: 0.85, side: THREE.DoubleSide }));
+    hatch.add(pane);
+    const label = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 0.34),
+      new THREE.MeshBasicMaterial({
+        map: canvasTex(256, 56, (g) => {
+          g.clearRect(0, 0, 256, 56);
+          g.font = "900 30px monospace"; g.textAlign = "center"; g.textBaseline = "middle";
+          g.fillStyle = "#9fffb0"; g.shadowColor = "#9fffb0"; g.shadowBlur = 10;
+          g.fillText("EXIT", 128, 28);
+        }), transparent: true, side: THREE.DoubleSide,
+      }));
+    label.position.set(0, 1.55, 0);
+    hatch.add(label);
+    const hit = new THREE.Mesh(new THREE.CircleGeometry(1.3, 20),
+      new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide }));
+    hit.userData.arenaExit = true;
+    hatch.add(hit);
+    arenaExits.push(hit);
+    hatch.position.set(A.x, A.y, A.z - A.hz + 0.12);   // north wall, mid-height
+    addA(hatch);
   }
-  const arenaSpawnFor = (team) => lockerSpawns[team] || lockerSpawns.o;
+  const arenaSpawnFor = (team) => ({
+    x: A.x + (team === "b" ? 6 : -6), y: A.y, z: A.z,
+    yaw: team === "b" ? Math.PI / 2 : -Math.PI / 2,
+  });
 
   /* ---- light + air ---- */
   for (const fx3 of [-24, -12, 0, 12, 24]) {

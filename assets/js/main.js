@@ -3122,12 +3122,12 @@ const arenaScore = { o: 0, b: 0 };
 let myTeam = "o";
 try { myTeam = localStorage.getItem("metro.team") || (Math.random() < 0.5 ? "o" : "b"); } catch (e) {}
 async function tryArena() {
-  // zero-g flight has no VR controls yet — phase one is a walking room
-  if (vrBlocked("the zero-g arena needs a flat screen for now")) return;
-  // no password — but you do have to pick a locker room
-  modalOpen = true;
-  controls.unlock();
-  show($("#team"));
+  // straight into the hall — no locker rooms, no ceremony. teams still
+  // exist for the disc, but they're assigned quietly (sticky, alternating
+  // for newcomers) instead of asked for. works in VR: flight is on the
+  // controllers now.
+  if (!myTeam || (myTeam !== "o" && myTeam !== "b")) myTeam = Math.random() < 0.5 ? "o" : "b";
+  enterArena(myTeam);
 }
 $("#team-o").addEventListener("click", () => enterArena("o"));
 $("#team-b").addEventListener("click", () => enterArena("b"));
@@ -3164,9 +3164,11 @@ function setupArena(team) {
   progress.bump("trips");
   voice.setArenaFx(true);    // voices arrive over the arena intercom
   startArenaMusic();
-  toast(`your ${team === "o" ? "ORANGE" : "BLUE"} locker room · fly the tubes to MID · E grab/fling · click PUNCH · F shield · ready up at the kiosk`);
+  toast(inVR()
+    ? `THE CREW — GRIP grabs · A/X thrusters · L-stick click BOOST · R-stick click BRAKE`
+    : `THE CREW (${team === "o" ? "ORANGE" : "BLUE"}) — WASD fly · SHIFT boost · B brake · E grab/fling · click punch`);
   hide(paused);
-  if (entered) safeLock();
+  if (entered && !renderer.xr.isPresenting) safeLock();
 }
 function teardownArena() {
   stopArenaMusic();

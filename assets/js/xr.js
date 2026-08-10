@@ -138,12 +138,145 @@ export function setupXR({ renderer, camera, scene, controls, world, onSelect, ca
     catch (e) { if (!warned) { warned = true; console.warn("xr: input tick failed —", e); } }
   }
 
+  /* ---------- zero-g: the Echo bindings, on real controllers ----------
+     GRIP grabs whatever your hand is near — move the hand while holding
+     and you drag yourself; let go and your last pull is your throw.
+     A/X fire the wrist thruster on that hand, thrust pointing where the
+     hand points. Clicking the LEFT stick is boost (a shove toward your
+     gaze); holding the RIGHT stick click is the brake. The right stick's
+     x-axis still snap-turns. Everything writes controls.vel/pos/flyY, so
+     desktop peers see a VR flyer exactly like any other flyer. ---- */
+  const handPrev = [null, null];       // last frame's world pos per hand
+  const gripHeld = [false, false];
+  const pullVel = { x: 0, y: 0, z: 0 };
+  let wasZeroG = false, boostCd = 0;
+  const hw = new THREE.Vector3(), hq = new THREE.Quaternion(), hv = new THREE.Vector3();
+
+  function stepZeroG(dt, session) {
+    controls.stunT = Math.max(0, (controls.stunT || 0) - dt);
+    const stunned = controls.stunT > 0;
+    boostCd = Math.max(0, boostCd - dt);
+
+    let turn = 0, thrusting = false, braking = false, anchored = -1;
+    const srcs = session.inputSources;
+    for (let i = 0; i < srcs.length; i++) {
+      const src = srcs[i], gp = src.gamepad, ctl = controllers[i];
+      if (!gp || !ctl) continue;
+      const left = src.handedness === "left";
+      if (!left) { turn = gp.axes.length >= 4 ? gp.axes[2] : 0; primary = ctl; }
+      if (left && ctl && hudHolder.parent !== ctl) ctl.add(hudHolder);
+
+      const btn = (n) => !!(gp.buttons[n] && gp.buttons[n].pressed);
+      const squeeze = btn(1), ax = btn(4), stick = btn(3);
+      ctl.getWorldPosition(hw);
+
+      // --- grab: hold GRIP near anything and your hand owns your body ---
+      const h = left ? 0 : 1;
+      if (squeeze && !stunned && world.arenaNearWall(hw.x, hw.y, hw.z, 1.3)) {
+        if (!gripHeld[h]) { gripHeld[h] = true; handPrev[h] = hw.clone(); controls.onGrab?.(); }
+        else if (handPrev[h] && dt > 0) {
+          // the wall is fixed; your hand moving means YOU move, opposite
+          const px = hw.x - handPrev[h].x, py = hw.y - handPrev[h].y, pz = hw.z - handPrev[h].z;
+          controls.pos.x -= px; controls.flyY -= py; controls.pos.z -= pz;
+          // remember the pull as velocity — releasing turns it into a throw
+          pullVel.x = -px / dt; pullVel.y = -py / dt; pullVel.z = -pz / dt;
+          handPrev[h].copy(hw);
+          // hands beat drift: while holding, momentum is what your arm says
+          controls.vel.x = 0; controls.vel.y = 0; controls.vel.z = 0;
+        }
+        anchored = h;
+      } else if (gripHeld[h]) {
+        gripHeld[h] = false; handPrev[h] = null;
+        // the fling: your last pull, amplified a touch
+        controls.vel.x = pullVel.x * 1.15;
+        controls.vel.y = pullVel.y * 1.15;
+        controls.vel.z = pullVel.z * 1.15;
+        controls.onFling?.();
+      }
+
+      // --- wrist thruster: A/X pushes along where that hand points ---
+      if (ax && !stunned && anchored < 0) {
+        ctl.getWorldQuaternion(hq);
+        hv.set(0, 0, -1).applyQuaternion(hq);
+        const ACC = 8;
+        controls.vel.x += hv.x * ACC * dt;
+        controls.vel.y += hv.y * ACC * dt;
+        controls.vel.z += hv.z * ACC * dt;
+        thrusting = true;
+      }
+
+      // --- stick clicks: left is boost, right is brake ---
+      if (stick && !stunned) {
+        if (left && boostCd === 0) {
+          boostCd = 1.4;
+          camera.getWorldDirection(hv);
+          controls.vel.x += hv.x * 9; controls.vel.y += hv.y * 9; controls.vel.z += hv.z * 9;
+          controls.onBoost?.();
+        } else if (!left) braking = true;
+      }
+    }
+
+    // snap turn still lives on the right stick's x — brake is the CLICK
+    if (Math.abs(turn) > 0.6 && snapReady) {
+      snapReady = false;
+      camera.getWorldPosition(headWorld);
+      rig.rotation.y += -Math.sign(turn) * SNAP;
+      rig.updateMatrixWorld(true);
+      const after = camera.getWorldPosition(new THREE.Vector3());
+      rig.position.x += headWorld.x - after.x;
+      rig.position.y += headWorld.y - after.y;
+      rig.position.z += headWorld.z - after.z;
+    } else if (Math.abs(turn) < 0.3) snapReady = true;
+
+    if (braking) {
+      const k = Math.pow(0.02, dt);
+      controls.vel.x *= k; controls.vel.y *= k; controls.vel.z *= k;
+    }
+
+    // cap + integrate + clamp, the same numbers the desktop flyer obeys
+    const vmax = 14;
+    const vm = Math.hypot(controls.vel.x, controls.vel.y, controls.vel.z);
+    if (vm > vmax) { const sc = vmax / vm; controls.vel.x *= sc; controls.vel.y *= sc; controls.vel.z *= sc; }
+    if (anchored < 0) {
+      controls.pos.x += controls.vel.x * dt;
+      controls.flyY += controls.vel.y * dt;
+      controls.pos.z += controls.vel.z * dt;
+    }
+    if (controls.clampFn) {
+      const pp = { x: controls.pos.x, y: controls.flyY, z: controls.pos.z };
+      controls.clampFn(pp, controls.vel, 0.55);
+      controls.pos.x = pp.x; controls.flyY = pp.y; controls.pos.z = pp.z;
+    }
+    controls.thrusting = thrusting;
+
+    // carry the rig so the HEAD sits at the flyer's position — including Y,
+    // which walking rooms never touch
+    camera.getWorldPosition(headWorld);
+    rig.position.x += controls.pos.x - headWorld.x;
+    rig.position.y += controls.flyY - headWorld.y;
+    rig.position.z += controls.pos.z - headWorld.z;
+
+    camera.getWorldDirection(hv);
+    controls.yaw = Math.atan2(-hv.x, -hv.z);
+    controls.pitch = Math.asin(Math.max(-1, Math.min(1, hv.y)));
+    wroteX = controls.pos.x; wroteZ = controls.pos.z;
+    wasZeroG = true;
+  }
+
   function step(dt) {
     const session = renderer.xr.getSession();
     if (!session) return;
 
     // let the HUD note expire on its own
     if (noteText && performance.now() > noteUntil) { noteText = ""; paintHud(); }
+
+    if (controls.zerog) return stepZeroG(dt, session);
+    if (wasZeroG) {
+      // back on solid ground: the rig's altitude belongs to the floor again
+      wasZeroG = false;
+      rig.position.y = 0;
+      rig.updateMatrixWorld(true);
+    }
 
     // --- sticks (xr-standard mapping: thumbstick on axes 2/3) ---
     let mx = 0, mz = 0, turn = 0;
