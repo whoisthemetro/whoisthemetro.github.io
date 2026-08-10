@@ -3445,10 +3445,10 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
   }
   // the four classic machines: a row along the back (west) wall, screens
   // facing east down the length of the hall toward whoever walks in
-  cabinet("defender", "DEFENDER", "#ff3434", AR.x0 + 0.42, -3.0, Math.PI / 2);
+  const defGrp = cabinet("defender", "DEFENDER", "#ff3434", AR.x0 + 0.42, -3.0, Math.PI / 2);
   const pacGrp = cabinet("pac", "PAC-MAN", "#ffe737", AR.x0 + 0.42, -1.1, Math.PI / 2);
   const tronGrp = cabinet("tron", "TRON", "#22d4ff", AR.x0 + 0.42, 0.8, Math.PI / 2);
-  cabinet("pong", "PONG", "#e8e8e8", AR.x0 + 0.42, 2.7, Math.PI / 2);
+  const pongGrp = cabinet("pong", "PONG", "#e8e8e8", AR.x0 + 0.42, 2.7, Math.PI / 2);
 
   /* --- real scanned cabinets swap in over the procedural stand-ins when
      they load. Async on purpose: a page's first paint owes nothing to a
@@ -3484,6 +3484,9 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
   }
   swapCabinetModel(tronGrp, "assets/models/tron_cabinet.glb", 1.78);
   swapCabinetModel(pacGrp, "assets/models/pac_cabinet.glb", 1.78);
+  // these two ship turned — sketchfab models pick their own forward
+  swapCabinetModel(pongGrp, "assets/models/pong_cabinet.glb", 1.78, Math.PI / 2);
+  swapCabinetModel(defGrp, "assets/models/defender_cabinet.glb", 1.78, -Math.PI / 2);
 
   // HIGH SCORES board on the north wall — shared, all-time
   const scoreCanvas = document.createElement("canvas");
