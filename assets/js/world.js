@@ -3202,19 +3202,21 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
 
   // "METRO'S ARCADE" — neon on the arcade's back wall (the bedroom
   // never advertises it; you find the closet, you find the room)
-  const arcSignTex = canvasTex(512, 96, (g) => {
-    g.fillStyle = "rgba(0,0,0,0)"; g.clearRect(0, 0, 512, 96);
+  // 640 wide with real margins: at 512 the glow-blurred M and E hung past
+  // the canvas edge and came back cropped
+  const arcSignTex = canvasTex(640, 96, (g) => {
+    g.clearRect(0, 0, 640, 96);
     g.font = "500 52px 'Six Caps', sans-serif";
     g.textAlign = "center"; g.textBaseline = "middle";
     g.letterSpacing = "8px";
     g.shadowColor = "#ff2da0"; g.shadowBlur = 14;
     g.strokeStyle = "#ff6ac0"; g.lineWidth = 2.5;
-    g.strokeText("METRO'S ARCADE", 256, 50);
+    g.strokeText("METRO'S ARCADE", 320, 50);
     g.shadowBlur = 0;
     g.fillStyle = "#ffe9f6";
-    g.fillText("METRO'S ARCADE", 256, 50);
+    g.fillText("METRO'S ARCADE", 320, 50);
   });
-  const arcSign = new THREE.Mesh(new THREE.PlaneGeometry(1.9, 0.36), new THREE.MeshBasicMaterial({
+  const arcSign = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 0.36), new THREE.MeshBasicMaterial({
     map: arcSignTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
   }));
   arcSign.rotation.y = Math.PI / 2;
@@ -3495,16 +3497,22 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
       }
     }).catch(() => {});
   }
-  // one at a time, and none of it before the room has had a second to draw —
-  // four models decoding at once was a four-way pileup on the main thread at
-  // the exact moment the player walked in. (pong and defender ship turned;
-  // sketchfab models pick their own forward.)
-  setTimeout(async () => {
-    await swapCabinetModel(tronGrp, "assets/models/tron_cabinet.glb", 1.78);
-    await swapCabinetModel(pacGrp, "assets/models/pac_cabinet.glb", 1.78);
-    await swapCabinetModel(pongGrp, "assets/models/pong_cabinet.glb", 1.78, Math.PI / 2);
-    await swapCabinetModel(defGrp, "assets/models/defender_cabinet.glb", 1.78, -Math.PI / 2);
-  }, 2500);
+  // streamed like a game level: nothing loads until the player actually
+  // heads toward the arcade (tick watches for the approach), and then one
+  // model at a time. entering the world costs the cabinets nothing at all;
+  // sprint straight in and the stand-ins hold the corner for a second.
+  // (pong and defender ship turned; sketchfab models pick their own forward.)
+  let cabinetsStreamed = false;
+  function streamCabinets() {
+    if (cabinetsStreamed) return;
+    cabinetsStreamed = true;
+    (async () => {
+      await swapCabinetModel(tronGrp, "assets/models/tron_cabinet.glb", 1.78);
+      await swapCabinetModel(pacGrp, "assets/models/pac_cabinet.glb", 1.78);
+      await swapCabinetModel(pongGrp, "assets/models/pong_cabinet.glb", 1.78, Math.PI / 2);
+      await swapCabinetModel(defGrp, "assets/models/defender_cabinet.glb", 1.78, -Math.PI / 2);
+    })();
+  }
 
   // HIGH SCORES board on the north wall — shared, all-time
   const scoreCanvas = document.createElement("canvas");
@@ -6208,6 +6216,8 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
 
   function tick(dt, ppos) {
     elapsed += dt;
+    // drifting toward the arcade door is the "load the next level" trigger
+    if (!cabinetsStreamed && ppos && ppos.x < -1.2) streamCabinets();
     for (const m of cabinetMixers) m.update(dt);   // the pac cabinet's attract loop
     tickNeuro(elapsed, dt);
     tickKuko(elapsed);
