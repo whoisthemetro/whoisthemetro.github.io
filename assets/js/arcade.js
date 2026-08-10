@@ -1055,9 +1055,13 @@ export function openArcade(id, netAdapter) {
   startLoop();
 }
 
-// real DOOM owns the ESC key (its menu) — only the × closes it
+// nothing owns ESC anymore (that was DOOM's menu) — ESC always walks away.
+// NOTE: this used to read a js-dos variable that no longer exists, which
+// made the ESC handler THROW mid-close and strand the player in a shut
+// overlay with a stuck modal flag. a reference error in an exit path is
+// a locked door.
 export function arcadeWantsEsc() {
-  return !!dosProps;
+  return false;
 }
 
 export function closeArcade() {

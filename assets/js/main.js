@@ -3275,7 +3275,8 @@ function discTick(dt) {
     }
   } else {
     disc.pos.addScaledVector(disc.vel, dt);
-    disc.vel.multiplyScalar(Math.pow(0.995, dt * 60));
+    // no drag: echo's disc keeps every bit of the throw until something
+    // touches it. space doesn't slow things down.
     // same union of volumes the players fly — banks off islands too
     world.arenaClamp(disc.pos, disc.vel, 0.3, true);   // true: tubes are off-limits to the disc
     // goals: through either ring inside the domes. release point
