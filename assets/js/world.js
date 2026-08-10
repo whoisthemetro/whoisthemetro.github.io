@@ -3510,7 +3510,7 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
       await swapCabinetModel(tronGrp, "assets/models/tron_cabinet.glb", 1.78);
       await swapCabinetModel(pacGrp, "assets/models/pac_cabinet.glb", 1.78);
       await swapCabinetModel(pongGrp, "assets/models/pong_cabinet.glb", 1.78, Math.PI / 2);
-      await swapCabinetModel(defGrp, "assets/models/defender_cabinet.glb", 1.78, -Math.PI / 2);
+      await swapCabinetModel(defGrp, "assets/models/defender_cabinet.glb", 1.78, Math.PI);
     })();
   }
 
