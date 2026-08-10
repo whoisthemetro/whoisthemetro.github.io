@@ -1536,12 +1536,6 @@ setInterval(() => {
   } else if (inArena && controls.anchored && controls._launchDir) {
     aimTip.textContent = "PUNCH the open space to LAUNCH";
     aimTip.classList.add("show");
-  } else if (inArena && controls.anchored) {
-    aimTip.textContent = "E — FLING yourself";
-    aimTip.classList.add("show");
-  } else if (inArena && controls.nearGrabSurface()) {
-    aimTip.textContent = "E — grab the wall";
-    aimTip.classList.add("show");
   } else if (hit && hit.object.userData.kettle && hit.distance < 1.9) {
     aimTip.textContent = `${TAP} to put the kettle on`;
     aimTip.classList.add("show");
@@ -3164,9 +3158,6 @@ function setupArena(team) {
   progress.bump("trips");
   voice.setArenaFx(true);    // voices arrive over the arena intercom
   startArenaMusic();
-  toast(inVR()
-    ? `THE CREW — GRIP grabs · A/X thrusters · L-stick click BOOST · R-stick click BRAKE`
-    : `THE CREW (${team === "o" ? "ORANGE" : "BLUE"}) — WASD fly · SHIFT boost · B brake · E grab/fling · click punch`);
   hide(paused);
   if (entered && !renderer.xr.isPresenting) safeLock();
 }

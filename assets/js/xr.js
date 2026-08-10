@@ -267,8 +267,13 @@ export function setupXR({ renderer, camera, scene, controls, world, onSelect, ca
     const session = renderer.xr.getSession();
     if (!session) return;
 
-    // let the HUD note expire on its own
-    if (noteText && performance.now() > noteUntil) { noteText = ""; paintHud(); }
+    // the boat (3) and arena (4) live on light layers; the desktop camera
+    // enables them once, but the XR EYE cameras are three's own and ship
+    // with only their eye masks — without this the far rooms render as
+    // pure black inside a headset. cheap, so it runs every frame.
+    const xc = renderer.xr.getCamera();
+    xc.layers.enable(3); xc.layers.enable(4);
+    for (const c of xc.cameras) { c.layers.enable(3); c.layers.enable(4); }
 
     if (controls.zerog) return stepZeroG(dt, session);
     if (wasZeroG) {
