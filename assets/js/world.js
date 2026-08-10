@@ -3457,7 +3457,7 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
      cabinet's screen attract loop) get a mixer ticked by the world. --- */
   const cabinetMixers = [];
   function swapCabinetModel(grp, url, height, rotY = 0) {
-    import("three/addons/loaders/GLTFLoader.js").then(({ GLTFLoader }) =>
+    return import("three/addons/loaders/GLTFLoader.js").then(({ GLTFLoader }) =>
       new GLTFLoader().loadAsync(url)
     ).then((gltf) => {
       const model = gltf.scene;
@@ -3470,7 +3470,20 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
       model.position.x -= c.x;
       model.position.z -= c.z;
       model.position.y -= box2.min.y;                      // feet on the carpet
-      model.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+      model.traverse((o) => {
+        if (!o.isMesh) return;
+        o.castShadow = true;
+        // scanned materials arrive wearing physically-based jewellery.
+        // transmission is the expensive piece: ONE visible transmissive
+        // material makes three render the ENTIRE scene an extra time every
+        // frame. in a dark arcade, tinted plastic reads the same as glass.
+        const m = o.material;
+        if (m) {
+          if (m.transmission > 0) { m.transmission = 0; m.transparent = true; m.opacity = Math.min(m.opacity, 0.5); }
+          if (m.clearcoat > 0) m.clearcoat = 0;            // per-pixel cost, invisible in here
+          m.needsUpdate = true;
+        }
+      });
       for (const child of [...grp.children]) {
         if (!child.userData.arcade) grp.remove(child);     // keep the click target
       }
@@ -3482,11 +3495,16 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
       }
     }).catch(() => {});
   }
-  swapCabinetModel(tronGrp, "assets/models/tron_cabinet.glb", 1.78);
-  swapCabinetModel(pacGrp, "assets/models/pac_cabinet.glb", 1.78);
-  // these two ship turned — sketchfab models pick their own forward
-  swapCabinetModel(pongGrp, "assets/models/pong_cabinet.glb", 1.78, Math.PI / 2);
-  swapCabinetModel(defGrp, "assets/models/defender_cabinet.glb", 1.78, -Math.PI / 2);
+  // one at a time, and none of it before the room has had a second to draw —
+  // four models decoding at once was a four-way pileup on the main thread at
+  // the exact moment the player walked in. (pong and defender ship turned;
+  // sketchfab models pick their own forward.)
+  setTimeout(async () => {
+    await swapCabinetModel(tronGrp, "assets/models/tron_cabinet.glb", 1.78);
+    await swapCabinetModel(pacGrp, "assets/models/pac_cabinet.glb", 1.78);
+    await swapCabinetModel(pongGrp, "assets/models/pong_cabinet.glb", 1.78, Math.PI / 2);
+    await swapCabinetModel(defGrp, "assets/models/defender_cabinet.glb", 1.78, -Math.PI / 2);
+  }, 2500);
 
   // HIGH SCORES board on the north wall — shared, all-time
   const scoreCanvas = document.createElement("canvas");
