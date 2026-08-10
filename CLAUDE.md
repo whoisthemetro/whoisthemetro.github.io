@@ -25,7 +25,7 @@ git push origin main
 curl -s https://whoisthemetro.com/assets/js/world.js | grep -q "<some new string>"
 ```
 
-Smoke tests are ad-hoc puppeteer-core scripts in `/tmp/metro-smoke/` (system Chrome, `headless: "new"`, flags `--no-sandbox --mute-audio --use-gl=angle`). Pattern: force local mode by defining `METRO_CONFIG` empty via `evaluateOnNewDocument`, click `#enter-btn`, drive the camera through `window.METRO_DEBUG` (`{renderer, camera, world, controls, THREE, cat, notesWall}`), screenshot, and **read the screenshots** — most regressions here are visual. A second "tab" can be simulated by posting on `BroadcastChannel("metro-presence")`.
+Smoke tests (VR too: xr exposes _debug.{step,rig,controllers} — drive step(dt, fakeSession) with fake inputSources; NOTE xr controllers have matrixAutoUpdate=false, a harness must updateMatrix()+updateMatrixWorld(true) after posing them) are ad-hoc puppeteer-core scripts in `/tmp/metro-smoke/` (system Chrome, `headless: "new"`, flags `--no-sandbox --mute-audio --use-gl=angle`). Pattern: force local mode by defining `METRO_CONFIG` empty via `evaluateOnNewDocument`, click `#enter-btn`, drive the camera through `window.METRO_DEBUG` (`{renderer, camera, world, controls, THREE, cat, notesWall}`), screenshot, and **read the screenshots** — most regressions here are visual. A second "tab" can be simulated by posting on `BroadcastChannel("metro-presence")`.
 
 ## Architecture
 

@@ -170,17 +170,20 @@ export function setupXR({ renderer, camera, scene, controls, world, onSelect, ca
       const squeeze = btn(1), ax = btn(4), stick = btn(3);
       ctl.getWorldPosition(hw);
 
-      // --- grab: hold GRIP near anything and your hand owns your body ---
+      // --- grab: hold GRIP near anything and your hand owns your body.
+      // the pull is measured in PLAYSPACE space (ctl.position — the pose
+      // three decodes from the headset), not world space: the rig chases
+      // the body every frame, and a world-space hand would swallow its own
+      // pull. local deltas rotate by the rig's yaw to face the room. ---
       const h = left ? 0 : 1;
       if (squeeze && !stunned && world.arenaNearWall(hw.x, hw.y, hw.z, 1.3)) {
-        if (!gripHeld[h]) { gripHeld[h] = true; handPrev[h] = hw.clone(); controls.onGrab?.(); }
+        if (!gripHeld[h]) { gripHeld[h] = true; handPrev[h] = ctl.position.clone(); controls.onGrab?.(); }
         else if (handPrev[h] && dt > 0) {
-          // the wall is fixed; your hand moving means YOU move, opposite
-          const px = hw.x - handPrev[h].x, py = hw.y - handPrev[h].y, pz = hw.z - handPrev[h].z;
-          controls.pos.x -= px; controls.flyY -= py; controls.pos.z -= pz;
+          hv.copy(ctl.position).sub(handPrev[h]).applyQuaternion(rig.quaternion);
+          controls.pos.x -= hv.x; controls.flyY -= hv.y; controls.pos.z -= hv.z;
           // remember the pull as velocity — releasing turns it into a throw
-          pullVel.x = -px / dt; pullVel.y = -py / dt; pullVel.z = -pz / dt;
-          handPrev[h].copy(hw);
+          pullVel.x = -hv.x / dt; pullVel.y = -hv.y / dt; pullVel.z = -hv.z / dt;
+          handPrev[h].copy(ctl.position);
           // hands beat drift: while holding, momentum is what your arm says
           controls.vel.x = 0; controls.vel.y = 0; controls.vel.z = 0;
         }
@@ -263,8 +266,23 @@ export function setupXR({ renderer, camera, scene, controls, world, onSelect, ca
     wasZeroG = true;
   }
 
-  function step(dt) {
-    const session = renderer.xr.getSession();
+  // a broken frame must never kill the animate loop — a dead loop IS the
+  // "black screen". catch, report to the wrist (and console), carry on.
+  let lastErrAt = 0;
+  function step(dt, sessionOverride) {
+    try {
+      stepInner(dt, sessionOverride);
+    } catch (e) {
+      const now = performance.now();
+      if (now - lastErrAt > 2000) {
+        lastErrAt = now;
+        console.error("xr step:", e);
+        try { note("⚠ " + (e && e.message ? String(e.message).slice(0, 60) : "vr error")); } catch (e2) {}
+      }
+    }
+  }
+  function stepInner(dt, sessionOverride) {
+    const session = sessionOverride || renderer.xr.getSession();
     if (!session) return;
 
     // the boat (3) and arena (4) live on light layers; the desktop camera
@@ -391,6 +409,9 @@ export function setupXR({ renderer, camera, scene, controls, world, onSelect, ca
     presenting: () => renderer.xr.isPresenting,
     tick,
     showButton,
+    // test rig: lets a headless harness drive the REAL step with a fake
+    // session — the only way to exercise VR code without a headset
+    _debug: { step, rig, controllers },
     note,                                     // a transient message
     tip,                                      // what you're pointing at
     aimController: () => primary || controllers[0],

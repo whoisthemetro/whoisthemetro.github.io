@@ -3489,14 +3489,41 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
       for (const child of [...grp.children]) {
         if (!child.userData.arcade) grp.remove(child);     // keep the click target
       }
-      grp.add(model);
-      if (gltf.animations && gltf.animations.length) {
-        const mixer = new THREE.AnimationMixer(model);
-        mixer.clipAction(gltf.animations[0]).play();
-        cabinetMixers.push(mixer);
-      }
+      // warm the GPU BEFORE the model joins the scene: shaders compile off
+      // the parallel path, and each texture uploads on its own frame — the
+      // old way paid for all of it in one stutter on the frame you first
+      // looked at the cabinet (misery in a headset, where a long frame is
+      // a lurch in the stomach rather than a hiccup).
+      return (renderer.compileAsync
+        ? renderer.compileAsync(model, warmupCam, scene).catch(() => {})
+        : Promise.resolve()
+      ).then(() => new Promise((done) => {
+        const texs = [];
+        model.traverse((o) => {
+          const m = o.isMesh && o.material;
+          if (!m) return;
+          for (const k of ["map", "normalMap", "roughnessMap", "metalnessMap", "aoMap", "emissiveMap"]) {
+            if (m[k]) texs.push(m[k]);
+          }
+        });
+        const next = () => {
+          const t = texs.pop();
+          if (!t) return done();
+          try { renderer.initTexture(t); } catch (e) {}
+          requestAnimationFrame(next);
+        };
+        next();
+      })).then(() => {
+        grp.add(model);
+        if (gltf.animations && gltf.animations.length) {
+          const mixer = new THREE.AnimationMixer(model);
+          mixer.clipAction(gltf.animations[0]).play();
+          cabinetMixers.push(mixer);
+        }
+      });
     }).catch(() => {});
   }
+  const warmupCam = new THREE.PerspectiveCamera();
   // streamed like a game level: nothing loads until the player actually
   // heads toward the arcade (tick watches for the approach), and then one
   // model at a time. entering the world costs the cabinets nothing at all;
