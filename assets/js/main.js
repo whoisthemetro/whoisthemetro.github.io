@@ -2434,6 +2434,7 @@ function studioFill(pad) {
 }
 
 function fadeTo(fn) {
+  try { xrRef && xrRef.clearHud && xrRef.clearHud(); } catch (e) {}   // each world keeps its own wrist
   const f = $("#fade");
   f.classList.add("dark");
   setTimeout(() => {
@@ -3248,6 +3249,7 @@ function getStunned() {
 }
 
 function discTick(dt) {
+  controls.holdingDisc = disc.holder === identity.uid;   // echo's 4.7 m/s disc tax
   const g = world.discGroup;
   if (disc.holder) {
     if (disc.holder === identity.uid) {

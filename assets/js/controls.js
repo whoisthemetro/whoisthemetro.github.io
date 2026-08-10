@@ -411,13 +411,17 @@ export class Controls {
       if (!stunned) {
         if (this.anchored) {
           this.anchored = false;
-          this.vel.x = lx * 10; this.vel.y = ly * 10; this.vel.z = lz * 10;
+          // echo's own number: pushing off geometry tops out around 4-5 m/s
+          this.vel.x = lx * 5; this.vel.y = ly * 5; this.vel.z = lz * 5;
           this.onFling?.();
         } else if (this.ghostHold) {
           // pull straight through your teammate — the slingshot
           const gv = this.ghostHold.vel();
           this.ghostHold = null;
-          this.vel.x = gv.x + lx * 8; this.vel.y = gv.y + ly * 8; this.vel.z = gv.z + lz * 8;
+          // team-assisted speed is UNCAPPED in echo — the regrab meta. carry
+          // their momentum plus your push, and let the cap look away briefly
+          this.vel.x = gv.x + lx * 5; this.vel.y = gv.y + ly * 5; this.vel.z = gv.z + lz * 5;
+          this.uncapT = 2.5;
           this.onFling?.();
         } else if (this.nearGrabSurface()) {
           this.anchored = true;
@@ -466,7 +470,7 @@ export class Controls {
     const up = live * ((this.keys.has("Space") ? 1 : 0)
              - (this.keys.has("KeyC") || this.keys.has("ControlLeft") || this.keys.has("ControlRight") ? 1 : 0));
     const jx = this.joy.x * live, jy = this.joy.y * live;
-    const ACC = 7;
+    const ACC = 4.5;   // echo-feel: gentle thrusters, momentum is earned
     this.vel.x += (lx * fwd + cy * strafe + jx * cy - jy * lx) * ACC * dt;
     this.vel.y += (ly * fwd + up - jy * ly) * ACC * dt;
     this.vel.z += (lz * fwd - sy * strafe + jx * -sy - jy * lz) * ACC * dt;
@@ -474,15 +478,18 @@ export class Controls {
     this.boostCd = Math.max(0, this.boostCd - dt);
     if (!stunned && (this.keys.has("ShiftLeft") || this.keys.has("ShiftRight")) && this.boostCd === 0) {
       this.boostCd = 1.4;
-      this.vel.x += lx * 9; this.vel.y += ly * 9; this.vel.z += lz * 9;
+      // the main booster ENGAGES you at echo's 5 m/s, it doesn't fire you
+      this.vel.x += lx * 5; this.vel.y += ly * 5; this.vel.z += lz * 5;
       this.onBoost?.();
     }
     if (!stunned && this.keys.has("KeyB")) {   // brake
       const k = Math.pow(0.02, dt);
       this.vel.x *= k; this.vel.y *= k; this.vel.z *= k;
     }
-    // cap + integrate + bounce
-    const vmax = 14;
+    // cap + integrate + bounce. self-propelled speed is echo's: 5 m/s flat,
+    // 4.7 holding the disc — the fast lane is other people (uncap window)
+    this.uncapT = Math.max(0, (this.uncapT || 0) - dt);
+    const vmax = this.uncapT > 0 ? 30 : (this.holdingDisc ? 4.7 : 5.0);
     const vm = Math.hypot(this.vel.x, this.vel.y, this.vel.z);
     if (vm > vmax) { const s = vmax / vm; this.vel.x *= s; this.vel.y *= s; this.vel.z *= s; }
     this.pos.x += this.vel.x * dt;

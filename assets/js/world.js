@@ -3528,22 +3528,16 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     }).catch(() => {});
   }
   const warmupCam = new THREE.PerspectiveCamera();
-  // streamed like a game level: nothing loads until the player actually
-  // heads toward the arcade (tick watches for the approach), and then one
-  // model at a time. entering the world costs the cabinets nothing at all;
-  // sprint straight in and the stand-ins hold the corner for a second.
-  // (pong and defender ship turned; sketchfab models pick their own forward.)
-  let cabinetsStreamed = false;
-  function streamCabinets() {
-    if (cabinetsStreamed) return;
-    cabinetsStreamed = true;
-    (async () => {
-      await swapCabinetModel(tronGrp, "assets/models/tron_cabinet.glb", 1.78);
-      await swapCabinetModel(pacGrp, "assets/models/pac_cabinet.glb", 1.78);
-      await swapCabinetModel(pongGrp, "assets/models/pong_cabinet.glb", 1.78, Math.PI / 2);
-      await swapCabinetModel(defGrp, "assets/models/defender_cabinet.glb", 1.78, Math.PI);
-    })();
-  }
+  // loaded up-front (one at a time, right after first paint) — the models
+  // are ~300KB each now and the GPU warm-up spreads their cost, so there's
+  // nothing worth deferring. (pong and defender ship turned; sketchfab
+  // models pick their own forward.)
+  setTimeout(async () => {
+    await swapCabinetModel(tronGrp, "assets/models/tron_cabinet.glb", 1.78);
+    await swapCabinetModel(pacGrp, "assets/models/pac_cabinet.glb", 1.78);
+    await swapCabinetModel(pongGrp, "assets/models/pong_cabinet.glb", 1.78, Math.PI / 2);
+    await swapCabinetModel(defGrp, "assets/models/defender_cabinet.glb", 1.78, Math.PI);
+  }, 1200);
 
   // HIGH SCORES board on the north wall — shared, all-time
   const scoreCanvas = document.createElement("canvas");
@@ -6105,8 +6099,6 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
 
   function tick(dt, ppos) {
     elapsed += dt;
-    // drifting toward the arcade door is the "load the next level" trigger
-    if (!cabinetsStreamed && ppos && ppos.x < -1.2) streamCabinets();
     for (const m of cabinetMixers) m.update(dt);   // the pac cabinet's attract loop
     tickNeuro(elapsed, dt);
     tickKuko(elapsed);

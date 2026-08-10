@@ -149,6 +149,9 @@ export function setupXR({ renderer, camera, scene, controls, world, onSelect, ca
   const handPrev = [null, null];       // last frame's PLAYSPACE pos per hand (the pull)
   const worldPrev = [null, null];      // last frame's WORLD pos per hand (the throw)
   const handVel = [new THREE.Vector3(), new THREE.Vector3()];   // smoothed world hand velocity
+  // the last few RAW hand velocities per hand — a throw releases near the
+  // peak of the swing, and smoothing alone under-reports the peak
+  const velRing = [[], []];
   const gripHeld = [false, false];
   let discHand = -1;                   // which hand is holding the disc (-1: none)
   const pullVel = { x: 0, y: 0, z: 0 };
@@ -179,6 +182,9 @@ export function setupXR({ renderer, camera, scene, controls, world, onSelect, ca
       if (worldPrev[h0] && dt > 0) {
         hv.copy(hw).sub(worldPrev[h0]).divideScalar(dt);
         handVel[h0].lerp(hv, 0.4);
+        const ring = velRing[h0];
+        ring.push({ x: hv.x, y: hv.y, z: hv.z, m: hv.length() });
+        if (ring.length > 8) ring.shift();
         worldPrev[h0].copy(hw);
       } else worldPrev[h0] = hw.clone();
 
@@ -196,11 +202,15 @@ export function setupXR({ renderer, camera, scene, controls, world, onSelect, ca
         } else if (discHand === h0 && !squeeze) {
           discHand = -1;
           gripHeld[h0] = false;
-          // a real swing tops out around 10 m/s; anything wilder is a
-          // tracking glitch, and the disc shouldn't teleport for it
-          const t = handVel[h0].clone().multiplyScalar(1.25);
+          // the throw is the PEAK of the swing, not its average: take the
+          // three fastest of the last eight frames. a lob leaves a lob, a
+          // sling leaves a sling. capped only where tracking glitches live.
+          const ring = velRing[h0].slice().sort((a, b) => b.m - a.m).slice(0, 3);
+          const t = new THREE.Vector3();
+          for (const r of ring) t.x += r.x / ring.length, t.y += r.y / ring.length, t.z += r.z / ring.length;
+          t.multiplyScalar(1.3);
           const sp = t.length();
-          if (sp > 16) t.multiplyScalar(16 / sp);
+          if (sp > 18) t.multiplyScalar(18 / sp);
           zerogDisc.throwVec({ x: hw.x, y: hw.y, z: hw.z }, { x: t.x, y: t.y, z: t.z });
         }
       }
@@ -227,10 +237,11 @@ export function setupXR({ renderer, camera, scene, controls, world, onSelect, ca
         anchored = h;
       } else if (gripHeld[h]) {
         gripHeld[h] = false; handPrev[h] = null;
-        // the fling: your last pull, amplified a touch
-        controls.vel.x = pullVel.x * 1.15;
-        controls.vel.y = pullVel.y * 1.15;
-        controls.vel.z = pullVel.z * 1.15;
+        // the fling: your last pull — capped at echo's push-off speed
+        let fx = pullVel.x * 1.15, fy = pullVel.y * 1.15, fz = pullVel.z * 1.15;
+        const fm = Math.hypot(fx, fy, fz);
+        if (fm > 5) { fx *= 5 / fm; fy *= 5 / fm; fz *= 5 / fm; }
+        controls.vel.x = fx; controls.vel.y = fy; controls.vel.z = fz;
         controls.onFling?.();
       }
 
@@ -238,7 +249,7 @@ export function setupXR({ renderer, camera, scene, controls, world, onSelect, ca
       if (ax && !stunned && anchored < 0) {
         ctl.getWorldQuaternion(hq);
         hv.set(0, 0, -1).applyQuaternion(hq);
-        const ACC = 8;
+        const ACC = 4.5;   // echo-feel: thrusters trim your vector, they don't launch you
         controls.vel.x += hv.x * ACC * dt;
         controls.vel.y += hv.y * ACC * dt;
         controls.vel.z += hv.z * ACC * dt;
@@ -250,7 +261,8 @@ export function setupXR({ renderer, camera, scene, controls, world, onSelect, ca
         if (left && boostCd === 0) {
           boostCd = 1.4;
           camera.getWorldDirection(hv);
-          controls.vel.x += hv.x * 9; controls.vel.y += hv.y * 9; controls.vel.z += hv.z * 9;
+          // echo's main booster: engages you at the 5 m/s cap, no more
+          controls.vel.x += hv.x * 5; controls.vel.y += hv.y * 5; controls.vel.z += hv.z * 5;
           controls.onBoost?.();
         } else if (!left) braking = true;
       }
@@ -273,8 +285,9 @@ export function setupXR({ renderer, camera, scene, controls, world, onSelect, ca
       controls.vel.x *= k; controls.vel.y *= k; controls.vel.z *= k;
     }
 
-    // cap + integrate + clamp, the same numbers the desktop flyer obeys
-    const vmax = 14;
+    // cap + integrate + clamp, the same numbers the desktop flyer obeys:
+    // echo's self-propelled 5 m/s, 4.7 with the disc in hand
+    const vmax = discHand >= 0 ? 4.7 : 5.0;
     const vm = Math.hypot(controls.vel.x, controls.vel.y, controls.vel.z);
     if (vm > vmax) { const sc = vmax / vm; controls.vel.x *= sc; controls.vel.y *= sc; controls.vel.z *= sc; }
     if (anchored < 0) {
@@ -381,12 +394,15 @@ export function setupXR({ renderer, camera, scene, controls, world, onSelect, ca
       snapReady = true;
     }
 
-    // --- smooth locomotion, head-relative, with the room's collision ---
+    // --- smooth locomotion, head-relative, with the room's collision.
+    // the stick is an accelerator now: half tilt strolls, full tilt jogs,
+    // and shoving it to the rim breaks into a run ---
     if (Math.abs(mx) > DEAD || Math.abs(mz) > DEAD) {
       camera.getWorldDirection(fwd);
       fwd.y = 0; fwd.normalize();
       right.crossVectors(fwd, UP);            // fwd × up = right
-      const dist = SPEED * dt;
+      const mag = Math.min(1, Math.hypot(mx, mz));
+      const dist = SPEED * (0.4 + mag * (mag > 0.93 ? 1.5 : 0.8)) * dt;
       // stick up is -1 in xr-standard, so forward is -mz
       const dx = (right.x * mx - fwd.x * mz) * dist;
       const dz = (right.z * mx - fwd.z * mz) * dist;
@@ -446,6 +462,8 @@ export function setupXR({ renderer, camera, scene, controls, world, onSelect, ca
     presenting: () => renderer.xr.isPresenting,
     tick,
     showButton,
+    // rooms are separate places: crossing a door wipes the wrist clean
+    clearHud: () => { noteText = ""; tipText = ""; paintHud(); },
     // while a hand carries the disc, the room should draw it at that hand
     discHand: () => {
       if (discHand < 0 || !controllers[discHand]) return null;
