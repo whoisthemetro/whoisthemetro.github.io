@@ -231,6 +231,9 @@ presence.onVoice((p) => {
 // the venue big screen: a clickable in-world panel on the booth wall that opens
 // the flat theater overlay. closing the overlay re-locks the room.
 const screenMesh = screen.mountScreen(world.scene);
+// the venue's big screen hangs in the venue — it has no business glowing
+// away in the corner of the bedroom window
+world.cullAdd(screenMesh, "venue");
 // venue screen-share (WebRTC): the host projects their tab to the room; each
 // viewer renders the received stream on the wall. fixes both the "iPad already
 // in the room didn't update" (host re-announces + dials present viewers) and
@@ -2602,6 +2605,8 @@ function adminJump(target) {
     else if (target === "desi") setupBoat();
     else if (target === "venue") setupClub();
     else if (target === "crew") setupArena(myTeam);
+    else if (target === "gym") setupGym();
+    else setupHome();          // never strand: an unknown target goes home
   });
 }
 function goHome() { fadeTo(setupHome); }
@@ -4710,7 +4715,7 @@ renderer.setAnimationLoop(() => {
   // when YOU change rooms, re-scope which avatars exist (catches every transition
   // path — elevator, password gate, admin jump — without hooking each one)
   const sc = myScope();
-  if (sc !== lastMyScope) { lastMyScope = sc; refreshGhostScope(); applyLightCull(sc); }
+  if (sc !== lastMyScope) { lastMyScope = sc; refreshGhostScope(); applyLightCull(sc); world.setRoomCull(sc); }
   ghosts.tick(dt, t, (uid) => voice.level(uid));
   cat.tick(dt, t, controls.pose());
   toyTick(dt, t);

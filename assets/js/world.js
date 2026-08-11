@@ -716,6 +716,7 @@ const altY = (r, deg) => OUT_EYE + r * Math.tan(deg * Math.PI / 180);
 
 function makeOutside() {
   const group = new THREE.Group();
+  group.userData.outside = true;   // so room-culling and tests can tell it apart
   const rnd = (i) => (Math.abs(Math.sin(i * 127.1) * 43758.5453) % 1);
 
   /* ---- a ring you stand inside ---- */
@@ -1323,12 +1324,7 @@ function makeOutside() {
   function tick(elapsed, dt, ppos) {
     Rhaze.tex.offset.x = -1 - (elapsed * 0.004) % 1;    // repeat.x is -1, so drift is negative
     tickCars(dt);
-    // the outside belongs to the bedroom and the arcade; every other room
-    // is somewhere else entirely and must never catch a glimpse of LA
-    if (ppos) {
-      const here = Math.abs(ppos.x) < 16 && Math.abs(ppos.z) < 16 && (ppos.y || 0) < 20;
-      if (group.visible !== here) group.visible = here;
-    }
+    // (which room you're in is main.js's business — see setRoomCull)
   }
 
   // the plane hunt: a click on the glass becomes a look-direction, and a
@@ -2459,6 +2455,7 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
   /* --- the window (faces south over LA) --- */
   const WIN = { w: 3.6, h: 1.4, cx: 0, cy: 1.6 };
   const sky = makeOutside();
+  const outsideGroupRef = sky.group;   // LA belongs to the bedroom; it culls itself
   // a whole place out there now — rings for the horizon, real streets and
   // blocks for the near depth. the glass is just glass: a whisper of tint,
   // still clickable for the plane hunt
@@ -6368,6 +6365,52 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
   arenaExits.push(exitPanel);
   arenaGroup.traverse((o) => { o.layers.set(4); });   // 4, not 2 — see the boat above
 
+  /* --- room culling: geometry, not just lights ---------------------------
+     "far away" is not the same as "out of sight". The bedroom window looks a
+     hundred metres down a street, and the other rooms sit inside that view —
+     so the boat's sea sheets and the venue's shell can drift into the corner
+     of the glass. Every room's scenery is bucketed here by where it actually
+     SITS (bounding-box centre, not group origin — boatGroup's own origin is
+     0,0,0 while everything in it lives out at x=40), and main.js flips the
+     buckets when you change rooms, the same moment it culls the lights. --- */
+  const cullRooms = { desi: [], crew: [], venue: [], gym: [], studio: [] };
+  function bucketRoomGeometry() {
+    scene.updateMatrixWorld(true);
+    const bb = new THREE.Box3(), c = new THREE.Vector3();
+    for (const child of scene.children) {
+      if (child.isLight || child === outsideGroupRef) continue;
+      bb.setFromObject(child);
+      if (bb.isEmpty()) continue;
+      bb.getCenter(c);
+      let r = null;
+      if (c.y > 40) r = "crew";
+      else if (c.z > 40) r = "gym";
+      else if (c.z < -40) r = "studio";
+      else if (c.x > 20) r = "desi";
+      else if (c.x < -20) r = "venue";
+      if (r) cullRooms[r].push(child);
+    }
+  }
+  let cullScope = null;
+  // anything main.js hangs on the scene AFTER the world is built (the venue's
+  // big screen, for one) has to be told which room it belongs to
+  function cullAdd(obj, room) {
+    if (!obj || !cullRooms[room]) return obj;
+    cullRooms[room].push(obj);
+    obj.visible = cullScope === room;
+    return obj;
+  }
+  function setRoomCull(scope) {
+    if (scope === cullScope) return;
+    cullScope = scope;
+    // LA belongs to the bedroom and the arcade, and nowhere else
+    outsideGroupRef.visible = scope === "home";
+    for (const room in cullRooms) {
+      const on = room === scope;
+      for (const o of cullRooms[room]) o.visible = on;
+    }
+  }
+
   /* --- dust --- */
   const DUST = 240;
   const dustPos = new Float32Array(DUST * 3);
@@ -8182,6 +8225,8 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
   const STUDIO = { x: 0, z: -80 };   // -80, not +80: the gym owns +80 and we were standing in its court
   const studio = buildStudioRoom({ parent: scene, offset: STUDIO });
   studio.root.visible = false;
+  bucketRoomGeometry();       // now that every room exists, sort them into buckets
+  setRoomCull("home");        // and start with only the bedroom's own world showing
   studioWalk = (x, z) => {
     if (Math.abs(x - STUDIO.x) > studio.half || Math.abs(z - STUDIO.z) > studio.half) return false;
     for (const c of studio.consoles) {
@@ -8268,6 +8313,7 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     setLivePlanes: (v) => { livePlanes = !!v; },
     // the plane hunt: the window is a shooting gallery if your aim is true
     glassHit: glass,
+    setRoomCull, cullAdd,
     planeUp: () => planeT >= 0 && !planeShot,
     jetCanvas: () => jetXY(plane01, planeDir),   // (tests aim with this)
     // (u, v) is the raycast uv on the glass → sky-canvas pixels, with
