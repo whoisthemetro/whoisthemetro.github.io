@@ -687,95 +687,89 @@ function drawJet(g, px, py, dir, night, strobe, tumble = 0) {
   g.restore();
 }
 
-function makeSky() {
-  /* The view is a STACK now, not a painting: sky, mountains, a drifting
-     haze band, the far ridge, and downtown each live on their own plane
-     at a real distance behind the glass — scaled about a reference eye
-     so they line up as one scene from mid-room, and every step sideways
-     slides them apart. The boat's stacked sea, pointed at Los Angeles.
-     Every layer carries margin past the window's frustum, same rule as
-     the seabox: an edge you can find is an edge you will see. */
-  const WINW = 3.6, WINH = 1.4, WCY = 1.6, WZ = ROOM.ZF;
-  const EYE = 2.2;                    // reference eye, 2.2m into the room
-  const MH = 2.0, MV = 1.6;           // frustum margins
-  const CW = 1440, CH = 448;          // canvas; the old 720×280 sits at:
-  const OX = 360, OY = 84;
-  const HORIZON = OY + 280;           // the window-sill line, in canvas rows
+/* ---------------- the world outside the window ----------------
+   Not a backdrop: a place. Everything out there is a CYLINDER centred
+   on the room — and a cylinder has no left edge and no right edge, so
+   walking to the side of the window can never run out of world. That
+   was the whole problem with flat sheets: press your face to the glass,
+   look hard left, and you found the end of Los Angeles.
 
-  function mkLayer(dist, order, opaque = false) {
+   Depth comes from real distance. Sky at 112 m, mountains at 103, a
+   drifting haze band at 96, the painted city at 88 — and in front of
+   all of it, actual geometry: a street 14 m below with traffic on it,
+   and blocks of real buildings from 18 to 70 m out. The near stuff is
+   what your eyes read as depth when you move; the rings are what make
+   the horizon endless.
+
+   Everything is unlit MeshBasic with fog off: the room's fog dies at
+   40 m and the toon pass only rewrites Lambert/Standard, so the city
+   keeps its own painted light.                                       */
+
+const OUT_ARC = 210;                 // degrees of horizon we paint (view can only reach ±90)
+const OUT_EYE = 1.6;                 // the height everything is composed for
+const OUT_GROUND = -9;               // street level: three storeys down, so the
+                                     // traffic clears the window sill
+
+// azimuth: 0 = due south (out the window), positive = west (+x)
+const azToU = (az) => 0.5 + az / OUT_ARC;
+const altY = (r, deg) => OUT_EYE + r * Math.tan(deg * Math.PI / 180);
+
+function makeOutside() {
+  const group = new THREE.Group();
+  const rnd = (i) => (Math.abs(Math.sin(i * 127.1) * 43758.5453) % 1);
+
+  /* ---- a ring you stand inside ---- */
+  function mkRing(r, cw, ch, altTop, altBot, order, opts = {}) {
+    const arcDeg = opts.arc || OUT_ARC;
     const c = document.createElement("canvas");
-    c.width = CW; c.height = CH;
+    c.width = cw; c.height = ch;
     const g = c.getContext("2d");
     const tex = new THREE.CanvasTexture(c);
     tex.colorSpace = THREE.SRGBColorSpace;
-    const sc = (EYE + dist) / EYE;
+    // the arc is built west-to-east, the canvas reads east-to-west, so the
+    // texture is mirrored once here instead of everywhere else
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.repeat.x = -1;
+    tex.offset.x = 1;
+    const yTop = altY(r, altTop), yBot = altY(r, altBot);
+    const arc = arcDeg * Math.PI / 180;
     const mesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(WINW * sc * MH, WINH * sc * MV),
+      new THREE.CylinderGeometry(r, r, yTop - yBot, 72, 1, true, Math.PI - arc / 2, arc),
       new THREE.MeshBasicMaterial({
-        map: tex, transparent: !opaque, depthWrite: false, fog: false,
+        map: tex, side: THREE.BackSide, fog: false,
+        transparent: !opts.opaque, depthWrite: !!opts.opaque,
       }));
-    mesh.position.set(0, WCY, WZ + EYE * (1 - sc));
+    mesh.position.y = (yTop + yBot) / 2;
     mesh.renderOrder = order;
-    return { g, tex, mesh, hash: "" };
+    group.add(mesh);
+    // world-y <-> canvas-row, so a ring can be painted in METRES
+    const rowOf = (y) => (yTop - y) / (yTop - yBot) * ch;
+    return { g, tex, mesh, cw, ch, r, arcDeg, rowOf,
+             xOf: (az) => (0.5 + az / arcDeg) * cw };
   }
 
-  const Lsky = mkLayer(26, 1, true);
-  const Lmts = mkLayer(17, 2);
-  const Lfar = mkLayer(9, 4);
-  const Lcity = mkLayer(4, 5);
+  const Rsky = mkRing(112, 2048, 512, 44, -14, -20, { opaque: true });
+  const Rmts = mkRing(103, 2048, 640, 36, -20, -18);   // tall: a real range clears the rooftops
+  const Rhaze = mkRing(96, 1024, 256, 10, -10, -16);
+  const Rcity = mkRing(88, 3072, 640, 20, -26, -14);
+  // the two fx rings keep the ORIGINAL 720×280 art coordinates — so every
+  // easter egg (jet, kaiju, bat-signal) draws exactly as it always did —
+  // which means their arc has to match what that art assumed, not the wide
+  // arc the scenery rings use, or a beacon comes out an ellipse
+  const FX_AZ = 46;
+  const Rzilla = mkRing(90, 720, 280, 16, -16, -15, { arc: FX_AZ * 2 });   // behind the towers
+  const Rfx = mkRing(86, 720, 280, 16, -16, -12, { arc: FX_AZ * 2 });      // jet, bat, sun, moon
 
-  // the haze band between the ridge and downtown — the miles of air.
-  // its own small tiling canvas, slid sideways by the world tick.
-  const hazeC = document.createElement("canvas");
-  hazeC.width = 512; hazeC.height = 256;
-  const hazeG = hazeC.getContext("2d");
-  const hazeTex = new THREE.CanvasTexture(hazeC);
-  hazeTex.colorSpace = THREE.SRGBColorSpace;
-  hazeTex.wrapS = THREE.RepeatWrapping;
-  const hazeSc = (EYE + 12.5) / EYE;
-  const hazeMesh = new THREE.Mesh(
-    new THREE.PlaneGeometry(WINW * hazeSc * MH, WINH * hazeSc * MV),
-    new THREE.MeshBasicMaterial({
-      map: hazeTex, transparent: true, depthWrite: false, fog: false, opacity: 0.9,
-    }));
-  hazeMesh.position.set(0, WCY, WZ + EYE * (1 - hazeSc));
-  hazeMesh.renderOrder = 3;
-  let hazeHash = "";
-  function paintHaze(pal) {
-    if (pal.bot === hazeHash) return;
-    hazeHash = pal.bot;
-    const [br, bg, bb] = pal.botRGB;
-    hazeG.clearRect(0, 0, 512, 256);
-    const band = hazeG.createLinearGradient(0, 118, 0, 210);
-    band.addColorStop(0, `rgba(${br},${bg},${bb},0)`);
-    band.addColorStop(0.45, `rgba(${br},${bg},${bb},0.30)`);
-    band.addColorStop(1, `rgba(${br},${bg},${bb},0)`);
-    hazeG.fillStyle = band;
-    hazeG.fillRect(0, 118, 512, 92);
-    // lumps, so the drift is visible as drift and not a slide of nothing
-    for (let i = 0; i < 9; i++) {
-      const hx = (i * 71.3) % 512, hy = 145 + (i * 37) % 40;
-      hazeG.fillStyle = `rgba(${br},${bg},${bb},0.10)`;
-      hazeG.beginPath();
-      hazeG.ellipse(hx, hy, 60 + (i * 23) % 50, 13 + (i * 7) % 9, 0, 0, 7);
-      hazeG.fill();
-    }
-    hazeTex.needsUpdate = true;
-  }
-  function tickHaze(elapsed) {
-    hazeTex.offset.x = (elapsed * 0.0045) % 1;
-  }
-
-  // each star: x, y, brightness, twinkle speed, twinkle phase — full-bleed
-  const stars = Array.from({ length: 210 }, () => [
-    Math.random() * CW, Math.random() * (OY + 190), Math.random(),
+  /* ---- stars, spread over the whole painted arc ---- */
+  const stars = Array.from({ length: 260 }, () => [
+    Math.random() * 2048, Math.random() * 300, Math.random(),
     0.8 + Math.random() * 2.4, Math.random() * Math.PI * 2,
   ]);
 
   function place(az, alt) {
     const azd = az / (Math.PI / 180), altd = alt / (Math.PI / 180);
     if (Math.abs(azd) > 55 || altd < -2 || altd > 60) return null;
-    return { x: OX + 360 + (azd / 55) * 340, y: OY + 250 - (altd / 60) * 235 };
+    return { x: 360 + (azd / 55) * 340, y: 250 - (altd / 60) * 235 };
   }
 
   function palette(sunAlt) {
@@ -788,38 +782,485 @@ function makeSky() {
     return { top, mid, bot, mtn, botRGB, night: sunAlt < -4, sunAlt };
   }
 
-  function paintSky(pal, wx, sun, moon, moonFrac) {
-    const g = Lsky.g;
-    const grad = g.createLinearGradient(0, OY, 0, HORIZON);
+  /* ================= the sky ================= */
+  function paintSky(pal, wx) {
+    const { g, cw, ch } = Rsky;
+    const horizon = Rsky.rowOf(altY(Rsky.r, 0));
+    const grad = g.createLinearGradient(0, 0, 0, horizon);
     grad.addColorStop(0, pal.top); grad.addColorStop(0.55, pal.mid); grad.addColorStop(1, pal.bot);
     g.fillStyle = grad;
-    g.fillRect(0, 0, CW, CH);        // gradient clamps past its stops — full bleed
-
+    g.fillRect(0, 0, cw, ch);
     if (pal.sunAlt < -8 && wx.clouds < 0.55) {
       const tw = Date.now() / 1000;
       for (const [x, y, r, sp, ph] of stars) {
-        const sk = 0.5 + 0.5 * Math.sin(tw * sp + ph);
-        const wink = 0.35 + 0.8 * sk * sk;
+        const s = 0.5 + 0.5 * Math.sin(tw * sp + ph);
+        const wink = 0.35 + 0.8 * s * s;
         const a = Math.min(1, (0.3 + r * 0.55) * wink) * (1 - wx.clouds);
         g.fillStyle = r > 0.92 ? `rgba(205,222,255,${a})`
-          : r < 0.08 ? `rgba(255,235,205,${a})`
-          : `rgba(255,255,255,${a})`;
-        g.fillRect(x, y, r > 0.8 ? 2 : 1.4, r > 0.8 ? 2 : 1.4);
+          : r < 0.08 ? `rgba(255,235,205,${a})` : `rgba(255,255,255,${a})`;
+        g.fillRect(x, y, r > 0.8 ? 2.4 : 1.6, r > 0.8 ? 2.4 : 1.6);
       }
     }
     if (wx.clouds > 0.1) {
       const dark = pal.sunAlt > 0 ? 225 : 38;
-      for (let i = 0; i < wx.clouds * 26; i++) {
+      for (let i = 0; i < wx.clouds * 30; i++) {
         g.fillStyle = `rgba(${dark},${dark},${dark + 6},${0.10 + wx.clouds * 0.16})`;
-        const cx = ((i * 197) % (CW + 40)) - 20, cy = 20 + ((i * 71) % 200);
         g.beginPath();
-        g.ellipse(cx, cy, 90 + (i * 31) % 70, 22 + (i * 13) % 16, 0, 0, 7);
+        g.ellipse((i * 271) % cw, 40 + ((i * 91) % 240), 130 + (i * 37) % 90, 26 + (i * 13) % 18, 0, 0, 7);
         g.fill();
       }
     }
-    if (wx.fog) {
-      g.fillStyle = "rgba(150,155,160,0.45)";
-      g.fillRect(0, 0, CW, CH);
+    if (wx.fog) { g.fillStyle = "rgba(150,155,160,0.45)"; g.fillRect(0, 0, cw, ch); }
+    // the last hand's width above the horizon always belongs to the haze
+    const [br, bg2, bb] = pal.botRGB;
+    const hz = g.createLinearGradient(0, horizon - 60, 0, horizon + 10);
+    hz.addColorStop(0, `rgba(${br},${bg2},${bb},0)`);
+    hz.addColorStop(1, `rgba(${br},${bg2},${bb},0.85)`);
+    g.fillStyle = hz;
+    g.fillRect(0, horizon - 60, cw, 74);
+    g.fillStyle = `rgb(${br},${bg2},${bb})`;
+    g.fillRect(0, horizon + 8, cw, ch - horizon);
+    Rsky.tex.needsUpdate = true;
+  }
+
+  /* ================= mountains, with a sign on them ================= */
+  function ridgeAt(seed, amp, t) {
+    return (Math.abs(Math.sin(t * 9.1 + seed)) * 0.55
+      + Math.abs(Math.sin(t * 23.3 + seed * 3.1)) * 0.3
+      + Math.abs(Math.sin(t * 51.7 + seed * 7.7)) * 0.15) * amp;
+  }
+  function paintMountains(pal) {
+    const { g, cw, ch } = Rmts;
+    g.clearRect(0, 0, cw, ch);
+    const base = Rmts.rowOf(OUT_GROUND);
+    const drawRidge = (seed, amp, a) => {
+      g.fillStyle = `rgba(${pal.mtn},${a})`;
+      g.beginPath();
+      g.moveTo(-4, ch);
+      for (let x = 0; x <= cw; x += 8) {
+        const t = x / cw;
+        g.lineTo(x, base - ridgeAt(seed, amp, t) - amp * 0.15);
+      }
+      g.lineTo(cw + 4, ch);
+      g.closePath(); g.fill();
+    };
+    drawRidge(3, Rmts.rowOf(OUT_GROUND) - Rmts.rowOf(OUT_GROUND + 46), 0.45);
+    drawRidge(7, Rmts.rowOf(OUT_GROUND) - Rmts.rowOf(OUT_GROUND + 74), 0.7);
+
+    /* --- HOLLYWOOD, up on the slope. white boards, each leaning its own
+       way like the real thing, sitting on a paler patch of hillside --- */
+    {
+      const az = 34;                                  // west of downtown
+      const cx = Rmts.xOf(az);
+      const yTopM = OUT_GROUND + 44;                  // high on the slope, clear of every roof
+      const y = Rmts.rowOf(yTopM);
+      const letterH = Rmts.rowOf(OUT_GROUND) - Rmts.rowOf(OUT_GROUND + 4.5);
+      const letters = "HOLLYWOOD";
+      const step = letterH * 0.82;
+      const w = letterH * 0.62;
+      g.save();
+      g.translate(cx - (letters.length * step) / 2, y);
+      // the hillside behind it, a shade lighter so the sign has something to sit on
+      g.fillStyle = `rgba(${pal.mtn},0.25)`;
+      g.beginPath();
+      g.moveTo(-step, letterH * 1.5);
+      g.lineTo(letters.length * step + step, letterH * 0.7);
+      g.lineTo(letters.length * step + step, letterH * 3);
+      g.lineTo(-step, letterH * 3);
+      g.closePath(); g.fill();
+      g.font = `700 ${letterH}px Archivo, sans-serif`;
+      g.textAlign = "center"; g.textBaseline = "middle";
+      for (let i = 0; i < letters.length; i++) {
+        const lx = i * step + step * 0.5;
+        const ly = letterH * 0.55 + (i / letters.length) * letterH * 0.55;   // the slope
+        g.save();
+        g.translate(lx, ly);
+        g.rotate((rnd(i * 3 + 1) - 0.5) * 0.14);      // each board its own lean
+        const shade = pal.night ? 190 : 246;
+        g.fillStyle = `rgba(${shade},${shade},${shade - 6},${pal.night ? 0.5 : 0.92})`;
+        g.fillRect(-w / 2, -letterH * 0.5, w, letterH);
+        g.fillStyle = pal.night ? "rgba(30,34,44,0.75)" : "rgba(120,128,140,0.55)";
+        g.fillText(letters[i], 0, letterH * 0.04);
+        g.restore();
+      }
+      g.restore();
+    }
+
+    // feet in the marine layer
+    const [br, bg2, bb] = pal.botRGB;
+    const mfog = g.createLinearGradient(0, base - 120, 0, base + 30);
+    mfog.addColorStop(0, `rgba(${br},${bg2},${bb},0)`);
+    mfog.addColorStop(1, `rgba(${br},${bg2},${bb},0.9)`);
+    g.fillStyle = mfog;
+    g.fillRect(0, base - 120, cw, 155);
+    g.fillStyle = `rgb(${br},${bg2},${bb})`;
+    g.fillRect(0, base + 25, cw, ch - base);
+    Rmts.tex.needsUpdate = true;
+  }
+
+  /* ================= the drifting haze band ================= */
+  function paintHaze(pal) {
+    const { g, cw, ch } = Rhaze;
+    const [br, bg2, bb] = pal.botRGB;
+    g.clearRect(0, 0, cw, ch);
+    const band = g.createLinearGradient(0, ch * 0.30, 0, ch * 0.86);
+    band.addColorStop(0, `rgba(${br},${bg2},${bb},0)`);
+    band.addColorStop(0.45, `rgba(${br},${bg2},${bb},0.34)`);
+    band.addColorStop(1, `rgba(${br},${bg2},${bb},0)`);
+    g.fillStyle = band;
+    g.fillRect(0, ch * 0.30, cw, ch * 0.56);
+    for (let i = 0; i < 16; i++) {
+      g.fillStyle = `rgba(${br},${bg2},${bb},0.09)`;
+      g.beginPath();
+      g.ellipse((i * 67.3) % cw, ch * 0.5 + ((i * 29) % 40) - 20, 90 + (i * 23) % 70, 16 + (i * 7) % 12, 0, 0, 7);
+      g.fill();
+    }
+    Rhaze.tex.needsUpdate = true;
+  }
+
+  /* ================= the painted city, out past the real blocks =========
+     built in METRES: every building stands on the street at OUT_GROUND
+     and rises, so the ring agrees with the real geometry in front of it. */
+  let WILSHIRE = null;
+  const SKYLINE = (() => {
+    const b = [];
+    // the ordinary city, all the way round the arc
+    for (let i = 0; i < 210; i++) {
+      const az = -OUT_ARC / 2 + (i + rnd(i) * 0.6) * (OUT_ARC / 210);
+      b.push({ az, w: 0.55 + rnd(i + 7) * 1.3, h: 4 + rnd(i + 21) * 9, s: rnd(i + 40), far: true });
+    }
+    // downtown: a cluster with two of them you can name
+    const dt = [16, 13, 21, 12, 26, 15, 31, 13, 19, 22, 11];
+    let az = -13;
+    dt.forEach((h, i) => {
+      const w = 1.5 + rnd(i + 9) * 1.1;
+      const rec = { az: az + w / 2, w, h, s: rnd(i + 60), i,
+                    wilshire: h === 31, usbank: h === 26,
+                    mech: rnd(i + 90) > 0.4 };
+      if (rec.wilshire) WILSHIRE = rec;
+      b.push(rec);
+      az += w + 0.5 + rnd(i + 30) * 1.1;
+    });
+    return b;
+  })();
+
+  function paintCity(pal) {
+    const { g, cw, ch } = Rcity;
+    g.clearRect(0, 0, cw, ch);
+    const base = Rcity.rowOf(OUT_GROUND);
+    const night = pal.night;
+    if (night) {
+      const glow = g.createLinearGradient(0, base - 260, 0, base);
+      glow.addColorStop(0, "rgba(255,150,70,0)");
+      glow.addColorStop(1, "rgba(255,150,70,0.42)");
+      g.fillStyle = glow;
+      g.fillRect(0, base - 260, cw, 260);
+    }
+    const degPx = cw / OUT_ARC;
+    for (const b of SKYLINE) {
+      const x = Rcity.xOf(b.az) - (b.w * degPx) / 2;
+      const w = b.w * degPx;
+      const top = Rcity.rowOf(OUT_GROUND + b.h);
+      if (b.far) {
+        g.fillStyle = night
+          ? `rgb(${9 + b.s * 9 | 0},${11 + b.s * 9 | 0},${17 + b.s * 11 | 0})`
+          : `rgba(95,105,120,${0.5 + b.s * 0.32})`;
+        g.fillRect(x, top, w, base - top);
+        if (night && b.s > 0.45) {
+          g.fillStyle = "rgba(255,206,140,0.5)";
+          for (let k = 0; k < b.h * 0.7; k++) {
+            if (rnd(k + b.s * 90) < 0.4) continue;
+            g.fillRect(x + 2 + (rnd(k) * (w - 6)), top + 6 + k * 7, 2, 3);
+          }
+        }
+        continue;
+      }
+      // downtown gets corners: a lit face and a wall receding out of frame
+      const side = Math.min(w * 0.28, 16);
+      g.fillStyle = night ? "#141828" : "rgba(50,58,72,0.94)";
+      g.fillRect(x - side, top + 8, side, base - top - 8);
+      g.fillStyle = night ? "#0c0e16" : "rgba(70,80,95,0.94)";
+      if (b.wilshire) {
+        g.beginPath();
+        g.moveTo(x, base); g.lineTo(x, top + 22);
+        g.lineTo(x + w, top); g.lineTo(x + w, base);
+        g.closePath(); g.fill();
+      } else {
+        g.fillRect(x, top, w, base - top);
+        if (b.usbank) {
+          g.fillRect(x + w / 2 - 3, top - 26, 6, 26);
+          g.fillRect(x + 7, top - 8, w - 14, 8);
+        } else if (b.mech) {
+          g.fillRect(x + w * 0.22, top - 14, w * 0.4, 14);
+        }
+      }
+      g.fillStyle = night ? "rgba(140,160,210,0.16)" : "rgba(235,242,250,0.38)";
+      g.fillRect(x, top + (b.wilshire ? 22 : 0), 2, base - top);
+      if (night) {
+        for (let row = 0; row < (base - top) / 9; row++) {
+          for (let col = 0; col < w / 8; col++) {
+            const rr = rnd(row * 31 + col * 7 + b.i * 13);
+            if (rr > 0.52) continue;
+            g.fillStyle = rr < 0.08 ? "rgba(170,210,255,0.85)"
+              : `rgba(255,${200 + (rr * 60) | 0},140,${0.5 + rr * 0.4})`;
+            g.fillRect(x + 3 + col * 8, top + 7 + row * 9, 3.5, 4.5);
+          }
+        }
+      } else {
+        g.fillStyle = "rgba(30,38,52,0.15)";
+        for (let mx = x + 4; mx < x + w - 3; mx += 8) g.fillRect(mx, top + 6, 3, base - top - 10);
+      }
+    }
+    // the ground the painted city stands on
+    g.fillStyle = night ? "#080a10" : "rgba(96,104,116,0.95)";
+    g.fillRect(0, base, cw, ch - base);
+    if (night) {
+      g.fillStyle = "rgba(255,150,70,0.12)";
+      g.fillRect(0, base, cw, 16);
+    }
+    // and its own smog, so the bases go soft
+    const [br, bg2, bb] = pal.botRGB;
+    if (pal.sunAlt > -6) {
+      const haze = g.createLinearGradient(0, base - 90, 0, base);
+      haze.addColorStop(0, `rgba(${br},${bg2},${bb},0)`);
+      haze.addColorStop(1, `rgba(${br},${bg2},${bb},0.4)`);
+      g.fillStyle = haze;
+      g.fillRect(0, base - 90, cw, 90);
+    }
+    Rcity.tex.needsUpdate = true;
+  }
+
+  /* ================= the street, five storeys down ================= */
+  const groundTex = (() => {
+    const c = document.createElement("canvas");
+    c.width = 1024; c.height = 1024;
+    const g = c.getContext("2d");
+    return { c, g, tex: new THREE.CanvasTexture(c) };
+  })();
+  groundTex.tex.colorSpace = THREE.SRGBColorSpace;
+  const GROUND_R = 110;
+  const GRID = 12;                       // metres per block, texture-side
+  function paintGround(pal) {
+    const { g } = groundTex;
+    const night = pal.night;
+    g.fillStyle = night ? "#0b0d12" : "#585d66";
+    g.fillRect(0, 0, 1024, 1024);
+    // blocks
+    const step = 1024 / 8;
+    for (let bx = 0; bx < 8; bx++) {
+      for (let bz = 0; bz < 8; bz++) {
+        const s = rnd(bx * 13 + bz * 7);
+        if (bx === 3 && bz === 4) {                 // the park
+          g.fillStyle = night ? "#0e1a10" : "#3f5c39";
+          g.fillRect(bx * step + 9, bz * step + 9, step - 18, step - 18);
+          g.fillStyle = night ? "#122417" : "#4d6f44";
+          for (let t = 0; t < 26; t++) {
+            g.beginPath();
+            g.arc(bx * step + 20 + rnd(t) * (step - 40), bz * step + 20 + rnd(t + 50) * (step - 40), 5 + rnd(t + 9) * 4, 0, 7);
+            g.fill();
+          }
+          continue;
+        }
+        g.fillStyle = night ? `rgb(${16 + s * 10 | 0},${17 + s * 10 | 0},${22 + s * 12 | 0})`
+          : `rgb(${88 + s * 26 | 0},${86 + s * 24 | 0},${84 + s * 22 | 0})`;
+        g.fillRect(bx * step + 9, bz * step + 9, step - 18, step - 18);
+        // rooftops read as clutter from up here
+        g.fillStyle = night ? "rgba(255,255,255,0.03)" : "rgba(255,255,255,0.07)";
+        for (let t = 0; t < 5; t++) {
+          g.fillRect(bx * step + 16 + rnd(t + bx) * (step - 50), bz * step + 16 + rnd(t + bz + 3) * (step - 50), 10 + rnd(t) * 16, 8 + rnd(t + 2) * 12);
+        }
+      }
+    }
+    // lane markings
+    g.strokeStyle = night ? "rgba(220,210,170,0.16)" : "rgba(250,246,225,0.5)";
+    g.lineWidth = 2;
+    g.setLineDash([14, 16]);
+    for (let i = 0; i <= 8; i++) {
+      g.beginPath(); g.moveTo(i * step, 0); g.lineTo(i * step, 1024); g.stroke();
+      g.beginPath(); g.moveTo(0, i * step); g.lineTo(1024, i * step); g.stroke();
+    }
+    g.setLineDash([]);
+    if (night) {
+      // sodium pools along every kerb — a lit street at night is most of
+      // what makes a city look inhabited from a window
+      for (let i = 0; i <= 8; i++) {
+        for (let k = 0; k < 8; k++) {
+          const a = k * 128 + 64;
+          for (const [rr, aa] of [[11, 0.09], [5, 0.26]]) {
+            g.fillStyle = `rgba(255,178,86,${aa})`;
+            g.beginPath(); g.arc(i * step, a, rr, 0, 7); g.fill();
+            g.beginPath(); g.arc(a, i * step, rr, 0, 7); g.fill();
+          }
+          g.fillStyle = "rgba(255,196,124,0.55)";
+          g.fillRect(i * step - 1, a - 1, 2, 2);
+          g.fillRect(a - 1, i * step - 1, 2, 2);
+        }
+      }
+    }
+    groundTex.tex.needsUpdate = true;
+  }
+  groundTex.tex.wrapS = groundTex.tex.wrapT = THREE.RepeatWrapping;
+  groundTex.tex.repeat.set((GROUND_R * 2) / (GRID * 8), (GROUND_R * 2) / (GRID * 8));
+  const ground = new THREE.Mesh(
+    new THREE.CircleGeometry(GROUND_R, 64),
+    new THREE.MeshBasicMaterial({ map: groundTex.tex, fog: false }));
+  ground.rotation.x = -Math.PI / 2;
+  ground.position.y = OUT_GROUND;
+  ground.renderOrder = -10;
+  group.add(ground);
+
+  /* ================= real blocks: the near buildings =================
+     these are what your eyes actually read when you move — geometry at
+     18-70 m, close enough that a step slides them against the ring. */
+  // one tile of this texture means TEN METRES of wall, so the windows come
+  // out about the size of windows
+  const TILE_M = 7;
+  const facadeTex = (night) => {
+    const c = document.createElement("canvas");
+    c.width = 96; c.height = 160;
+    const g = c.getContext("2d");
+    g.fillStyle = night ? "#0d1017" : "#6a7079";
+    g.fillRect(0, 0, 96, 160);
+    for (let row = 0; row < 10; row++) {
+      for (let col = 0; col < 6; col++) {
+        const rr = (Math.abs(Math.sin((row * 31 + col * 7) * 12.9898) * 43758.5453) % 1);
+        if (night) {
+          if (rr > 0.42) continue;
+          g.fillStyle = rr < 0.06 ? "rgba(180,215,255,0.9)" : `rgba(255,${196 + (rr * 70) | 0},${120 + (rr * 60) | 0},${0.55 + rr})`;
+        } else {
+          g.fillStyle = `rgba(${30 + rr * 24 | 0},${38 + rr * 26 | 0},${52 + rr * 30 | 0},0.6)`;
+        }
+        g.fillRect(col * 16 + 4, row * 16 + 4, 9, 9);
+      }
+    }
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    return t;
+  };
+  const facadeDay = facadeTex(false), facadeNight = facadeTex(true);
+  const nearMat = new THREE.MeshBasicMaterial({ map: facadeDay, fog: false });
+  const roofMat = new THREE.MeshBasicMaterial({ color: 0x2c313a, fog: false });
+  const nearBlocks = new THREE.Group();
+  group.add(nearBlocks);
+  {
+    for (let i = 0; i < 40; i++) {
+      // nothing looms: the closest block sits 34 m out, and anything on the
+      // window's centre line has to stand back further still, so the city
+      // reads as a city instead of a wall two feet from the glass
+      const az = (rnd(i * 3) - 0.5) * 170;
+      const central = Math.abs(az) < 14;
+      const dist = (central ? 62 : 34) + rnd(i * 5 + 1) * (central ? 24 : 48);
+      const h = 4 + rnd(i * 7 + 2) * 13;   // low enough to leave sky and mountains
+      const w = 8 + rnd(i * 11 + 3) * 14;
+      const d = 8 + rnd(i * 13 + 4) * 14;
+      const a = az * Math.PI / 180;
+      const geo = new THREE.BoxGeometry(w, h, d);
+      // BoxGeometry faces run +x,-x,+y,-y,+z,-z — the WALLS are 0,1,4,5;
+      // 2 and 3 are the roof and the underside and want none of this
+      const uv = geo.attributes.uv;
+      for (const f of [0, 1, 4, 5]) {
+        const wide = (f === 0 || f === 1) ? d : w;
+        for (let k = 0; k < 4; k++) {
+          uv.setXY(f * 4 + k, uv.getX(f * 4 + k) * (wide / TILE_M), uv.getY(f * 4 + k) * (h / TILE_M));
+        }
+      }
+      uv.needsUpdate = true;
+      const m = new THREE.Mesh(geo, [nearMat, nearMat, roofMat, roofMat, nearMat, nearMat]);
+      m.position.set(Math.sin(a) * dist, OUT_GROUND + h / 2, -Math.cos(a) * dist);
+      m.rotation.y = (rnd(i * 17) - 0.5) * 0.5;
+      nearBlocks.add(m);
+    }
+  }
+
+  /* ================= traffic ================= */
+  // avenues laid where the window can actually see them: far enough out to
+  // clear the sill, near enough that a car is a car and not a pixel
+  const LANES = [];
+  for (const [along, off, dir] of [
+    [true, -24, 1], [true, -30, -1], [true, -48, 1], [true, -55, -1],
+    [true, -78, 1], [true, -86, -1],
+    [false, -34, 1], [false, -40, -1], [false, 30, 1], [false, 36, -1],
+  ]) LANES.push({ along, off, dir, y: OUT_GROUND + 0.9 });
+  const CARS = 44;
+  const carGeo = new THREE.BoxGeometry(2.0, 1.5, 4.4);
+  const carMat = new THREE.MeshBasicMaterial({ color: 0x20242c, fog: false });
+  const cars = new THREE.InstancedMesh(carGeo, carMat, CARS);
+  cars.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  const lampGeo = new THREE.BoxGeometry(2.2, 0.5, 0.6);
+  const lampMat = new THREE.MeshBasicMaterial({ color: 0xfff0c8, fog: false });
+  const lamps = new THREE.InstancedMesh(lampGeo, lampMat, CARS);
+  lamps.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  group.add(cars, lamps);
+  const carState = Array.from({ length: CARS }, (_, i) => ({
+    lane: LANES[i % LANES.length],
+    t: rnd(i * 9) * 200 - 100,
+    sp: 9 + rnd(i * 4) * 9,
+  }));
+  const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _v = new THREE.Vector3(), _s = new THREE.Vector3(1, 1, 1);
+  function tickCars(dt) {
+    for (let i = 0; i < CARS; i++) {
+      const c = carState[i];
+      c.t += c.sp * c.lane.dir * dt;
+      if (c.t > 105) c.t = -105;
+      if (c.t < -105) c.t = 105;
+      const x = c.lane.along ? c.t : c.lane.off;
+      const z = c.lane.along ? c.lane.off : c.t;
+      _q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), c.lane.along ? Math.PI / 2 : 0);
+      _v.set(x, c.lane.y, z);
+      _m.compose(_v, _q, _s);
+      cars.setMatrixAt(i, _m);
+      _v.set(x + (c.lane.along ? c.lane.dir * 2.4 : 0), c.lane.y + 0.2, z + (c.lane.along ? 0 : -c.lane.dir * 2.4));
+      _m.compose(_v, _q, _s);
+      lamps.setMatrixAt(i, _m);
+    }
+    cars.instanceMatrix.needsUpdate = true;
+    lamps.instanceMatrix.needsUpdate = true;
+  }
+
+  /* ================= the fast-changing layer ================= */
+  function paintFx(pal, fx, sun, moon, moonFrac) {
+    const { g, cw, ch } = Rfx;
+    g.clearRect(0, 0, cw, ch);
+    const night = pal.night;
+    if (fx.plane) {
+      const { t, dir, shot } = fx.plane;
+      if (!shot) {
+        const { x: px, y: py } = jetXY(t, dir);
+        drawJet(g, px, py, dir, night, Math.floor(t * 30) % 2 === 1);
+      } else {
+        const a = shot.age;
+        const fallT = Math.max(0, a - 0.25);
+        const jx = shot.x + dir * 30 * fallT;
+        const jy = shot.y + 170 * fallT * fallT;
+        g.fillStyle = "rgba(90,90,96,0.45)";
+        for (let i = 1; i <= 7; i++) {
+          const tt = fallT * (i / 7);
+          g.beginPath();
+          g.arc(shot.x + dir * 30 * tt, shot.y + 170 * tt * tt - 2, 1.5 + (fallT - tt) * 5, 0, 7);
+          g.fill();
+        }
+        if (jy < 292) {
+          drawJet(g, jx, jy, dir, night, false, fallT * 2.2);
+          g.fillStyle = "rgba(255,120,30,0.8)";
+          g.beginPath(); g.arc(jx, jy, 2.6 + ((a * 40) % 2), 0, 7); g.fill();
+        }
+        if (a < 0.8) {
+          const k = 1 - a / 0.8;
+          g.fillStyle = `rgba(255,160,40,${0.85 * k})`;
+          g.beginPath(); g.arc(shot.x, shot.y, 5 + a * 36, 0, 7); g.fill();
+          g.fillStyle = `rgba(255,238,190,${0.9 * k})`;
+          g.beginPath(); g.arc(shot.x, shot.y, (5 + a * 36) * 0.45, 0, 7); g.fill();
+        }
+      }
+    }
+    if (fx.bat) drawBatSignal(g, fx.bat, night);
+    // the Wilshire beacon, sitting on the painted crown out at the city ring
+    if (fx.beacon && night && WILSHIRE) {
+      const bx = Rfx.xOf(WILSHIRE.az);
+      const by = (Rfx.ch / 2) * (1 - (Math.atan2(OUT_GROUND + WILSHIRE.h - OUT_EYE, Rcity.r) * 180 / Math.PI) / 16);
+      g.fillStyle = "#ff2030";
+      g.beginPath(); g.arc(bx, by, 3, 0, 7); g.fill();
     }
     const sp = place(sun.azimuth, sun.altitude);
     if (sp && pal.sunAlt > -1) {
@@ -840,200 +1281,68 @@ function makeSky() {
       g.arc(mp.x + 26 * (1 - moonFrac) * (moonFrac < 0.5 ? 1 : -1) * 0.6, mp.y, 13, 0, 7);
       g.fill();
     }
-    Lsky.tex.needsUpdate = true;
+    Rfx.tex.needsUpdate = true;
   }
 
-  function paintMountains(pal) {
-    const g = Lmts.g;
-    g.clearRect(0, 0, CW, CH);
-    const drawRidge = (pts, a) => {
-      g.fillStyle = `rgba(${pal.mtn},${a})`;
-      g.beginPath();
-      g.moveTo(-4, CH);
-      for (const [px, ph] of pts) g.lineTo(px, HORIZON - ph);
-      g.lineTo(CW + 4, CH);
-      g.closePath(); g.fill();
-    };
-    drawRidge(LA.mtsFarW, 0.55);
-    drawRidge(LA.mtsW, 0.75);
-    // their feet dissolve into the marine layer
-    const [br, bg, bb] = pal.botRGB;
-    const mfog = g.createLinearGradient(0, HORIZON, 0, HORIZON - 95);
-    mfog.addColorStop(0, `rgba(${br},${bg},${bb},0.55)`);
-    mfog.addColorStop(1, `rgba(${br},${bg},${bb},0)`);
-    g.fillStyle = mfog;
-    g.fillRect(0, HORIZON - 95, CW, 95 + 2);
-    // below the sill line the range just keeps being ground
-    g.fillStyle = `rgba(${pal.mtn},0.75)`;
-    g.fillRect(0, HORIZON, CW, CH - HORIZON);
-    Lmts.tex.needsUpdate = true;
+  function paintZilla(pal, fx) {
+    const { g, cw, ch } = Rzilla;
+    g.clearRect(0, 0, cw, ch);
+    if (fx.zilla) drawZilla(g, fx.zilla, pal.night);
+    Rzilla.tex.needsUpdate = true;
   }
 
-  function paintFar(pal, fx) {
-    const g = Lfar.g;
-    g.clearRect(0, 0, CW, CH);
-    if (pal.night) {
-      const glow = g.createLinearGradient(0, HORIZON, 0, HORIZON - 120);
-      glow.addColorStop(0, "rgba(255,150,70,0.4)");
-      glow.addColorStop(1, "rgba(255,150,70,0)");
-      g.fillStyle = glow;
-      g.fillRect(0, HORIZON - 120, CW, 120);
-    }
-    for (const b of LA.farW) {
-      g.fillStyle = pal.night
-        ? `rgb(${10 + b.s * 8 | 0},${12 + b.s * 8 | 0},${18 + b.s * 10 | 0})`
-        : `rgba(95,105,120,${0.55 + b.s * 0.3})`;
-      g.fillRect(b.x, HORIZON - b.h, b.w, b.h);
-    }
-    // its own ground below the sill
-    g.fillStyle = pal.night ? "#0a0c12" : "rgba(88,98,112,0.9)";
-    g.fillRect(0, HORIZON, CW, CH - HORIZON);
-    if (fx.zilla) {
-      g.save(); g.translate(OX, OY);
-      drawZilla(g, fx.zilla, pal.night);
-      g.restore();
-    }
-    Lfar.tex.needsUpdate = true;
-  }
-
-  function paintCity(pal, fx) {
-    const g = Lcity.g;
-    g.clearRect(0, 0, CW, CH);
-    g.save();
-    g.translate(OX, OY);
-    const night = pal.night;
-    const botRGB = pal.botRGB;
-    const VP = 250;
-    const frontCol = night ? "#0c0e16" : "rgba(70,80,95,0.92)";
-    const sideCol = night ? "#141828" : "rgba(50,58,72,0.92)";
-    for (let di = LA.dt.length - 1; di >= 0; di--) {
-      const b = LA.dt[di];
-      const top = 280 - b.h;
-      const cTop = b === LA.wilshire ? top + 14 : top;
-      const kk = Math.min(b.d, 12 / (b.x - VP));
-      const bx = b.x - (b.x - VP) * kk;
-      g.fillStyle = sideCol;
-      g.beginPath();
-      g.moveTo(b.x, cTop); g.lineTo(bx, cTop + (280 - cTop) * kk);
-      g.lineTo(bx, 280); g.lineTo(b.x, 280);
-      g.closePath(); g.fill();
-      g.fillStyle = frontCol;
-      if (b === LA.wilshire) {
-        g.beginPath();
-        g.moveTo(b.x, 280); g.lineTo(b.x, top + 14);
-        g.lineTo(b.x + b.w, top); g.lineTo(b.x + b.w, 280);
-        g.closePath(); g.fill();
-      } else {
-        g.fillRect(b.x, top, b.w, b.h);
-        if (b === LA.usbank) {
-          g.fillRect(b.x + b.w / 2 - 1.5, top - 12, 3, 12);
-          g.fillRect(b.x + 4, top - 4, b.w - 8, 4);
-        } else if (b.mech) {
-          const mx = b.x + b.mech.x * (b.w - b.mech.w);
-          g.fillStyle = sideCol;
-          g.fillRect(mx - 2, top - b.mech.h + 1, 2.5, b.mech.h - 1);
-          g.fillStyle = frontCol;
-          g.fillRect(mx, top - b.mech.h, b.mech.w, b.mech.h);
-        }
-      }
-      g.fillStyle = night ? "rgba(140,160,210,0.14)" : "rgba(235,242,250,0.35)";
-      g.fillRect(b.x, cTop, 1, 280 - cTop);
-      if (night) {
-        for (const [wxp, wy, wr] of b.win) {
-          if (wr < 0.55) {
-            g.fillStyle = wr < 0.12 ? "rgba(170,210,255,0.8)" : `rgba(255,${200 + (wr * 40) | 0},130,${0.45 + wr * 0.4})`;
-            g.fillRect(b.x + wxp, 280 - wy, 1.8, 2.4);
-          } else if (wr < 0.68) {
-            const sx = b.x - (b.x - bx) * (wxp / b.w) * 0.9;
-            g.fillStyle = `rgba(255,214,140,${0.25 + wr * 0.2})`;
-            g.fillRect(sx - 1.4, 280 - wy, 1.2, 2.2);
-          }
-        }
-      } else {
-        g.fillStyle = "rgba(30,38,52,0.14)";
-        for (let mxx = b.x + 3; mxx < b.x + b.w - 2; mxx += 5)
-          g.fillRect(mxx, cTop + 5, 2, 280 - cTop - 9);
-      }
-      if (b === LA.wilshire && fx.beacon) {
-        g.fillStyle = "#ff2030";
-        g.fillRect(b.x + b.w - 3, top - 3, 4, 4);
-      }
-    }
-    // marine layer eats the tower bases, so near reads near
-    if (pal.sunAlt > -6) {
-      const haze = g.createLinearGradient(0, 280, 0, 205);
-      haze.addColorStop(0, `rgba(${botRGB[0]},${botRGB[1]},${botRGB[2]},0.35)`);
-      haze.addColorStop(1, `rgba(${botRGB[0]},${botRGB[1]},${botRGB[2]},0)`);
-      g.fillStyle = haze;
-      g.fillRect(0, 205, 720, 75);
-    }
-    if (fx.plane) {
-      const { t, dir, shot } = fx.plane;
-      if (!shot) {
-        const { x: px, y: py } = jetXY(t, dir);
-        drawJet(g, px, py, dir, night, Math.floor(t * 30) % 2 === 1);
-      } else {
-        const a = shot.age;
-        const fallT = Math.max(0, a - 0.25);
-        const jx = shot.x + dir * 30 * fallT;
-        const jy = shot.y + 170 * fallT * fallT;
-        g.fillStyle = "rgba(90,90,96,0.45)";
-        for (let i = 1; i <= 7; i++) {
-          const tt = fallT * (i / 7);
-          const sx = shot.x + dir * 30 * tt, sy = shot.y + 170 * tt * tt;
-          g.beginPath();
-          g.arc(sx, sy - 2, 1.5 + (fallT - tt) * 5, 0, 7);
-          g.fill();
-        }
-        if (jy < 292) {
-          drawJet(g, jx, jy, dir, night, false, fallT * 2.2);
-          g.fillStyle = "rgba(255,120,30,0.8)";
-          g.beginPath();
-          g.arc(jx, jy, 2.6 + ((a * 40) % 2), 0, 7);
-          g.fill();
-        }
-        if (a < 0.8) {
-          const k = 1 - a / 0.8;
-          g.fillStyle = `rgba(255,160,40,${0.85 * k})`;
-          g.beginPath(); g.arc(shot.x, shot.y, 5 + a * 36, 0, 7); g.fill();
-          g.fillStyle = `rgba(255,238,190,${0.9 * k})`;
-          g.beginPath(); g.arc(shot.x, shot.y, (5 + a * 36) * 0.45, 0, 7); g.fill();
-        }
-      }
-    }
-    if (fx.bat) drawBatSignal(g, fx.bat, night);
-    g.restore();
-    // the street the towers stand on, below the sill
-    g.fillStyle = night ? "#07080d" : "rgba(52,60,72,0.95)";
-    g.fillRect(0, HORIZON, CW, CH - HORIZON);
-    if (night) {
-      g.fillStyle = "rgba(255,150,70,0.10)";
-      g.fillRect(0, HORIZON, CW, 12);
-    }
-    Lcity.tex.needsUpdate = true;
-  }
-
+  /* ---- what actually gets called ---- */
+  let slowHash = "", zHash = "";
   function draw(sun, moon, moonFrac, wx = { clouds: 0, fog: false, rain: 0 }, fx = {}) {
-    const sunAlt = sun.altitude / (Math.PI / 180);
-    const pal = palette(sunAlt);
-    // only repaint the layers whose inputs actually changed — the sky
-    // twinkles nightly, the mountains barely ever move
-    const skyH = pal.top + (wx.clouds * 100 | 0) + (wx.fog ? "f" : "") +
-      (pal.sunAlt < -8 && wx.clouds < 0.55 ? (Date.now() / 400 | 0) : 0) +
-      (sun.altitude * 100 | 0) + (moon.altitude * 100 | 0);
-    if (skyH !== Lsky.hash) { Lsky.hash = skyH; paintSky(pal, wx, sun, moon, moonFrac); }
-    const mtsH = pal.mtn + (wx.fog ? "f" : "");
-    if (mtsH !== Lmts.hash) { Lmts.hash = mtsH; paintMountains(pal); }
-    paintHaze(pal);
-    const farH = pal.mtn + (fx.zilla ? `z${fx.zilla.x | 0},${fx.zilla.y | 0},${fx.zilla.f | 0}` : "");
-    if (farH !== Lfar.hash) { Lfar.hash = farH; paintFar(pal, fx); }
-    const cityH = pal.top + (fx.beacon ? "b" : "") +
-      (fx.plane ? `p${(fx.plane.t * 100 | 0)},${fx.plane.shot ? fx.plane.shot.age.toFixed(2) : ""}` : "") +
-      (fx.bat ? `t${(fx.bat.t * 20 | 0)}` : "");
-    if (cityH !== Lcity.hash) { Lcity.hash = cityH; paintCity(pal, fx); }
+    const pal = palette(sun.altitude / (Math.PI / 180));
+    // the heavy rings only when the light of the day actually turns over
+    const h = pal.top + (wx.clouds * 20 | 0) + (wx.fog ? "f" : "") +
+      (pal.sunAlt < -8 && wx.clouds < 0.55 ? (Date.now() / 900 | 0) : "");
+    if (h !== slowHash) {
+      const first = !slowHash;
+      slowHash = h;
+      paintSky(pal, wx);
+      const wantNight = pal.night ? facadeNight : facadeDay;
+      if (first || nearMat.map !== wantNight) {
+        nearMat.map = wantNight;
+        nearMat.needsUpdate = true;
+        roofMat.color.setHex(pal.night ? 0x0e1116 : 0x2c313a);
+        carMat.color.setHex(pal.night ? 0x14171d : 0x30353e);
+        lampMat.color.setHex(pal.night ? 0xfff0c8 : 0x9aa2ad);
+      }
+      paintMountains(pal);
+      paintHaze(pal);
+      paintCity(pal);
+      paintGround(pal);
+    }
+    const zh = fx.zilla ? `${fx.zilla.x | 0},${fx.zilla.y | 0},${fx.zilla.f | 0}` : "";
+    if (zh !== zHash) { zHash = zh; paintZilla(pal, fx); }
+    paintFx(pal, fx, sun, moon, moonFrac);
   }
 
-  return { draw, tickHaze, meshes: [Lsky.mesh, Lmts.mesh, hazeMesh, Lfar.mesh, Lcity.mesh] };
+  function tick(elapsed, dt, ppos) {
+    Rhaze.tex.offset.x = -1 - (elapsed * 0.004) % 1;    // repeat.x is -1, so drift is negative
+    tickCars(dt);
+    // the outside belongs to the bedroom and the arcade; every other room
+    // is somewhere else entirely and must never catch a glimpse of LA
+    if (ppos) {
+      const here = Math.abs(ppos.x) < 16 && Math.abs(ppos.z) < 16 && (ppos.y || 0) < 20;
+      if (group.visible !== here) group.visible = here;
+    }
+  }
+
+  // the plane hunt: a click on the glass becomes a look-direction, and a
+  // look-direction becomes a spot on the fx ring's old 720×280 art
+  function glassToFx(u, v) {
+    const px = (u - 0.5) * 3.6, py = 1.6 + (v - 0.5) * 1.4;
+    const dz = 3.3;                                   // eye to glass, near enough
+    const az = Math.atan2(px, dz) * 180 / Math.PI;
+    const tanAlt = (py - OUT_EYE) / Math.hypot(px, dz);
+    const T = Math.tan(16 * Math.PI / 180);
+    return { x: (az / (2 * FX_AZ) + 0.5) * 720, y: (0.5 - tanAlt / (2 * T)) * 280 };
+  }
+
+  return { draw, tick, group, glassToFx };
 }
 
 function blindsTexture() {
@@ -2149,10 +2458,11 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
 
   /* --- the window (faces south over LA) --- */
   const WIN = { w: 3.6, h: 1.4, cx: 0, cy: 1.6 };
-  const sky = makeSky();
-  // the view is real stacked planes out past the wall now — the glass is
-  // just glass: a whisper of tint, still clickable for the plane hunt
-  sky.meshes.forEach(add);
+  const sky = makeOutside();
+  // a whole place out there now — rings for the horizon, real streets and
+  // blocks for the near depth. the glass is just glass: a whisper of tint,
+  // still clickable for the plane hunt
+  add(sky.group);
   const glass = add(plane(WIN.w, WIN.h, new THREE.MeshBasicMaterial({
     color: 0xbcd2e8, transparent: true, opacity: 0.05, depthWrite: false,
   })));
@@ -6336,7 +6646,7 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     screenGlow.intensity = 2.6 + Math.sin(elapsed * 2.3) * 0.45 + Math.sin(elapsed * 7.1) * 0.25;
     tickLava(elapsed);
     tickBlinds(dt);
-    sky.tickHaze(elapsed);   // the marine layer keeps sliding between city and mountains
+    sky.tick(elapsed, dt, ppos);   // haze drifts, traffic runs, LA stays home
     for (const m of accessorySpin) m.rotation.y = elapsed * 0.6;
 
     if (Math.random() < 0.004) neonLight.intensity = 0.3;
@@ -7959,12 +8269,12 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     // the plane hunt: the window is a shooting gallery if your aim is true
     glassHit: glass,
     planeUp: () => planeT >= 0 && !planeShot,
+    jetCanvas: () => jetXY(plane01, planeDir),   // (tests aim with this)
     // (u, v) is the raycast uv on the glass → sky-canvas pixels, with
     // the parallax offset baked in. returns "hit" | "miss" | null
     shootAtGlass: (u, v) => {
       if (planeT < 0 || plane01 == null || planeShot) return null;
-      const cx = (u * sky.tex.repeat.x + sky.tex.offset.x) * 720;
-      const cy = (1 - v) * 280;
+      const { x: cx, y: cy } = sky.glassToFx(u, v);
       const p = jetXY(plane01, planeDir);
       if (Math.hypot(cx - p.x, cy - p.y) > 26) return "miss";
       planeShot = { x: p.x, y: p.y, age: 0 };
