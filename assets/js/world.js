@@ -6496,6 +6496,61 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     blending: THREE.AdditiveBlending, depthWrite: false,
   })));
 
+  /* --- arcade air: the room is a dark hall full of neon, and neon in a
+     dark hall always has something floating in it. two populations —
+     slow motes that drift and turn over, and rarer bright embers that
+     rise off the cabinets like sparks off a fire. coloured per-particle
+     from the room's own palette, one draw call each. --- */
+  const ARCMOTES = 300, ARCEMBERS = 70;
+  const arcadeParticles = (count, colors, size, opacity, blend) => {
+    const pos = new Float32Array(count * 3);
+    const col = new Float32Array(count * 3);
+    const vel = [];
+    const c = new THREE.Color();
+    for (let i = 0; i < count; i++) {
+      pos[i * 3] = rand(AR.x0 + 0.4, AR.x1 - 0.4);
+      pos[i * 3 + 1] = rand(0.15, ARC_H - 0.3);
+      pos[i * 3 + 2] = rand(AR.z0 + 0.4, AR.z1 - 0.4);
+      c.setHex(colors[(Math.random() * colors.length) | 0]);
+      col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
+      vel.push({ x: rand(-0.05, 0.05), y: rand(0.02, 0.13), z: rand(-0.05, 0.05),
+                 ph: Math.random() * 7, sp: 0.4 + Math.random() * 1.1 });
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
+    const pts = add(new THREE.Points(geo, new THREE.PointsMaterial({
+      vertexColors: true, size, transparent: true, opacity,
+      blending: blend, depthWrite: false, sizeAttenuation: true,
+    })));
+    pts.frustumCulled = false;
+    return { geo, vel, count };
+  };
+  const arcDust = arcadeParticles(ARCMOTES,
+    [0xff2da0, 0x22d4ff, 0xffd23c, 0x9a6bff, 0x54e08a], 0.028, 0.5, THREE.AdditiveBlending);
+  const arcEmbers = arcadeParticles(ARCEMBERS,
+    [0xffe9b0, 0xff8a3c, 0xff4d6a], 0.05, 0.75, THREE.AdditiveBlending);
+  function tickArcadeAir(dt, t) {
+    for (const [set, sway, lift] of [[arcDust, 0.22, 1], [arcEmbers, 0.1, 2.1]]) {
+      const a = set.geo.attributes.position.array;
+      for (let i = 0; i < set.count; i++) {
+        const v = set.vel[i];
+        // a lazy sideways wander so nothing rises in a straight line
+        a[i * 3] += (v.x + Math.sin(t * v.sp + v.ph) * sway * 0.06) * dt;
+        a[i * 3 + 1] += v.y * lift * dt;
+        a[i * 3 + 2] += (v.z + Math.cos(t * v.sp * 0.8 + v.ph) * sway * 0.06) * dt;
+        if (a[i * 3 + 1] > ARC_H - 0.15) {          // reaches the roof, starts again
+          a[i * 3 + 1] = 0.12;
+          a[i * 3] = rand(AR.x0 + 0.4, AR.x1 - 0.4);
+          a[i * 3 + 2] = rand(AR.z0 + 0.4, AR.z1 - 0.4);
+        }
+        if (a[i * 3] > AR.x1) a[i * 3] = AR.x0; else if (a[i * 3] < AR.x0) a[i * 3] = AR.x1;
+        if (a[i * 3 + 2] > AR.z1) a[i * 3 + 2] = AR.z0; else if (a[i * 3 + 2] < AR.z0) a[i * 3 + 2] = AR.z1;
+      }
+      set.geo.attributes.position.needsUpdate = true;
+    }
+  }
+
   /* --- groups for dynamic content --- */
   const noteGroup = new THREE.Group();  add(noteGroup);
   const ghostGroup = new THREE.Group(); add(ghostGroup);
@@ -6772,6 +6827,7 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
       if (p[i * 3 + 2] > ZB) p[i * 3 + 2] = ZF; else if (p[i * 3 + 2] < ZF) p[i * 3 + 2] = ZB;
     }
     dustGeo.attributes.position.needsUpdate = true;
+    tickArcadeAir(dt, elapsed);
     const bp = bDustGeo.attributes.position.array;
     for (let i = 0; i < BDUST; i++) {
       const v = bDustVel[i];

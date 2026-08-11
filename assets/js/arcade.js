@@ -418,7 +418,7 @@ const Pacman = (() => {
   function stepGhost(g, dt) {
     if (g.wait > 0) { g.wait -= dt; return; }
     if (g.inHouse) { g.inHouse = false; g.x = 9; g.y = 7; g.dx = 0; g.dy = -1; }
-    const speed = g.dead ? 9 : st.fright > 0 ? 2.6 : 3.6 + st.level * 0.25;
+    const speed = g.dead ? 14 : st.fright > 0 ? 4.3 : 6.0 + st.level * 0.3;
     g.frac += speed * dt;
     while (g.frac >= 1) {
       g.frac -= 1;
@@ -484,7 +484,28 @@ const Pacman = (() => {
       touch.swipe = null;
     }
 
-    const speed = 4.4 + st.level * 0.15;
+    /* --- turning, without the wait ----------------------------------
+       A grid game that only turns on tile centres feels like it's
+       ignoring you: at the old speed that was a quarter-second of
+       "I pressed up" before anything happened, and a full tile even
+       from a standstill. So: reversing is instant (you're already on
+       that line), starting from stopped is instant, and a turn asked
+       for just after a centre is taken early — the body snaps back at
+       most a third of a tile, which nobody can see. Only the dead
+       middle of a tile still waits, and that wait is now ~50 ms. --- */
+    const turning = (p.wantDx || p.wantDy) && (p.wantDx !== p.dx || p.wantDy !== p.dy);
+    if (turning) {
+      if (p.wantDx === -p.dx && p.wantDy === -p.dy) {
+        p.dx = p.wantDx; p.dy = p.wantDy;
+        p.frac = 1 - p.frac;                    // you're mid-tile: turn around in place
+      } else if (!p.dx && !p.dy) {
+        if (!solid(p.x + p.wantDx, p.y + p.wantDy)) { p.dx = p.wantDx; p.dy = p.wantDy; p.frac = 0; }
+      } else if (p.frac < 0.34 && !solid(p.x + p.wantDx, p.y + p.wantDy)) {
+        p.dx = p.wantDx; p.dy = p.wantDy; p.frac = 0;
+      }
+    }
+
+    const speed = 7.2 + st.level * 0.2;
     p.frac += speed * dt;
     while (p.frac >= 1) {
       p.frac -= 1;
@@ -606,6 +627,7 @@ const Pacman = (() => {
   return {
     init: () => init(),
     update, draw,
+    dbg: () => st,                 // tests measure turn latency through this
     pad: { swipe: true },
     help: "arrows or swipe to steer · eat everything · power pellets turn the tables",
   };
@@ -1113,6 +1135,7 @@ export function vrKey(code, down) {
   else delete keys[code];
 }
 export const _debugKeys = () => keys;
+export const _debugGame = () => current;
 
 // test/debug introspection
 export const _arcadeDbg = () => ({ gameId, peerRole: peer ? peer.role : null });
