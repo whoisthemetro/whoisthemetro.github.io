@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-whoisthemetro.com — "THE METRO", a persistent 3D hangout world built with vanilla ES modules + three.js 0.160 (via importmap CDN, `three/addons/` for loaders/postprocessing). No bundler, no framework, no build step, no test framework. All geometry and textures are procedural (canvas textures); binary assets live in `assets/img/`, `assets/models/` (GLB props — the four scanned arcade cabinets swap in over procedural stand-ins, loaded one at a time 2.5s after build; new GLBs get preprocessed `gltf-transform dedup/prune/resize 512/webp q80` and the loader strips `transmission`/`clearcoat` — one visible transmissive material makes three.js render the whole scene twice per frame), `assets/audio/dumbek/` and `assets/wasm/`. The arcade's games (defender, pac, tron, pong) are hand-written canvas games in arcade.js — DOOM and js-dos are gone, PAC-MAN (an original maze-chase homage) lives in that cabinet now.
+whoisthemetro.com — "THE METRO", a persistent 3D hangout world built with vanilla ES modules + three.js 0.160 (via importmap CDN, `three/addons/` for loaders/postprocessing). No bundler, no framework, no build step, no test framework. All geometry and textures are procedural (canvas textures); binary assets live in `assets/img/`, `assets/models/` (GLB props — the four scanned arcade cabinets swap in over procedural stand-ins, loaded one at a time 1.2s after build; new GLBs get preprocessed `gltf-transform dedup/prune/resize 512/webp q80` and the loader strips `transmission`/`clearcoat` — one visible transmissive material makes three.js render the whole scene twice per frame), `assets/audio/dumbek/` and `assets/wasm/`. The arcade's games (defender, pac, tron, pong) are hand-written canvas games in arcade.js — DOOM and js-dos are gone, PAC-MAN (an original maze-chase homage) lives in that cabinet now.
 
-Note: README.md describes an older "metro station" concept — the world is now a bedroom home-studio + three secret rooms (see Architecture).
+README.md is the human-facing description and is kept current; CHANGELOG.md is the running history (newest first). docs/studio.md covers the sequencer room, tools/mi/ covers rebuilding the wasm. The world is a bedroom home-studio + arcade, plus five other spaces (see Architecture).
 
 ## Commands
 

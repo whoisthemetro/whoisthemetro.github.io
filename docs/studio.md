@@ -1,7 +1,8 @@
 # THE STUDIO — a shared music room
 
-An experiment on the `music-world` branch, living at `/studio/`. Nothing on
-`main` is touched, so whoisthemetro.com is unaffected either way.
+A room inside THE METRO. You reach it by playing the secret fill on the
+bedroom's e-kit (kick · snare · hi tom · lo tom · hat · crash), or by handing
+someone the `/studio` link, which drops them straight into it.
 
 Four machines stand in a ring. Whatever is playing when you walk in is what
 everyone else is hearing, on the same beat, wherever they are. You don't build
@@ -11,7 +12,7 @@ instruments — the machines are already there, and you play them together.
 
 ```sh
 python3 -m http.server 8123
-# → http://localhost:8123/studio/
+# → http://localhost:8123/studio  (or find the e-kit and play the fill)
 ```
 
 Open two tabs to feel the multiplayer. With no backend keys the room runs in
@@ -60,20 +61,45 @@ Two consequences worth knowing:
 - Launching a clip names the exact absolute step it lands on, so every browser
   commits to the same bar even if the message arrives late.
 
-## The sequencer
+## The drum machine
 
-Eight voices, all synthesised on the spot: SAW, SQUARE, PLUCK, PAD, BELL, BASS,
-ORGAN, FM. They're built differently rather than being one oscillator with the
-waveform swapped — PLUCK slams its filter shut faster than its amp decays, BELL
-and FM run a modulator whose depth decays, ORGAN stacks four drawbar sines and
-never moves its filter. Each carries a level trim so switching timbre mid-loop
-doesn't duck the drums through the compressor.
+Sixteen voices, so a 4×4 pad grid maps one-to-one. Most are synthesised on the
+spot; PERC plays 77 real dumbek one-shots from a shuffle bag (draw without
+replacement, and a fresh bag never opens with the sample you just heard). Any
+pad can trade its voice for a sample: long-press it and the sampler opens with
+the library, a waveform, and trim / pitch / gain. Those assignments are shared,
+so the whole room wears the same kit.
 
-Four buttons and three sliders on the panel: VOICE, SCALE, KEY, OCT, then
-CUTOFF, RESO, LENGTH. Keys `1`–`4` cycle the same four. The grid's row labels
-are the notes those rows will actually play, derived from the same function the
-scheduler uses — so the grid can never disagree with what you hear when someone
-changes key underneath you.
+There's an MPC overlay (the floating `[ pads ]` button) built for a phone held
+upright: sixteen pads with pad 1 bottom-left, REC / UNDO / CLEAR / CLR ALL, a
+metronome that only you hear, the loop length, and A/B/C/D. It also binds **Web
+MIDI**, so a real controller plays the kit whether the overlay is open or not.
+
+Loop lengths are **per machine** — put the drums in 7 while the synth holds 16
+and both wrap the same absolute step around their own length. That one line is
+the whole polymeter feature. Pattern changes are queued to the next downbeat so
+the room flips together.
+
+## The synth
+
+One instrument with two faces: the `synth` panel edits a pattern, the `launch`
+panel fires them, both over one bank of eight. What PLAYS and what you're
+WRITING are separate, which is how you rewrite pattern 5 while 2 is playing.
+
+The default voice is **PLAITS** — Mutable Instruments' 24-engine macro
+oscillator, Émilie Gillet's own MIT-licensed DSP compiled to WebAssembly and
+run on the audio thread, drawn as the hardware panel (LED column, bank buttons,
+HARMONICS / TIMBRE / MORPH / DECAY / LPG). Eight hand-rolled voices (SAW,
+SQUARE, PLUCK, PAD, BELL, BASS, ORGAN, FM) are still there behind the VOICE
+button, and one of them stands in if the wasm ever fails to load.
+
+**CLOUDS** sits across the whole master bus — the granular processor, dry until
+someone reaches for DRY/WET. Both live in `assets/wasm/mi.wasm`; the rebuild
+recipe is in `tools/mi/`.
+
+Knobs are **drag-only**: grab one and the camera freezes while your hand turns
+it, the value previews live, and exactly one edit reaches the room when you let
+go.
 
 ## Sliders latch
 
@@ -108,12 +134,15 @@ assets/css/studio.css      overlay + HUD
 assets/js/studio/
   clock.js                 shared time, NTP against the db
   devices.js               state, transport, scheduler   <- the sync lives here
-  audio.js                 drums, synth voices, FX rack (no sample files)
+  audio.js                 drums, synth voices, samples, FX rack, the wasm loader
+  mi-worklet.js            PLAITS + CLOUDS on the audio thread
+  pads.js                  the MPC overlay: pads, Web MIDI, per-pad sampler
   panels.js                the machine faces, drawn to canvas + hit-tested by UV
-  room.js                  the three.js room
-  controls.js              walking and pointing
+  room.js                  the three.js room (a Group in the main world)
+  controls.js              walking and pointing (standalone page only)
   net.js                   realtime channel + local-mode mirror
-  main.js                  boot and glue
+  main.js                  boot and glue (standalone page only)
+assets/wasm/mi.wasm        Mutable Instruments DSP  (rebuild: tools/mi/)
 supabase/studio.sql        the clock function (idempotent)
 ```
 
@@ -125,17 +154,30 @@ deliberate: the exact same hit test works for a mouse today and a controller ray
 in a headset later. Nothing in the interaction layer knows which one it's
 talking to — adding WebXR should mean touching `controls.js` and nothing else.
 
+## The room remembers
+
+The room opens on **silence** — nothing is seeded, so the first thing anyone
+hears is something they played. But the state persists: every change schedules
+a debounced snapshot into the `studio` room flag (only the lowest uid present
+writes, so ten people don't write ten copies), flushed again when you leave or
+close the tab. Walking into an EMPTY room restores the last session before it
+falls back to silence; a live peer's answer always wins, because whoever is
+actually there is newer than the database by definition.
+
+## VR
+
+The room works in a headset — it's the bedroom's rig, so every physical control
+answers a controller ray. The standalone `/studio/` page has its own rig,
+feeding `xr.js` an `isWalkable` adapter built from `room.clampWalk`.
+
+Anything that would open a **DOM overlay** (the pads, the sampler) is blocked
+with a note on your wrist instead, because DOM is invisible in a session.
+
 ## Known gaps
 
-- No WebXR yet (the room is built so it can be added, but it isn't there).
-- The melodic sequencer starts empty on purpose; only the drums and the clip
-  bank are seeded.
-- Clip patterns can be launched but not yet edited in-world (`act.setClipNote`
-  exists and syncs; nothing calls it from the UI).
+- The pads overlay and the sampler are flat-screen only (see VR above).
 - No voice chat — the main world has walkie-talkie, this room doesn't yet.
-- One global room, no room codes. Everyone who opens `/studio/` lands in the
-  same session. Nothing is written to the database, so when the last person
-  leaves, the room empties and the next visitor seeds it fresh.
+- One global room, no room codes: everyone lands in the same session.
 
 ## Testing note
 

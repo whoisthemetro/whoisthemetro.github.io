@@ -4,6 +4,124 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-08-11 — the city gets on with its life
+
+**Outside is a place now, and it has no edges.** The view through the
+bedroom window used to be one painting on one plane — walk to the side
+of the glass, look along the wall, and you found where Los Angeles
+stopped. The horizon is CYLINDERS centred on the room now (sky at
+112 m, mountains at 103, a drifting haze band at 96, the painted city
+at 88), and a cylinder has no left edge and no right edge. There is
+nowhere to stand and no angle to look where the world runs out.
+
+In front of the rings there's real geometry: a street three storeys
+down lit with sodium pools, forty buildings from 34 to 82 m out with
+lit windows, and traffic — proper little cars with bodywork, a dark
+greenhouse, four tyres, white headlights and red tail lights — running
+ten avenues. The HOLLYWOOD sign sits up on the slope, each board
+leaning its own way.
+
+**Every room stops leaking into every other one.** Lights were already
+culled per room; geometry is too now, so Desi's sea and the venue's
+shell can't drift into the corner of the bedroom window.
+
+**PAC-MAN plays like the arcade.** The character has a real position
+instead of "tile + progress", so it CUTS CORNERS — slides diagonally
+onto the new lane the moment you ask, instead of snapping back to a
+tile centre or sailing past and turning late. And the middle row is
+finally a tunnel: it was open on the west edge and walled on the east,
+so the wrap could never happen.
+
+**Neon in the arcade air.** Motes and embers drifting through the dark
+hall, coloured from the room's own palette.
+
+## 2026-08-09 / 08-10 — the headset, and real machines
+
+**THE CREW becomes a place to fly.** No more locker rooms, launch
+tubes, catapults or ready kiosks — the lift drops you straight into
+the hall, floating, team assigned quietly. The hall keeps its goal
+domes, tunnels, islands and disc.
+
+**VR flight, with Echo VR's own bindings.** GRIP grabs anything within
+reach — move your hand to drag yourself, release to fling. A/X fire
+that wrist's thruster along where the hand points. Left stick click
+boosts, right stick click brakes. The disc lives in your grip and the
+throw reads the PEAK of your swing, so a lob leaves a lob and a sling
+leaves a sling. Flight runs the real game's numbers (5 m/s
+self-propelled, 4.7 holding the disc), with team-assisted regrabs
+uncapped the way Echo has it.
+
+**The arcade cabinets are real machines** — scanned TRON, PAC-MAN,
+PONG and DEFENDER, and they play IN VR: the game floats on a panel in
+the room and the controllers become the cabinet. Push-to-talk moved to
+B and Y.
+
+**The room got its frame rate back.** One visible transmissive
+material was making three.js render the entire scene twice per frame.
+Models went on a diet too — 13.4 MB of raw scans down to 1.26 MB.
+
+**Real avatars.** Drop a .glb on the mirror (or paste a link) and it's
+you, for everyone. The model is parsed before it's worn, its facing is
+worked out from the skeleton, and a head baked at an angle gets
+straightened so your gaze lands where you're actually looking.
+
+**Standing still no longer makes you invisible.** Idle poses were
+deduplicated forever, so anyone who wasn't moving couldn't be seen by
+anyone who arrived later.
+
+## 2026-08-06 / 08-08 — THE STUDIO comes home, and Mutable moves in
+
+**The sequencer room joins the world.** It used to be its own web
+page; now it's a room you reach by playing the secret fill on the
+e-kit (or via `/studio`). Everyone in it shares one clock and one set
+of patterns.
+
+**Mutable Instruments, for real.** Émilie Gillet's own DSP (MIT),
+compiled to WebAssembly and run on the audio thread: PLAITS is the
+synth voice — all 24 engines, drawn as the hardware panel — and CLOUDS
+sits across the whole master bus. Knobs are grabbed and turned like
+hardware; the camera holds still while you do it.
+
+**The drum machine grows hands.** Sixteen voices, an MPC overlay with
+real pads, Web MIDI so a controller plays it, per-pad samplers with
+trim/pitch/gain, 77 real dumbek one-shots, per-machine loop lengths
+(polymeter), and patterns that switch on the downbeat. The room
+remembers the last session anyone left.
+
+**VR, phase one.** The whole bedroom in a headset: every physical
+control, the lift, and a wrist HUD instead of floating toasts.
+
+**The gallery dreams.** Fifteen shader pieces on the acoustic slabs, a
+cellular-automaton throw rug, METRO OS becomes a terminal, and the
+door sign runs a live shader masked to hand-drawn letters.
+
+## 2026-06-29 / 07-05 — side doors
+
+- `/wip` — the bedroom rebuilt in Babylon.js, a playable snapshot of a
+  paused experiment (the live site stays on three.js)
+- `/bfam` — a landing page for BFAM — Disoriented
+- the bedroom door opens onto the mix & master site
+
+## 2026-06-12 / 06-19 — the venue, the gym, and who you are
+
+**THE GYM** — a full-court cyberpunk basketball room behind the JOIN
+sign: real jump, stamina dash, one shared ball, auto-aimed shooting
+where the skill is a power meter with an active-reload marker, a
+warm-up before tip-off, and twin-thumbstick controls on mobile.
+
+**THE VENUE grows a big screen** — a real watch-party wall: share a
+tab or a stream and everyone sees it in sync, over WebRTC with an SFU
+and TURN credentials minted by an edge function.
+
+**You get a face.** An outfit picker with build, hair, fit and skin
+tone, seen by everyone; 8-bit faces that glow and flap to your live
+mic; a mirror in the arcade to check yourself.
+
+**The cat gets a life** — belly rubs, a real voice, and it fetches the
+mouse if you throw it. Plus a second pool table, per-room light
+culling so phones stop seeing through walls, and PostHog analytics
+(off entirely without a key).
+
 ## 2026-06-11 — the arena becomes ECHO ARENA
 
 **The full layout, from the real top-down.** The arena is twice the

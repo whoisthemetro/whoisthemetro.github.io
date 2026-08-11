@@ -33,10 +33,12 @@ The site runs in two modes:
 
 ## The world
 
-One continuous 3D space, all of it generated procedurally in code — there
-are no model files and almost no textures (everything is canvas-drawn,
-then cel-shaded with a toon ramp). Spaces are separated by distance and
-portals:
+One continuous 3D space, nearly all of it generated procedurally in code —
+almost everything is canvas-drawn and then cel-shaded with a toon ramp. The
+exceptions are deliberate and few: scanned `.glb` props (the four arcade
+cabinets, some desk gear), the dumbek samples, visitors' own avatars, and
+one WebAssembly binary for the studio's synth. Spaces are separated by
+distance and portals:
 
 - **The bedroom studio** — the home base. A real home-studio layout you can
   walk: the wall of notes left by visitors, a playable C-major keybed, a
@@ -46,23 +48,35 @@ portals:
   private messages to metro, and a self-playing music player). The bedroom
   door — under its METRO: MIX & MASTER neon — steps out to the
   [mix & master site](https://whoisthemetro.com/mixandmaster/).
-- **METRO'S ARCADE** — behind the closet. Real cabinets including a full
-  DOOM (self-hosted js-dos bundle) plus original arcade games, some 2-player
-  in lockstep over the network.
+- **METRO'S ARCADE** — behind the closet. Four scanned cabinets (TRON,
+  PAC-MAN, PONG, DEFENDER) running games written from scratch — DEFENDER's
+  full liturgy, an original maze-chase, light cycles and paddles — some
+  2-player in lockstep over the network. They play in VR too: the game
+  floats on a panel in the room and the controllers become the cabinet.
 - **THE DESI** — a boat room reached through a poster (passphrase `desi`).
   Runs on the *real* sun, moon and weather of Gotland, Sweden via Open-Meteo,
   with a living sea, true sound isolation, and a message-in-a-bottle you can
   cork and throw back.
-- **ECHO ARENA** (a.k.a. THE CREW) — a zero-gravity disc sport behind a
-  poster, no passphrase. Pick ORANGE or BLUE, spawn in your locker room, fly
-  the launch tubes out to MID, grab walls and teammates to slingshot
-  yourself, punch to stun, shield to block, and score from inside or beyond
-  the 3-point bubble. Disc, goals, and players are all networked.
+- **ECHO ARENA** (a.k.a. THE CREW) — a zero-gravity disc sport, no
+  passphrase and no lobby: the lift drops you straight into the hall,
+  floating. Grab walls and teammates to slingshot yourself, punch to stun,
+  shield to block, and score from inside or beyond the 3-point bubble.
+  Flight runs the real game's numbers. Disc, goals and players are all
+  networked. Best in a headset — see **VR** below.
 - **THE BOOTH / venue** — a club space with a host-run booth: share a tab or
   a loopback audio source to the room, put a live video stream on the big
   screen for everyone in sync, and trigger DJ FX (fog, fireworks, look
   changes). WebRTC for screen-share, with TURN credentials minted by a
   Supabase edge function.
+- **THE STUDIO** — a shared step-sequencer room, reached by playing a
+  secret fill on the e-kit (or by handing someone the `/studio` link).
+  Everyone in it shares one clock and one set of patterns, so two people in
+  two cities hear the same bar at the same instant — the network carries
+  *edits*, never notes. A 16-voice drum machine with an MPC-style pad
+  overlay, Web MIDI, per-pad samplers, and a synth voiced by **PLAITS** with
+  **CLOUDS** across the master bus — Mutable Instruments' own MIT-licensed
+  DSP compiled to WebAssembly and run on the audio thread. The room
+  remembers the last session anyone left in it.
 - **THE GYM** — a full-court basketball game behind the JOIN sign on the
   arcade court. A cyberpunk night-court (neon line work, dim cyan/magenta
   lights, a glowing ball, a scoreboard above each hoop). On foot with a real
@@ -76,9 +90,41 @@ portals:
   tap the wall **READY board** to tip off into the real game. Two auto-balanced
   teams, 2s and 3s — all networked, with a full on-screen control pad on mobile.
 
+Out the bedroom window is a place rather than a backdrop: concentric
+horizon rings (sky, the San Gabriels with the Hollywood sign, a drifting
+haze band, the painted skyline) with real geometry in front — a street
+three storeys down with traffic running, and blocks of real buildings.
+Because the rings are cylinders centred on the room, there is no angle from
+which Los Angeles runs out.
+
 The room also furnishes itself for regulars: time spent, piano notes,
 arcade games and portal trips quietly add up and earn small objects that
 stay.
+
+## VR
+
+The room is playable in a headset. `[ enter vr ]` appears after you walk in
+on any WebXR browser (tested on Quest). Left stick walks (push it further to
+walk faster), right stick snap-turns, triggers act as clicks, and B or Y is
+push-to-talk. Because DOM overlays are invisible in a session, anything that
+would open one is either blocked with a note on your wrist or given a
+physical equivalent instead — and the arcade cabinets play on a floating
+panel.
+
+In ECHO ARENA the bindings are the real game's: **GRIP** grabs whatever your
+hand is near (move your hand to drag yourself, release to fling), **A/X**
+fire that wrist's thruster along where the hand points, **left stick click**
+boosts, **right stick click** brakes. The disc lives in your grip, and the
+throw reads the peak of your swing.
+
+## Your avatar
+
+The mirror in the arcade opens an outfit picker — build, hair, fit, skin
+tone — and everyone sees what you're wearing. If you'd rather be yourself,
+drop a `.glb` file on the wardrobe (or paste a public link to one): it's
+loaded and parsed before it's worn, height-normalised, and its facing is
+worked out from its own skeleton, so models exported from anywhere tend to
+just work.
 
 ## Tech stack
 
@@ -127,6 +173,7 @@ in your Supabase URL and anon key in `assets/js/config.js`.
 - **T** to chat, **V** (or hold the mic button) for walkie-talkie voice.
 - In ECHO ARENA: gaze + WASD to thrust, **E** to grab/fling walls and
   teammates, **SHIFT** boost, **B** brake, **F** shield, click to punch.
+  (In VR, see the **VR** section above.)
 - In THE GYM: **WASD** move, **SPACE** jump, **SHIFT** dash (stamina), hold
   **click** to wind up the power meter and release in the green zone to shoot,
   click to grab/steal, **E** to pass, **R** to ready up. On mobile, twin
@@ -156,16 +203,22 @@ assets/
     controls.js       movement + collision; zero-g flight in the arena
     notes3d.js        the wall — placing/laying out notes in 3D
     ambience.js       procedural WebAudio
-    arcade.js         the cabinets (incl. DOOM via js-dos)
+    arcade.js         the cabinets and the games inside them
+    xr.js             WebXR: the rig, controllers, wrist HUD, zero-g flight
+    avatar-glb.js     visitors' own .glb avatars (facing + gaze correction)
+    studio/           the sequencer room: devices, audio, panels, pads, net
     config.js         your Supabase / PostHog keys (safe to publish)
     …                 cat, songs, radio, voice, stream/screen (venue), etc.
   css/room.css        the overlay/HUD styling
-  games/doom.jsdos    self-hosted DOOM bundle (CDN copies are CORS-blocked)
-  img/, audio/        the only binary assets (cat sounds, one image)
+  models/*.glb        scanned props (arcade cabinets, desk gear)
+  wasm/mi.wasm        Mutable Instruments DSP for the studio (MIT; see tools/mi)
+  img/, audio/        cat sounds, dumbek one-shots, a couple of images
 supabase/             idempotent SQL migrations (paste into the SQL Editor)
                       + edge functions (e.g. TURN credential minting)
 venue/                standalone venue entry page
 docs/analytics.md     PostHog event spec (optional analytics)
+docs/studio.md        how the shared sequencer room works
+tools/mi/             how to rebuild assets/wasm/mi.wasm from source
 CHANGELOG.md          what shipped, newest first
 SETUP.md              connect Supabase + the admin kill switch
 ```
