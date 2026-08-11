@@ -339,7 +339,7 @@ const Pacman = (() => {
     "####.###.#.###.####.#",
     "   #.#.......#.#    #",
     "####.#.##G##.#.####.#",
-    "T....#.#   #.#.....T#",
+    "T....#.#   #.#.....TT",
     "####.#.#####.#.####.#",
     "   #.#.......#.#    #",
     "####.#.#####.#.####.#",
@@ -372,7 +372,7 @@ const Pacman = (() => {
     const dots = new Set(), power = new Set();
     for (let y = 0; y < GH2; y++) for (let x = 0; x < GW2; x++) {
       const c = RAW[y][x];
-      if (c === "." || c === "T") dots.add(y * GW2 + x);
+      if (c === ".") dots.add(y * GW2 + x);
       else if (c === "o") power.add(y * GW2 + x);
     }
     return { dots, power };
@@ -394,7 +394,7 @@ const Pacman = (() => {
     const { dots, power } = freshDots();
     st = {
       level, score, lives, dots, power,
-      p: { x: 9, y: 15, dx: 0, dy: 0, wantDx: 0, wantDy: 0, frac: 0, mouth: 0 },
+      p: { px: 9, py: 15, dx: 0, dy: 0, wantDx: 0, wantDy: 0, mouth: 0 },
       ghosts: GHOSTS.map((g, i) => spawnGhost(i)),
       fright: 0, eatChain: 0, phase: 0, phaseT: 0,
       dead: 0, over: false, won: 0, t: 0,
@@ -408,11 +408,12 @@ const Pacman = (() => {
     if (st.fright > 0) return null;                       // random flight
     const scatter = st.phase % 2 === 0;
     if (scatter) return SCAT[g.i];
-    if (g.i === 0) return [p.x, p.y];
-    if (g.i === 1) return [p.x + p.dx * 4, p.y + p.dy * 4];
-    if (g.i === 2) { const c = st.ghosts[0]; return [p.x * 2 - c.x, p.y * 2 - c.y]; }
-    const d = Math.hypot(g.x - p.x, g.y - p.y);
-    return d > 7 ? [p.x, p.y] : SCAT[3];
+    const ptx = Math.round(p.px), pty = Math.round(p.py);
+    if (g.i === 0) return [ptx, pty];
+    if (g.i === 1) return [ptx + p.dx * 4, pty + p.dy * 4];
+    if (g.i === 2) { const c = st.ghosts[0]; return [ptx * 2 - c.x, pty * 2 - c.y]; }
+    const d = Math.hypot(g.x - ptx, g.y - pty);
+    return d > 7 ? [ptx, pty] : SCAT[3];
   }
 
   function stepGhost(g, dt) {
@@ -459,7 +460,7 @@ const Pacman = (() => {
         st.lives--;
         if (st.lives <= 0) { st.over = true; saveHi(st.score); }
         else {
-          st.p = { x: 9, y: 15, dx: 0, dy: 0, wantDx: 0, wantDy: 0, frac: 0, mouth: 0 };
+          st.p = { px: 9, py: 15, dx: 0, dy: 0, wantDx: 0, wantDy: 0, mouth: 0 };
           st.ghosts = GHOSTS.map((g, i) => spawnGhost(i));
           st.fright = 0;
         }
@@ -484,37 +485,49 @@ const Pacman = (() => {
       touch.swipe = null;
     }
 
-    /* --- turning, without the wait ----------------------------------
-       A grid game that only turns on tile centres feels like it's
-       ignoring you: at the old speed that was a quarter-second of
-       "I pressed up" before anything happened, and a full tile even
-       from a standstill. So: reversing is instant (you're already on
-       that line), starting from stopped is instant, and a turn asked
-       for just after a centre is taken early — the body snaps back at
-       most a third of a tile, which nobody can see. Only the dead
-       middle of a tile still waits, and that wait is now ~50 ms. --- */
-    const turning = (p.wantDx || p.wantDy) && (p.wantDx !== p.dx || p.wantDy !== p.dy);
-    if (turning) {
+    /* --- moving, the way the arcade actually does it -------------------
+       The character lives at a real position, not at "tile + progress".
+       That matters for turning: you may turn the moment the lane you want
+       is open beside you, and the body then CUTS THE CORNER — it slides
+       diagonally onto the new lane at full speed instead of jumping back
+       to a tile centre or sailing past and snapping. That diagonal is why
+       the arcade felt smooth and a naive grid game never does. --- */
+    const step = (7.2 + st.level * 0.2) * dt;
+    const cx = Math.round(p.px), cy = Math.round(p.py);
+
+    if (p.wantDx || p.wantDy) {
       if (p.wantDx === -p.dx && p.wantDy === -p.dy) {
+        p.dx = p.wantDx; p.dy = p.wantDy;            // turning back is free
+      } else if ((p.wantDx !== p.dx || p.wantDy !== p.dy)
+                 && !solid(cx + p.wantDx, cy + p.wantDy)) {
         p.dx = p.wantDx; p.dy = p.wantDy;
-        p.frac = 1 - p.frac;                    // you're mid-tile: turn around in place
-      } else if (!p.dx && !p.dy) {
-        if (!solid(p.x + p.wantDx, p.y + p.wantDy)) { p.dx = p.wantDx; p.dy = p.wantDy; p.frac = 0; }
-      } else if (p.frac < 0.34 && !solid(p.x + p.wantDx, p.y + p.wantDy)) {
-        p.dx = p.wantDx; p.dy = p.wantDy; p.frac = 0;
       }
     }
 
-    const speed = 7.2 + st.level * 0.2;
-    p.frac += speed * dt;
-    while (p.frac >= 1) {
-      p.frac -= 1;
-      if ((p.wantDx || p.wantDy) && !solid(p.x + p.wantDx, p.y + p.wantDy)) {
-        p.dx = p.wantDx; p.dy = p.wantDy;
-      }
-      if (solid(p.x + p.dx, p.y + p.dy)) { p.dx = 0; p.dy = 0; }
-      p.x = ((p.x + p.dx) % GW2 + GW2) % GW2; p.y += p.dy;
-      const key = p.y * GW2 + p.x;
+    p.px += p.dx * step;
+    p.py += p.dy * step;
+    // ease onto the centre line of whatever lane we're in — this is the
+    // corner cut, and it costs exactly the distance it should
+    if (p.dx) p.py += Math.max(-step, Math.min(step, cy - p.py));
+    if (p.dy) p.px += Math.max(-step, Math.min(step, cx - p.px));
+
+    // a wall stops you dead on the last open centre
+    const nx = Math.round(p.px), ny = Math.round(p.py);
+    if (solid(nx + p.dx, ny + p.dy)) {
+      if (p.dx > 0 && p.px > nx) p.px = nx;
+      else if (p.dx < 0 && p.px < nx) p.px = nx;
+      if (p.dy > 0 && p.py > ny) p.py = ny;
+      else if (p.dy < 0 && p.py < ny) p.py = ny;
+    }
+
+    // the tunnel: out one side of the maze, in the other
+    if (p.px < -0.5) p.px += GW2;
+    else if (p.px > GW2 - 0.5) p.px -= GW2;
+
+    // eat whatever you're standing on
+    {
+      const tx = ((Math.round(p.px) % GW2) + GW2) % GW2, ty = Math.round(p.py);
+      const key = ty * GW2 + tx;
       if (st.dots.delete(key)) { st.score += 10; if (st.dots.size % 4 === 0) beep(880, 0.02, "square", 0.015); }
       if (st.power.delete(key)) {
         st.score += 50; st.fright = Math.max(3, 7 - st.level * 0.5); st.eatChain = 0;
@@ -522,6 +535,7 @@ const Pacman = (() => {
       }
       if (!st.dots.size && !st.power.size) { st.won = 1.5; beep(660, 0.3, "square", 0.05); }
     }
+
     p.mouth += dt * 9;
 
     for (const g of st.ghosts) stepGhost(g, dt);
@@ -529,8 +543,8 @@ const Pacman = (() => {
     // collisions on near-tile overlap
     for (const g of st.ghosts) {
       if (g.wait > 0 || g.dead) continue;
-      const dx = (g.x + g.dx * g.frac) - (p.x + p.dx * p.frac);
-      const dy = (g.y + g.dy * g.frac) - (p.y + p.dy * p.frac);
+      const dx = (g.x + g.dx * g.frac) - p.px;
+      const dy = (g.y + g.dy * g.frac) - p.py;
       if (dx * dx + dy * dy > 0.6) continue;
       if (st.fright > 0) {
         g.dead = true;
@@ -574,7 +588,7 @@ const Pacman = (() => {
     }
     // our hero: the chomping wedge
     const p = st.p;
-    const [px, py] = tile(p.x + p.dx * p.frac, p.y + p.dy * p.frac);
+    const [px, py] = tile(p.px, p.py);
     const ang = Math.atan2(p.dy, p.dx || 0.0001);
     const jaw = st.dead > 0 ? Math.min(Math.PI, (1.4 - st.dead) * 3) : (0.15 + 0.32 * Math.abs(Math.sin(p.mouth)));
     g2.fillStyle = "#ffe737";
