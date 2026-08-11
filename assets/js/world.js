@@ -1184,21 +1184,87 @@ function makeOutside() {
     [false, -34, 1], [false, -40, -1], [false, 30, 1], [false, 36, -1],
   ]) LANES.push({ along, off, dir, y: OUT_GROUND + 0.9 });
   const CARS = 44;
-  const carGeo = new THREE.BoxGeometry(2.0, 1.5, 4.4);
-  const carMat = new THREE.MeshBasicMaterial({ color: 0x20242c, fog: false });
+
+  /* --- a car, built out of boxes and baked into one geometry so the whole
+     street still costs two draw calls. faces are shaded by which way they
+     point (roof bright, flanks mid, ends dark) because nothing out here is
+     lit — that fake light is what stops a box from reading as a box. --- */
+  const FACE_SHADE = [0.86, 0.86, 1.16, 0.6, 0.72, 0.72];   // +x -x +y -y +z -z
+  function bakeParts(parts) {
+    const geos = parts.map((p) => {
+      const g = new THREE.BoxGeometry(p.w, p.h, p.d).toNonIndexed();
+      g.translate(p.x || 0, p.y || 0, p.z || 0);
+      const n = g.attributes.position.count;
+      const col = new Float32Array(n * 3);
+      const c = new THREE.Color(p.color);
+      for (let i = 0; i < n; i++) {
+        const k = p.flat ? 1 : FACE_SHADE[Math.floor(i / 6)];
+        col[i * 3] = c.r * k; col[i * 3 + 1] = c.g * k; col[i * 3 + 2] = c.b * k;
+      }
+      g.setAttribute("color", new THREE.BufferAttribute(col, 3));
+      return g;
+    });
+    let total = 0;
+    for (const g of geos) total += g.attributes.position.count;
+    const pos = new Float32Array(total * 3), nor = new Float32Array(total * 3), col = new Float32Array(total * 3);
+    let o = 0;
+    for (const g of geos) {
+      pos.set(g.attributes.position.array, o * 3);
+      nor.set(g.attributes.normal.array, o * 3);
+      col.set(g.attributes.color.array, o * 3);
+      o += g.attributes.position.count;
+      g.dispose();
+    }
+    const out = new THREE.BufferGeometry();
+    out.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    out.setAttribute("normal", new THREE.BufferAttribute(nor, 3));
+    out.setAttribute("color", new THREE.BufferAttribute(col, 3));
+    return out;
+  }
+
+  // the body wears white so the per-car paint shows through it; glass and
+  // tyres are painted dark here and stay dark whatever colour the car is
+  const carGeo = bakeParts([
+    { w: 1.86, h: 0.62, d: 4.30, y: 0.46, color: 0xffffff },              // body
+    { w: 1.70, h: 0.30, d: 2.90, y: 0.90, z: -0.10, color: 0xffffff },    // shoulders
+    { w: 1.54, h: 0.52, d: 1.95, y: 1.22, z: -0.22, color: 0x2b3038 },    // greenhouse
+    { w: 0.26, h: 0.52, d: 0.52, x: 0.86, y: 0.28, z: 1.36, color: 0x0c0d10 },
+    { w: 0.26, h: 0.52, d: 0.52, x: -0.86, y: 0.28, z: 1.36, color: 0x0c0d10 },
+    { w: 0.26, h: 0.52, d: 0.52, x: 0.86, y: 0.28, z: -1.42, color: 0x0c0d10 },
+    { w: 0.26, h: 0.52, d: 0.52, x: -0.86, y: 0.28, z: -1.42, color: 0x0c0d10 },
+  ]);
+  // lamps ride their own mesh so a black car still has white headlights
+  const lampGeo = bakeParts([
+    { w: 0.46, h: 0.20, d: 0.10, x: 0.62, y: 0.62, z: 2.16, color: 0xfff4d6, flat: true },
+    { w: 0.46, h: 0.20, d: 0.10, x: -0.62, y: 0.62, z: 2.16, color: 0xfff4d6, flat: true },
+    { w: 0.40, h: 0.16, d: 0.10, x: 0.66, y: 0.68, z: -2.16, color: 0xff2a18, flat: true },
+    { w: 0.40, h: 0.16, d: 0.10, x: -0.66, y: 0.68, z: -2.16, color: 0xff2a18, flat: true },
+  ]);
+  const carMat = new THREE.MeshBasicMaterial({ vertexColors: true, fog: false });
+  const lampMat = new THREE.MeshBasicMaterial({ vertexColors: true, fog: false });
   const cars = new THREE.InstancedMesh(carGeo, carMat, CARS);
-  cars.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-  const lampGeo = new THREE.BoxGeometry(2.2, 0.5, 0.6);
-  const lampMat = new THREE.MeshBasicMaterial({ color: 0xfff0c8, fog: false });
   const lamps = new THREE.InstancedMesh(lampGeo, lampMat, CARS);
+  cars.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   lamps.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   group.add(cars, lamps);
+
+  // a car park's worth of paint: mostly the greys and whites real traffic
+  // is made of, with the occasional red or blue to catch the eye
+  const PAINT = [0x1c1f25, 0x2e3238, 0x8d939c, 0xc9ced6, 0xe8ebee, 0x1c1f25,
+                 0x7d2a24, 0x24406e, 0x2b4a35, 0x9a7b2e];
   const carState = Array.from({ length: CARS }, (_, i) => ({
     lane: LANES[i % LANES.length],
     t: rnd(i * 9) * 200 - 100,
     sp: 9 + rnd(i * 4) * 9,
   }));
+  {
+    const c = new THREE.Color();
+    for (let i = 0; i < CARS; i++) cars.setColorAt(i, c.setHex(PAINT[(rnd(i * 21) * PAINT.length) | 0]));
+    cars.instanceColor.needsUpdate = true;
+  }
+
   const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _v = new THREE.Vector3(), _s = new THREE.Vector3(1, 1, 1);
+  const _up = new THREE.Vector3(0, 1, 0);
   function tickCars(dt) {
     for (let i = 0; i < CARS; i++) {
       const c = carState[i];
@@ -1207,12 +1273,12 @@ function makeOutside() {
       if (c.t < -105) c.t = 105;
       const x = c.lane.along ? c.t : c.lane.off;
       const z = c.lane.along ? c.lane.off : c.t;
-      _q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), c.lane.along ? Math.PI / 2 : 0);
+      // a car points where it's going — the old boxes never turned round,
+      // which nobody could see until they grew headlights
+      _q.setFromAxisAngle(_up, (c.lane.along ? Math.PI / 2 : 0) + (c.lane.dir < 0 ? Math.PI : 0));
       _v.set(x, c.lane.y, z);
       _m.compose(_v, _q, _s);
       cars.setMatrixAt(i, _m);
-      _v.set(x + (c.lane.along ? c.lane.dir * 2.4 : 0), c.lane.y + 0.2, z + (c.lane.along ? 0 : -c.lane.dir * 2.4));
-      _m.compose(_v, _q, _s);
       lamps.setMatrixAt(i, _m);
     }
     cars.instanceMatrix.needsUpdate = true;
@@ -1308,8 +1374,10 @@ function makeOutside() {
         nearMat.map = wantNight;
         nearMat.needsUpdate = true;
         roofMat.color.setHex(pal.night ? 0x0e1116 : 0x2c313a);
-        carMat.color.setHex(pal.night ? 0x14171d : 0x30353e);
-        lampMat.color.setHex(pal.night ? 0xfff0c8 : 0x9aa2ad);
+        // these multiply the paint and the lamp colours, so they're a
+        // dimmer, not a tint: cars go dark at night, lamps come up
+        carMat.color.setHex(pal.night ? 0x6c727a : 0xffffff);
+        lampMat.color.setHex(pal.night ? 0xffffff : 0x8b9099);
       }
       paintMountains(pal);
       paintHaze(pal);
