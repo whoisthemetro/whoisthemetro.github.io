@@ -66,6 +66,7 @@ for python-heredoc edits, so **leave them intact.**
 | Shader art on the slabs | `shaderart.js` (+ `PANEL_SHADERS` in world.js) |
 | The cat | `cat.js` |
 | The bartender | `bartender.js` |
+| The guide (bedroom tutor) | `guide.js`, `say.js` (the voice), `main.js` ~475 (placement + lines) |
 | Notes on the wall | `notes3d.js`, `store.js` |
 | Avatars / other people | `avatar-glb.js`, `ghosts.js`, `avatar-builder.js` |
 | Presence + netcode | `presence.js` |

@@ -9057,6 +9057,12 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     scene, walls, blockers, noteGroup, ghostGroup, tick,
     bounds: ROOM.bounds, isWalkable,
     spawn: { x: 1.7, z: 2.35, yaw: 0.28 },
+    // the ONE gap between the bedroom and the arcade. anything that walks
+    // itself between the two rooms (the guide) has to steer for this: the
+    // opening is only 1.5 m of a 4.6 m wall, so a body heading straight at
+    // its destination just meets brick. x sits in the overlap of the two
+    // walk rects, so the point is walkable from either side.
+    arcadeDoor: { x: -2.25, z: CZ },
     movables, applyLayout, resetMovable, layoutSnapshot,
     studio, STUDIO,
     setCityListener: fn => { onCity = fn; },

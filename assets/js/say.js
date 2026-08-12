@@ -55,6 +55,17 @@ if (SYNTH) {
   try { SYNTH.addEventListener("voiceschanged", () => { picked = pickVoice(); }); } catch (e) {}
 }
 
+/* Words the synth gets wrong, respelled for the voice ONLY — the subtitle
+   still shows what was written. "Æon" is the reason this exists: every synth
+   either spells out the ligature or says "manure" at it, and per the Æon Flux
+   article it's /ˌiːɒn/ — "EE-on". Applied to the spoken string just before it
+   goes to the synth, so nothing upstream has to know. */
+const SAY_AS = [
+  [/Æon/g, "Ee-on"],
+  [/æon/gi, "ee-on"],
+];
+const respell = (s) => SAY_AS.reduce((t, [re, to]) => t.replace(re, to), String(s));
+
 // roughly how long a line takes to say, for the silent fallback: ~145 wpm
 function guessMs(text) {
   const words = String(text).trim().split(/\s+/).filter(Boolean).length || 1;
@@ -89,7 +100,7 @@ export function speak(text, { rate = 1.02, pitch = 1.06, volume = 1, onEnd } = {
 
   try {
     if (!picked) picked = pickVoice();
-    const u = new SpeechSynthesisUtterance(String(text));
+    const u = new SpeechSynthesisUtterance(respell(text));
     if (picked) { u.voice = picked; u.lang = picked.lang; }
     u.rate = rate; u.pitch = pitch; u.volume = volume;
     u.onend = finish;

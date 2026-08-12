@@ -4,6 +4,50 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-08-12 — somebody to ask
+
+**There's a guide in the bedroom now, and her name is Æon.** The room hides
+almost everything it can do — a fill on the e-kit that opens the studio, a
+computer that boots, a window you can shoot planes through — and none of it
+announces itself. She stands a couple of metres in front of where you land,
+facing you, and tells you one thing at a time when you click her. She calls
+you by the name you typed on the way in.
+
+She's the bartender's pattern with a different temperament: glow body, 8-bit
+face, blink and mouth-flap, a halo so she reads as something the room
+provided rather than someone who wandered in. Her voice is `say.js` — the
+browser's own synth, free, no key, no network — behind a single door, so
+swapping in real audio later is one function body. Every line she speaks also
+toasts, so she works with the sound off and in a headset, where `toast()`
+mirrors to the wrist HUD by itself. A synth says "Æon" appallingly, so the
+voice gets a respelling table ("Ee-on", per the /ˌiːɒn/ in the Æon Flux
+article) while the subtitle keeps the ligature.
+
+**She follows you.** Past two metres she gives up her post and comes after
+you, and where she stops becomes the new post. Getting into the arcade took
+an actual fix: the opening is 1.5 m of a 4.6 m wall, so a body walking
+straight at you from the far side just meets brick — she wedged there for a
+second and a half before her stuck-timer bailed her out, which read as a bug.
+`world.arcadeDoor` is new, and she steers for the threshold first, aiming
+slightly past it so she doesn't stall in the doorway recomputing. She walks
+it now, both ways. The blink survives only for what walking can't solve —
+wedged behind furniture, or you took the lift and she's forty metres off —
+and she flares half a second on arrival so it reads as arriving, not as a
+jump cut.
+
+**She only talks about the room she's standing in.** Two pools, picked by
+`inArcade()`, drawn from a shuffle bag so a fresh bag never opens with the
+line you just heard. Bedroom: the cat, the tele, the pedals, the treadle, the
+mixer, the LA radio, the lava lamp (and that it's the room's, not yours), the
+blinds, the curtains, the dimmer, METRO OS, the notes wall, the drum-pad
+numerals, the real LAX traffic on the flight strip, and the jets you can
+shoot through the glass. Arcade: the four hand-written cabinets, the marquee,
+the barkeep, the pool tables, the hoop's fire, the mirror, the lift.
+
+Every line was checked against the code rather than against a summary, after
+the first draft confidently sent people to the arcade through the door with
+the red neon — which is MIX & MASTER, and leaves the site entirely.
+
 ## 2026-08-12 — the furniture becomes furniture
 
 **You can't walk through the pool tables or the bar any more.** The
