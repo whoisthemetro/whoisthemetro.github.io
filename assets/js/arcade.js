@@ -75,7 +75,7 @@ let scoreHook = null;
 export function setScoreHook(fn) { scoreHook = fn; }   // main reports to the wall
 function saveHi(score) {
   try { if (score > hiScore()) localStorage.setItem(hiKey(), String(score)); } catch (e) {}
-  if (score > 0 && gameId === "defender") scoreHook?.(gameId, score);
+  if (score > 0 && gameId) scoreHook?.(gameId, score);   // every cabinet keeps a board
 }
 
 /* ================= DEFENDER (single player) ================= */

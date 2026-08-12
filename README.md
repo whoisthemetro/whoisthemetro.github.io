@@ -53,6 +53,9 @@ distance and portals:
   full liturgy, an original maze-chase, light cycles and paddles — some
   2-player in lockstep over the network. They play in VR too: the game
   floats on a panel in the room and the controllers become the cabinet.
+  A marquee hangs over the row where the neon sign used to be — bulbs
+  chasing round the frame, cycling each machine's all-time top five, and
+  it flashes when your name lands on it.
 - **THE DESI** — a boat room reached through a poster (passphrase `desi`).
   Runs on the *real* sun, moon and weather of Gotland, Sweden via Open-Meteo,
   with a living sea, true sound isolation, and a message-in-a-bottle you can

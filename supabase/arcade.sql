@@ -7,7 +7,7 @@
 create table if not exists public.scores (
   id          uuid primary key default gen_random_uuid(),
   created_at  timestamptz not null default now(),
-  game        text not null check (game in ('defender', 'doom', 'tron', 'pong')),
+  game        text not null check (game in ('defender', 'doom', 'pac', 'tron', 'pong')),
   name        text check (name is null or char_length(name) <= 24),
   score       integer not null check (score > 0 and score < 10000000)
 );

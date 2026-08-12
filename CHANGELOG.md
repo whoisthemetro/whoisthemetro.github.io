@@ -4,6 +4,30 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-08-11 — the arcade puts names on the wall
+
+**The high scores moved to the marquee.** They used to be a small dark
+panel on the north wall, listing DEFENDER and nothing else — the one
+game that was actually wired to report. The neon "METRO'S ARCADE" sign
+is gone and this hangs where it was, high on the back wall above the
+row: a real marquee with bulbs chasing round the frame, a scanned CRT
+face, and the top five for one machine at a time. It cycles DEFENDER →
+PAC-MAN → TRON → PONG every six seconds; the game's name slides out and
+the next one slides in, the rows clatter down one after another like a
+departure board, the frame and the wash of light on the wall behind it
+turn that machine's colour, and the leader's row catches a slow gold
+sweep. A machine nobody's played yet blinks BE THE FIRST.
+
+**All four cabinets report now.** `saveHi` had `gameId === "defender"`
+hard-coded, so PAC-MAN, TRON and PONG kept a high score in the page and
+threw it away on reload. They all submit, and the `scores` table learned
+the name `pac` (it still only allowed `doom`, from the cabinet that used
+to stand there). Put a score up and the board flashes white as your row
+lands.
+
+It repaints a megapixel, so it only does that while someone is standing
+in the arcade, at 30 Hz. The room still holds 60 fps in front of it.
+
 ## 2026-08-11 — the city gets on with its life
 
 **Outside is a place now, and it has no edges.** The view through the

@@ -4478,14 +4478,18 @@ addEventListener("keydown", (e) => {
   });
   presence.onChat((p) => pushChat(p.name || "someone", p.color, p.text));
 
-  // arcade leaderboard: load it, keep it live, report new scores
-  const refreshScores = () =>
-    store.listScores("defender", 8).then(rows => world.updateScores(rows)).catch(() => {});
+  // arcade leaderboard: every cabinet keeps its own board, the marquee
+  // cycles them. load all four, keep them live, report new scores.
+  const SCORE_GAMES = ["defender", "pac", "tron", "pong"];
+  const refreshScores = (flash = false) =>
+    Promise.all(SCORE_GAMES.map(g =>
+      store.listScores(g, 5).then(rows => [g, rows]).catch(() => [g, []])
+    )).then(pairs => world.setScores(Object.fromEntries(pairs), flash)).catch(() => {});
   refreshScores();
-  store.onNewScore(refreshScores);
+  store.onNewScore(() => refreshScores());
   setScoreHook((game, score) => {
     store.submitScore(game, (identity.name || "anon").slice(0, 24), score, identity.uid)
-      .then(refreshScores)
+      .then(() => refreshScores(true))     // your name lands and the board flashes
       .catch(() => {});
   });
 

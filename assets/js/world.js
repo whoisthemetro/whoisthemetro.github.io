@@ -3718,29 +3718,232 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     }
   }
 
-  // "METRO'S ARCADE" — neon on the arcade's back wall (the bedroom
-  // never advertises it; you find the closet, you find the room)
-  // 640 wide with real margins: at 512 the glow-blurred M and E hung past
-  // the canvas edge and came back cropped
-  const arcSignTex = canvasTex(640, 96, (g) => {
-    g.clearRect(0, 0, 640, 96);
-    g.font = "500 52px 'Six Caps', sans-serif";
+  /* --- the MARQUEE: high scores where the sign used to be -----------------
+     The old neon "METRO'S ARCADE" said the room's name to a room you were
+     already standing in. This says something you'd actually stop and read:
+     who holds each machine. It cycles the four cabinets, and it's built
+     like a real marquee — a bulb chase around the border, a scanned CRT
+     face, rows that clatter in one at a time like a departure board. --- */
+  const MQ = { w: 1024, h: 512 };
+  const mqCanvas = document.createElement("canvas");
+  mqCanvas.width = MQ.w; mqCanvas.height = MQ.h;
+  const mqCtx = mqCanvas.getContext("2d");
+  const mqTex = new THREE.CanvasTexture(mqCanvas);
+  mqTex.colorSpace = THREE.SRGBColorSpace;
+
+  // one entry per cabinet, in the order they stand along the wall
+  const MQ_GAMES = [
+    { id: "defender", label: "DEFENDER", hue: "#ff3434", dim: "#5e1512" },
+    { id: "pac",      label: "PAC-MAN",  hue: "#ffe737", dim: "#5e5410" },
+    { id: "tron",     label: "TRON",     hue: "#22d4ff", dim: "#0d4a5e" },
+    { id: "pong",     label: "PONG",     hue: "#e8e8e8", dim: "#4a4a4a" },
+  ];
+  const mqScores = {};                 // id -> [{name, score}]
+  let mqIdx = 0, mqT = 0, mqFlash = 0;
+  const MQ_HOLD = 6.0, MQ_WIPE = 0.85;
+
+  const mqRound = (g, x, y, w, h, r) => {
+    g.beginPath();
+    g.moveTo(x + r, y);
+    g.arcTo(x + w, y, x + w, y + h, r);
+    g.arcTo(x + w, y + h, x, y + h, r);
+    g.arcTo(x, y + h, x, y, r);
+    g.arcTo(x, y, x + w, y, r);
+    g.closePath();
+  };
+
+  function drawMarquee(t) {
+    const g = mqCtx;
+    const cur = MQ_GAMES[mqIdx];
+    const nxt = MQ_GAMES[(mqIdx + 1) % MQ_GAMES.length];
+    // 0 while holding, 0..1 across the wipe
+    const wipe = mqT > MQ_HOLD ? Math.min(1, (mqT - MQ_HOLD) / MQ_WIPE) : 0;
+    const ease = wipe < 0.5 ? 2 * wipe * wipe : 1 - Math.pow(-2 * wipe + 2, 2) / 2;
+    const show = wipe > 0.5 ? nxt : cur;          // the face swaps at the midpoint
+    const rows = (mqScores[show.id] || []).slice(0, 5);
+
+    g.fillStyle = "#05060a";
+    g.fillRect(0, 0, MQ.w, MQ.h);
+
+    // --- the cabinet's own glow behind the glass ---
+    const glow = g.createRadialGradient(MQ.w / 2, MQ.h * 0.55, 40, MQ.w / 2, MQ.h * 0.55, MQ.w * 0.62);
+    glow.addColorStop(0, show.dim);
+    glow.addColorStop(1, "rgba(0,0,0,0)");
+    g.globalAlpha = 0.55 + 0.12 * Math.sin(t * 2.2);
+    g.fillStyle = glow;
+    g.fillRect(0, 0, MQ.w, MQ.h);
+    g.globalAlpha = 1;
+
+    // --- header: the room's name stays, small, above the game ---
     g.textAlign = "center"; g.textBaseline = "middle";
-    g.letterSpacing = "8px";
-    g.shadowColor = "#ff2da0"; g.shadowBlur = 14;
-    g.strokeStyle = "#ff6ac0"; g.lineWidth = 2.5;
-    g.strokeText("METRO'S ARCADE", 320, 50);
+    g.font = "500 40px 'Six Caps', sans-serif";
+    g.letterSpacing = "10px";
+    g.fillStyle = "rgba(255,150,215,0.75)";
+    g.fillText("METRO'S ARCADE", MQ.w / 2, 58);
+    g.letterSpacing = "0px";
+
+    // --- the game name, sliding through on the wipe ---
+    const slide = (1 - Math.cos(Math.min(1, wipe) * Math.PI * 2)) * 0.5;   // out and back
+    const nameX = MQ.w / 2 + (wipe > 0.5 ? (1 - ease) : -ease) * 420;
+    g.save();
+    g.globalAlpha = 1 - slide * 0.85;
+    g.font = "900 78px monospace";
+    g.shadowColor = show.hue; g.shadowBlur = 26;
+    g.fillStyle = show.hue;
+    g.fillText(show.label, nameX, 132);
     g.shadowBlur = 0;
-    g.fillStyle = "#ffe9f6";
-    g.fillText("METRO'S ARCADE", 320, 50);
-  });
-  const arcSign = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 0.36), new THREE.MeshBasicMaterial({
-    map: arcSignTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
-  }));
-  arcSign.rotation.y = Math.PI / 2;
-  arcSign.position.set(AR.x0 + 0.02, 2.65, (AR.z0 + AR.z1) / 2);
-  arcSign.scale.setScalar(1.6);   // big wall, big sign
-  add(arcSign);
+    g.restore();
+
+    // --- HIGH SCORES rule ---
+    g.font = "700 20px monospace";
+    g.letterSpacing = "6px";
+    g.fillStyle = "rgba(220,232,244,0.5)";
+    g.fillText("H I G H   S C O R E S", MQ.w / 2, 186);
+    g.letterSpacing = "0px";
+    g.fillStyle = show.hue;
+    g.globalAlpha = 0.35;
+    g.fillRect(150, 202, MQ.w - 300, 2);
+    g.globalAlpha = 1;
+
+    // --- the rows: each clatters in on its own beat ---
+    if (!rows.length) {
+      g.font = "900 40px monospace";
+      g.fillStyle = Math.floor(t * 1.6) % 2 ? show.hue : "rgba(120,130,150,0.6)";
+      g.fillText("BE THE FIRST", MQ.w / 2, 320);
+    }
+    rows.forEach((r, i) => {
+      // stagger: row i lands a beat after row i-1 once the wipe is done
+      const local = Math.max(0, Math.min(1, (wipe > 0.5 ? (wipe - 0.5) / 0.5 : 1) * 1.6 - i * 0.18));
+      const e = 1 - Math.pow(1 - local, 3);
+      const y = 250 + i * 50;
+      const x0 = 140 + (1 - e) * 260;
+      g.globalAlpha = e;
+
+      const gold = i === 0;
+      if (gold) {
+        // the leader gets a plate that catches a moving highlight
+        const sweep = ((t * 0.35) % 1) * (MQ.w - 200);
+        const plate = g.createLinearGradient(100, 0, MQ.w - 100, 0);
+        plate.addColorStop(0, "rgba(255,210,60,0.06)");
+        plate.addColorStop(Math.max(0, Math.min(1, sweep / (MQ.w - 200))), "rgba(255,210,60,0.22)");
+        plate.addColorStop(1, "rgba(255,210,60,0.06)");
+        g.fillStyle = plate;
+        mqRound(g, 110, y - 24, MQ.w - 220, 44, 8);
+        g.fill();
+      }
+
+      g.textAlign = "left";
+      g.font = "900 34px monospace";
+      g.fillStyle = gold ? "#ffd23c" : "rgba(150,164,184,0.9)";
+      g.fillText(String(i + 1), x0 - 44, y);
+      g.fillStyle = gold ? "#fff4cf" : "#d3dae4";
+      g.fillText(String(r.name || "anon").slice(0, 12).toUpperCase(), x0, y);
+      g.textAlign = "right";
+      g.font = "900 34px monospace";
+      g.fillStyle = gold ? "#ffd23c" : show.hue;
+      g.fillText(String(r.score), MQ.w - 140 - (1 - e) * 260, y);
+      g.globalAlpha = 1;
+    });
+
+    // --- a new score just landed: the whole face flashes ---
+    if (mqFlash > 0) {
+      g.fillStyle = `rgba(255,255,255,${0.5 * mqFlash * mqFlash})`;
+      g.fillRect(0, 0, MQ.w, MQ.h);
+    }
+
+    // --- CRT: scanlines, a rolling bright band, and soft vignette corners ---
+    g.globalAlpha = 0.16;
+    g.fillStyle = "#000";
+    for (let y = 0; y < MQ.h; y += 4) g.fillRect(0, y, MQ.w, 2);
+    g.globalAlpha = 1;
+    const roll = ((t * 0.16) % 1.4 - 0.2) * MQ.h;
+    const band = g.createLinearGradient(0, roll, 0, roll + 90);
+    band.addColorStop(0, "rgba(255,255,255,0)");
+    band.addColorStop(0.5, "rgba(255,255,255,0.045)");
+    band.addColorStop(1, "rgba(255,255,255,0)");
+    g.fillStyle = band;
+    g.fillRect(0, roll, MQ.w, 90);
+
+    // --- the bulb chase around the border: what makes it a marquee ---
+    const bulbs = [];
+    const M = 26, SP = 46;
+    for (let x = M; x <= MQ.w - M; x += SP) { bulbs.push([x, M]); bulbs.push([x, MQ.h - M]); }
+    for (let y = M + SP; y <= MQ.h - M - SP; y += SP) { bulbs.push([M, y]); bulbs.push([MQ.w - M, y]); }
+    bulbs.forEach(([bx, by], i) => {
+      // three lamps chasing round the ring, plus a slow overall shimmer
+      const phase = (i / bulbs.length + t * 0.11) % 1;
+      const chase = Math.pow(Math.max(0, Math.cos(phase * Math.PI * 2 * 3)), 6);
+      const lit = 0.28 + 0.72 * chase;
+      g.fillStyle = `rgba(255,236,190,${0.10 + lit * 0.55})`;
+      g.beginPath(); g.arc(bx, by, 5 + lit * 3.5, 0, 7); g.fill();
+      if (lit > 0.6) {
+        g.fillStyle = `rgba(255,246,220,${(lit - 0.6) * 0.7})`;
+        g.beginPath(); g.arc(bx, by, 13, 0, 7); g.fill();
+      }
+    });
+    // the frame the bulbs are screwed to
+    g.strokeStyle = show.hue;
+    g.globalAlpha = 0.5 + 0.18 * Math.sin(t * 2.6);
+    g.lineWidth = 3;
+    mqRound(g, 12, 12, MQ.w - 24, MQ.h - 24, 16);
+    g.stroke();
+    g.globalAlpha = 1;
+
+    mqTex.needsUpdate = true;
+  }
+
+  const marquee = new THREE.Mesh(new THREE.PlaneGeometry(4.4, 2.2),
+    new THREE.MeshBasicMaterial({ map: mqTex, transparent: true }));
+  marquee.rotation.y = Math.PI / 2;
+  // hung high: the cabinets stand 1.78 and the ceiling is 4.3, so the whole
+  // board has to live in between or the last name is behind a machine
+  marquee.position.set(AR.x0 + 0.03, 3.03, (AR.z0 + AR.z1) / 2);
+  add(marquee);
+  // a wash of the current game's colour bleeding onto the wall behind it
+  const mqWash = new THREE.Mesh(new THREE.PlaneGeometry(6.4, 3.6),
+    new THREE.MeshBasicMaterial({
+      color: 0xff3434, transparent: true, opacity: 0.16,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+      map: canvasTex(64, 64, (g) => {
+        const rg = g.createRadialGradient(32, 32, 2, 32, 32, 32);
+        rg.addColorStop(0, "rgba(255,255,255,1)");
+        rg.addColorStop(1, "rgba(255,255,255,0)");
+        g.fillStyle = rg; g.fillRect(0, 0, 64, 64);
+      }),
+    }));
+  mqWash.rotation.y = Math.PI / 2;
+  mqWash.position.set(AR.x0 + 0.02, 3.03, (AR.z0 + AR.z1) / 2);
+  mqWash.renderOrder = -1;
+  add(mqWash);
+
+  const _mqCol = new THREE.Color();
+  let mqAcc = 0;
+  function tickMarquee(dt, t, ppos) {
+    // the clock runs whether or not anyone's in the room — walk in and the
+    // board is already mid-cycle, like it never stopped
+    mqT += dt;
+    if (mqT > MQ_HOLD + MQ_WIPE) { mqT = 0; mqIdx = (mqIdx + 1) % MQ_GAMES.length; }
+    mqFlash = Math.max(0, mqFlash - dt * 1.6);
+    const wipe = mqT > MQ_HOLD ? Math.min(1, (mqT - MQ_HOLD) / MQ_WIPE) : 0;
+    const show = MQ_GAMES[wipe > 0.5 ? (mqIdx + 1) % MQ_GAMES.length : mqIdx];
+    mqWash.material.color.lerp(_mqCol.set(show.hue), Math.min(1, dt * 3));
+    mqWash.material.opacity = 0.13 + 0.05 * Math.sin(t * 2.2) + mqFlash * 0.5;
+    // repainting a megapixel and shipping it to the GPU is the expensive part,
+    // so it only happens where the board can be seen — inside the arcade —
+    // and at 30 Hz, which is plenty for a bulb chase
+    if (!ppos || ppos.x < AR.x0 - 2 || ppos.x > AR.x1 + 3 ||
+        ppos.z < AR.z0 - 2 || ppos.z > AR.z1 + 2) return;
+    mqAcc += dt;
+    if (mqAcc < 1 / 30) return;
+    mqAcc = 0;
+    drawMarquee(t);
+  }
+  // main.js hands us every board at once: { defender: [...], pac: [...], ... }
+  function setScores(map, flash = false) {
+    for (const k in map) mqScores[k] = map[k] || [];
+    if (flash) mqFlash = 1;
+  }
+  drawMarquee(0);
 
   /* --- arcade elevator: a real car you step INTO, recessed into the south
      wall like a building lift — only the doors are flush; the cab is carved
@@ -4056,48 +4259,6 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     await swapCabinetModel(pongGrp, "assets/models/pong_cabinet.glb", 1.78, Math.PI / 2);
     await swapCabinetModel(defGrp, "assets/models/defender_cabinet.glb", 1.78, Math.PI);
   }, 1200);
-
-  // HIGH SCORES board on the north wall — shared, all-time
-  const scoreCanvas = document.createElement("canvas");
-  scoreCanvas.width = 512; scoreCanvas.height = 384;
-  const scoreTex = new THREE.CanvasTexture(scoreCanvas);
-  scoreTex.colorSpace = THREE.SRGBColorSpace;
-  function updateScores(rows = []) {
-    const g = scoreCanvas.getContext("2d");
-    g.fillStyle = "#06060c";
-    g.fillRect(0, 0, 512, 384);
-    g.strokeStyle = "#ff2da0";
-    g.lineWidth = 5;
-    g.strokeRect(8, 8, 496, 368);
-    g.font = "900 34px monospace";
-    g.textAlign = "center";
-    g.fillStyle = "#ffd23c";
-    g.fillText("★ HIGH SCORES ★", 256, 54);
-    g.font = "16px monospace";
-    g.fillStyle = "#22d4ff";
-    g.fillText("DEFENDER — ALL TIME", 256, 84);
-    g.font = "700 20px monospace";
-    if (!rows.length) {
-      g.fillStyle = "#5a5a6a";
-      g.fillText("no heroes yet", 256, 180);
-    }
-    rows.slice(0, 8).forEach((r, i) => {
-      const y = 122 + i * 32;
-      g.textAlign = "left";
-      g.fillStyle = i === 0 ? "#ffd23c" : "#d8dee4";
-      g.fillText(`${i + 1}. ${String(r.name || "anon").slice(0, 12)}`, 48, y);
-      g.textAlign = "right";
-      g.fillText(String(r.score), 464, y);
-    });
-    scoreTex.needsUpdate = true;
-  }
-  updateScores();
-  const scoreBoard = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 1.28),
-    new THREE.MeshBasicMaterial({ map: scoreTex }));
-  scoreBoard.rotation.y = Math.PI;
-  scoreBoard.scale.setScalar(1.25);
-  scoreBoard.position.set(-16, 1.75, AR.z1 - 0.06);   // north wall, by the cabinets
-  add(scoreBoard);
 
   /* --- floor plan: every game that's coming gets its footprint taped out
      on the carpet now. so the empty hall reads as an arcade mid-build, not a
@@ -6828,6 +6989,7 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     }
     dustGeo.attributes.position.needsUpdate = true;
     tickArcadeAir(dt, elapsed);
+    tickMarquee(dt, elapsed, ppos);
     const bp = bDustGeo.attributes.position.array;
     for (let i = 0; i < BDUST; i++) {
       const v = bDustVel[i];
@@ -8501,7 +8663,7 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     // where you land when you leave any room — back inside the cab, facing out
     // the (open) doors into the arcade, so the lift is the hub for every trip
     elevReturn: { x: ELC.x, z: zWall - 0.4, yaw: Math.PI },
-    updateScores,
+    setScores,
     setParallax,
     boatSpawn: { x: BOAT.x, z: BOAT.z + 0.4, yaw: 0 },
     inBoat: (x) => x > 30,
