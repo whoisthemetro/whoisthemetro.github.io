@@ -1445,6 +1445,10 @@ export function buildWorld(renderer) {
   const caster = (m) => { m.castShadow = true; return m; };
 
   const blockers = [];
+  // solid furniture: rects subtracted from the walkable floor (see isWalkable).
+  // pushed by whatever builds the piece, so a table that moves takes its
+  // collision with it instead of leaving a ghost behind.
+  const NO_WALK = [];
 
   /* --- the radio: a little cream tuner that streams real broadcast (radio.js).
      built twice — Swedish in Desi's cabin, LA in the bedroom — so it's a
@@ -3627,45 +3631,61 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     fixGlow.rotation.x = Math.PI / 2;
     fixGlow.position.set(AR.x1 - 0.6, ARC_H - 0.065, z);
     add(fixGlow);
-    // hung low enough to actually reach the seats; throw stays shorter
-    // than the gap to the bedroom wall, as the house rules demand
-    const down = add(new THREE.PointLight(0xffb070, 10, 1.5, 2));
-    down.position.set(AR.x1 - 0.6, 1.95, z);
+    // hung low enough to actually reach the TABLE TOP, not just the seats:
+    // the scanned props are PBR (they load after the toon pass, so they keep
+    // their own materials) and a metre and a half of falloff left them black.
+    // the throw is unchanged, so it still can't reach past the bedroom wall —
+    // dropping the light only moves it closer to what it's meant to light.
+    const down = add(new THREE.PointLight(0xffb070, 13, 1.5, 2));
+    down.position.set(AR.x1 - 0.6, 1.5, z);
   }
+  // each prop lives in its own little group sitting ON the table's top face,
+  // so a scanned model can take the stand-in's place without anyone having to
+  // re-derive where a table is
+  const TABLE_TOP = 0.535;
+  const smokeProps = {};
   {
     // the bong, on the north table — green glass, doing its best
     const t1 = smokeTable(CZ + 1.7, 0x22d4ff);
+    const bongHost = new THREE.Group(); bongHost.position.y = TABLE_TOP; t1.add(bongHost);
     const glass = new THREE.MeshLambertMaterial({ color: 0x6fae7e, transparent: true, opacity: 0.55 });
     const base = new THREE.Mesh(new THREE.SphereGeometry(0.075, 12, 10), glass);
-    base.position.y = 0.6;
+    base.position.y = 0.065;
     base.scale.y = 0.8;
-    t1.add(base);
+    bongHost.add(base);
     const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.034, 0.3, 10), glass);
-    neck.position.y = 0.76;
-    t1.add(neck);
+    neck.position.y = 0.225;
+    bongHost.add(neck);
     const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.012, 0.09, 8), lam(0x3c3328));
-    bowl.position.set(0.07, 0.63, 0);
+    bowl.position.set(0.07, 0.095, 0);
     bowl.rotation.z = -0.8;
-    t1.add(bowl);
+    bongHost.add(bowl);
     for (const m of [base, neck, bowl]) { m.userData.smoke = "bong"; smokeHits.push(m); }
     smokeSpots.bong = new THREE.Vector3(AR.x1 - 0.38, 0.93, CZ + 1.7);
+    smokeProps.bong = bongHost;
 
     // ashtray + a waiting joint on the south table
     const t2 = smokeTable(CZ - 1.7, 0xff2da0);
+    const ashHost = new THREE.Group(); ashHost.position.y = TABLE_TOP; t2.add(ashHost);
     const tray = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.055, 0.03, 12), lam(0x4a4f5a));
-    tray.position.y = 0.55;
-    t2.add(tray);
+    tray.position.y = 0.015;
+    ashHost.add(tray);
+    // the joint rests ACROSS the tray's rim, not down in the bowl — the real
+    // ashtray is a deep footed thing and a joint dropped inside it vanishes
+    const jointHost = new THREE.Group();
+    jointHost.position.set(0.052, TABLE_TOP + 0.072, 0.012);
+    jointHost.rotation.set(0, 0.5, 1.4);
+    t2.add(jointHost);
     const joint = new THREE.Mesh(new THREE.CylinderGeometry(0.007, 0.009, 0.075, 6), lam(0xe8e2d2));
-    joint.position.set(0.045, 0.575, 0.02);
-    joint.rotation.z = 1.25;
-    joint.rotation.y = 0.5;
-    t2.add(joint);
+    jointHost.add(joint);
     const ember = new THREE.Mesh(new THREE.SphereGeometry(0.008, 6, 5),
       new THREE.MeshBasicMaterial({ color: 0xff7a30 }));
-    ember.position.set(0.082, 0.59, 0.038);
-    t2.add(ember);
+    ember.position.set(0.082, 0.055, 0.038);
+    ashHost.add(ember);
     for (const m of [tray, joint]) { m.userData.smoke = "joint"; smokeHits.push(m); }
     smokeSpots.joint = new THREE.Vector3(AR.x1 - 0.32, 0.62, CZ - 1.68);
+    smokeProps.ashtray = ashHost;
+    smokeProps.joint = jointHost;
   }
 
   // the smoke itself: soft billboarded puffs that rise, swell and thin
@@ -4248,6 +4268,63 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
       });
     }).catch(() => {});
   }
+  /* --- the same trick for the props on the smoking tables. A cabinet is
+     sized by its HEIGHT; an ashtray isn't — it's a wide flat thing, and a
+     joint is a long thin one, so the axis you match on is part of the ask.
+     `centre` tips the balance for anything that lies at an angle: the model
+     is centred in its host so the host's rotation turns it about its middle
+     instead of swinging it off one end. --- */
+  function swapProp(host, url, { size, axis = "y", rotY = 0, centre = false, tag }) {
+    return import("three/addons/loaders/GLTFLoader.js").then(({ GLTFLoader }) =>
+      new GLTFLoader().loadAsync(url)
+    ).then((gltf) => {
+      const model = gltf.scene;
+      if (rotY) model.rotation.y = rotY;
+      const b = new THREE.Box3().setFromObject(model);
+      const d = b.getSize(new THREE.Vector3());
+      const extent = axis === "xz" ? Math.max(d.x, d.z)
+                   : axis === "max" ? Math.max(d.x, d.y, d.z)
+                   : d.y;
+      if (extent > 1e-4) model.scale.setScalar(size / extent);
+      const b2 = new THREE.Box3().setFromObject(model);
+      const c = b2.getCenter(new THREE.Vector3());
+      model.position.x -= c.x;
+      model.position.z -= c.z;
+      model.position.y -= centre ? c.y : b2.min.y;   // stood on the table, or centred to be tipped
+      const meshes = [];
+      model.traverse((o) => {
+        if (!o.isMesh) return;
+        o.castShadow = true;
+        o.userData.smoke = tag;                       // the whole model is the click target
+        meshes.push(o);
+        const m = o.material;
+        if (m) {
+          // same rule as the cabinets: one visible transmissive material makes
+          // three render the entire scene twice a frame. tinted glass is fine.
+          if (m.transmission > 0) { m.transmission = 0; m.transparent = true; m.opacity = Math.min(m.opacity, 0.6); }
+          if (m.clearcoat > 0) m.clearcoat = 0;
+          m.needsUpdate = true;
+        }
+      });
+      const warm = renderer.compileAsync
+        ? renderer.compileAsync(model, warmupCam, scene).catch(() => {})
+        : Promise.resolve();
+      return Promise.race([warm, new Promise((ok) => setTimeout(ok, 2000))]).then(() => {
+        // the stand-in leaves the scene AND the raycast list — a click target
+        // pointing at a mesh nobody can see is a ghost you can still tap
+        for (const child of [...host.children]) {
+          child.traverse((o) => {
+            const i = smokeHits.indexOf(o);
+            if (i >= 0) smokeHits.splice(i, 1);
+          });
+          host.remove(child);
+        }
+        host.add(model);
+        for (const m of meshes) smokeHits.push(m);   // intersectObjects is NON-recursive
+      });
+    }).catch(() => {});
+  }
+
   const warmupCam = new THREE.PerspectiveCamera();
   // loaded up-front (one at a time, right after first paint) — the models
   // are ~300KB each now and the GPU warm-up spreads their cost, so there's
@@ -4258,6 +4335,10 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     await swapCabinetModel(pacGrp, "assets/models/pac_cabinet.glb", 1.78);
     await swapCabinetModel(pongGrp, "assets/models/pong_cabinet.glb", 1.78, Math.PI / 2);
     await swapCabinetModel(defGrp, "assets/models/defender_cabinet.glb", 1.78, Math.PI);
+    // the smoking corner, sized to the stand-ins they replace
+    await swapProp(smokeProps.bong, "assets/models/bong.glb", { size: 0.375, axis: "y", tag: "bong" });
+    await swapProp(smokeProps.ashtray, "assets/models/ashtray.glb", { size: 0.155, axis: "xz", tag: "joint" });
+    await swapProp(smokeProps.joint, "assets/models/joint.glb", { size: 0.095, axis: "max", centre: true, tag: "joint" });
   }, 1200);
 
   /* --- floor plan: every game that's coming gets its footprint taped out
@@ -4334,7 +4415,11 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
       strip.position.set(ABX, sy - 0.05, backZ + 0.12); add(strip);
     }
 
-    // the counter — a solid base + a proud top, its front toward the room
+    // the counter — a solid base + a proud top, its front toward the room.
+    // everything from the counter's face back to the wall belongs to the
+    // bartender; you lean on it, you don't walk through it.
+    NO_WALK.push({ x0: ABX - LEN / 2 - 0.14, x1: ABX + LEN / 2 + 0.14,
+                   z0: WALLZ - 0.3, z1: counterZ + 0.34 });
     const barBase = box(LEN, 1.0, 0.5, lam(0x2a2233));
     barBase.position.set(ABX, 0.5, counterZ); add(barBase);
     const barTop = box(LEN + 0.16, 0.06, 0.64, lam(0x12101a));
@@ -4395,6 +4480,9 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
 
     const grp = new THREE.Group();
     grp.position.set(PT.x, 0, PT.z);
+    // you can't walk through slate: playfield + rail cap + a little clearance
+    NO_WALK.push({ x0: PT.x - hl - 0.22, x1: PT.x + hl + 0.22,
+                   z0: PT.z - hw - 0.22, z1: PT.z + hw + 0.22 });
 
     const wood = lam(0x4a2c18), woodDark = lam(0x351d10);
     const clothCol = 0x0c7a39;
@@ -4782,10 +4870,6 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
       }
       g.beginPath(); g.arc(cx, ry, R3 * PPM, meetA, Math.PI - meetA); g.stroke();
 
-      // house mark, out past the arc where there's floor left
-      g.fillStyle = "rgba(244,239,226,0.22)";
-      g.font = "700 40px monospace"; g.textAlign = "center"; g.textBaseline = "middle";
-      g.fillText("METRO", cx, pz(Dc - 0.42));
     });
     const courtMesh = new THREE.Mesh(new THREE.PlaneGeometry(Wc, Dc),
       new THREE.MeshLambertMaterial({ map: courtTex }));
@@ -8879,10 +8963,11 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
   let studioWalk = () => false;
   const isWalkable = (x, z) =>
     studioWalk(x, z) ||
-    WALK_RECTS.some(r => x >= r.x0 && x <= r.x1 && z >= r.z0 && z <= r.z1) ||
+    (!NO_WALK.some(r => x > r.x0 && x < r.x1 && z > r.z0 && z < r.z1) &&
+     (WALK_RECTS.some(r => x >= r.x0 && x <= r.x1 && z >= r.z0 && z <= r.z1) ||
     // the recessed elevator cab + its threshold, walkable only when open
-    (elevDoorPos > 0.45 &&
-      x >= ELWALK.x0 && x <= ELWALK.x1 && z >= ELWALK.z0 && z <= ELWALK.z1);
+      (elevDoorPos > 0.45 &&
+        x >= ELWALK.x0 && x <= ELWALK.x1 && z >= ELWALK.z0 && z <= ELWALK.z1)));
 
   /* --- stylized cel shading: every lit material gets a stepped toon
      ramp. Bright emissive things (screens, neon, signs) stay as-is. --- */

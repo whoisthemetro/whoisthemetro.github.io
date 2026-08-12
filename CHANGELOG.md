@@ -4,6 +4,37 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-08-12 — the furniture becomes furniture
+
+**You can't walk through the pool tables or the bar any more.** The
+floorplan was a union of rects you're allowed to stand in, with no way to
+say "not here" — so slate and a bar counter were suggestions. There's a
+NO_WALK list now, pushed by whatever builds the piece (so a table that
+moves takes its collision with it), and subtracted from the walkable
+floor. Both tables are solid to the rail, and the bar is solid from the
+counter's face back to the wall — you lean on it, the bartender keeps
+their side. Walking on foot and in VR both got an escape hatch first: if
+the spot you're standing in is illegal, every axis fails and you'd be
+welded in place, so anything goes until you're back on legal floor.
+
+**Real props in the smoking corner.** The bong, the ashtray and the joint
+were procedural stand-ins; they're scanned models now, swapped in over
+the stand-ins the same way the cabinets are — async, size-matched, and if
+one never arrives the stand-in stays. A cabinet is sized by its height,
+but an ashtray isn't (it's wide and flat) and a joint isn't (it's long
+and thin), so the axis you match on is part of the ask. The stand-in
+leaves the raycast list when it leaves the scene, or you'd be tapping a
+ghost you can't see.
+
+The downlights over those two tables dropped from 1.95 m to 1.5 m. The
+scanned props load after the toon pass so they keep their PBR materials,
+and a metre and a half of falloff left them essentially black. The throw
+is unchanged, so it still can't reach past the bedroom wall — the light
+just moved closer to what it's for.
+
+**METRO came off the basketball court.** It was the only thing on that
+floor a real court wouldn't have.
+
 ## 2026-08-11 — five in a row and the rock catches
 
 **NBA Jam's rule, kept exactly.** Five makes in a row on the arcade court

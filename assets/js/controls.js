@@ -134,6 +134,15 @@ export class Controls {
     this.yaw -= this.lookJoy.x * RATE * dt;
     this.pitch = clamp(this.pitch - this.lookJoy.y * RATE * dt, -1.25, 1.25);
   }
+  // slide along walls: try each axis independently. if the spot you're ALREADY
+  // standing in is illegal — a teleport, or furniture that grew collision under
+  // your feet — both axes fail and you'd be welded in place, so anything goes
+  // until you're back on legal floor.
+  _slide(dx, dz) {
+    if (!this.walkable(this.pos.x, this.pos.z)) { this.pos.x += dx; this.pos.z += dz; return; }
+    if (this.walkable(this.pos.x + dx, this.pos.z)) this.pos.x += dx;
+    if (this.walkable(this.pos.x, this.pos.z + dz)) this.pos.z += dz;
+  }
   // lock-on: while winding up a shot, ease the camera (and crosshair) onto the
   // target backboard so you can see exactly where the ball is going
   _easeAim(dt) {
@@ -304,9 +313,7 @@ export class Controls {
       const dx = (sin * -fwd + cos * strafe) * sp;
       const dz = (cos * -fwd - sin * strafe) * sp;
       if (this.walkable) {
-        // slide along walls: try each axis independently
-        if (this.walkable(this.pos.x + dx, this.pos.z)) this.pos.x += dx;
-        if (this.walkable(this.pos.x, this.pos.z + dz)) this.pos.z += dz;
+        this._slide(dx, dz);
       } else {
         this.pos.x = clamp(this.pos.x + dx, this.bounds.minX, this.bounds.maxX);
         this.pos.z = clamp(this.pos.z + dz, this.bounds.minZ, this.bounds.maxZ);
@@ -357,8 +364,7 @@ export class Controls {
       const dx = (sin * -fwd + cos * strafe) * sp;
       const dz = (cos * -fwd - sin * strafe) * sp;
       if (this.walkable) {
-        if (this.walkable(this.pos.x + dx, this.pos.z)) this.pos.x += dx;
-        if (this.walkable(this.pos.x, this.pos.z + dz)) this.pos.z += dz;
+        this._slide(dx, dz);
       } else {
         this.pos.x += dx; this.pos.z += dz;
       }

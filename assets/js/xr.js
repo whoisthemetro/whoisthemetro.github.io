@@ -447,8 +447,11 @@ export function setupXR({ renderer, camera, scene, controls, world, onSelect, ca
       camera.getWorldPosition(headWorld);
       // axis-slide against the walkable floorplan, same rules as on foot
       let nx = headWorld.x + dx, nz = headWorld.z + dz;
-      if (!world.isWalkable(nx, headWorld.z)) nx = headWorld.x;
-      if (!world.isWalkable(nx, nz)) nz = headWorld.z;
+      // same escape as on foot: standing somewhere illegal must not weld you there
+      if (world.isWalkable(headWorld.x, headWorld.z)) {
+        if (!world.isWalkable(nx, headWorld.z)) nx = headWorld.x;
+        if (!world.isWalkable(nx, nz)) nz = headWorld.z;
+      }
       rig.position.x += nx - headWorld.x;
       rig.position.z += nz - headWorld.z;
     }
