@@ -89,7 +89,8 @@ function voiceFor(c, i, n) {
     last: i === n - 1,
   };
 }
-const BASE_RATE = 0.84;     // she was at 1.02 and gabbling
+// 1.02 gabbled, 0.84 dragged. this is the settled answer.
+const BASE_RATE = 0.92;
 
 function pickVoice() {
   if (!SYNTH) return null;

@@ -512,7 +512,11 @@ const guide = new Guide(world.scene, { x: 0.2, z: 0.9, yaw: 0.80, name: "Trinity
   // NOT wrapped in bedroomSound — that wrapper swallows the return value and
   // her mouth needs the duration back. leaving the room silences her in the
   // tick instead, which also covers lift rides and the studio door.
-  say: (line) => { toast(`💬 ${line}`, 4200, "speech"); return speak(line); },
+  // no toast. her words live on the card beside her head now, and printing
+  // them along the bottom of the screen as well was just saying it twice.
+  // (portrait phones get neither — the card is off there and she's audible,
+  // which is the trade that screen size buys.)
+  say: (line) => speak(line),
 });
 
 /* Placeholder patter until the real tutorial tree lands — but every line was
@@ -534,30 +538,30 @@ const guide = new Guide(world.scene, { x: 0.2, z: 0.9, yaw: 0.80, name: "Trinity
 const GUIDE_LINES = {
   bedroom: [
     "the drum pads are numbered for a reason. play them one through six, in order, and the room will take you somewhere you haven't been.",
-    "the walls take notes. aim at any bare patch and leave one — it stays there, and everyone who comes after you reads it.",
-    "look out the window. that's a real place, not a picture — press up against the glass and turn around, the city never runs out.",
-    "that strip along the top is a real aeroplane. we sit ten miles off LAX, so when one crosses the window one is genuinely up there — the flight number, the type, the altitude, all of it true.",
+    "the walls take notes. aim at any bare patch and leave one. it stays there, and everyone who comes after you reads it.",
+    "look out the window. that's a real place, not a picture. press up against the glass and turn around, the city never runs out.",
+    "that strip along the top is a real aeroplane. we sit ten miles off LAX, so when one crosses the window, one is genuinely up there. the flight number, the type, the altitude, all of it true.",
     "watch the sky out there long enough and a jet goes over. you can take a shot at it, {you}. through the glass. i didn't tell you that.",
-    "the cat is real, in the sense that matters — it gets hungry, it gets thirsty, and it remembers. there's a mouse on the floor if you want to throw something.",
+    "the cat is real, in the sense that matters. it gets hungry, it gets thirsty, and it remembers. there's a mouse on the floor if you want to throw something.",
     "the telecaster is tuned and waiting. a minor pentatonic lives on it, so you genuinely cannot play a wrong note.",
-    "the pedals on the floor do what pedals do. click one to switch it on, click it again to bypass — the light goes dim when it's out of the chain.",
+    "the pedals on the floor do what pedals do. click one to switch it on, click it again to bypass. the light goes dim when it's out of the chain.",
     "there's a treadle by the guitar. drag it down and it sweeps the tone right off. that one's worth doing while something's playing.",
-    "the little mixer sets the balance — keys, guitar, drums. if one of them is too loud, that's where you fix it.",
-    "the radio picks up real LA stations. not a loop, not a mood — whatever is actually going out over the air right now.",
-    "give the lava lamp a click. and know that everyone else in here sees it come on too — that lamp belongs to the room, not to you.",
-    "the blinds and the curtains both move. draw them and it's just you and the glow; open them and you've got the whole city back.",
+    "the little mixer sets the balance. keys, guitar, drums. if one of them is too loud, that's where you fix it.",
+    "the radio picks up real LA stations. not a loop, not a mood. whatever is actually going out over the air right now.",
+    "give the lava lamp a click. and know that everyone else in here sees it come on too. that lamp belongs to the room, not to you.",
+    "the blinds and the curtains both move. draw them and it's just you and the glow. open them and you've got the whole city back.",
     "the light switch dims rather than flips. somewhere between the two ends is the version of this room i like best.",
-    "the computer on the desk actually boots. METRO OS — rooms, messages, music. have a poke around in it.",
+    "the computer on the desk actually boots. METRO OS. rooms, messages, music. have a poke around in it.",
     "the keys play, and you can change the sound they make. same for the guitar, if the voice it's wearing isn't the one you want.",
     "the open doorway goes through to the arcade. i'll come with you.",
-    "careful with the door under the red neon — that one isn't a room. it walks you out of here to mix & master, so finish up first.",
+    "careful with the door under the red neon. that one isn't a room. it walks you out of here to mix and master, so finish up first.",
   ],
   arcade: [
-    "four cabinets, {you}, and all four of them really play. no emulator, no rom — someone sat down and wrote them.",
+    "four cabinets, {you}, and all four of them really play. no emulator, no rom. someone sat down and wrote them.",
     "the marquee up there keeps the high scores. real ones, from real people who stood where you're standing.",
     "there's a barkeep at the counter. he'll fix you something and he'll be rude about it. don't take it personally, he's like that with everyone.",
     "the pool tables rack properly and the balls obey. you can play someone else on them, if there's someone else about.",
-    "there's a hoop down here. sink a few in a row and something catches fire — you'll know it when it happens.",
+    "there's a hoop down here. sink a few in a row and something catches fire. you'll know it when it happens.",
     "the mirror on the wall is how you change your look. worth doing before anyone else turns up.",
     "the lift is the way out to everywhere else. call it, step in, pick a floor. one of them wants a password, and i'm not going to give it to you.",
     "the doorway back to the bedroom is right where you came in. i'll follow you through it.",
@@ -586,11 +590,17 @@ function guideNextLine() {
   let line;
   if (!guideMet) {
     guideMet = true; guideGreetedRoom = room;
-    line = `hey ${youAre()} — welcome to metro's bedroom. i'm Trinity. click me whenever you like and i'll show you one thing at a time. i'll keep up if you wander off.`;
+    // the first thing anyone hears. name, then the one fact that changes how
+    // you treat the place: nothing here is a demo, it all persists and it's
+    // all shared. then an open door back to her.
+    // KEEP THIS SHORT. an earlier draft ran 25 seconds, which is a long time
+    // to stand still being talked at before you're allowed to touch anything.
+    // name, the one fact that changes how you treat the place, an open door.
+    line = `hey ${youAre()}, i'm Trinity. this room is alive, and it remembers. leave a note on the wall and it stays, for everyone, long after you've gone. nothing in here resets. anything else, just ask me.`;
   } else if (guideGreetedRoom !== room) {
     guideGreetedRoom = room;
     line = room === "arcade"
-      ? `right — the arcade. different room, different things to tell you, ${youAre()}.`
+      ? `right, the arcade. different room, different things to tell you, ${youAre()}.`
       : `back in the bedroom, then. there's plenty in here i haven't got to yet.`;
   } else {
     line = guideBags[room]();

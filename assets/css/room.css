@@ -508,7 +508,6 @@ textarea:focus, input:focus { border-color: var(--amber); }
   /* the type is the widest part of the strip and the least load-bearing —
      the flight number, where it's going and how high it is all survive */
   #flight-strip .fs-type { display: none; }
-  #toast.speech { display: none; }
 }
 
 /* ---------- message in a bottle ---------- */

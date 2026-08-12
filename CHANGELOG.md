@@ -10,7 +10,9 @@ it says it did.
 almost everything it can do — a fill on the e-kit that opens the studio, a
 computer that boots, a window you can shoot planes through — and none of it
 announces itself. She stands a couple of metres in front of where you land,
-facing you, and tells you one thing at a time when you click her. She calls
+facing you, and tells you one thing at a time when you click her. She opens
+by saying what the room IS: that it's alive, that it remembers, that a note
+left on the wall outlasts you. Then she gets out of the way. She calls
 you by the name you typed on the way in.
 
 She's the bartender's pattern with a different temperament: glow body, 8-bit
@@ -39,8 +41,8 @@ jump cut.
 and most engines barely honour punctuation, so a whole line handed over at
 once comes out as one breathless run. Every line is now cut at its
 punctuation and each clause spoken as its own utterance, with real silence
-between them — comma 210ms, full stop 420, question 450. Rate dropped 1.02
-to 0.84. Because rate and pitch are per-utterance, a sentence ending settles
+between them: comma 210ms, full stop 420, question 450. Rate settled at
+0.92, after 1.02 gabbled and 0.84 dragged. Because rate and pitch are per-utterance, a sentence ending settles
 and a question lifts. And because we know when a clause ends rather than
 only when a line does, her mouth shuts in the gaps, which is the part that
 actually reads as breathing.
@@ -49,12 +51,14 @@ actually reads as breathing.
 group so it faces you without any billboard maths — and so it exists in VR,
 where a DOM toast is invisible.
 
+**Her words stopped being printed twice.** They were on the card AND along
+the bottom of the screen; the bottom one is gone. Nothing she says toasts
+now. On a portrait phone the card is off too, so there she is voice only,
+which is the trade a small screen buys.
+
 **A portrait phone gets less furniture.** Cat readout to the top-left, the
 LAX strip to the top-right and compact (the aircraft type code drops, it's
-the widest field and the least load-bearing), and both word boxes gone —
-subtitle and floating card. She's audible; on the smallest screen the words
-are the first thing that should give. Toasts carry a `kind` now so only
-speech is dropped: the rest is feedback you can't hear.
+the widest field and the least load-bearing).
 
 **She only talks about the room she's standing in.** Two pools, picked by
 `inArcade()`, drawn from a shuffle bag so a fresh bag never opens with the

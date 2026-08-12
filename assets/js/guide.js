@@ -259,6 +259,7 @@ export class Guide {
   // say a line out loud. the actual speaking belongs to whoever wired
   // fx.say (say.js today); this just runs the mouth and the nod.
   speak(text) {
+    this.lastLine = text;      // the card is a canvas, so this is how a test reads her
     this.nodT = 0.4;
     this._drawPanel(text);
     const ms = this.fx.say?.(text);
