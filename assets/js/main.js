@@ -21,6 +21,8 @@ import { weather } from "./weather.js";
 import { startPlanes } from "./planes.js";
 import { Cat } from "./cat.js";
 import { Bartender } from "./bartender.js";
+import { Guide } from "./guide.js";
+import { speak, stopSpeaking, isSpeaking, voiceAvailable } from "./say.js";
 import { makeSelfieMirror } from "./mirror.js";
 import { DEFAULT_SPEC } from "./avatar-builder.js";
 import { openOutfitPicker } from "./picker.js";
@@ -478,6 +480,41 @@ const bartender = new Bartender(world.scene, world.barInfo, {
   say: (line) => toast(`🍸 ${line}`),   // his dry greeting; ordering toasts serve()'s line
 });
 
+/* --- the guide: she stands near where you land and explains the room ------
+   The bedroom hides almost everything it can do — a fill on the e-kit that
+   opens the studio, a lift to four other places, a wall you can post to.
+   She's the one who tells you, one thing at a time. Her voice is say.js
+   (the browser's own synth: free, no key), and every line she says also
+   toasts, so the room still works with the sound off — or in a headset,
+   where toast() mirrors to the wrist HUD on its own.
+
+   Where she stands was chosen by screenshotting the spawn view, not by
+   arithmetic: two metres out and 30° to the left puts her against the wall
+   art instead of on top of the desk, so you see a person AND the room you
+   just walked into. yaw 0.80 turns her to face the spawn point. */
+const guide = new Guide(world.scene, { x: 0.2, z: 0.9, yaw: 0.80 }, {
+  greet: bedroomSound(() => { try { beep(587, 0.08, "sine", 0.03); setTimeout(() => beep(880, 0.09, "sine", 0.028), 95); } catch (e) {} }),
+  walkable: (x, z) => world.isWalkable(x, z),
+  speaking: isSpeaking,
+  // one door for everything she says: subtitle it, speak it, and hand back
+  // how long it'll take so her mouth runs exactly that long
+  // NOT wrapped in bedroomSound — that wrapper swallows the return value and
+  // her mouth needs the duration back. leaving the room silences her in the
+  // tick instead, which also covers lift rides and the studio door.
+  say: (line) => { toast(`💬 ${line}`, 4200); return speak(line); },
+});
+
+// placeholder patter until the real tutorial tree lands — but true patter:
+// every one of these is a thing the room actually does and won't tell you.
+let guideLine = 0;
+const GUIDE_LINES = [
+  "hey. welcome to the metro. i'm the guide — click me any time and i'll show you around.",
+  "that door with the red glow goes to the arcade. four cabinets in there, and they all really play.",
+  "the drum pads by the wall aren't decoration. play kick, snare, high tom, low tom, hat, crash — in that order — and a door opens.",
+  "the wall takes notes. aim at any bare patch of wall and leave one; it'll still be there when you come back.",
+  "look out the window. that's a real place out there, not a picture — the city goes all the way around.",
+];
+
 /* --- the toy mouse: throw it, the cat fetches it back ----------------------
    A felt mouse you pick up and toss; the cat scampers after it, carries it
    home in its mouth, and drops it at your feet so you can throw again.
@@ -877,7 +914,7 @@ function castAt(ndcX, ndcY) {
     raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera);
   }
   // doors are included as blockers so notes can't be pinned onto them
-  const targets = [cat.hitMesh, toyHit, bartender.hitMesh, mirror.glass, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, ...world.elevHits, ...world.elevCallHits, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.guitarVoiceHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, world.pool.hit, world.pool.resetHit, world.pool.joinHit, world.pool2.hit, world.pool2.resetHit, world.pool2.joinHit, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.radioHits, ...world.laRadioHits, ...world.filterPedalHit, ...world.vacuumHits, ...world.studio.screens, ...world.studio.doorHits, ...notesWall.raycastTargets(), screenMesh, world.gym.joinHit, world.gym.exitHit, ...world.gym.readyHits, ...world.blockers];
+  const targets = [cat.hitMesh, toyHit, bartender.hitMesh, guide.hitMesh, mirror.glass, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, ...world.elevHits, ...world.elevCallHits, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.guitarVoiceHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, world.pool.hit, world.pool.resetHit, world.pool.joinHit, world.pool2.hit, world.pool2.resetHit, world.pool2.joinHit, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.radioHits, ...world.laRadioHits, ...world.filterPedalHit, ...world.vacuumHits, ...world.studio.screens, ...world.studio.doorHits, ...notesWall.raycastTargets(), screenMesh, world.gym.joinHit, world.gym.exitHit, ...world.gym.readyHits, ...world.blockers];
   const hits = raycaster.intersectObjects(targets, false);
   return hits[0] || null;
 }
@@ -1238,6 +1275,13 @@ controls.onAction((ndcX, ndcY) => {
     aItem("bartender");
     const line = bartender.serve();
     toast(`🍸 ${line}`);
+  } else if (hit.object.userData.guide && hit.distance < 3.2) {
+    aItem("guide");
+    // clicking while she's mid-sentence cuts her off — you asked for the next
+    // thing, so she stops talking about the last one
+    if (isSpeaking()) stopSpeaking();
+    guide.speak(GUIDE_LINES[guideLine % GUIDE_LINES.length]);
+    guideLine++;
   } else if (hit.object.userData.cat && hit.distance < 2.2) {
     if (Date.now() - lastPetAt < 1200) return;
     lastPetAt = Date.now();
@@ -1509,6 +1553,9 @@ setInterval(() => {
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.bartender && hit.distance < 3.2) {
     aimTip.textContent = `${TAP} — order a drink`;
+    aimTip.classList.add("show");
+  } else if (hit && hit.object.userData.guide && hit.distance < 3.2) {
+    aimTip.textContent = guideLine === 0 ? `${TAP} — show me around` : `${TAP} — tell me another`;
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.cat && hit.distance < 2.2) {
     const d = store.decayCat(catState);
@@ -4657,7 +4704,7 @@ window.METRO_DEBUG = { renderer, camera, world, controls, xr, disc, hoop: hoopGa
   studio: { state: sState, act: sAct, rec: sRec, hit: sHitPanel, apply: applyStudioHit,
             steps: sStepCount, playhead: sPlayhead, mi: () => SA.miStatus(),
             dragBegin: beginStudioDrag, dragTick: tickStudioDrag, dragEnd: endStudioDrag,
-            wardrobe: { adopt: adoptAvatarExport, open: openWardrobe, wearFile }, percReady: () => SA.percReady(), percLast: () => SA.percLast() }, THREE, cat, bartender, ghosts, voice, screen, stream, setScreen, clearScreen, room: () => aRoomNow(), jump: adminJump, mirror, openPicker, analytics: analyticsBuffer, notesWall,
+            wardrobe: { adopt: adoptAvatarExport, open: openWardrobe, wearFile }, percReady: () => SA.percReady(), percLast: () => SA.percLast() }, THREE, cat, bartender, guide, ghosts, voice, screen, stream, setScreen, clearScreen, room: () => aRoomNow(), jump: adminJump, mirror, openPicker, analytics: analyticsBuffer, notesWall,
   layout: { set: setLayoutMode, select: layoutSelect, nudge: layoutNudge, scale: layoutScale, click: layoutClick, on: () => layoutMode, sel: () => layoutSel },
   uid: identity.uid, pool: poolGame, pool2: poolGame2, sitAtPool, leavePool,
   toy: () => toy, grabToy, throwToy,
@@ -4782,6 +4829,11 @@ renderer.setAnimationLoop(() => {
   toyTick(dt, t);
   // the bartender reacts to you only when you're in the bedroom/arcade with him
   bartender.tick(dt, t, (!inBoat && !inArena && !inClub && !inGym) ? controls.pose() : null);
+  // the guide belongs to the bedroom only — and crossing any portal has to
+  // shut her up, same rule as every other sound in the room
+  const guideHome = !inBoat && !inArena && !inClub && !inGym && !inStudio;
+  guide.tick(dt, t, guideHome ? controls.pose() : null);
+  if (!guideHome && isSpeaking()) stopSpeaking();
   // the arcade mirror renders a live "you" from your own mic level — only while
   // you're in the bedroom/arcade (skip the extra render when off in another room)
   if (!inBoat && !inArena && !inClub && !inGym) mirror.update(dt, voice.selfLevel());
