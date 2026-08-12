@@ -119,7 +119,7 @@ export function startTitleFX(canvas) {
     const w = (m.actualBoundingBoxLeft || 0) + (m.actualBoundingBoxRight || 0);
     const h = (m.actualBoundingBoxAscent || 0) + (m.actualBoundingBoxDescent || 0);
     if (w < 1 || h < 1) return;
-    const s = Math.min(21 / w, 19 / h);              // the box it has to live in
+    const s = Math.min(25 / w, 23 / h);              // the box it has to live in
     favFit = { s, x: (m.actualBoundingBoxLeft - w / 2) / 1, y: (m.actualBoundingBoxAscent - h / 2) / 1 };
     favFit.x = -(m.actualBoundingBoxRight + m.actualBoundingBoxLeft) / 2 + m.actualBoundingBoxLeft;
     favFit.y = (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2;
@@ -138,7 +138,7 @@ export function startTitleFX(canvas) {
     g.font = favFont;
     g.textAlign = "left"; g.textBaseline = "alphabetic";
     g.save();
-    g.translate(FAV / 2, FAV * 0.44);
+    g.translate(FAV / 2, FAV / 2);
     g.rotate((LETTERS[0].rot * Math.PI) / 180);      // the M's own jaunty angle
     g.scale(favFit.s, favFit.s);
     g.fillStyle = "#fff";
@@ -149,11 +149,6 @@ export function startTitleFX(canvas) {
     g.globalCompositeOperation = "destination-over"; // the tile goes BEHIND what's drawn
     g.fillStyle = "#07090b";
     g.beginPath(); g.roundRect(0, 0, FAV, FAV, 7); g.fill();
-    // the gold rule stays put: the one fixed thing, so the tab still reads as
-    // METRO's sign whatever the swirl happens to be doing
-    g.globalCompositeOperation = "source-over";
-    g.fillStyle = "#ffd23c";
-    g.beginPath(); g.roundRect(6, 25.5, 20, 2.6, 1.3); g.fill();
     try { favLink.href = favCv.toDataURL("image/png"); } catch (e) { favLink = null; }
   }
 
