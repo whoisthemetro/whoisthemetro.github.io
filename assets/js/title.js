@@ -89,12 +89,83 @@ export function startTitleFX(canvas) {
     });
   }
 
+  /* --- the tab wears the same sign -----------------------------------
+     A favicon can't run a shader; the only way to move one is to re-encode
+     a canvas and swap the link's href. So this rides the title's OWN shader
+     canvas — same pixels, no second render — and only while the door screen
+     is up, which is the one moment the 3D world isn't competing for the
+     frame. When the door closes it stops and the last frame stays.
+
+     Safari ignores a changed favicon href, so there it simply keeps the
+     static icon from index.html. That's the honest floor: a live tab is a
+     bonus, never the thing the identity depends on. --- */
+  const FAV = 32;
+  const favCv = document.createElement("canvas");
+  favCv.width = FAV; favCv.height = FAV;
+  const favCtx = favCv.getContext("2d");
+  let favLink = document.querySelector("link[rel=icon]");
+  const favStatic = favLink && favLink.getAttribute("href");   // the canonical mark
+  let favAt = 0;
+  // Caveat's M is wide, and it overshoots its own em box — measured at a
+  // nominal size and fitted, it can't hang off the tile whatever the font
+  // does. (measured once, after the webfont has landed.)
+  const favFont = "700 100px Caveat, cursive";
+  let favFit = { s: 0.2, x: -50, y: 20 };
+  function fitFavicon() {
+    const g = favCtx;
+    g.font = favFont;
+    g.textAlign = "left"; g.textBaseline = "alphabetic";
+    const m = g.measureText("M");
+    const w = (m.actualBoundingBoxLeft || 0) + (m.actualBoundingBoxRight || 0);
+    const h = (m.actualBoundingBoxAscent || 0) + (m.actualBoundingBoxDescent || 0);
+    if (w < 1 || h < 1) return;
+    const s = Math.min(21 / w, 19 / h);              // the box it has to live in
+    favFit = { s, x: (m.actualBoundingBoxLeft - w / 2) / 1, y: (m.actualBoundingBoxAscent - h / 2) / 1 };
+    favFit.x = -(m.actualBoundingBoxRight + m.actualBoundingBoxLeft) / 2 + m.actualBoundingBoxLeft;
+    favFit.y = (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2;
+  }
+  function drawFavicon(now) {
+    if (!favLink || now - favAt < 110) return;      // ~9fps: a PNG encode a frame is plenty
+    favAt = now;
+    const g = favCtx;
+    // SAME order as the sign itself, and the order matters: source-in keeps
+    // the new paint only where the canvas is ALREADY opaque, so the tile
+    // cannot be down yet or the shader floods the whole square. ink first,
+    // shader through it, then the tile slid in behind.
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.globalCompositeOperation = "source-over";
+    g.clearRect(0, 0, FAV, FAV);
+    g.font = favFont;
+    g.textAlign = "left"; g.textBaseline = "alphabetic";
+    g.save();
+    g.translate(FAV / 2, FAV * 0.44);
+    g.rotate((LETTERS[0].rot * Math.PI) / 180);      // the M's own jaunty angle
+    g.scale(favFit.s, favFit.s);
+    g.fillStyle = "#fff";
+    g.fillText("M", favFit.x, favFit.y);
+    g.restore();
+    g.globalCompositeOperation = "source-in";        // the shader only exists inside the ink
+    g.drawImage(glc, W * 0.30, 0, H, H, -2, -2, FAV + 4, FAV + 4);
+    g.globalCompositeOperation = "destination-over"; // the tile goes BEHIND what's drawn
+    g.fillStyle = "#07090b";
+    g.beginPath(); g.roundRect(0, 0, FAV, FAV, 7); g.fill();
+    // the gold rule stays put: the one fixed thing, so the tab still reads as
+    // METRO's sign whatever the swirl happens to be doing
+    g.globalCompositeOperation = "source-over";
+    g.fillStyle = "#ffd23c";
+    g.beginPath(); g.roundRect(6, 25.5, 20, 2.6, 1.3); g.fill();
+    try { favLink.href = favCv.toDataURL("image/png"); } catch (e) { favLink = null; }
+  }
+
   const t0 = performance.now();
   let raf = 0;
   function frame() {
     // the sign only lives while the door screen is up
     if (!canvas.isConnected || !canvas.closest(".overlay")?.classList.contains("show")) {
       cancelAnimationFrame(raf);
+      // the door shut: settle the tab back on the canonical frame rather than
+      // freezing on whatever the swirl happened to be doing at that instant
+      if (favLink && favStatic) favLink.href = favStatic;
       return;
     }
     gl.uniform1f(uTime, (performance.now() - t0) / 1000);
@@ -104,10 +175,11 @@ export function startTitleFX(canvas) {
     drawLetters();
     ctx.globalCompositeOperation = "source-in";   // the shader only exists inside the ink
     ctx.drawImage(glc, 0, 0);
+    drawFavicon(performance.now());
     raf = requestAnimationFrame(frame);
   }
   // Caveat has to be loaded or the mask draws in a serif fallback
-  const kick = () => { frame(); };
+  const kick = () => { fitFavicon(); frame(); };
   if (document.fonts?.load) {
     document.fonts.load(`700 ${SIZE}px Caveat`).then(kick, kick);
   } else kick();
