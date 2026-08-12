@@ -4,6 +4,34 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-08-11 — five in a row and the rock catches
+
+**NBA Jam's rule, kept exactly.** Five makes in a row on the arcade court
+and you're on fire — and from there every bucket feeds it, so the tenth
+in a row looks nothing like the fifth. The ring runs white-hot and
+flickers, the lamp over it turns orange and throbs, there's a scorch of
+light on the floor underneath, the ball glows in your hands and trails
+embers through the air, and the streak board catches flames along its
+bottom edge. Each make throws a bigger burst out of the net than the one
+before it. One miss and the whole thing goes out at once, which is the
+only way a fire streak should ever end.
+
+The embers are one Points cloud with per-vertex colour, born hot orange
+and cooling to dark red as they rise, so a flat sprite reads as flame.
+They die under the ceiling instead of sailing through it, and nothing
+spawns within 1.15 m of your eye — a sprite that close fills the whole
+screen, so the rock in your hands says it's burning by glowing instead.
+60 fps standing in the fire.
+
+Two traps found on the way, both now written into CLAUDE.md: the toon
+pass REPLACES `o.material`, so a material reference held from build time
+is a dead object (the rim now reads `mesh.material` each frame); and a
+particle pool parking its spare slots at `-999` gets bucketed into the
+studio's cull group by bounding-box centre and never renders again.
+
+**The DEFENDER leaderboard is wiped.** All four boards start empty, so
+the marquee reads BE THE FIRST on every machine.
+
 ## 2026-08-11 — the little court gets its lines right
 
 **The floor was drawn wrong.** The key, the free-throw circle and the

@@ -58,7 +58,9 @@ distance and portals:
   it flashes when your name lands on it. In the corner there's a half court
   with real markings — hold to wind up, release on the marker for a
   swish, and the board under the rim counts how many you've hit in a row
-  before it calls you UNCONSCIOUS.
+  before it calls you UNCONSCIOUS. Five in a row and the whole thing
+  catches fire, NBA Jam style — every bucket after that feeds it, and a
+  single miss puts it out.
 - **THE DESI** — a boat room reached through a poster (passphrase `desi`).
   Runs on the *real* sun, moon and weather of Gotland, Sweden via Open-Meteo,
   with a living sea, true sound isolation, and a message-in-a-bottle you can

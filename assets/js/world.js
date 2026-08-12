@@ -4957,6 +4957,26 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
         g.fillText(`BEST ${s.best}`, SB.w - 30, 46);
       }
 
+      // once you're on fire the board catches too: flames licking the bottom
+      // edge, taller the hotter the run
+      if (s.streak >= FIRE_AT) {
+        const hh = Math.min(1, (s.streak - FIRE_AT + 1) / 8);
+        for (let i = 0; i < 26; i++) {
+          const fx = 24 + i * (SB.w - 48) / 25;
+          const lick = (34 + hh * 62) * (0.45 + 0.55 * Math.abs(Math.sin(t * 6 + i * 1.7)));
+          const grd = g.createLinearGradient(0, SB.h - 12, 0, SB.h - 12 - lick);
+          grd.addColorStop(0, "rgba(255,226,120,0.85)");
+          grd.addColorStop(0.45, "rgba(255,122,31,0.55)");
+          grd.addColorStop(1, "rgba(255,40,20,0)");
+          g.fillStyle = grd;
+          g.beginPath();
+          g.moveTo(fx - 16, SB.h - 12);
+          g.quadraticCurveTo(fx - 6, SB.h - 12 - lick * 0.6, fx, SB.h - 12 - lick);
+          g.quadraticCurveTo(fx + 6, SB.h - 12 - lick * 0.6, fx + 16, SB.h - 12);
+          g.closePath(); g.fill();
+        }
+      }
+
       // the whole face flashes on the make itself
       if (s.pop > 0.02) {
         g.fillStyle = `rgba(255,255,255,${0.34 * s.pop * s.pop})`;
@@ -4991,11 +5011,166 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
       if (p.best !== undefined) s.best = p.best;
       if (p.bestName !== undefined) s.bestName = p.bestName;
       if (p.streak !== undefined) {
-        if (p.streak > 0 && p.streak !== s.streak) s.pop = 1;
+        if (p.streak > 0 && p.streak !== s.streak) { s.pop = 1; if (p.streak > s.streak) fireBurst(p.streak); }
         if (p.streak === 0 && s.streak > 0) s.miss = 0.001;   // "STREAK OVER" for a beat
         s.streak = p.streak;
       }
       s.swish = !!p.swish;
+    }
+
+    /* --- ON FIRE ---------------------------------------------------------
+       NBA Jam's rule, kept exactly: five in a row and you catch. After
+       that every bucket feeds it — more embers off the ring, a hotter
+       rim, a ball that burns in your hands — so the tenth in a row looks
+       nothing like the fifth. One miss and it all goes out.
+
+       One Points cloud with per-vertex colour, a fixed pool that recycles.
+       Embers are born white-hot and cool to a dark red as they rise, which
+       is what fire actually does and what makes a flat sprite read as a
+       flame. --- */
+    const FIRE_AT = 5;                    // makes in a row before you catch
+    const FP_N = 260;
+    const fPos = new Float32Array(FP_N * 3);
+    const fCol = new Float32Array(FP_N * 3);
+    const fVel = Array.from({ length: FP_N }, () => ({ x: 0, y: 0, z: 0 }));
+    const fLife = new Float32Array(FP_N), fMax = new Float32Array(FP_N);
+    for (let k = 0; k < FP_N; k++) { fPos[k * 3] = BX; fPos[k * 3 + 1] = rimY; fPos[k * 3 + 2] = rimZ; }
+    const fGeo = new THREE.BufferGeometry();
+    fGeo.setAttribute("position", new THREE.BufferAttribute(fPos, 3));
+    fGeo.setAttribute("color", new THREE.BufferAttribute(fCol, 3));
+    // an untextured Point draws as a hard SQUARE — at close range that reads as
+    // glitching rectangles, not fire. every ember gets a soft round falloff.
+    const emberSprite = canvasTex(64, 64, (g) => {
+      const rg = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+      rg.addColorStop(0, "rgba(255,255,255,1)");
+      rg.addColorStop(0.35, "rgba(255,255,255,0.55)");
+      rg.addColorStop(1, "rgba(255,255,255,0)");
+      g.fillStyle = rg; g.fillRect(0, 0, 64, 64);
+    });
+    const fMat = new THREE.PointsMaterial({
+      size: 0.11, map: emberSprite, vertexColors: true, transparent: true, opacity: 0.95,
+      blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true,
+    });
+    const firePts = new THREE.Points(fGeo, fMat);
+    firePts.frustumCulled = false; firePts.visible = false; add(firePts);
+    let fCursor = 0, fLive = 0;
+    function ember(x, y, z, spread, up, life) {
+      const k = (fCursor++) % FP_N;
+      if (fLife[k] <= 0) fLive++;
+      fPos[k * 3] = x; fPos[k * 3 + 1] = y; fPos[k * 3 + 2] = z;
+      fVel[k] = { x: (Math.random() - 0.5) * spread, y: up * (0.5 + Math.random()),
+                  z: (Math.random() - 0.5) * spread };
+      fMax[k] = fLife[k] = life * (0.7 + Math.random() * 0.6);
+    }
+
+    let fire = 0, fireTarget = 0, fireEmit = 0;
+    const rimBase = new THREE.Color(0xff7a1f), rimHot = new THREE.Color(0xfff0c0);
+    const lampBase = new THREE.Color(0xfff0d6), lampHot = new THREE.Color(0xff9a3c);
+    // a scorch of light on the floor right under the ring
+    const scorch = new THREE.Mesh(new THREE.CircleGeometry(1.15, 24),
+      new THREE.MeshBasicMaterial({
+        color: 0xff6a1e, transparent: true, opacity: 0, blending: THREE.AdditiveBlending,
+        depthWrite: false, map: canvasTex(64, 64, (g) => {
+          const rg = g.createRadialGradient(32, 32, 1, 32, 32, 32);
+          rg.addColorStop(0, "rgba(255,255,255,1)");
+          rg.addColorStop(0.45, "rgba(255,255,255,0.35)");
+          rg.addColorStop(1, "rgba(255,255,255,0)");
+          g.fillStyle = rg; g.fillRect(0, 0, 64, 64);
+        }),
+      }));
+    scorch.rotation.x = -Math.PI / 2;
+    scorch.position.set(BX, 0.03, rimZ);
+    scorch.visible = false;
+    add(scorch);
+
+    // every bucket past the fifth throws more up than the one before it
+    function fireBurst(streak) {
+      if (streak < FIRE_AT) return;
+      const heat = Math.min(1, (streak - FIRE_AT + 1) / 8);
+      const n = Math.round(14 + heat * 40);
+      for (let i = 0; i < n; i++) {
+        const a = Math.random() * Math.PI * 2, r = rimR * (0.2 + Math.random() * 0.9);
+        ember(BX + Math.cos(a) * r, rimY - 0.1 - Math.random() * 0.2, rimZ + Math.sin(a) * r,
+              1.6 + heat * 1.8, 2.4 + heat * 2.6, 0.7 + heat * 0.5);
+      }
+    }
+
+    const ballDark = new THREE.Color(0x000000), ballGlow = new THREE.Color(0xff6a12);
+    function tickFire(dt, t, ppos) {
+      // catch at five, and climb from there — this is the "building up" part
+      fireTarget = sbState.streak >= FIRE_AT ? Math.min(1, (sbState.streak - FIRE_AT + 1) / 8) : 0;
+      // it lights fast and dies instantly, the way a miss should feel
+      fire += (fireTarget - fire) * Math.min(1, dt * (fireTarget > fire ? 3.5 : 14));
+      if (fire < 0.004) fire = 0;
+
+      // the ring, the lamp over it and the floor under it all run off `fire`
+      const hot = fire * (0.75 + 0.25 * Math.sin(t * 17));
+      rim.material.color.copy(rimBase).lerp(rimHot, hot);
+      mount.material.color.copy(rimBase).lerp(rimHot, hot * 0.7);
+      net.material.opacity = 0.55 + fire * 0.4;
+      net.material.color.set(fire > 0.02 ? 0xffd8a0 : 0xeef2f6);
+      hoopLamp.color.copy(lampBase).lerp(lampHot, fire);
+      hoopLamp.intensity = 5.5 + fire * (7 + 2.5 * Math.sin(t * 13));
+      scorch.visible = fire > 0.02;
+      scorch.material.opacity = fire * (0.3 + 0.09 * Math.sin(t * 9));
+      scorch.scale.setScalar(0.7 + fire * 0.55);
+
+      // a steady fountain off the ring while it burns...
+      if (fire > 0.02) {
+        fireEmit += dt * (18 + fire * 90);
+        while (fireEmit >= 1) {
+          fireEmit -= 1;
+          const a = Math.random() * Math.PI * 2;
+          ember(BX + Math.cos(a) * rimR, rimY - 0.06, rimZ + Math.sin(a) * rimR,
+                0.5 + fire * 0.7, 1.1 + fire * 1.5, 0.55 + fire * 0.45);
+        }
+        // ...and a trail off every ball in the air, because in NBA Jam the
+        // ROCK is what's on fire, not the hoop
+        const NEAR = 1.15;   // no ember is born closer to the eye than this
+        for (const m of balls) {
+          if (!m.visible) continue;
+          if (ppos && Math.hypot(m.position.x - ppos.x, m.position.z - ppos.z) < NEAR) continue;
+          for (let i = 0; i < 1 + Math.round(fire * 3); i++) {
+            ember(m.position.x + (Math.random() - 0.5) * 0.1,
+                  m.position.y + (Math.random() - 0.5) * 0.1,
+                  m.position.z + (Math.random() - 0.5) * 0.1,
+                  0.35, 0.5 + fire, 0.28 + fire * 0.25);
+          }
+        }
+      }
+      // the rock itself glows instead — held and in flight
+      const bc = fire * (0.8 + 0.2 * Math.sin(t * 19));
+      if (handBall.material.emissive) handBall.material.emissive.copy(ballDark).lerp(ballGlow, bc);
+      for (const m of balls) if (m.material.emissive) m.material.emissive.copy(ballDark).lerp(ballGlow, bc);
+
+      // fly the embers: they rise, slow, and cool white → yellow → red → out
+      if (fLive > 0) {
+        fLive = 0;
+        for (let k = 0; k < FP_N; k++) {
+          if (fLife[k] <= 0) continue;
+          fLive++;
+          fLife[k] -= dt;
+          if (fLife[k] <= 0) {
+            fPos[k * 3] = BX; fPos[k * 3 + 1] = rimY; fPos[k * 3 + 2] = rimZ;
+            fCol[k * 3] = fCol[k * 3 + 1] = fCol[k * 3 + 2] = 0;   // black on an additive blend = gone
+            continue;
+          }
+          const v = fVel[k];
+          v.y += 1.6 * dt;                       // hot air lifts them as they go
+          v.x *= 1 - 1.8 * dt; v.z *= 1 - 1.8 * dt;
+          fPos[k * 3] += v.x * dt; fPos[k * 3 + 1] += v.y * dt; fPos[k * 3 + 2] += v.z * dt;
+          // the hall has a roof — embers die under it instead of sailing through
+          if (fPos[k * 3 + 1] > ARC_H - 0.25) fLife[k] = Math.min(fLife[k], 0.12);
+          const a = fLife[k] / (fMax[k] || 1);   // 1 = just born, 0 = spent
+          fCol[k * 3] = Math.min(1, 0.35 + a * 0.75);          // red the whole way
+          fCol[k * 3 + 1] = Math.max(0, a * a * 0.62 - 0.04);  // yellow only while young
+          fCol[k * 3 + 2] = Math.max(0, a * a * a * a * 0.3);  // a touch of white at birth
+        }
+        fGeo.attributes.position.needsUpdate = true;
+        fGeo.attributes.color.needsUpdate = true;
+      }
+      firePts.visible = fLive > 0;
+      fMat.size = 0.09 + fire * 0.05;
     }
 
     const _sbCol = new THREE.Color();
@@ -5008,6 +5183,7 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
       const lit = s.streak > 0 ? 1 : 0;
       sbWash.material.color.lerp(_sbCol.setHex(heat.glow), Math.min(1, dt * 4));
       sbWash.material.opacity = lit * (0.10 + 0.05 * Math.sin(t * 3)) + s.pop * 0.35;
+      tickFire(dt, t, ppos);      // burns wherever you're standing; only the CANVAS is gated
       // same rule as the marquee: only repaint where it can be read
       if (!ppos || Math.abs(ppos.x - BX) > 5 || ppos.z < WALLZ - 1 || ppos.z > WALLZ + 8) return;
       sbAcc += dt;
@@ -5021,7 +5197,7 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
       rim: { x: BX, y: rimY, z: rimZ }, rimR, ballR, faceSign: 1, floorY: 0, ceilY: ARC_H,
       backboard: { z: BBz, x0: BX - BB_W / 2, x1: BX + BB_W / 2, y0: BB_Y - BB_H / 2, y1: BB_Y + BB_H / 2 },
       court, balls, handBall, setArc, hideGuide, swish: pulseNet,
-      setStreak, _tick: tickStreak,
+      setStreak, _tick: tickStreak, fireAt: FIRE_AT,
     };
   })();
 

@@ -11,7 +11,7 @@ import { loadGlbAvatar } from "./avatar-glb.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { store } from "./store.js";
 import { presence } from "./presence.js";
-import { startAmbience, citySound, pianoNote, semitoneToKey, audioNow, purr, setRain, setWater, setRoomTone, setClubTone, setClubBed, kettleBoil, setThruster, boostSound, discSound, goalHorn, meow, hiss, careSound, drumHit, setArcadeZone, punchSound, shieldClang, stunBuzz, edrumHit, guitarPluck, guitarNote, shotSound, smokeSound, setFx, setDelayTempo, setBusLevel, setGuitarFilter, startVacuum, stopVacuum, beep } from "./ambience.js";
+import { startAmbience, citySound, pianoNote, semitoneToKey, audioNow, purr, setRain, setWater, setRoomTone, setClubTone, setClubBed, kettleBoil, setThruster, boostSound, discSound, goalHorn, meow, hiss, careSound, drumHit, setArcadeZone, punchSound, shieldClang, stunBuzz, edrumHit, guitarPluck, guitarNote, shotSound, smokeSound, setFx, setDelayTempo, setBusLevel, setGuitarFilter, startVacuum, stopVacuum, beep, fireSound } from "./ambience.js";
 import { SONGS, playSong, stopSong, currentSongId } from "./songs.js";
 import { progress } from "./progress.js";
 import { voice } from "./voice.js";
@@ -1142,6 +1142,12 @@ let hoopBest = 0;
 try { hoopBest = parseInt(localStorage.getItem("metro.hoopBest") || "0", 10) || 0; } catch (e) {}
 let hoopBestName = "";
 try { hoopBestName = localStorage.getItem("metro.hoopBestName") || ""; } catch (e) {}
+// NBA JAM rules: the fifth in a row lights you, and everything after feeds it
+const hoopFire = bedroomSound((streak) => {
+  const at = world.hoops.fireAt;
+  if (streak === at) fireSound("catch");
+  else if (streak > at) fireSound("make", (streak - at) / 8);
+});
 function showStreak(name, streak, swish) {
   if (streak > hoopBest) {
     hoopBest = streak; hoopBestName = name;
@@ -1155,8 +1161,11 @@ const hoopGame = initBasket(world.hoops, {
   onBucket: ({ swish, streak }) => {
     const me = (identity.name || "anon").slice(0, 24);
     showStreak(me, streak, swish);
+    hoopFire(streak);
     presence.sendAct({ kind: "hoop", name: me, streak, swish });
-    if (streak >= 3) toast(`${streak} IN A ROW ${streak >= 5 ? "🔥" : ""}`);
+    if (streak === world.hoops.fireAt) toast("🔥 YOU'RE ON FIRE 🔥");
+    else if (streak > world.hoops.fireAt) toast(`${streak} IN A ROW — STILL BURNING 🔥`);
+    else if (streak >= 3) toast(`${streak} IN A ROW`);
     else toast(swish ? "SWISH! 🏀" : "bucket 🏀");
   },
   onMiss: () => {
@@ -4434,6 +4443,7 @@ addEventListener("keydown", (e) => {
       // a peer's run drives the wall board too — the name on it is whoever's
       // actually shooting, not whoever happens to be looking at it
       showStreak(String(p.name || "someone").slice(0, 24), p.streak | 0, !!p.swish);
+      hoopFire(p.streak | 0);       // a friend catching fire beside you is half the point
     } else if (p.kind === "volca") {
       if (!inBoat) return;       // and the boat's sampler stays on the boat
       drumHit(p.pad);

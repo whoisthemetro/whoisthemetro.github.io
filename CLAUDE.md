@@ -44,6 +44,8 @@ At the end of buildWorld, every Lambert/Standard material is swapped for `MeshTo
 
 - **`light.layers` does NOT scope illumination.** A directional light reaches every object in the scene. Cross-room "suns" must be **SpotLights** (cones physically can't reach the other room). Point lights are contained by short `distance` instead — keep arcade/boat point-light throws shorter than the gap to the next room.
 - Light layers (boat = layer 3, arena = layer 4) are still used for raycast/visibility bookkeeping: `camera.layers.enable(3|4)` and `raycaster.layers.enableAll()` in main.js are required. **Never use layers 1 or 2** — three.js assigns those to the left/right eye in a WebXR session, so anything on them renders to one eye only.
+- **The toon pass REPLACES `o.material`** with a fresh MeshToonMaterial, so any Lambert/Standard material reference captured during buildWorld is a dead object by the time anything ticks. Read `mesh.material` per frame instead of holding the material (the hoop's fire does this). MeshBasicMaterial is untouched and safe to hold.
+- **Particle pools must park dead particles somewhere real.** `bucketRoomGeometry` sorts by BOUNDING-BOX CENTRE, so a Points cloud whose spare slots sit at `-999` gets filed under `studio` (`c.z < -40`) and is invisible everywhere else. Park them at the emitter with a black vertex colour instead — on an additive blend that's the same as gone.
 - **Z-fighting:** anything mounted on a wall sits ≥3 cm proud of it (notes use `0.03 + seq stagger` in notes3d.js).
 - Shadow masks around the window are thick DoubleSide boxes, not thin planes.
 

@@ -821,6 +821,59 @@ export function goalHorn() {
   }
 }
 
+// NBA JAM rules: five in a row and the rock catches. "catch" is the moment
+// it lights — a burner igniting, sub thump under a rising noise whoosh.
+// "make" is every bucket after that: a flare that climbs with the run, so
+// the tenth in a row sounds hotter than the fifth.
+export function fireSound(kind = "catch", heat = 0) {
+  if (!ctx) return;
+  const t = ctx.currentTime + 0.005;
+  const h = Math.max(0, Math.min(1, heat));
+  if (kind === "catch") {
+    // the whoosh: bandpass noise sweeping up, the way gas takes light
+    const src = ctx.createBufferSource();
+    src.buffer = noiseBuffer(1.1);
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass"; bp.Q.value = 1.4;
+    bp.frequency.setValueAtTime(180, t);
+    bp.frequency.exponentialRampToValueAtTime(2600, t + 0.5);
+    const g = ctx.createGain();
+    src.connect(bp).connect(g).connect(master);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.13, t + 0.06);
+    g.gain.exponentialRampToValueAtTime(0.012, t + 0.75);
+    g.gain.linearRampToValueAtTime(0, t + 0.95);
+    src.start(t); src.stop(t + 1.0);
+    // and the thump underneath it
+    const o = ctx.createOscillator();
+    o.type = "sine";
+    o.frequency.setValueAtTime(120, t);
+    o.frequency.exponentialRampToValueAtTime(38, t + 0.45);
+    const og = ctx.createGain();
+    o.connect(og).connect(master);
+    og.gain.setValueAtTime(0, t);
+    og.gain.linearRampToValueAtTime(0.11, t + 0.02);
+    og.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
+    og.gain.linearRampToValueAtTime(0, t + 0.6);
+    o.start(t); o.stop(t + 0.62);
+    return;
+  }
+  // a flare off the net — brighter and shorter the hotter the run is
+  const src = ctx.createBufferSource();
+  src.buffer = noiseBuffer(0.5);
+  const bp = ctx.createBiquadFilter();
+  bp.type = "bandpass"; bp.Q.value = 2.2;
+  bp.frequency.setValueAtTime(700 + h * 900, t);
+  bp.frequency.exponentialRampToValueAtTime(2200 + h * 2600, t + 0.22);
+  const g = ctx.createGain();
+  src.connect(bp).connect(g).connect(master);
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(0.05 + h * 0.05, t + 0.015);
+  g.gain.exponentialRampToValueAtTime(0.004, t + 0.3);
+  g.gain.linearRampToValueAtTime(0, t + 0.38);
+  src.start(t); src.stop(t + 0.4);
+}
+
 // The kettle on THE DESI: a real little boil + whistle.
 export function kettleBoil() {
   if (!ctx) return;
