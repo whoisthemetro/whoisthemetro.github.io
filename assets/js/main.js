@@ -1107,19 +1107,62 @@ const bbPowerWrap = document.createElement("div");
 bbPowerWrap.style.cssText =
   "position:fixed;left:50%;bottom:120px;transform:translateX(-50%);z-index:55;display:none;" +
   "width:200px;height:11px;border:1px solid #8a5a3a;border-radius:7px;overflow:hidden;background:rgba(0,0,0,.45)";
-bbPowerWrap.innerHTML = '<div id="bb-power" style="height:100%;width:0;background:linear-gradient(90deg,#3bd17a,#ffd23c,#e23a52)"></div>';
+// fill = the ping-ponging power; band = the snap window for where you stand;
+// opt line = the perfect-swish release point (the same active-reload marker
+// THE GYM uses, because it's the same shot)
+bbPowerWrap.innerHTML =
+  '<div id="bb-power" style="position:absolute;left:0;top:0;height:100%;width:0;background:linear-gradient(90deg,#3bd17a,#ffd23c,#e23a52)"></div>' +
+  '<div id="bb-power-band" style="position:absolute;top:0;bottom:0;background:rgba(180,255,210,.4);display:none"></div>' +
+  '<div id="bb-power-opt" style="position:absolute;top:0;bottom:0;width:3px;margin-left:-1px;background:#eafff2;box-shadow:0 0 7px 1px #6bffb0;display:none"></div>';
 document.body.appendChild(bbPowerWrap);
 const bbPowerEl = bbPowerWrap.querySelector("#bb-power");
+const bbPowerBand = bbPowerWrap.querySelector("#bb-power-band");
+const bbPowerOpt = bbPowerWrap.querySelector("#bb-power-opt");
 const basketHud = {
-  power: (frac) => {
-    if (frac > 0) { bbPowerWrap.style.display = "block"; bbPowerEl.style.width = Math.round(frac * 100) + "%"; }
-    else bbPowerWrap.style.display = "none";
+  power: (frac, opt) => {
+    if (frac <= 0) { bbPowerWrap.style.display = "none"; return; }
+    bbPowerWrap.style.display = "block";
+    bbPowerEl.style.width = Math.round(frac * 100) + "%";
+    if (opt) {
+      bbPowerOpt.style.display = "block";
+      bbPowerOpt.style.left = (opt.opt * 100) + "%";
+      bbPowerOpt.style.background = opt.makeable ? "#eafff2" : "#ffd27a";
+      bbPowerOpt.style.boxShadow = opt.makeable ? "0 0 7px 1px #6bffb0" : "0 0 7px 1px #e0a050";
+      if (opt.makeable && opt.hi > opt.lo) {
+        bbPowerBand.style.display = "block";
+        bbPowerBand.style.left = (opt.lo * 100) + "%";
+        bbPowerBand.style.width = ((opt.hi - opt.lo) * 100) + "%";
+      } else bbPowerBand.style.display = "none";
+    } else { bbPowerOpt.style.display = "none"; bbPowerBand.style.display = "none"; }
   },
 };
+// the wall board under the rim: your run, your name, and the record. it's
+// shared, so anyone else on the court watches your streak climb in real time.
+let hoopBest = 0;
+try { hoopBest = parseInt(localStorage.getItem("metro.hoopBest") || "0", 10) || 0; } catch (e) {}
+let hoopBestName = "";
+try { hoopBestName = localStorage.getItem("metro.hoopBestName") || ""; } catch (e) {}
+function showStreak(name, streak, swish) {
+  if (streak > hoopBest) {
+    hoopBest = streak; hoopBestName = name;
+    try { localStorage.setItem("metro.hoopBest", String(hoopBest)); localStorage.setItem("metro.hoopBestName", name); } catch (e) {}
+  }
+  world.hoops.setStreak({ name, streak, swish, best: hoopBest, bestName: hoopBestName });
+}
 const hoopGame = initBasket(world.hoops, {
   sound: basketSound, hud: basketHud,
+  setAimLock: (pt) => { controls.aimLockTarget = pt; },   // ease the camera onto the backboard while winding up
   onBucket: ({ swish, streak }) => {
-    toast(swish ? (streak >= 3 ? `SWISH! ${streak} in a row 🔥` : "SWISH! 🏀") : "bucket 🏀");
+    const me = (identity.name || "anon").slice(0, 24);
+    showStreak(me, streak, swish);
+    presence.sendAct({ kind: "hoop", name: me, streak, swish });
+    if (streak >= 3) toast(`${streak} IN A ROW ${streak >= 5 ? "🔥" : ""}`);
+    else toast(swish ? "SWISH! 🏀" : "bucket 🏀");
+  },
+  onMiss: () => {
+    const me = (identity.name || "anon").slice(0, 24);
+    showStreak(me, 0, false);
+    presence.sendAct({ kind: "hoop", name: me, streak: 0 });
   },
 });
 // once you walk onto the court a one-time hint nudges how to shoot
@@ -4387,6 +4430,10 @@ addEventListener("keydown", (e) => {
         gymBall.recv(p);
         if (inGym && (p.sub === "score")) updateGymHud();
       }
+    } else if (p.kind === "hoop") {
+      // a peer's run drives the wall board too — the name on it is whoever's
+      // actually shooting, not whoever happens to be looking at it
+      showStreak(String(p.name || "someone").slice(0, 24), p.streak | 0, !!p.swish);
     } else if (p.kind === "volca") {
       if (!inBoat) return;       // and the boat's sampler stays on the boat
       drumHit(p.pad);
@@ -4594,7 +4641,7 @@ const xr = setupXR({
 
 xrRef = xr;   // helpers above can reach it now that it exists
 
-window.METRO_DEBUG = { renderer, camera, world, controls, xr, disc,
+window.METRO_DEBUG = { renderer, camera, world, controls, xr, disc, hoop: hoopGame,
   vrArcadePanel: { open: openVrArcadePanel, close: closeVrArcadePanel },
   // a hand on the sequencer, same habit as the rest of the room
   studio: { state: sState, act: sAct, rec: sRec, hit: sHitPanel, apply: applyStudioHit,

@@ -4,6 +4,46 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-08-11 — the little court gets its lines right
+
+**The floor was drawn wrong.** The key, the free-throw circle and the
+3-point arc were each placed as a fraction of the texture, which put the
+arc straight through the free-throw circle — a thing that cannot happen
+on a real floor. They're laid out in METRES now, all off one scale
+factor, in the proportions a real half court uses: the arc 6.75 m from
+the ring, the free-throw line 4.225 m past it, a 1.80 m circle, a 4.90 m
+lane, corner lines 0.90 m in from the sideline. 6.75 m doesn't fit in a
+4.8×3.9 m room, so everything shrinks together — and lands clear of
+everything else, because on a real court it does. The circle is dashed
+where it crosses the lane, there's a restricted-area arc under the ring,
+and the canvas is sized to the court's own aspect so a circle drawn on it
+is a circle on the floor and not an ellipse.
+
+**The red square was around the rim.** On a real backboard the square's
+lower edge is level with the ring and the box stands ABOVE it — that's
+what you bank off. It was drawn as a box around the ring instead. Now
+it's placed from the rim height in world metres (measured: bottom edge
+2.90 m, rim 2.90 m), so the geometry can't drift if the board ever moves.
+
+**The shot is THE GYM's shot now.** Two rooms in one world shouldn't ask
+your hands to learn two different things, so the arcade hoop got the
+whole system: auto-aim at the ring, the camera easing onto the backboard
+while you wind up, the arc solved for wherever you're standing so a
+makeable shot always exists, a power bar that PING-PONGS 0↔1 instead of
+filling once, and the active-reload marker with a green snap band —
+release inside it and the power locks to perfect for a guaranteed swish.
+Verified from four spots on the floor: releasing on the marker went in
+every time, and a deliberately late release missed.
+
+**A streak board on the wall under the rim.** How many you've hit without
+missing, and whose run it is. It wakes on the make, flashes, and heats up
+as the run goes — white, then HEATING UP at 3, ON FIRE at 5,
+UNCONSCIOUS at 7 — with a pip per make, the record in the corner, and a
+wash of that colour bleeding onto the wall behind it. A miss puts
+STREAK OVER on it and sends it back to sleep. It goes over presence, so
+someone else on the court watches your number climb with their own name
+nowhere near it.
+
 ## 2026-08-11 — the arcade puts names on the wall
 
 **The high scores moved to the marquee.** They used to be a small dark

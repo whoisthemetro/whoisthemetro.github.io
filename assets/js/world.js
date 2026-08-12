@@ -4675,16 +4675,24 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     const rimZ = BBz + 0.42;                 // rim reaches out into the court (+z)
 
     // --- backboard (white, red shooter's square) facing the court (+z) ---
+    // the board face. the red square is NOT a box around the ring — on a real
+    // backboard its BOTTOM edge is level with the rim and the box stands above
+    // it, which is the whole point: you bank off the inside of the square.
+    const BB_W = 1.28, BB_H = 0.9, BB_Y = 3.12;              // the face's size + centre
     const bbTex = canvasTex(280, 200, (g, cw, ch) => {
+      const ppy = ch / BB_H, ppx = cw / BB_W, top = BB_Y + BB_H / 2;
+      const my = (y) => (top - y) * ppy;                     // world height -> canvas row
       g.fillStyle = "#f2f0ea"; g.fillRect(0, 0, cw, ch);
       g.strokeStyle = "#20242a"; g.lineWidth = 8; g.strokeRect(4, 4, cw - 8, ch - 8);
-      g.strokeStyle = "#d8392a"; g.lineWidth = 6; g.strokeRect(cw / 2 - 46, ch - 96, 92, 64);
+      const sqW = 0.44, sqH = 0.33;                          // regulation, scaled to this board
+      g.strokeStyle = "#d8392a"; g.lineWidth = 6;
+      g.strokeRect(cw / 2 - sqW / 2 * ppx, my(rimY + sqH), sqW * ppx, sqH * ppy);
     });
-    const bb = box(1.34, 0.96, 0.06, lam(0x20242a));
-    bb.position.set(BX, 3.12, WALLZ + 0.035); add(bb);
-    const bbFace = new THREE.Mesh(new THREE.PlaneGeometry(1.28, 0.9),
+    const bb = box(BB_W + 0.06, BB_H + 0.06, 0.06, lam(0x20242a));
+    bb.position.set(BX, BB_Y, WALLZ + 0.035); add(bb);
+    const bbFace = new THREE.Mesh(new THREE.PlaneGeometry(BB_W, BB_H),
       new THREE.MeshBasicMaterial({ map: bbTex }));
-    bbFace.position.set(BX, 3.12, BBz); add(bbFace);     // PlaneGeometry faces +z = into the court
+    bbFace.position.set(BX, BB_Y, BBz); add(bbFace);     // PlaneGeometry faces +z = into the court
 
     // --- rim + mount + net ---
     const rimMat = lam(0xff7a1f);
@@ -4709,24 +4717,75 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     // --- the court: a painted hardwood decal floating 2 cm over the floor ---
     const court = { x0: BX - 2.4, x1: BX + 2.4, z0: WALLZ + 0.12, z1: WALLZ + 4.0 };
     const Wc = court.x1 - court.x0, Dc = court.z1 - court.z0;
-    const courtTex = canvasTex(512, 512, (g, cw, ch) => {
-      // hardwood: warm planks running across, hoop/baseline at the TOP (y=0)
+    /* The lines used to be guessed as fractions of the canvas, which put the
+       3-point arc straight through the free-throw circle — a thing that can't
+       happen on a real floor. So they're laid out in METRES now, off ONE scale
+       factor, in the same proportions as a real half court:
+
+         3-pt arc   6.75 m from the ring        free-throw line  4.225 m from it
+         lane        4.90 m wide                free-throw circle  1.80 m radius
+         restricted  1.25 m                     corner lines     0.90 m in from
+                                                                 the sideline
+
+       6.75 m won't fit in a 4.8×3.88 m room, so everything shrinks together by
+       k. The arc still lands well clear of the circle, because on a real court
+       it does. The canvas is sized to the court's own aspect so a circle drawn
+       here is a circle on the floor and not an ellipse. */
+    const R3 = 2.9;                       // the 3-point radius we can actually fit
+    const k = R3 / 6.75;                  // ...and everything else rides on it
+    const rimOffZ = rimZ - court.z0;      // how far the ring hangs off the baseline
+    const CT_W = 512, CT_H = Math.round(CT_W * Dc / Wc);
+    const PPM = CT_W / Wc;                // canvas px per metre, both axes
+    const courtTex = canvasTex(CT_W, CT_H, (g, cw, ch) => {
+      // canvas TOP (v=1) lands against the wall: baseline and rim up there
+      const px = (x) => (x + Wc / 2) * PPM;      // x in metres from centre
+      const pz = (z) => z * PPM;                 // z in metres from the baseline
+      const cx = px(0), ry = pz(rimOffZ);        // the ring, on the floor
+
+      // hardwood: warm planks running across
       g.fillStyle = "#c79350"; g.fillRect(0, 0, cw, ch);
       g.strokeStyle = "rgba(120,80,30,0.35)"; g.lineWidth = 2;
       for (let y = 0; y < ch; y += 26) { g.beginPath(); g.moveTo(0, y); g.lineTo(cw, y); g.stroke(); }
-      const cx = cw / 2, white = "#f4efe2";
-      g.strokeStyle = white; g.lineWidth = 6;
-      g.strokeRect(14, 14, cw - 28, ch - 28);                       // boundary
-      // the key (lane) hanging from the baseline, with the free-throw circle
-      const keyW = cw * 0.32, keyH = ch * 0.42;
-      g.lineWidth = 5; g.strokeRect(cx - keyW / 2, 14, keyW, keyH);
-      g.beginPath(); g.arc(cx, 14 + keyH, keyW * 0.5, 0, Math.PI * 2); g.stroke();
-      g.beginPath(); g.arc(cx, 14, cw * 0.07, 0, Math.PI); g.stroke();  // the half-circle under the rim
-      // 3-point arc sweeping out from the baseline
-      g.lineWidth = 6; g.beginPath(); g.arc(cx, 40, cw * 0.46, 0.18 * Math.PI, 0.82 * Math.PI); g.stroke();
-      // center-court mark
-      g.fillStyle = "rgba(244,239,226,0.25)"; g.font = "700 46px monospace";
-      g.textAlign = "center"; g.textBaseline = "middle"; g.fillText("METRO", cx, ch * 0.78);
+
+      const white = "#f4efe2";
+      g.strokeStyle = white; g.lineCap = "butt";
+
+      // boundary: sidelines + the baseline under the backboard
+      g.lineWidth = 6;
+      g.strokeRect(px(-2.3), pz(0.08), 4.6 * PPM, (Dc - 0.2) * PPM);
+
+      // --- the lane, hanging off the baseline ---
+      const laneHalf = 2.45 * k, ftZ = rimOffZ + 4.225 * k, ftR = 1.8 * k;
+      g.fillStyle = "rgba(210,120,60,0.22)";     // painted key
+      g.fillRect(px(-laneHalf), pz(0.08), laneHalf * 2 * PPM, (ftZ - 0.08) * PPM);
+      g.lineWidth = 5;
+      g.strokeRect(px(-laneHalf), pz(0.08), laneHalf * 2 * PPM, (ftZ - 0.08) * PPM);
+
+      // free-throw circle: solid on the far side, dashed where it crosses the
+      // lane — the way it's actually painted
+      g.beginPath(); g.arc(cx, pz(ftZ), ftR * PPM, 0, Math.PI); g.stroke();
+      g.setLineDash([9, 9]);
+      g.beginPath(); g.arc(cx, pz(ftZ), ftR * PPM, Math.PI, Math.PI * 2); g.stroke();
+      g.setLineDash([]);
+
+      // the restricted-area arc under the ring
+      g.lineWidth = 4;
+      g.beginPath(); g.arc(cx, ry, 1.25 * k * PPM, 0, Math.PI); g.stroke();
+
+      // --- the 3-point line: two straight corners, then the arc between them ---
+      const cornerX = Wc / 2 - 0.9 * k;                       // 0.9 m in from the sideline
+      const meetZ = rimOffZ + Math.sqrt(Math.max(0, R3 * R3 - cornerX * cornerX));
+      const meetA = Math.acos(cornerX / R3);                  // where the arc meets them
+      g.lineWidth = 6;
+      for (const s of [-1, 1]) {
+        g.beginPath(); g.moveTo(px(s * cornerX), pz(0.08)); g.lineTo(px(s * cornerX), pz(meetZ)); g.stroke();
+      }
+      g.beginPath(); g.arc(cx, ry, R3 * PPM, meetA, Math.PI - meetA); g.stroke();
+
+      // house mark, out past the arc where there's floor left
+      g.fillStyle = "rgba(244,239,226,0.22)";
+      g.font = "700 40px monospace"; g.textAlign = "center"; g.textBaseline = "middle";
+      g.fillText("METRO", cx, pz(Dc - 0.42));
     });
     const courtMesh = new THREE.Mesh(new THREE.PlaneGeometry(Wc, Dc),
       new THREE.MeshLambertMaterial({ map: courtTex }));
@@ -4783,10 +4842,186 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     }
     function hideGuide() { arcLine.visible = false; }
 
+    /* --- the STREAK board, bolted to the wall under the rim ------------
+       A shoot-around with no scoreboard is just a wall. This one only
+       cares about one number — how many you've hit without missing —
+       and whose it is. It wakes up when a ball goes in, heats up as the
+       run gets longer, and goes back to sleep when you walk away. --- */
+    const SB = { w: 768, h: 320 };
+    const sbCanvas = document.createElement("canvas");
+    sbCanvas.width = SB.w; sbCanvas.height = SB.h;
+    const sbCtx = sbCanvas.getContext("2d");
+    const sbTex = new THREE.CanvasTexture(sbCanvas);
+    sbTex.colorSpace = THREE.SRGBColorSpace;
+    // who's shooting, how hot, and how long since the last thing happened
+    const sbState = { name: "", streak: 0, best: 0, bestName: "", pop: 0, miss: 0, swish: false };
+
+    const sbRound = (g, x, y, w, h, r) => {
+      g.beginPath();
+      g.moveTo(x + r, y);
+      g.arcTo(x + w, y, x + w, y + h, r);
+      g.arcTo(x + w, y + h, x, y + h, r);
+      g.arcTo(x, y + h, x, y, r);
+      g.arcTo(x, y, x + w, y, r);
+      g.closePath();
+    };
+    // white → amber → orange → red as the run gets longer. 3 is heating up,
+    // 5 is on fire; every arcade since 1993 agrees about this.
+    function heatOf(n) {
+      if (n >= 7) return { hue: "#ff3a2f", label: "UNCONSCIOUS", glow: 0xff3a2f };
+      if (n >= 5) return { hue: "#ff7a1f", label: "ON FIRE", glow: 0xff7a1f };
+      if (n >= 3) return { hue: "#ffc23c", label: "HEATING UP", glow: 0xffc23c };
+      return { hue: "#e8eef6", label: "IN A ROW", glow: 0x88b4ff };
+    }
+
+    function drawStreak(t) {
+      const g = sbCtx, s = sbState;
+      const heat = heatOf(s.streak);
+      // a live run STAYS on the wall — you walked away mid-streak, not out of it.
+      // the board only goes back to sleep once someone misses.
+      const wake = s.streak > 0 ? 1 : 0;
+      g.clearRect(0, 0, SB.w, SB.h);
+
+      // the case
+      g.fillStyle = "#07080d";
+      sbRound(g, 6, 6, SB.w - 12, SB.h - 12, 18); g.fill();
+      g.strokeStyle = heat.hue;
+      g.globalAlpha = 0.25 + 0.5 * wake + s.pop * 0.3;
+      g.lineWidth = 4; g.stroke();
+      g.globalAlpha = 1;
+
+      if (wake <= 0) {
+        // asleep: just the house mark and whatever the record is
+        g.textAlign = "center"; g.textBaseline = "middle";
+        g.font = "500 62px 'Six Caps', sans-serif"; g.letterSpacing = "12px";
+        g.fillStyle = "rgba(255,150,215,0.55)";
+        g.fillText("METRO HOOPS", SB.w / 2, 112);
+        g.letterSpacing = "0px";
+        g.font = "900 30px monospace";
+        g.fillStyle = s.miss > 0 && s.miss < 1.6 ? "rgba(226,58,82,0.9)" : "rgba(120,132,152,0.75)";
+        g.fillText(s.miss > 0 && s.miss < 1.6 ? "STREAK OVER" : "SHOOT TO START A RUN", SB.w / 2, 186);
+        if (s.best > 0) {
+          g.font = "900 26px monospace";
+          g.fillStyle = "rgba(255,210,60,0.8)";
+          g.fillText(`BEST  ${s.best}  ${String(s.bestName || "").toUpperCase()}`.trim(), SB.w / 2, 240);
+        }
+        sbTex.needsUpdate = true;
+        return;
+      }
+
+      // the number, which lands with a thump and settles
+      const bump = 1 + s.pop * 0.28;
+      g.save();
+      g.translate(212, 150);
+      g.scale(bump, bump);
+      g.textAlign = "center"; g.textBaseline = "middle";
+      g.font = "900 150px monospace";
+      g.shadowColor = heat.hue; g.shadowBlur = 30 + s.pop * 40;
+      g.fillStyle = heat.hue;
+      g.fillText(String(s.streak), 0, 0);
+      g.shadowBlur = 0;
+      g.restore();
+
+      // ...and what it means, on the right
+      g.textAlign = "left"; g.textBaseline = "middle";
+      g.font = "900 46px monospace";
+      g.fillStyle = heat.hue;
+      g.fillText(heat.label, 366, 118);
+      g.font = "900 34px monospace";
+      g.fillStyle = "#dfe6f0";
+      g.fillText(String(s.name || "anon").slice(0, 14).toUpperCase(), 366, 176);
+      if (s.swish) {
+        g.font = "900 24px monospace";
+        g.fillStyle = "rgba(110,230,160,0.9)";
+        g.fillText("ALL NET", 366, 216);
+      }
+
+      // a pip per make, so a long run reads at a glance without counting
+      const pips = Math.min(12, s.streak);
+      for (let i = 0; i < pips; i++) {
+        const bx = 372 + i * 30, by = 258;
+        g.fillStyle = heat.hue;
+        g.globalAlpha = i === pips - 1 ? 0.5 + 0.5 * Math.abs(Math.sin(t * 4)) : 0.85;
+        g.beginPath(); g.arc(bx, by, 9, 0, 7); g.fill();
+      }
+      g.globalAlpha = 1;
+      if (s.streak > 12) {
+        g.font = "900 22px monospace"; g.fillStyle = heat.hue;
+        g.fillText("+" + (s.streak - 12), 372 + 12 * 30, 258);
+      }
+
+      // best-ever tucked in the corner
+      if (s.best > 0) {
+        g.textAlign = "right"; g.font = "900 22px monospace";
+        g.fillStyle = "rgba(255,210,60,0.7)";
+        g.fillText(`BEST ${s.best}`, SB.w - 30, 46);
+      }
+
+      // the whole face flashes on the make itself
+      if (s.pop > 0.02) {
+        g.fillStyle = `rgba(255,255,255,${0.34 * s.pop * s.pop})`;
+        sbRound(g, 6, 6, SB.w - 12, SB.h - 12, 18); g.fill();
+      }
+      sbTex.needsUpdate = true;
+    }
+
+    const sbBoard = new THREE.Mesh(new THREE.PlaneGeometry(1.62, 0.675),
+      new THREE.MeshBasicMaterial({ map: sbTex, transparent: true }));
+    // 2.15, not eye level: the rock you're holding sits at ~1.55 dead ahead and
+    // would park itself right on top of the board every time you wound up
+    sbBoard.position.set(BX, 2.15, WALLZ + 0.04);   // under the rim, facing the court
+    add(sbBoard);
+    const sbWash = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 1.5),
+      new THREE.MeshBasicMaterial({
+        color: 0x88b4ff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending,
+        depthWrite: false, map: canvasTex(64, 64, (g) => {
+          const rg = g.createRadialGradient(32, 32, 2, 32, 32, 32);
+          rg.addColorStop(0, "rgba(255,255,255,1)"); rg.addColorStop(1, "rgba(255,255,255,0)");
+          g.fillStyle = rg; g.fillRect(0, 0, 64, 64);
+        }),
+      }));
+    sbWash.position.set(BX, 2.15, WALLZ + 0.03);
+    sbWash.renderOrder = -1;
+    add(sbWash);
+
+    // main.js calls this on every make and every miss
+    function setStreak(p = {}) {
+      const s = sbState;
+      if (p.name !== undefined) s.name = p.name;
+      if (p.best !== undefined) s.best = p.best;
+      if (p.bestName !== undefined) s.bestName = p.bestName;
+      if (p.streak !== undefined) {
+        if (p.streak > 0 && p.streak !== s.streak) s.pop = 1;
+        if (p.streak === 0 && s.streak > 0) s.miss = 0.001;   // "STREAK OVER" for a beat
+        s.streak = p.streak;
+      }
+      s.swish = !!p.swish;
+    }
+
+    const _sbCol = new THREE.Color();
+    let sbAcc = 0;
+    function tickStreak(dt, t, ppos) {
+      const s = sbState;
+      s.pop = Math.max(0, s.pop - dt * 2.6);
+      if (s.miss > 0) s.miss += dt;
+      const heat = heatOf(s.streak);
+      const lit = s.streak > 0 ? 1 : 0;
+      sbWash.material.color.lerp(_sbCol.setHex(heat.glow), Math.min(1, dt * 4));
+      sbWash.material.opacity = lit * (0.10 + 0.05 * Math.sin(t * 3)) + s.pop * 0.35;
+      // same rule as the marquee: only repaint where it can be read
+      if (!ppos || Math.abs(ppos.x - BX) > 5 || ppos.z < WALLZ - 1 || ppos.z > WALLZ + 8) return;
+      sbAcc += dt;
+      if (sbAcc < 1 / 30) return;
+      sbAcc = 0;
+      drawStreak(t);
+    }
+    drawStreak(0);
+
     return {
       rim: { x: BX, y: rimY, z: rimZ }, rimR, ballR, faceSign: 1, floorY: 0, ceilY: ARC_H,
-      backboard: { z: BBz, x0: BX - 0.64, x1: BX + 0.64, y0: 2.64, y1: 3.60 },
+      backboard: { z: BBz, x0: BX - BB_W / 2, x1: BX + BB_W / 2, y0: BB_Y - BB_H / 2, y1: BB_Y + BB_H / 2 },
       court, balls, handBall, setArc, hideGuide, swish: pulseNet,
+      setStreak, _tick: tickStreak,
     };
   })();
 
@@ -6990,6 +7225,7 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     dustGeo.attributes.position.needsUpdate = true;
     tickArcadeAir(dt, elapsed);
     tickMarquee(dt, elapsed, ppos);
+    hoops._tick(dt, elapsed, ppos);
     const bp = bDustGeo.attributes.position.array;
     for (let i = 0; i < BDUST; i++) {
       const v = bDustVel[i];

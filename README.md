@@ -55,7 +55,10 @@ distance and portals:
   floats on a panel in the room and the controllers become the cabinet.
   A marquee hangs over the row where the neon sign used to be — bulbs
   chasing round the frame, cycling each machine's all-time top five, and
-  it flashes when your name lands on it.
+  it flashes when your name lands on it. In the corner there's a half court
+  with real markings — hold to wind up, release on the marker for a
+  swish, and the board under the rim counts how many you've hit in a row
+  before it calls you UNCONSCIOUS.
 - **THE DESI** — a boat room reached through a poster (passphrase `desi`).
   Runs on the *real* sun, moon and weather of Gotland, Sweden via Open-Meteo,
   with a living sea, true sound isolation, and a message-in-a-bottle you can
