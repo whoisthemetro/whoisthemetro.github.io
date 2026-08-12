@@ -6,7 +6,7 @@ it says it did.
 
 ## 2026-08-12 — somebody to ask
 
-**There's a guide in the bedroom now, and her name is Æon.** The room hides
+**There's a guide in the bedroom now, and her name is Trinity.** The room hides
 almost everything it can do — a fill on the e-kit that opens the studio, a
 computer that boots, a window you can shoot planes through — and none of it
 announces itself. She stands a couple of metres in front of where you land,
@@ -19,9 +19,9 @@ provided rather than someone who wandered in. Her voice is `say.js` — the
 browser's own synth, free, no key, no network — behind a single door, so
 swapping in real audio later is one function body. Every line she speaks also
 toasts, so she works with the sound off and in a headset, where `toast()`
-mirrors to the wrist HUD by itself. A synth says "Æon" appallingly, so the
-voice gets a respelling table ("Ee-on", per the /ˌiːɒn/ in the Æon Flux
-article) while the subtitle keeps the ligature.
+mirrors to the wrist HUD by itself. Initialisms get a respelling
+table on the way to the synth — LAX reads as "lacks" otherwise, and OS as
+"oss" — while the subtitle keeps what was written.
 
 **She follows you.** Past two metres she gives up her post and comes after
 you, and where she stops becomes the new post. Getting into the arcade took
@@ -34,6 +34,27 @@ it now, both ways. The blink survives only for what walking can't solve —
 wedged behind furniture, or you took the lift and she's forty metres off —
 and she flares half a second on arrival so it reads as arriving, not as a
 jump cut.
+
+**She speaks in clauses, not sentences.** The Web Speech API has no SSML
+and most engines barely honour punctuation, so a whole line handed over at
+once comes out as one breathless run. Every line is now cut at its
+punctuation and each clause spoken as its own utterance, with real silence
+between them — comma 210ms, full stop 420, question 450. Rate dropped 1.02
+to 0.84. Because rate and pitch are per-utterance, a sentence ending settles
+and a question lifts. And because we know when a clause ends rather than
+only when a line does, her mouth shuts in the gaps, which is the part that
+actually reads as breathing.
+
+**Her words float in the room** on a card beside her head, parented to her
+group so it faces you without any billboard maths — and so it exists in VR,
+where a DOM toast is invisible.
+
+**A portrait phone gets less furniture.** Cat readout to the top-left, the
+LAX strip to the top-right and compact (the aircraft type code drops, it's
+the widest field and the least load-bearing), and both word boxes gone —
+subtitle and floating card. She's audible; on the smallest screen the words
+are the first thing that should give. Toasts carry a `kind` now so only
+speech is dropped: the rest is feedback you can't hear.
 
 **She only talks about the room she's standing in.** Two pools, picked by
 `inArcade()`, drawn from a shuffle bag so a fresh bag never opens with the

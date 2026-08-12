@@ -475,6 +475,42 @@ textarea:focus, input:focus { border-color: var(--amber); }
 #flight-strip .fs-label { color: #54e08a; }
 #flight-strip .fs-alt { color: #8a877e; }
 
+/* ---------- a phone held upright ----------
+   A portrait phone is a tall slot with very little middle, and the HUD was
+   laid out for a landscape desktop: cat bottom-left, flight strip dead centre
+   at the top, a subtitle box across the bottom. Stack those on a 390px-wide
+   screen and there's more furniture than room.
+
+   So on portrait phones only — desktop and landscape keep what they have —
+   the two readouts go to opposite top corners and shrink, and Æon's subtitle
+   goes away entirely. She has a voice; the box was only ever the fallback,
+   and on the device with the least screen it's the first thing that should
+   give. Every OTHER toast still shows: those are feedback you can't hear.
+   Both elements animate in on `transform`, so the corner rules have to
+   restate the transform or they'd fly in from the old anchor. */
+@media (max-width: 700px) and (orientation: portrait) {
+  #cat-pill {
+    left: 8px; top: 8px; bottom: auto;
+    font-size: 10px; padding: 4px 9px; letter-spacing: 0;
+    max-width: 40vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  #flight-strip {
+    left: auto; right: 8px; top: 8px;
+    transform: translate(0, -60px);
+    font-size: 9px; padding: 4px 7px; letter-spacing: 0.03em;
+    /* 40vw + 52vw + the two 8px margins still fits the narrowest phone in
+       use, so the two readouts can never meet in the middle. the strip is
+       right-anchored, so if a long callsign does overflow it loses the
+       altitude off its right edge — the least load-bearing field it has. */
+    max-width: 52vw; white-space: nowrap; overflow: hidden;
+  }
+  #flight-strip.show { transform: translate(0, 0); }
+  /* the type is the widest part of the strip and the least load-bearing —
+     the flight number, where it's going and how high it is all survive */
+  #flight-strip .fs-type { display: none; }
+  #toast.speech { display: none; }
+}
+
 /* ---------- message in a bottle ---------- */
 .bottle-msg {
   font-family: "Caveat", cursive; font-size: 24px; line-height: 1.4;

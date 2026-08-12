@@ -22,7 +22,7 @@ import { startPlanes } from "./planes.js";
 import { Cat } from "./cat.js";
 import { Bartender } from "./bartender.js";
 import { Guide } from "./guide.js";
-import { speak, stopSpeaking, isSpeaking, voiceAvailable } from "./say.js";
+import { speak, stopSpeaking, isSpeaking, isVoicing, voiceAvailable } from "./say.js";
 import { makeSelfieMirror } from "./mirror.js";
 import { DEFAULT_SPEC } from "./avatar-builder.js";
 import { openOutfitPicker } from "./picker.js";
@@ -63,8 +63,8 @@ const $ = (s) => document.querySelector(s);
 let xrRef = null;
 const inVR = () => !!(xrRef && xrRef.presenting());
 // every toast also lands on the in-world HUD
-function toast(msg, ms) {
-  domToast(msg, ms);
+function toast(msg, ms, kind) {
+  domToast(msg, ms, kind);
   if (inVR()) xrRef.note(msg);
 }
 // anything that would open a DOM overlay says so in-world instead of
@@ -492,7 +492,7 @@ const bartender = new Bartender(world.scene, world.barInfo, {
    arithmetic: two metres out and 30° to the left puts her against the wall
    art instead of on top of the desk, so you see a person AND the room you
    just walked into. yaw 0.80 turns her to face the spawn point. */
-const guide = new Guide(world.scene, { x: 0.2, z: 0.9, yaw: 0.80, name: "Æon" }, {
+const guide = new Guide(world.scene, { x: 0.2, z: 0.9, yaw: 0.80, name: "Trinity" }, {
   greet: bedroomSound(() => { try { beep(587, 0.08, "sine", 0.03); setTimeout(() => beep(880, 0.09, "sine", 0.028), 95); } catch (e) {} }),
   walkable: (x, z) => world.isWalkable(x, z),
   // the bedroom and the arcade share one 1.5 m opening. when she and you are
@@ -505,13 +505,14 @@ const guide = new Guide(world.scene, { x: 0.2, z: 0.9, yaw: 0.80, name: "Æon" }
     if (!D || arcadeSide(fx) === arcadeSide(tx)) return null;
     return { x: D.x + (arcadeSide(tx) ? -0.45 : 0.45), z: D.z };
   },
-  speaking: isSpeaking,
+  speaking: isSpeaking,     // a line is in the air — the card stays up
+  voicing: isVoicing,       // she's actually sounding — the mouth moves
   // one door for everything she says: subtitle it, speak it, and hand back
   // how long it'll take so her mouth runs exactly that long
   // NOT wrapped in bedroomSound — that wrapper swallows the return value and
   // her mouth needs the duration back. leaving the room silences her in the
   // tick instead, which also covers lift rides and the studio door.
-  say: (line) => { toast(`💬 ${line}`, 4200); return speak(line); },
+  say: (line) => { toast(`💬 ${line}`, 4200, "speech"); return speak(line); },
 });
 
 /* Placeholder patter until the real tutorial tree lands — but every line was
@@ -585,7 +586,7 @@ function guideNextLine() {
   let line;
   if (!guideMet) {
     guideMet = true; guideGreetedRoom = room;
-    line = `hey ${youAre()} — welcome to metro's bedroom. i'm Æon. click me whenever you like and i'll show you one thing at a time. i'll keep up if you wander off.`;
+    line = `hey ${youAre()} — welcome to metro's bedroom. i'm Trinity. click me whenever you like and i'll show you one thing at a time. i'll keep up if you wander off.`;
   } else if (guideGreetedRoom !== room) {
     guideGreetedRoom = room;
     line = room === "arcade"
@@ -1636,7 +1637,7 @@ setInterval(() => {
     aimTip.textContent = `${TAP} — order a drink`;
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.guide && hit.distance < 3.2) {
-    aimTip.textContent = !guideMet ? `${TAP} — ask Æon` : `${TAP} — tell me another`;
+    aimTip.textContent = !guideMet ? `${TAP} — ask Trinity` : `${TAP} — tell me another`;
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.cat && hit.distance < 2.2) {
     const d = store.decayCat(catState);
@@ -4788,7 +4789,8 @@ window.METRO_DEBUG = { renderer, camera, world, controls, xr, disc, hoop: hoopGa
             wardrobe: { adopt: adoptAvatarExport, open: openWardrobe, wearFile }, percReady: () => SA.percReady(), percLast: () => SA.percLast() }, THREE, cat, bartender, guide, ghosts, voice, screen, stream, setScreen, clearScreen,
     // what the crosshair is actually on — the smoke harness can't pointer-lock,
     // so this is how a test sees what a click would have hit
-    castAt: (x = 0, y = 0) => { const h = castAt(x, y); return h ? { ud: Object.keys(h.object.userData), d: +h.distance.toFixed(2) } : null; }, room: () => aRoomNow(), jump: adminJump, mirror, openPicker, analytics: analyticsBuffer, notesWall,
+    castAt: (x = 0, y = 0) => { const h = castAt(x, y); return h ? { ud: Object.keys(h.object.userData), d: +h.distance.toFixed(2) } : null; },
+    say: { speak, stopSpeaking, isSpeaking, isVoicing, voiceAvailable }, room: () => aRoomNow(), jump: adminJump, mirror, openPicker, analytics: analyticsBuffer, notesWall,
   layout: { set: setLayoutMode, select: layoutSelect, nudge: layoutNudge, scale: layoutScale, click: layoutClick, on: () => layoutMode, sel: () => layoutSel },
   uid: identity.uid, pool: poolGame, pool2: poolGame2, sitAtPool, leavePool,
   toy: () => toy, grabToy, throwToy,

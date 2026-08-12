@@ -156,6 +156,85 @@ export class Guide {
     this.grp.add(this.halo);
 
     this.grp.add(this._tag(this.name));
+    this._buildPanel();
+  }
+
+  /* Her words, in the room instead of on the glass.
+
+     A DOM toast is invisible inside a WebXR session — that's the whole
+     reason vrBlocked() exists — so anything she says only reaches a headset
+     if it's actual geometry. This is a canvas on a plane, parented to her
+     group at local +z: she already turns to face you whenever you're near,
+     so it faces you too, and there's no billboard math to run per frame.
+
+     It hangs beside her head rather than over it. Over it and she's talking
+     out of the top of her skull; beside it, you can read the words and still
+     watch her mouth move. */
+  _buildPanel() {
+    // a portrait phone has no room for a card floating next to her — it eats
+    // the room you're trying to look at. she's audible; that's enough there.
+    // checked live rather than once at boot, so turning the phone sideways
+    // brings it back on the next line she says.
+    this.wantPanel = () => !(window.matchMedia
+      && window.matchMedia("(max-width: 700px) and (orientation: portrait)").matches);
+    const W = 768, H = 432;
+    const c = document.createElement("canvas");
+    c.width = W; c.height = H;
+    this.panelCanvas = c;
+    this.panelTex = new THREE.CanvasTexture(c);
+    this.panelTex.colorSpace = THREE.SRGBColorSpace;
+    this.panelTex.anisotropy = 4;
+    this.panel = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.04, 0.58),
+      new THREE.MeshBasicMaterial({ map: this.panelTex, transparent: true, opacity: 0, depthWrite: false }));
+    // clear of her head, not over it: the card is 1.04 wide, so its inner edge
+    // has to start past her shoulder or she's talking through the back of it
+    this.panel.position.set(1.02, 1.46, 0.1);
+    this.panel.rotation.y = -0.26;        // angled in toward you, like she's holding it
+    this.panel.renderOrder = 15;
+    this.panel.visible = false;
+    this.grp.add(this.panel);
+    this.panelOp = 0;
+  }
+
+  // draw a line onto the panel, wrapped, shrinking the type if it runs long
+  _drawPanel(text) {
+    const c = this.panelCanvas, g = c.getContext("2d"), W = c.width, H = c.height;
+    g.clearRect(0, 0, W, H);
+    // the card: dark glass with her own blue on the edge
+    const r = 26;
+    g.beginPath();
+    g.moveTo(r, 0); g.arcTo(W, 0, W, H, r); g.arcTo(W, H, 0, H, r);
+    g.arcTo(0, H, 0, 0, r); g.arcTo(0, 0, W, 0, r); g.closePath();
+    g.fillStyle = "rgba(6,12,22,0.82)"; g.fill();
+    g.lineWidth = 3; g.strokeStyle = "rgba(53,166,255,0.75)"; g.stroke();
+
+    const PAD = 40, maxW = W - PAD * 2;
+    // try sizes until the whole line fits in the card
+    let size = 46, lines = [];
+    for (; size >= 26; size -= 3) {
+      g.font = `500 ${size}px Archivo, sans-serif`;
+      lines = [];
+      let cur = "";
+      for (const word of String(text).split(/\s+/)) {
+        const t = cur ? cur + " " + word : word;
+        if (g.measureText(t).width > maxW && cur) { lines.push(cur); cur = word; } else cur = t;
+      }
+      if (cur) lines.push(cur);
+      if (lines.length * (size * 1.32) <= H - PAD * 2 - 34) break;
+    }
+    // her name across the top, small, so it's clear who's speaking
+    g.font = "700 24px Archivo, sans-serif";
+    g.fillStyle = "rgba(120,205,255,0.9)";
+    g.textAlign = "left"; g.textBaseline = "top";
+    g.fillText(this.name.toUpperCase(), PAD, 26);
+
+    g.font = `500 ${size}px Archivo, sans-serif`;
+    g.fillStyle = "#eaf6ff";
+    const lh = size * 1.32;
+    let y = 26 + 34 + (H - PAD - 60 - lines.length * lh) / 2;
+    for (const ln of lines) { g.fillText(ln, PAD, y); y += lh; }
+    this.panelTex.needsUpdate = true;
   }
 
   _tag(text) {
@@ -181,6 +260,7 @@ export class Guide {
   // fx.say (say.js today); this just runs the mouth and the nod.
   speak(text) {
     this.nodT = 0.4;
+    this._drawPanel(text);
     const ms = this.fx.say?.(text);
     // if the voice layer told us how long it'll take, trust it; otherwise
     // fall back to a length guess so the mouth doesn't run dry or forever
@@ -274,15 +354,24 @@ export class Guide {
     this.nodT = Math.max(0, this.nodT - dt);
     this.talkT = Math.max(0, this.talkT - dt);
     this.popT = Math.max(0, this.popT - dt);
+    // two different questions. "is a line in the air" keeps the card up and
+    // the glow lifted through the whole sentence; "is she making a noise right
+    // now" runs the mouth, so it shuts on every comma instead of buzzing
+    // straight through the punctuation.
     const voiced = this.fx.speaking ? this.fx.speaking() : false;
+    const sounding = this.fx.voicing ? this.fx.voicing() : voiced;
     const talking = voiced || this.talkT > 0;
+    const mouthing = this.fx.voicing ? sounding : talking;
     this.blinkFor -= dt;
     if (this.blinkFor <= 0) {
       this.blinkIn -= dt;
       if (this.blinkIn <= 0) { this.blinkFor = 0.12; this.blinkIn = rand(2.5, 6); }
     }
-    // flap on a fast triangle so it reads as speech, not a blinking light
-    const mouth = talking ? 0.25 + Math.abs(Math.sin(t * 11)) * 0.75 : 0;
+    // two sines at odd rates, so the flap has syllables in it rather than
+    // running like a metronome — a steady buzz is the thing that reads as fake
+    const mouth = mouthing
+      ? 0.2 + Math.abs(Math.sin(t * 10.5)) * (0.55 + Math.abs(Math.sin(t * 3.1)) * 0.25)
+      : 0;
     this.face.draw({ blink: this.blinkFor > 0, mouth });
 
     this._apply(t, talking);
@@ -309,6 +398,13 @@ export class Guide {
     // a blink shouldn't be a jump cut — she flares for half a second where she
     // lands, so your eye is told something arrived rather than just noticing
     // she's suddenly elsewhere
+    // the card fades with the voice, and hides outright once it's clear —
+    // an invisible plane still costs a draw call and still catches a raycast
+    const wantPanel = (talking && this.wantPanel()) ? 1 : 0;
+    this.panelOp += (wantPanel - this.panelOp) * (talking ? 0.22 : 0.08);
+    this.panel.material.opacity = this.panelOp;
+    this.panel.visible = this.panelOp > 0.01;
+
     const pop = this.popT > 0 ? this.popT / 0.5 : 0;
     const targetOp = 0.2 + (talking ? 0.14 : 0) + pop * 0.45;
     this.mat.opacity += (targetOp - this.mat.opacity) * 0.2;

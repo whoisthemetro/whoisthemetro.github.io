@@ -94,9 +94,14 @@ export function blobToDataUrl(blob) {
 }
 
 let toastTimer = null;
-export function toast(msg, ms = 3200) {
+/* kind marks WHAT this toast is, so css can treat it differently — today
+   "speech" (a subtitle for someone talking) is dropped on portrait phones,
+   where screen is scarce and the words are already being said out loud.
+   Everything else is feedback you can't hear, and always shows. */
+export function toast(msg, ms = 3200, kind = "") {
   const el = document.getElementById("toast");
   el.textContent = msg;
+  el.classList.toggle("speech", kind === "speech");
   el.classList.add("show");
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => el.classList.remove("show"), ms);
