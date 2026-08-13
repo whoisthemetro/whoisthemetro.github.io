@@ -22,7 +22,15 @@ import { startPlanes } from "./planes.js";
 import { Cat } from "./cat.js";
 import { Bartender } from "./bartender.js";
 import { Guide } from "./guide.js";
-import { speak, stopSpeaking, isSpeaking, isVoicing, voiceAvailable } from "./say.js";
+import { speak, stopSpeaking, isSpeaking, isVoicing, voiceAvailable, voiceInfo, preferVoices } from "./say.js";
+
+/* What Trinity should sound like, best first. Every visitor's device owns
+   its own voice list, so this is a wish rather than a setting: on a mac with
+   the good voices downloaded she gets Ava or Allison, on a stock one she
+   gets Samantha, on android a Google voice. Ordered modern-first, and all
+   women, because she is one. */
+preferVoices(["Ava", "Allison", "Samantha", "Susan", "Zoe", "Serena", "Nicky",
+              "Joelle", "Noelle", "Karen", "Martha", "Tessa", "Moira", "Kathy", "Female"]);
 import { makeSelfieMirror } from "./mirror.js";
 import { DEFAULT_SPEC } from "./avatar-builder.js";
 import { openOutfitPicker } from "./picker.js";
@@ -4800,7 +4808,7 @@ window.METRO_DEBUG = { renderer, camera, world, controls, xr, disc, hoop: hoopGa
     // what the crosshair is actually on — the smoke harness can't pointer-lock,
     // so this is how a test sees what a click would have hit
     castAt: (x = 0, y = 0) => { const h = castAt(x, y); return h ? { ud: Object.keys(h.object.userData), d: +h.distance.toFixed(2) } : null; },
-    say: { speak, stopSpeaking, isSpeaking, isVoicing, voiceAvailable }, room: () => aRoomNow(), jump: adminJump, mirror, openPicker, analytics: analyticsBuffer, notesWall,
+    say: { speak, stopSpeaking, isSpeaking, isVoicing, voiceAvailable, voiceInfo }, room: () => aRoomNow(), jump: adminJump, mirror, openPicker, analytics: analyticsBuffer, notesWall,
   layout: { set: setLayoutMode, select: layoutSelect, nudge: layoutNudge, scale: layoutScale, click: layoutClick, on: () => layoutMode, sel: () => layoutSel },
   uid: identity.uid, pool: poolGame, pool2: poolGame2, sitAtPool, leavePool,
   toy: () => toy, grabToy, throwToy,

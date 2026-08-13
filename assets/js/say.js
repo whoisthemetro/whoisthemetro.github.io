@@ -27,10 +27,39 @@ const SYNTH = typeof speechSynthesis !== "undefined" ? speechSynthesis : null;
 // voices we like, best first — warm and un-robotic where the OS has one.
 // mac ships Samantha/Alex; chrome adds the Google set; everything else
 // falls back to whatever the first en-* voice is.
-const WANTED = [
-  "Google UK English Female", "Google US English",
-  "Samantha", "Alex", "Karen", "Daniel", "Moira",
-];
+/* Pick the best voice the DEVICE happens to have, rather than naming one and
+   hoping. This matters more than any parameter: the same code sounds fine on
+   a machine with modern voices installed and robotic on one without, and we
+   don't get to ship the voice — the visitor's OS owns it.
+
+   Scored, best wins. "Premium"/"Enhanced" are Apple's downloadable
+   high-quality versions and are a different class from the compact ones that
+   ship by default; "Natural"/"Neural" are the Microsoft and Google
+   equivalents. The named list at the bottom is the modern Apple set. Samantha
+   and Alex are deliberately LAST-resort — they're the 2010-era compact voices
+   and they're what a stock Mac falls back to. */
+// who the caller would LIKE to sound like, best first. the api exposes no
+// gender and no quality flag, so a name list is the only lever there is —
+// and it belongs with the character, not in here. set by preferVoices().
+let prefer = [];
+export function preferVoices(names) { prefer = names || []; picked = null; }
+
+function scoreVoice(v) {
+  const n = v.name;
+  let s = 0;
+  if (/premium|enhanced/i.test(n)) s += 100;    // apple's downloadable good ones
+  if (/natural|neural/i.test(n)) s += 90;       // microsoft / google equivalents
+  if (/^Google /.test(n)) s += 70;              // chrome's network voices
+  if (/^Microsoft /.test(n)) s += 40;
+  // earlier in the caller's list is worth more, and any hit beats a stranger
+  const i = prefer.findIndex(g => new RegExp(`\\b${g}\\b`, "i").test(n));
+  if (i >= 0) s += 80 - i * 4;
+  if (!v.localService) s += 20;                 // network voices are the better ones
+  if (/^en-(GB|US)/i.test(v.lang)) s += 10;
+  // the novelty voices are real entries in this list and must never win
+  if (/bells|boing|bubbles|cellos|organ|trinoids|whisper|wobble|zarvox|bad news|good news|jester|superstar|bahh|albert|fred|ralph|junior|grandma|grandpa|rocko|deranged|hysterical|bells/i.test(n)) s -= 300;
+  return s;
+}
 
 let picked = null;          // the SpeechSynthesisVoice we settled on
 let speaking = false;       // a whole LINE is in the air, pauses included
@@ -54,11 +83,20 @@ let endCb = null;
    a little drift so she isn't a metronome. And because we know when a clause
    ENDS rather than just when the line does, her mouth can close in the gaps —
    which is what actually reads as breathing. */
-const PAUSE = { ",": 210, ";": 300, ":": 300, "—": 260, "–": 260, ".": 420, "!": 420, "?": 450, "…": 560 };
+/* SPLIT AT SENTENCES ONLY.
+
+   The first version cut at commas too, and that was the mistake: an engine
+   already knows what a comma does INSIDE an utterance, and it shapes the
+   whole phrase around it. Cutting there threw that away and replaced it with
+   a dead 210 ms hole, so every list came out as a stack of separate little
+   statements. Commas, colons and dashes now stay in the text where the voice
+   can do its own job with them; we only take the gap between sentences,
+   where a real speaker breathes anyway. */
+const PAUSE = { ".": 260, "!": 260, "?": 300, "…": 420 };
 
 function clauses(text) {
   const out = [];
-  const re = /([,;:—–]|\.\.\.|…|[.!?]+)/g;
+  const re = /(\.\.\.|…|[.!?]+)/g;
   let last = 0, m;
   const push = (body, mark) => {
     const t = body.trim();
@@ -68,7 +106,10 @@ function clauses(text) {
       if (out.length && mark) out[out.length - 1].pause += PAUSE[mark[0]] || 200;
       return;
     }
-    out.push({ text: t, mark: mark || "", pause: mark ? (PAUSE[mark === "..." ? "…" : mark[0]] || 220) : 0 });
+    // keep the terminator ON the text: "one." reads differently to "one",
+    // and the engine needs it to fall at the end of a sentence
+    out.push({ text: t + (mark && !/[.!?]$/.test(t) ? (mark === "..." ? "…" : mark) : ""),
+               mark: mark || "", pause: mark ? (PAUSE[mark === "..." ? "…" : mark[0]] || 240) : 0 });
   };
   while ((m = re.exec(text))) { push(text.slice(last, m.index), m[1]); last = re.lastIndex; }
   push(text.slice(last), "");
@@ -89,18 +130,24 @@ function voiceFor(c, i, n) {
     last: i === n - 1,
   };
 }
-// 1.02 gabbled, 0.84 dragged. this is the settled answer.
-const BASE_RATE = 0.92;
+// full speed. the slowness was never mostly the rate — it was the holes
+// punched in at every comma, and those are gone now.
+const BASE_RATE = 1.0;
 
 function pickVoice() {
   if (!SYNTH) return null;
   const all = SYNTH.getVoices();
   if (!all.length) return null;                 // too early — try again next line
-  for (const name of WANTED) {
-    const v = all.find(v => v.name === name);
-    if (v) return v;
-  }
-  return all.find(v => /^en(-|_|$)/i.test(v.lang)) || all[0];
+  const en = all.filter(v => /^en(-|_|$)/i.test(v.lang));
+  if (!en.length) return all[0];
+  return en.slice().sort((a, b) => scoreVoice(b) - scoreVoice(a))[0];
+}
+
+// which voice did we land on, and how good is the pick — so a page (or a
+// smoke test) can tell whether this device has anything decent installed
+export function voiceInfo() {
+  if (!picked) picked = pickVoice();
+  return picked ? { name: picked.name, lang: picked.lang, local: picked.localService, score: scoreVoice(picked) } : null;
 }
 
 if (SYNTH) {
