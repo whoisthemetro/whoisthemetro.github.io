@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="robots" content="noindex">
+<title>Send your files to METRO</title>
+<meta name="description" content="Upload your session files, stems or mixes to METRO. No Dropbox account needed.">
+
+<!-- straight through to the Dropbox file request; the card below is only
+     what you see if this hop is slow or blocked -->
+<meta http-equiv="refresh" content="0; url=https://www.dropbox.com/request/8cbwljtq67lxwweg1k4q">
+<link rel="canonical" href="https://whoisthemetro.com/submit/">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="METRO Mixing &amp; Mastering">
+<meta property="og:title" content="Send your files to METRO">
+<meta property="og:description" content="Upload your session files, stems or mixes. No Dropbox account needed.">
+<meta property="og:url" content="https://whoisthemetro.com/submit/">
+<meta property="og:image" content="https://whoisthemetro.com/mixandmaster/art/og-card2.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Send your files to METRO">
+<meta name="twitter:description" content="Upload your session files, stems or mixes. No Dropbox account needed.">
+<meta name="twitter:image" content="https://whoisthemetro.com/mixandmaster/art/og-card2.jpg">
+
+<link rel="icon" type="image/png" href="../mixandmaster/art/favicon-m.png">
+<link rel="apple-touch-icon" href="../mixandmaster/art/apple-touch-m.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;600&family=Nanum+Pen+Script&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; padding: 0; background: #0a0a0c; }
+  * { box-sizing: border-box; }
+  body {
+    min-height: 100vh;
+    display: flex; align-items: center; justify-content: center;
+    padding: 32px;
+    font-family: 'IBM Plex Mono', monospace;
+    color: #D7E2EA;
+    text-align: center;
+  }
+  .card { display: flex; flex-direction: column; align-items: center; gap: 18px; max-width: 420px; }
+  .mark {
+    font-family: 'Nanum Pen Script', cursive;
+    font-size: clamp(3.5rem, 12vw, 5.5rem);
+    line-height: 1;
+    text-transform: uppercase;
+    background: linear-gradient(180deg, #C6D6E4 0%, #FFFFFF 100%);
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent; color: transparent;
+    filter: drop-shadow(0 0 3px rgba(232, 244, 252, 0.5)) drop-shadow(0 0 16px rgba(150, 197, 232, 0.4));
+  }
+  .lede { font-weight: 300; font-size: 0.9rem; line-height: 1.7; color: #8b8f98; margin: 0; }
+  .btn {
+    border-radius: 999px;
+    background: linear-gradient(123deg, #1a0110 7%, #ff3366 37%, #b0216f 72%, #be4c00 100%);
+    box-shadow: 0px 4px 4px rgba(255, 51, 102, 0.25), 4px 4px 12px rgba(176, 33, 111, 0.9) inset;
+    outline: 2px solid #fafafa; outline-offset: -3px;
+    color: #fff; text-decoration: none;
+    font-weight: 600; text-transform: uppercase; letter-spacing: 0.16em;
+    font-size: 0.75rem; padding: 15px 30px;
+    transition: filter 0.2s ease;
+  }
+  .btn:hover { filter: brightness(1.15); }
+  .note { font-size: 0.62rem; letter-spacing: 0.22em; text-transform: uppercase; color: #55525c; margin: 0; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <span class="mark">Metro</span>
+    <p class="lede">Taking you to the upload page&hellip;</p>
+    <a class="btn" href="https://www.dropbox.com/request/8cbwljtq67lxwweg1k4q">Open the upload page</a>
+    <p class="note">wav / aiff / zip &middot; no dropbox account needed</p>
+  </div>
+  <script>
+    // belt and braces: the meta refresh above usually wins, this catches the rest.
+    // replace() keeps the hop out of history, so Back goes where they came from.
+    location.replace("https://www.dropbox.com/request/8cbwljtq67lxwweg1k4q");
+  </script>
+</body>
+</html>
