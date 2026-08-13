@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<!--
+  TikTok OAuth callback bridge
+  ============================
+  Deploy to:  https://whoisthemetro.com/tiktok-callback/index.html
+
+  Why this exists: TikTok requires the OAuth redirect URI to be HTTPS on a
+  verified domain, so it can't point at http://localhost:3333 directly. But an
+  OAuth redirect is a *browser* redirect — TikTok never fetches this page — so
+  a static page on the verified domain can simply forward the query string on
+  to the local server. The code never leaves your machine's browser.
+
+  No secrets live here. It forwards ?code= and ?state= verbatim and nothing else.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Connecting TikTok…</title>
+<meta name="robots" content="noindex">
+<style>
+  body{background:#0a0a0a;color:#f0f0f0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+       display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:24px}
+  .card{max-width:520px;text-align:center;line-height:1.7}
+  h1{font-size:18px;margin:0 0 12px}
+  a{color:#e8ff47}
+  .err{color:#ff6b6b}
+  code{background:#1a1a1a;padding:2px 6px;border-radius:4px;font-size:12px;word-break:break-all}
+</style>
+</head>
+<body>
+<div class="card" id="out">Connecting…</div>
+<script>
+(function () {
+  var LOCAL = 'http://localhost:3333/auth/tiktok/callback';
+  var q = window.location.search || '';
+  var params = new URLSearchParams(q);
+  var out = document.getElementById('out');
+
+  if (params.get('error')) {
+    out.innerHTML = '<h1 class="err">TikTok returned an error</h1><p>' +
+      (params.get('error_description') || params.get('error')) + '</p>';
+    return;
+  }
+  if (!params.get('code')) {
+    out.innerHTML = '<h1>Nothing to forward</h1>' +
+      '<p>This page is the TikTok OAuth callback bridge for the Metro Command Center. ' +
+      'It only does something when TikTok sends an authorization code here.</p>';
+    return;
+  }
+
+  var target = LOCAL + q;
+  out.innerHTML = '<h1>Handing off to your command center…</h1>' +
+    '<p>If nothing happens, make sure the server is running and ' +
+    '<a href="' + target + '">click here</a>.</p>';
+  window.location.replace(target);
+})();
+</script>
+</body>
+</html>
