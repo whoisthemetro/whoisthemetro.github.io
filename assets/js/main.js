@@ -22,7 +22,8 @@ import { startPlanes } from "./planes.js";
 import { Cat } from "./cat.js";
 import { Bartender } from "./bartender.js";
 import { Guide } from "./guide.js";
-import { speak, stopSpeaking, isSpeaking, isVoicing, voiceAvailable, voiceInfo, preferVoices } from "./say.js";
+import { speak, stopSpeaking, isSpeaking, isVoicing, voiceAvailable, voiceInfo, preferVoices, loadClips, clipsReady } from "./say.js";
+import { GUIDE_LINES, INTRO, ROOM_LINES, clipId } from "./lines.js";
 
 /* What Trinity should sound like, best first. Every visitor's device owns
    its own voice list, so this is a wish rather than a setting: on a mac with
@@ -31,6 +32,10 @@ import { speak, stopSpeaking, isSpeaking, isVoicing, voiceAvailable, voiceInfo, 
    women, because she is one. */
 preferVoices(["Ava", "Allison", "Samantha", "Susan", "Zoe", "Serena", "Nicky",
               "Joelle", "Noelle", "Karen", "Martha", "Tessa", "Moira", "Kathy", "Female"]);
+/* And if her lines have been rendered to audio, those beat every one of the
+   voices above. Best-effort and fire-and-forget: no manifest simply means
+   nothing has been rendered yet and she stays on the browser synth. */
+loadClips();
 import { makeSelfieMirror } from "./mirror.js";
 import { DEFAULT_SPEC } from "./avatar-builder.js";
 import { openOutfitPicker } from "./picker.js";
@@ -528,63 +533,17 @@ const guide = new Guide(world.scene, { x: 0.2, z: 0.9, yaw: 0.80, name: "Trinity
   // them along the bottom of the screen as well was just saying it twice.
   // (portrait phones get neither — the card is off there and she's audible,
   // which is the trade that screen size buys.)
-  say: (line) => speak(line),
+  say: (line, clip) => speak(line, { clip }),
 });
 
-/* Placeholder patter until the real tutorial tree lands — but every line was
-   checked against the room as it stands TODAY, not against a summary:
-   - the numerals on the e-kit pads (EDRUM_NUM, world.js) spell STUDIO_FILL in
-     order, so "play I through VI" IS the secret; the room already told you.
-   - the door with the red neon is MIX & MASTER and it LEAVES the site
-     (location.href, see the mixDoor branch below) — it is not a room, and it
-     is not the arcade. the arcade is the plain open doorway; its neon outline
-     is on the arcade side, so nothing glows at it from in here.
-   - the lift lives in the arcade, not in here, and its four buttons are
-     HOME / THE DESI / THE CREW / THE VENUE (FLOORS in world.js).
-   Anything you add here: go read the code first. This list has already been
-   wrong once. */
-/* She talks about the room she's STANDING IN. Following you into the arcade
-   and then explaining the lava lamp would be worse than saying nothing, so
-   there are two pools and `inArcade()` picks.
+/* What she says now lives in lines.js, because the offline renderer in
+   tools/voice/ has to read exactly the same list — if the two ever drifted
+   the room would ask for audio that was never made. The facts those lines
+   depend on are written down beside them; go and read the code before you
+   add one. This list has already been wrong once.
 
-   NOBODY'S NAME IN HERE. She says it once, in the introduction, and then
-   never again — a guide who keeps working your name into the conversation
-   sounds like someone selling you a car. The {you} token still substitutes
-   if a line ever wants it, but nothing below should. */
-const GUIDE_LINES = {
-  bedroom: [
-    "the drum pads are numbered for a reason. play them one through six, in order, and the room will take you somewhere you haven't been.",
-    "the walls take notes. aim at any bare patch and leave one. it stays there, and everyone who comes after you reads it.",
-    "look out the window. that's a real place, not a picture. press up against the glass and turn around, the city never runs out.",
-    "that strip along the top is a real aeroplane. we sit ten miles off LAX, so when one crosses the window, one is genuinely up there. the flight number, the type, the altitude, all of it true.",
-    "watch the sky out there long enough and a jet goes over. you can take a shot at it. through the glass. i didn't tell you that.",
-    "the cat is real, in the sense that matters. it gets hungry, it gets thirsty, and it remembers. there's a mouse on the floor if you want to throw something.",
-    "the telecaster is tuned and waiting. a minor pentatonic lives on it, so you genuinely cannot play a wrong note.",
-    "the pedals on the floor do what pedals do. click one to switch it on, click it again to bypass. the light goes dim when it's out of the chain.",
-    "there's a treadle by the guitar. drag it down and it sweeps the tone right off. that one's worth doing while something's playing.",
-    "the little mixer sets the balance. keys, guitar, drums. if one of them is too loud, that's where you fix it.",
-    "the radio picks up real LA stations. not a loop, not a mood. whatever is actually going out over the air right now.",
-    "give the lava lamp a click. and know that everyone else in here sees it come on too. that lamp belongs to the room, not to you.",
-    "the blinds and the curtains both move. draw them and it's just you and the glow. open them and you've got the whole city back.",
-    "the light switch dims rather than flips. somewhere between the two ends is the version of this room i like best.",
-    "the computer on the desk actually boots. METRO OS. rooms, messages, music. have a poke around in it.",
-    "the keys play, and you can change the sound they make. same for the guitar, if the voice it's wearing isn't the one you want.",
-    "the open doorway goes through to the arcade. i'll come with you.",
-    "careful with the door under the red neon. that one isn't a room. it walks you out of here to mix and master, so finish up first.",
-  ],
-  arcade: [
-    "four cabinets, and all four of them really play. no emulator, no rom. someone sat down and wrote them.",
-    "the marquee up there keeps the high scores. real ones, from real people who stood where you're standing.",
-    "there's a barkeep at the counter. he'll fix you something and he'll be rude about it. don't take it personally, he's like that with everyone.",
-    "the pool tables rack properly and the balls obey. you can play someone else on them, if there's someone else about.",
-    "there's a hoop down here. sink a few in a row and something catches fire. you'll know it when it happens.",
-    "the mirror on the wall is how you change your look. worth doing before anyone else turns up.",
-    "the lift is the way out to everywhere else. call it, step in, pick a floor. one of them wants a password, and i'm not going to give it to you.",
-    "the doorway back to the bedroom is right where you came in. i'll follow you through it.",
-  ],
-};
-// a shuffle bag per room — draw without replacement, and a fresh bag never
-// opens with the line you just heard (same trick as the dumbek samples)
+   A shuffle bag per room: draw without replacement, and a fresh bag never
+   opens with the line you just heard. Same trick as the dumbek samples. */
 function lineBag(items) {
   let pool = [], last = null;
   return () => {
@@ -601,27 +560,24 @@ let guideMet = false;             // has she introduced herself yet
 let guideGreetedRoom = null;      // and has she said anything about THIS room
 // she calls you what you called yourself on the way in
 const youAre = () => (identity.name || "").trim() || "you";
+/* Returns BOTH what the card shows and which rendered take to play. They're
+   the same string everywhere except the introduction, where the card greets
+   you by name and the voice can't — a pre-rendered clip doesn't know who
+   walked in, and splicing a synthesised name into a real recording sounds
+   exactly as bad as it reads. */
 function guideNextLine() {
   const room = inArcade() ? "arcade" : "bedroom";
-  let line;
+  let line, spoken;
   if (!guideMet) {
     guideMet = true; guideGreetedRoom = room;
-    // the first thing anyone hears. name, then the one fact that changes how
-    // you treat the place: nothing here is a demo, it all persists and it's
-    // all shared. then an open door back to her.
-    // KEEP THIS SHORT. an earlier draft ran 25 seconds, which is a long time
-    // to stand still being talked at before you're allowed to touch anything.
-    // name, the one fact that changes how you treat the place, an open door.
-    line = `hey ${youAre()}, i'm Trinity. this room is alive, and it remembers. leave a note on the wall and it stays, for everyone, long after you've gone. nothing in here resets. anything else, just ask me.`;
+    line = INTRO.display; spoken = INTRO.spoken;
   } else if (guideGreetedRoom !== room) {
     guideGreetedRoom = room;
-    line = room === "arcade"
-      ? `right, the arcade. different room, different things to tell you.`
-      : `back in the bedroom, then. there's plenty in here i haven't got to yet.`;
+    line = spoken = ROOM_LINES[room];
   } else {
-    line = guideBags[room]();
+    line = spoken = guideBags[room]();
   }
-  return line.replace(/\{you\}/g, youAre());
+  return { text: line.replace(/\{you\}/g, youAre()), clip: clipId(spoken) };
 }
 
 /* --- the toy mouse: throw it, the cat fetches it back ----------------------
@@ -1389,7 +1345,8 @@ controls.onAction((ndcX, ndcY) => {
     // clicking while she's mid-sentence cuts her off — you asked for the next
     // thing, so she stops talking about the last one
     if (isSpeaking()) stopSpeaking();
-    guide.speak(guideNextLine());
+    const l = guideNextLine();
+    guide.speak(l.text, l.clip);
   } else if (hit.object.userData.cat && hit.distance < 2.2) {
     if (Date.now() - lastPetAt < 1200) return;
     lastPetAt = Date.now();
@@ -4816,7 +4773,7 @@ window.METRO_DEBUG = { renderer, camera, world, controls, xr, disc, hoop: hoopGa
     // what the crosshair is actually on — the smoke harness can't pointer-lock,
     // so this is how a test sees what a click would have hit
     castAt: (x = 0, y = 0) => { const h = castAt(x, y); return h ? { ud: Object.keys(h.object.userData), d: +h.distance.toFixed(2) } : null; },
-    say: { speak, stopSpeaking, isSpeaking, isVoicing, voiceAvailable, voiceInfo }, room: () => aRoomNow(), jump: adminJump, mirror, openPicker, analytics: analyticsBuffer, notesWall,
+    say: { speak, stopSpeaking, isSpeaking, isVoicing, voiceAvailable, voiceInfo, clipsReady }, room: () => aRoomNow(), jump: adminJump, mirror, openPicker, analytics: analyticsBuffer, notesWall,
   layout: { set: setLayoutMode, select: layoutSelect, nudge: layoutNudge, scale: layoutScale, click: layoutClick, on: () => layoutMode, sel: () => layoutSel },
   uid: identity.uid, pool: poolGame, pool2: poolGame2, sitAtPool, leavePool,
   toy: () => toy, grabToy, throwToy,

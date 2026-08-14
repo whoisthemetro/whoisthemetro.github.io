@@ -94,7 +94,8 @@ let endCb = null;
    where a real speaker breathes anyway. */
 const PAUSE = { ".": 260, "!": 260, "?": 300, "…": 420 };
 
-function clauses(text) {
+function clauses(raw) {
+  const text = String(raw ?? "");   // never throw on a bad line; say nothing instead
   const out = [];
   const re = /(\.\.\.|…|[.!?]+)/g;
   let last = 0, m;
@@ -219,10 +220,62 @@ function nextClause() {
 /* say a line. returns the rough duration in ms so a caller can pace
    itself without waiting on the callback. opts.onEnd fires when the
    mouth should stop — real or fallback, always exactly once. */
-export function speak(text, { volume = 1, onEnd } = {}) {
+/* ---- the rendered take, if there is one -------------------------------
+   Her script is fixed, so the good version of this is an mp3 rendered once
+   (tools/voice/render.mjs) rather than whatever synth the visitor's device
+   happens to own. The manifest lists what got made; anything missing from
+   it falls through to the browser voice below, so a half-rendered set still
+   works and the room never waits on a 404 to find that out. */
+let clipSet = null;                       // ids we know exist
+let audio = null;                         // the element currently playing
+const CLIP_DIR = "assets/audio/trinity/";
+
+export async function loadClips() {
+  try {
+    const res = await fetch(CLIP_DIR + "manifest.json", { cache: "force-cache" });
+    if (!res.ok) return false;
+    const m = await res.json();
+    clipSet = new Set(m.clips || []);
+    return clipSet.size > 0;
+  } catch (e) { return false; }         // no manifest is not an error, it's the synth
+}
+export const clipsReady = () => !!(clipSet && clipSet.size);
+
+function playClip(id, volume, onDone) {
+  const a = new Audio(CLIP_DIR + id + ".mp3");
+  a.volume = volume;
+  audio = a;
+  const done = (ok) => {
+    if (a !== audio) return;
+    audio = null;
+    onDone(ok);
+  };
+  a.onended = () => done(true);
+  a.onerror = () => done(false);        // a clip that won't play is a synth line
+  a.play().catch(() => done(false));
+  return a;
+}
+
+/* Say a line. `clip` is the id from lines.js — when we have that take
+   rendered it plays, and the whole clause machinery below is skipped,
+   because a real recording already has its own pauses in it. */
+export function speak(text, { volume = 1, onEnd, clip } = {}) {
   stopSpeaking();
   endCb = onEnd || null;
   speaking = true;
+
+  if (clip && clipSet && clipSet.has(clip)) {
+    voicing = true;
+    silentUntil = performance.now() + 120000;   // the element's own end event drives it
+    playClip(clip, volume, (ok) => {
+      if (!ok && speaking) {                    // the file let us down — say it anyway
+        speaking = false; voicing = false; silentUntil = 0;
+        return void speak(text, { volume, onEnd: endCb });
+      }
+      finish();
+    });
+    return guessMs(text);
+  }
 
   const parts = clauses(text);
   let total = 0;
@@ -262,6 +315,7 @@ export function stopSpeaking() {
   queue = [];
   clearGap();
   curUtter = null;                 // so a late onend can't restart the chain
+  if (audio) { const a = audio; audio = null; try { a.pause(); a.src = ""; } catch (e) {} }
   if (SYNTH) { try { SYNTH.cancel(); } catch (e) {} }
   silentUntil = 0;
   if (speaking) finish();

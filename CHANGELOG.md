@@ -4,6 +4,35 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-08-13 — a real voice
+
+**Trinity stopped synthesising and started playing recordings.** Her script
+is fixed, so there was never a reason to generate it live: `tools/voice/`
+renders all 29 lines to mp3 once, and the room plays files. That buys one
+voice for everybody instead of whatever the visitor's device happens to own
+(this mac's best was Samantha, from 2010), no key in the client, no
+per-visit cost, and nothing to go wrong at runtime. The browser synth is
+still there underneath and takes over for anything not in the manifest, so
+a half-rendered set still works.
+
+Everything she says moved to `assets/js/lines.js`, because the renderer and
+the room both have to read the same list — if those drifted, the room would
+ask for audio that was never made.
+
+A clip is named for a hash of its own text, so editing one line orphans one
+file and mints one new name. Re-running only pays for what changed, and the
+tool lists the orphans rather than guessing.
+
+**The card and the voice are allowed to disagree, exactly once.** The
+introduction greets you by name and a pre-rendered take can't know it, so
+you're greeted in writing and not out loud. Splicing a synthesised name
+into a real recording sounds precisely as bad as it reads.
+
+ElevenLabs returns 44.1kHz stereo, which is a music format for something
+that is one woman talking: 3.4 MB for the set. Mono at 24kHz/48kbps is
+indistinguishable for speech and lands at 1.3 MB. That transcode lives in
+the tool, not in a command someone has to remember.
+
 ## 2026-08-13 — she's a bat
 
 **Trinity isn't shaped like a person any more.** She was the same glow-blob

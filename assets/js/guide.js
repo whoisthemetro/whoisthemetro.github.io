@@ -431,11 +431,11 @@ export class Guide {
 
   // say a line out loud. the actual speaking belongs to whoever wired
   // fx.say (say.js today); this just runs the mouth and the nod.
-  speak(text) {
+  speak(text, clip) {
     this.lastLine = text;      // the card is a canvas, so this is how a test reads her
     this.nodT = 0.4;
     this._drawPanel(text);
-    const ms = this.fx.say?.(text);
+    const ms = this.fx.say?.(text, clip);
     // if the voice layer told us how long it'll take, trust it; otherwise
     // fall back to a length guess so the mouth doesn't run dry or forever
     this.talkT = Math.max(0.6, (typeof ms === "number" ? ms : String(text).length * 55) / 1000);
