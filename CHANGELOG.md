@@ -4,6 +4,38 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-08-14 — the city puts the grid on at night
+
+**After dark, Los Angeles goes tron.** Teal night palette, neon edge lines
+on every near building, two-current windows (cyan majority, amber minority),
+painted-bloom crowns on the downtown ring, and the street plan repainted as
+a circuit board: avenues become lit traces (one axis amber, one cyan),
+intersections become nodes, stub traces wander into the blocks. Cars drag
+light trails up the road. Daytime is untouched — the window is still real
+LA, with real weather and real planes landing in it, so nothing Trinity
+says about it stops being true. The city only dresses up when the sun goes.
+
+No postprocessing anywhere. Every glow is painted into the canvas textures
+(wide soft pass under a thin hot core), the edges are one additive
+LineSegments, the trails are one InstancedMesh whose gradient fades to
+black — which under additive blending IS transparent, so it needs no
+texture and no alpha.
+
+**And the window got cheaper, not dearer.** The forty near buildings were
+forty Meshes wearing six-group material arrays — ~240 draw calls for
+geometry that never moves. They're baked into ONE mesh now (walls + roofs,
+two calls), undersides dropped from the bake entirely. And the star twinkle
+used to repaint mountains, haze, city and ground every 900 ms all night —
+four big canvases redone for a change only the sky contains; the sky keeps
+its own clock now. Same spawn view: 660 draw calls before, 483 after,
+night included.
+
+`world.skyPreview(altDeg)` is new: paints the outside for any sun altitude
+so the smoke harness can photograph day and night without waiting for
+either. It replaces the sky cache rather than painting once, because the
+beacon blink redraws from that cache twice a second and stomped the first
+version before the screenshot fired.
+
 ## 2026-08-13 — she glows on her own syllables
 
 **The card is gone from the normal path.** Once she had a real recorded

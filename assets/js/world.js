@@ -778,7 +778,10 @@ function makeOutside() {
     if (sunAlt > 5)        { top = "#7fb2e0"; mid = "#a2c6e4"; bot = "#c8dcec"; mtn = "96,112,138"; }
     else if (sunAlt > -6)  { top = "#2a3c5e"; mid = "#6b5670"; bot = "#d88a52"; mtn = "56,52,76"; }
     else if (sunAlt > -12) { top = "#141d33"; mid = "#232744"; bot = "#3a3550"; mtn = "22,26,46"; }
-    else                   { top = "#0a0f1f"; mid = "#101527"; bot = "#1a2030"; mtn = "5,8,16"; }
+    // night leans teal, not warm — after dark the city goes tron, and the
+    // haze/marine-layer colour everything shares comes from `bot`, so one
+    // value here tints the whole grid
+    else                   { top = "#050b18"; mid = "#0a1424"; bot = "#0f2a35"; mtn = "4,9,18"; }
     const botRGB = [parseInt(bot.slice(1, 3), 16), parseInt(bot.slice(3, 5), 16), parseInt(bot.slice(5, 7), 16)];
     return { top, mid, bot, mtn, botRGB, night: sunAlt < -4, sunAlt };
   }
@@ -951,11 +954,18 @@ function makeOutside() {
     const base = Rcity.rowOf(OUT_GROUND);
     const night = pal.night;
     if (night) {
+      // the towers stand in teal light; the streets under them stay warm.
+      // that split is the whole reference image: cyan city, amber ground.
       const glow = g.createLinearGradient(0, base - 260, 0, base);
-      glow.addColorStop(0, "rgba(255,150,70,0)");
-      glow.addColorStop(1, "rgba(255,150,70,0.42)");
+      glow.addColorStop(0, "rgba(40,180,235,0)");
+      glow.addColorStop(1, "rgba(40,180,235,0.34)");
       g.fillStyle = glow;
       g.fillRect(0, base - 260, cw, 260);
+      const warm = g.createLinearGradient(0, base - 70, 0, base);
+      warm.addColorStop(0, "rgba(255,140,60,0)");
+      warm.addColorStop(1, "rgba(255,140,60,0.3)");
+      g.fillStyle = warm;
+      g.fillRect(0, base - 70, cw, 70);
     }
     const degPx = cw / OUT_ARC;
     for (const b of SKYLINE) {
@@ -968,10 +978,16 @@ function makeOutside() {
           : `rgba(95,105,120,${0.5 + b.s * 0.32})`;
         g.fillRect(x, top, w, base - top);
         if (night && b.s > 0.45) {
-          g.fillStyle = "rgba(255,206,140,0.5)";
           for (let k = 0; k < b.h * 0.7; k++) {
-            if (rnd(k + b.s * 90) < 0.4) continue;
+            const wr = rnd(k + b.s * 90);
+            if (wr < 0.4) continue;
+            g.fillStyle = wr > 0.72 ? "rgba(90,210,255,0.55)" : "rgba(255,190,120,0.4)";
             g.fillRect(x + 2 + (rnd(k) * (w - 6)), top + 6 + k * 7, 2, 3);
+          }
+          // a lit rim on the taller stock, so the whole horizon carries the grid
+          if (b.s > 0.72) {
+            g.fillStyle = "rgba(53,215,255,0.18)"; g.fillRect(x - 1, top - 2, w + 2, 4);
+            g.fillStyle = "rgba(150,235,255,0.8)"; g.fillRect(x, top, w, 1.2);
           }
         }
         continue;
@@ -995,15 +1011,24 @@ function makeOutside() {
           g.fillRect(x + w * 0.22, top - 14, w * 0.4, 14);
         }
       }
-      g.fillStyle = night ? "rgba(140,160,210,0.16)" : "rgba(235,242,250,0.38)";
+      g.fillStyle = night ? "rgba(80,220,255,0.45)" : "rgba(235,242,250,0.38)";
       g.fillRect(x, top + (b.wilshire ? 22 : 0), 2, base - top);
       if (night) {
+        // downtown wears the neon: every crown gets a painted-bloom edge —
+        // a wide soft band with a thin hot core inside it, the same
+        // two-coat trick the room's additive glows use — cyan for most,
+        // amber for a few so the skyline isn't one flat colour
+        const amber = rnd(b.i * 7 + 2) < 0.25;
+        const rim = amber ? "255,150,60" : "53,215,255";
+        const ty = top + (b.wilshire ? 11 : 0);
+        g.fillStyle = `rgba(${rim},0.18)`; g.fillRect(x - 2, ty - 4, w + 4, 8);
+        g.fillStyle = `rgba(${rim},0.95)`; g.fillRect(x - 1, ty - 0.8, w + 2, 1.6);
         for (let row = 0; row < (base - top) / 9; row++) {
           for (let col = 0; col < w / 8; col++) {
             const rr = rnd(row * 31 + col * 7 + b.i * 13);
             if (rr > 0.52) continue;
-            g.fillStyle = rr < 0.08 ? "rgba(170,210,255,0.85)"
-              : `rgba(255,${200 + (rr * 60) | 0},140,${0.5 + rr * 0.4})`;
+            g.fillStyle = rr < 0.3 ? `rgba(90,210,255,${0.45 + rr})`
+              : `rgba(255,${170 + (rr * 60) | 0},110,${0.35 + rr * 0.4})`;
             g.fillRect(x + 3 + col * 8, top + 7 + row * 9, 3.5, 4.5);
           }
         }
@@ -1072,29 +1097,65 @@ function makeOutside() {
         }
       }
     }
-    // lane markings
-    g.strokeStyle = night ? "rgba(220,210,170,0.16)" : "rgba(250,246,225,0.5)";
-    g.lineWidth = 2;
-    g.setLineDash([14, 16]);
-    for (let i = 0; i <= 8; i++) {
-      g.beginPath(); g.moveTo(i * step, 0); g.lineTo(i * step, 1024); g.stroke();
-      g.beginPath(); g.moveTo(0, i * step); g.lineTo(1024, i * step); g.stroke();
-    }
-    g.setLineDash([]);
-    if (night) {
-      // sodium pools along every kerb — a lit street at night is most of
-      // what makes a city look inhabited from a window
+    if (!night) {
+      // daytime keeps its honest lane markings
+      g.strokeStyle = "rgba(250,246,225,0.5)";
+      g.lineWidth = 2;
+      g.setLineDash([14, 16]);
       for (let i = 0; i <= 8; i++) {
-        for (let k = 0; k < 8; k++) {
-          const a = k * 128 + 64;
-          for (const [rr, aa] of [[11, 0.09], [5, 0.26]]) {
-            g.fillStyle = `rgba(255,178,86,${aa})`;
-            g.beginPath(); g.arc(i * step, a, rr, 0, 7); g.fill();
-            g.beginPath(); g.arc(a, i * step, rr, 0, 7); g.fill();
+        g.beginPath(); g.moveTo(i * step, 0); g.lineTo(i * step, 1024); g.stroke();
+        g.beginPath(); g.moveTo(0, i * step); g.lineTo(1024, i * step); g.stroke();
+      }
+      g.setLineDash([]);
+    } else {
+      /* After dark the street plan becomes the circuit board: every avenue
+         a lit trace, every intersection a node. Painted bloom throughout —
+         a wide soft pass under a thin hot core — because this texture is
+         the single biggest surface in the view and it has to carry the
+         tron look on its own. One axis runs amber and the other cyan, the
+         two currents of the reference image. */
+      const trace = (vert, p, rim, core) => {
+        g.strokeStyle = rim; g.lineWidth = 9;
+        g.beginPath();
+        if (vert) { g.moveTo(p, 0); g.lineTo(p, 1024); } else { g.moveTo(0, p); g.lineTo(1024, p); }
+        g.stroke();
+        g.strokeStyle = core; g.lineWidth = 2.2;
+        g.beginPath();
+        if (vert) { g.moveTo(p, 0); g.lineTo(p, 1024); } else { g.moveTo(0, p); g.lineTo(1024, p); }
+        g.stroke();
+      };
+      for (let i = 0; i <= 8; i++) {
+        trace(true, i * step, "rgba(48,190,255,0.10)", "rgba(120,225,255,0.55)");
+        trace(false, i * step, "rgba(255,140,50,0.10)", "rgba(255,190,110,0.5)");
+      }
+      // nodes where the currents cross: a soft pad and a hot pip
+      for (let i = 0; i <= 8; i++) {
+        for (let k = 0; k <= 8; k++) {
+          const warm = (i + k) % 2 === 0;
+          g.fillStyle = warm ? "rgba(255,160,70,0.16)" : "rgba(60,200,255,0.16)";
+          g.fillRect(i * step - 6, k * step - 6, 12, 12);
+          g.fillStyle = warm ? "rgba(255,214,150,0.85)" : "rgba(170,238,255,0.85)";
+          g.fillRect(i * step - 1.6, k * step - 1.6, 3.2, 3.2);
+        }
+      }
+      // stub traces wandering into the blocks, like copper into a board.
+      // seeded, not random: the street plan shouldn't rewire every repaint.
+      g.lineWidth = 1.6;
+      for (let bx = 0; bx < 8; bx++) {
+        for (let bz = 0; bz < 8; bz++) {
+          if (bx === 3 && bz === 4) continue;              // the park keeps its dark
+          for (let t = 0; t < 3; t++) {
+            const s = rnd(bx * 17 + bz * 5 + t * 3);
+            const x0 = bx * step + 14 + s * (step - 60);
+            const y0 = bz * step + 14 + rnd(s * 90) * (step - 60);
+            const L = 14 + rnd(s * 7) * 26;
+            g.strokeStyle = s < 0.5 ? "rgba(60,200,255,0.13)" : "rgba(255,150,60,0.11)";
+            g.beginPath();
+            g.moveTo(x0, y0);
+            if (s < 0.5) { g.lineTo(x0 + L, y0); g.lineTo(x0 + L, y0 + L * 0.7); }
+            else { g.lineTo(x0, y0 + L); g.lineTo(x0 + L * 0.7, y0 + L); }
+            g.stroke();
           }
-          g.fillStyle = "rgba(255,196,124,0.55)";
-          g.fillRect(i * step - 1, a - 1, 2, 2);
-          g.fillRect(a - 1, i * step - 1, 2, 2);
         }
       }
     }
@@ -1127,7 +1188,10 @@ function makeOutside() {
         const rr = (Math.abs(Math.sin((row * 31 + col * 7) * 12.9898) * 43758.5453) % 1);
         if (night) {
           if (rr > 0.42) continue;
-          g.fillStyle = rr < 0.06 ? "rgba(180,215,255,0.9)" : `rgba(255,${196 + (rr * 70) | 0},${120 + (rr * 60) | 0},${0.55 + rr})`;
+          // the near facades sell the grid most, being nearest: cool-heavy
+          // windows with a warm minority, matching the painted ring behind
+          g.fillStyle = rr < 0.26 ? `rgba(110,220,255,${0.55 + rr})`
+            : `rgba(255,${186 + (rr * 70) | 0},${110 + (rr * 60) | 0},${0.45 + rr * 0.5})`;
         } else {
           g.fillStyle = `rgba(${30 + rr * 24 | 0},${38 + rr * 26 | 0},${52 + rr * 30 | 0},0.6)`;
         }
@@ -1144,7 +1208,24 @@ function makeOutside() {
   const roofMat = new THREE.MeshBasicMaterial({ color: 0x2c313a, fog: false });
   const nearBlocks = new THREE.Group();
   group.add(nearBlocks);
+  /* Baked into ONE mesh. These forty blocks used to be forty Meshes wearing
+     six-group material arrays, and three.js draws every group separately:
+     ~240 draw calls for buildings that never move. Merged with the box
+     transforms applied up front, they cost TWO (walls + roofs), and the
+     underside faces — which nobody has ever seen — aren't in the bake at
+     all. The per-wall UV scaling survives, so the facades still tile in
+     metres.
+
+     While each box is in hand its edges go into a second buffer: four
+     verticals and the roofline, coloured mostly cyan with the odd amber.
+     That's the tron skin — one additive LineSegments, ONE draw call, and
+     it only shows at night. A dark building wearing a lit edge is the
+     whole reference image in a sentence. */
+  let neonEdges = null;
   {
+    const wallPos = [], wallUv = [], roofPos = [], edgePos = [], edgeCol = [];
+    const _b = new THREE.Matrix4(), _p = new THREE.Vector3();
+    const cyan = new THREE.Color(0x35d7ff), amber = new THREE.Color(0xff8a30);
     for (let i = 0; i < 40; i++) {
       // nothing looms: the closest block sits 34 m out, and anything on the
       // window's centre line has to stand back further still, so the city
@@ -1156,22 +1237,60 @@ function makeOutside() {
       const w = 8 + rnd(i * 11 + 3) * 14;
       const d = 8 + rnd(i * 13 + 4) * 14;
       const a = az * Math.PI / 180;
-      const geo = new THREE.BoxGeometry(w, h, d);
-      // BoxGeometry faces run +x,-x,+y,-y,+z,-z — the WALLS are 0,1,4,5;
-      // 2 and 3 are the roof and the underside and want none of this
-      const uv = geo.attributes.uv;
+      _b.makeRotationY((rnd(i * 17) - 0.5) * 0.5);
+      _b.setPosition(Math.sin(a) * dist, OUT_GROUND + h / 2, -Math.cos(a) * dist);
+      const geo = new THREE.BoxGeometry(w, h, d).toNonIndexed();
+      geo.applyMatrix4(_b);
+      const pos = geo.attributes.position, uv = geo.attributes.uv;
+      // unindexed box: 6 verts a face, face order +x,-x,+y,-y,+z,-z.
+      // walls are 0,1,4,5; the roof is 2; 3 is the underside and stays out.
       for (const f of [0, 1, 4, 5]) {
         const wide = (f === 0 || f === 1) ? d : w;
-        for (let k = 0; k < 4; k++) {
-          uv.setXY(f * 4 + k, uv.getX(f * 4 + k) * (wide / TILE_M), uv.getY(f * 4 + k) * (h / TILE_M));
+        for (let k = 0; k < 6; k++) {
+          const vi = f * 6 + k;
+          wallPos.push(pos.getX(vi), pos.getY(vi), pos.getZ(vi));
+          wallUv.push(uv.getX(vi) * (wide / TILE_M), uv.getY(vi) * (h / TILE_M));
         }
       }
-      uv.needsUpdate = true;
-      const m = new THREE.Mesh(geo, [nearMat, nearMat, roofMat, roofMat, nearMat, nearMat]);
-      m.position.set(Math.sin(a) * dist, OUT_GROUND + h / 2, -Math.cos(a) * dist);
-      m.rotation.y = (rnd(i * 17) - 0.5) * 0.5;
-      nearBlocks.add(m);
+      for (let k = 0; k < 6; k++) {
+        const vi = 2 * 6 + k;
+        roofPos.push(pos.getX(vi), pos.getY(vi), pos.getZ(vi));
+      }
+      geo.dispose();
+      // the neon: pushed a hair proud of the faces so the lines never
+      // z-fight the wall they're drawn on
+      const col = rnd(i * 23) < 0.2 ? amber : cyan;
+      const hw = w / 2 + 0.05, hh = h / 2 + 0.05, hd = d / 2 + 0.05;
+      const seg = (ax, ay, az2, bx, by, bz) => {
+        _p.set(ax, ay, az2).applyMatrix4(_b); edgePos.push(_p.x, _p.y, _p.z); edgeCol.push(col.r, col.g, col.b);
+        _p.set(bx, by, bz).applyMatrix4(_b); edgePos.push(_p.x, _p.y, _p.z); edgeCol.push(col.r, col.g, col.b);
+      };
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+        seg(sx * hw, -hh, sz * hd, sx * hw, hh, sz * hd);      // the four verticals
+      }
+      seg(-hw, hh, -hd,  hw, hh, -hd); seg(hw, hh, -hd,  hw, hh, hd);   // the roofline
+      seg(hw, hh, hd,  -hw, hh, hd);   seg(-hw, hh, hd,  -hw, hh, -hd);
     }
+    const wallCount = wallPos.length / 3, roofCount = roofPos.length / 3;
+    const P = new Float32Array(wallPos.length + roofPos.length);
+    P.set(wallPos, 0); P.set(roofPos, wallPos.length);
+    const U = new Float32Array((wallCount + roofCount) * 2);   // roof uvs stay zero
+    U.set(wallUv, 0);
+    const merged = new THREE.BufferGeometry();
+    merged.setAttribute("position", new THREE.BufferAttribute(P, 3));
+    merged.setAttribute("uv", new THREE.BufferAttribute(U, 2));
+    merged.addGroup(0, wallCount, 0);
+    merged.addGroup(wallCount, roofCount, 1);
+    nearBlocks.add(new THREE.Mesh(merged, [nearMat, roofMat]));
+
+    const eg = new THREE.BufferGeometry();
+    eg.setAttribute("position", new THREE.BufferAttribute(new Float32Array(edgePos), 3));
+    eg.setAttribute("color", new THREE.BufferAttribute(new Float32Array(edgeCol), 3));
+    neonEdges = new THREE.LineSegments(eg, new THREE.LineBasicMaterial({
+      vertexColors: true, transparent: true, opacity: 0.85,
+      blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+    neonEdges.visible = false;                 // draw() turns her on after dark
+    nearBlocks.add(neonEdges);
   }
 
   /* ================= traffic ================= */
@@ -1248,6 +1367,44 @@ function makeOutside() {
   lamps.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   group.add(cars, lamps);
 
+  /* --- the tron trail: the streak a car drags up the road after dark.
+     One flat additive quad lying just above the tarmac, fading to black
+     down its length — under additive blending black IS transparent, so
+     the gradient needs no texture and no alpha. It rides the same
+     instance matrix as the car it belongs to: one more InstancedMesh,
+     one more draw call, night only. --- */
+  const trailGeo = (() => {
+    const LEN = 7.5;
+    const g = new THREE.PlaneGeometry(1.35, LEN, 1, 3)
+      .rotateX(-Math.PI / 2)
+      .translate(0, -0.8, -(LEN / 2) - 1.9)      // wheels sit ~0.9 over the road; the streak hugs it
+      .toNonIndexed();
+    const pos = g.attributes.position, n = pos.count;
+    const col = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) {
+      // 1 at the bumper, 0 at the tail, eased so the streak dies like light
+      const k = Math.max(0, Math.min(1, (pos.getZ(i) + LEN + 1.9) / LEN));
+      const kk = k * k;
+      col[i * 3] = kk; col[i * 3 + 1] = kk; col[i * 3 + 2] = kk;
+    }
+    g.setAttribute("color", new THREE.BufferAttribute(col, 3));
+    return g;
+  })();
+  const trails = new THREE.InstancedMesh(trailGeo, new THREE.MeshBasicMaterial({
+    vertexColors: true, transparent: true, blending: THREE.AdditiveBlending,
+    depthWrite: false, fog: false }), CARS);
+  trails.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  trails.visible = false;                        // draw() turns them on after dark
+  group.add(trails);
+  {
+    // the grid look is two currents: most streaks burn amber, a few cyan
+    const c = new THREE.Color();
+    for (let i = 0; i < CARS; i++) {
+      trails.setColorAt(i, c.setHex(rnd(i * 31) < 0.3 ? 0x2bd2ff : 0xff5a22));
+    }
+    trails.instanceColor.needsUpdate = true;
+  }
+
   // a car park's worth of paint: mostly the greys and whites real traffic
   // is made of, with the occasional red or blue to catch the eye
   const PAINT = [0x1c1f25, 0x2e3238, 0x8d939c, 0xc9ced6, 0xe8ebee, 0x1c1f25,
@@ -1280,9 +1437,11 @@ function makeOutside() {
       _m.compose(_v, _q, _s);
       cars.setMatrixAt(i, _m);
       lamps.setMatrixAt(i, _m);
+      trails.setMatrixAt(i, _m);
     }
     cars.instanceMatrix.needsUpdate = true;
     lamps.instanceMatrix.needsUpdate = true;
+    if (trails.visible) trails.instanceMatrix.needsUpdate = true;
   }
 
   /* ================= the fast-changing layer ================= */
@@ -1359,16 +1518,20 @@ function makeOutside() {
   }
 
   /* ---- what actually gets called ---- */
-  let slowHash = "", zHash = "";
+  let slowHash = "", skyHash = "", zHash = "";
   function draw(sun, moon, moonFrac, wx = { clouds: 0, fog: false, rain: 0 }, fx = {}) {
     const pal = palette(sun.altitude / (Math.PI / 180));
-    // the heavy rings only when the light of the day actually turns over
-    const h = pal.top + (wx.clouds * 20 | 0) + (wx.fog ? "f" : "") +
-      (pal.sunAlt < -8 && wx.clouds < 0.55 ? (Date.now() / 900 | 0) : "");
-    if (h !== slowHash) {
+    /* Two clocks now, where there used to be one. The star twinkle used to
+       ride the same hash as everything else, so a clear night repainted the
+       mountains, the haze, the city and the whole ground texture every
+       900 ms just to wink the stars — four big canvases redone for a
+       change only the sky contains. The heavy rings now turn over only
+       when the light of the day (or the weather) actually does; the sky
+       keeps its own faster clock. */
+    const base = pal.top + (wx.clouds * 20 | 0) + (wx.fog ? "f" : "");
+    if (base !== slowHash) {
       const first = !slowHash;
-      slowHash = h;
-      paintSky(pal, wx);
+      slowHash = base;
       const wantNight = pal.night ? facadeNight : facadeDay;
       if (first || nearMat.map !== wantNight) {
         nearMat.map = wantNight;
@@ -1378,11 +1541,19 @@ function makeOutside() {
         // dimmer, not a tint: cars go dark at night, lamps come up
         carMat.color.setHex(pal.night ? 0x6c727a : 0xffffff);
         lampMat.color.setHex(pal.night ? 0xffffff : 0x8b9099);
+        // the tron layer: building edges light, streaks pour off the cars
+        neonEdges.visible = pal.night;
+        trails.visible = pal.night;
       }
       paintMountains(pal);
       paintHaze(pal);
       paintCity(pal);
       paintGround(pal);
+    }
+    const twinkle = pal.sunAlt < -8 && wx.clouds < 0.55 ? (Date.now() / 900 | 0) : "";
+    if (base + twinkle !== skyHash) {
+      skyHash = base + twinkle;
+      paintSky(pal, wx);
     }
     const zh = fx.zilla ? `${fx.zilla.x | 0},${fx.zilla.y | 0},${fx.zilla.f | 0}` : "";
     if (zh !== zHash) { zHash = zh; paintZilla(pal, fx); }
@@ -9128,6 +9299,20 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     forceAstro: () => { astroPlane.visible = true; astroPlane.material.opacity = 0.92; drawAstro(); },
     lavaHit: lampGlass, toggleLava, setLava, lavaOn: () => lavaOn,
     blindsHit: blinds, toggleBlinds, setBlinds, blindsOpen: () => blindsState.open,
+    // paint the outside as if the sun sat at altDeg — the smoke harness
+    // needs to photograph day AND night without waiting for either. it
+    // REPLACES skyCache rather than painting once, because the beacon
+    // blink redraws from that cache twice a second at night and would
+    // stomp a one-off paint before the screenshot fires. updateSky()
+    // still takes it back within a minute; for a screenshot that's forever.
+    // interior light is untouched; this is the VIEW only.
+    skyPreview: (altDeg) => {
+      skyCache = { sun: { azimuth: 0.4, altitude: altDeg * Math.PI / 180 },
+                   // the moon only comes out for night previews — a moon on a
+                   // day sky paints its phase shadow as a floating dark blob
+                   moon: { azimuth: -0.6, altitude: altDeg < 0 ? 0.5 : -0.5 }, fraction: 0.6 };
+      redrawSky(true);
+    },
     edrumHits, pressEdrum, guitarHits, strumTele, guitarVoiceHits, setGuitarVoiceSwitch,
     addAccessory,
     // how much arcade you should hear from (x, z): 1 inside, a leak
