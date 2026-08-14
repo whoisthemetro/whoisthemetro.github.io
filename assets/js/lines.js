@@ -68,7 +68,6 @@ export const GUIDE_LINES = {
     "the cat is real, in the sense that matters. it gets hungry, it gets thirsty, and it remembers. there's a mouse on the floor if you want to throw something.",
     "the telecaster is tuned and waiting. a minor pentatonic lives on it, so you genuinely cannot play a wrong note.",
     "the pedals on the floor do what pedals do. click one to switch it on, click it again to bypass. the light goes dim when it's out of the chain.",
-    "there's a treadle by the guitar. drag it down and it sweeps the tone right off. that one's worth doing while something's playing.",
     "the little mixer sets the balance. keys, guitar, drums. if one of them is too loud, that's where you fix it.",
     "the radio picks up real LA stations. not a loop, not a mood. whatever is actually going out over the air right now.",
     "give the lava lamp a click. and know that everyone else in here sees it come on too. that lamp belongs to the room, not to you.",

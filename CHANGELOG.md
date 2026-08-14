@@ -27,7 +27,7 @@ that path keeps the old oscillator, so the fallback still looks alive.
 
 **Trinity stopped synthesising and started playing recordings.** Her script
 is fixed, so there was never a reason to generate it live: `tools/voice/`
-renders all 29 lines to mp3 once, and the room plays files. That buys one
+renders every line to mp3 once, and the room plays files. That buys one
 voice for everybody instead of whatever the visitor's device happens to own
 (this mac's best was Samantha, from 2010), no key in the client, no
 per-visit cost, and nothing to go wrong at runtime. The browser synth is
@@ -133,7 +133,7 @@ the widest field and the least load-bearing).
 
 **She only talks about the room she's standing in.** Two pools, picked by
 `inArcade()`, drawn from a shuffle bag so a fresh bag never opens with the
-line you just heard. Bedroom: the cat, the tele, the pedals, the treadle, the
+line you just heard. Bedroom: the cat, the tele, the pedals, the
 mixer, the LA radio, the lava lamp (and that it's the room's, not yours), the
 blinds, the curtains, the dimmer, METRO OS, the notes wall, the drum-pad
 numerals, the real LAX traffic on the flight strip, and the jets you can
