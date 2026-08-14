@@ -6,6 +6,22 @@ it says it did.
 
 ## 2026-08-14 — the city puts the grid on at night
 
+**The city got a plan before it got the lights.** The buildings, the
+painted streets and the traffic used to be three separate guesses — boxes
+scattered at random angles, a tiling ground texture whose roads matched
+nothing, lanes at offsets related to neither — and that disagreement is
+what read as amateur. There's ONE street grid now (`CITY` in world.js):
+avenues and streets on a proper pitch, axis-aligned buildings filling the
+blocks between them in three habits (a full-block slab, a split pair with
+an alley, a podium wearing a slimmer tower), heights climbing with
+distance so the geometry stairs up toward the painted downtown. A
+boulevard twice the width of everything else runs from under the window
+dead straight at those towers — the vanishing point is the composition.
+An elevated freeway threads the far street on stilts, faster traffic and
+all. The ground texture stopped tiling and became one 2048px canvas
+painted FROM the plan, so a road in the paint is a road between real
+buildings, and every car lane is derived from a road in the same plan.
+
 **After dark, Los Angeles goes tron.** Teal night palette, neon edge lines
 on every near building, two-current windows (cyan majority, amber minority),
 painted-bloom crowns on the downtown ring, and the street plan repainted as

@@ -1056,113 +1056,172 @@ function makeOutside() {
     Rcity.tex.needsUpdate = true;
   }
 
+  /* ================= the city plan =================
+     One grid, three tenants. The buildings, the painted streets and the
+     traffic used to be three separate guesses — boxes scattered at random
+     angles, a tiling texture whose roads matched nothing, lanes at offsets
+     related to neither — and that disagreement is exactly what read as
+     amateur. Everything below is derived from THIS plan, so the streets on
+     the ground run between the buildings, and the cars drive on the streets.
+
+     Avenues run north-south (out the window), streets east-west. The x=0
+     avenue is a boulevard twice the width of everything else: it starts
+     under the window and runs dead straight at the painted downtown, which
+     hands the view its vanishing point — the reference image's shot. */
+  const CITY = (() => {
+    const AV = [-104, -78, -52, -26, 0, 26, 52, 78, 104];  // avenue centre-lines (x)
+    const ST = [-16, -42, -68, -94];                       // street centre-lines (z)
+    const half = (x) => (x === 0 ? 7 : 4);                 // road half-widths
+    const FWZ = -68;                                       // the freeway rides this street
+    const blocks = [];
+    for (let i = 0; i < AV.length - 1; i++) {
+      for (let j = 0; j < ST.length - 1; j++) {
+        const x0 = AV[i] + half(AV[i]) + 1.5;              // sidewalks are the 1.5s
+        const x1 = AV[i + 1] - half(AV[i + 1]) - 1.5;
+        const zN = ST[j] - 5.5, zS = ST[j + 1] + 5.5;      // zN is the window side
+        const cx = (x0 + x1) / 2, cz = (zN + zS) / 2;
+        if (Math.hypot(cx, cz) > 98) continue;             // off the edge of the world
+        blocks.push({ x0, x1, zN, zS, cx, cz, i, j,
+                      park: AV[i] === 26 && ST[j] === -42 });
+      }
+    }
+    return { AV, ST, half, FWZ, blocks };
+  })();
+
   /* ================= the street, five storeys down ================= */
+  /* One canvas over the whole disc — NOT a repeating tile. A tile can't
+     agree with the geometry standing on it; this maps 1:1 onto the plan, so
+     a road in the paint is a road between real buildings. 2048px over 220 m
+     is ~9 px a metre: enough for a lane line, repainted twice a day. */
   const groundTex = (() => {
     const c = document.createElement("canvas");
-    c.width = 1024; c.height = 1024;
+    c.width = 2048; c.height = 2048;
     const g = c.getContext("2d");
     return { c, g, tex: new THREE.CanvasTexture(c) };
   })();
   groundTex.tex.colorSpace = THREE.SRGBColorSpace;
   const GROUND_R = 110;
-  const GRID = 12;                       // metres per block, texture-side
   function paintGround(pal) {
     const { g } = groundTex;
     const night = pal.night;
-    g.fillStyle = night ? "#0b0d12" : "#585d66";
-    g.fillRect(0, 0, 1024, 1024);
-    // blocks
-    const step = 1024 / 8;
-    for (let bx = 0; bx < 8; bx++) {
-      for (let bz = 0; bz < 8; bz++) {
-        const s = rnd(bx * 13 + bz * 7);
-        if (bx === 3 && bz === 4) {                 // the park
-          g.fillStyle = night ? "#0e1a10" : "#3f5c39";
-          g.fillRect(bx * step + 9, bz * step + 9, step - 18, step - 18);
-          g.fillStyle = night ? "#122417" : "#4d6f44";
-          for (let t = 0; t < 26; t++) {
-            g.beginPath();
-            g.arc(bx * step + 20 + rnd(t) * (step - 40), bz * step + 20 + rnd(t + 50) * (step - 40), 5 + rnd(t + 9) * 4, 0, 7);
-            g.fill();
-          }
-          continue;
+    const S = 2048 / (GROUND_R * 2);               // px per metre
+    const cx = (x) => (x + GROUND_R) * S;          // world x -> canvas col
+    const rz = (z) => (z + GROUND_R) * S;          // world z -> canvas row
+
+    // the ground everything else is cut into
+    g.fillStyle = night ? "#0a0d13" : "#565b63";
+    g.fillRect(0, 0, 2048, 2048);
+
+    // blocks, each a shade its own, so the plan reads even from above
+    for (const b of CITY.blocks) {
+      const bs = rnd(b.i * 13 + b.j * 7);
+      const X = cx(b.x0 - 1.5), Z = rz(b.zS - 1.5);
+      const W = (b.x1 - b.x0 + 3) * S, H = (b.zN - b.zS + 3) * S;
+      if (b.park) {
+        g.fillStyle = night ? "#0b1610" : "#3f5c39";
+        g.fillRect(X, Z, W, H);
+        g.fillStyle = night ? "#101f15" : "#4d6f44";
+        for (let t = 0; t < 22; t++) {
+          g.beginPath();
+          g.arc(X + 8 + rnd(t) * (W - 16), Z + 8 + rnd(t + 50) * (H - 16), 4 + rnd(t + 9) * 5, 0, 7);
+          g.fill();
         }
-        g.fillStyle = night ? `rgb(${16 + s * 10 | 0},${17 + s * 10 | 0},${22 + s * 12 | 0})`
-          : `rgb(${88 + s * 26 | 0},${86 + s * 24 | 0},${84 + s * 22 | 0})`;
-        g.fillRect(bx * step + 9, bz * step + 9, step - 18, step - 18);
-        // rooftops read as clutter from up here
-        g.fillStyle = night ? "rgba(255,255,255,0.03)" : "rgba(255,255,255,0.07)";
-        for (let t = 0; t < 5; t++) {
-          g.fillRect(bx * step + 16 + rnd(t + bx) * (step - 50), bz * step + 16 + rnd(t + bz + 3) * (step - 50), 10 + rnd(t) * 16, 8 + rnd(t + 2) * 12);
-        }
+        continue;
       }
+      g.fillStyle = night
+        ? `rgb(${13 + bs * 8 | 0},${15 + bs * 8 | 0},${20 + bs * 10 | 0})`
+        : `rgb(${86 + bs * 24 | 0},${84 + bs * 22 | 0},${82 + bs * 20 | 0})`;
+      g.fillRect(X, Z, W, H);
     }
+
+    // the roads, exactly where the plan says they are
+    g.fillStyle = night ? "#04060a" : "#3c4046";
+    for (const x of CITY.AV) {
+      const h = CITY.half(x);
+      g.fillRect(cx(x - h), 0, 2 * h * S, 2048);
+    }
+    for (const z of CITY.ST) g.fillRect(0, rz(z - 4), 2048, 8 * S);
+    // the boulevard keeps a planted median
+    g.fillStyle = night ? "#0c1410" : "#46523f";
+    g.fillRect(cx(-1.1), 0, 2.2 * S, rz(-10));
+
     if (!night) {
-      // daytime keeps its honest lane markings
+      // honest daytime markings: a dashed crown line per road, stop bars
+      // and crosswalks where the boulevard meets a street
       g.strokeStyle = "rgba(250,246,225,0.5)";
       g.lineWidth = 2;
-      g.setLineDash([14, 16]);
-      for (let i = 0; i <= 8; i++) {
-        g.beginPath(); g.moveTo(i * step, 0); g.lineTo(i * step, 1024); g.stroke();
-        g.beginPath(); g.moveTo(0, i * step); g.lineTo(1024, i * step); g.stroke();
+      g.setLineDash([12, 14]);
+      for (const x of CITY.AV) {
+        if (x === 0) continue;                    // the median owns that line
+        g.beginPath(); g.moveTo(cx(x), 0); g.lineTo(cx(x), 2048); g.stroke();
+      }
+      for (const z of CITY.ST) {
+        g.beginPath(); g.moveTo(0, rz(z)); g.lineTo(2048, rz(z)); g.stroke();
       }
       g.setLineDash([]);
-    } else {
-      /* After dark the street plan becomes the circuit board: every avenue
-         a lit trace, every intersection a node. Painted bloom throughout —
-         a wide soft pass under a thin hot core — because this texture is
-         the single biggest surface in the view and it has to carry the
-         tron look on its own. One axis runs amber and the other cyan, the
-         two currents of the reference image. */
-      const trace = (vert, p, rim, core) => {
-        g.strokeStyle = rim; g.lineWidth = 9;
-        g.beginPath();
-        if (vert) { g.moveTo(p, 0); g.lineTo(p, 1024); } else { g.moveTo(0, p); g.lineTo(1024, p); }
-        g.stroke();
-        g.strokeStyle = core; g.lineWidth = 2.2;
-        g.beginPath();
-        if (vert) { g.moveTo(p, 0); g.lineTo(p, 1024); } else { g.moveTo(0, p); g.lineTo(1024, p); }
-        g.stroke();
-      };
-      for (let i = 0; i <= 8; i++) {
-        trace(true, i * step, "rgba(48,190,255,0.10)", "rgba(120,225,255,0.55)");
-        trace(false, i * step, "rgba(255,140,50,0.10)", "rgba(255,190,110,0.5)");
-      }
-      // nodes where the currents cross: a soft pad and a hot pip
-      for (let i = 0; i <= 8; i++) {
-        for (let k = 0; k <= 8; k++) {
-          const warm = (i + k) % 2 === 0;
-          g.fillStyle = warm ? "rgba(255,160,70,0.16)" : "rgba(60,200,255,0.16)";
-          g.fillRect(i * step - 6, k * step - 6, 12, 12);
-          g.fillStyle = warm ? "rgba(255,214,150,0.85)" : "rgba(170,238,255,0.85)";
-          g.fillRect(i * step - 1.6, k * step - 1.6, 3.2, 3.2);
+      g.fillStyle = "rgba(250,246,225,0.55)";
+      for (const z of CITY.ST) {
+        for (let k = 0; k < 7; k++) {
+          g.fillRect(cx(-6.4) + k * 2 * S, rz(z - 3.4), 1.2 * S, 0.7 * S);
+          g.fillRect(cx(-6.4) + k * 2 * S, rz(z + 2.7), 1.2 * S, 0.7 * S);
         }
       }
-      // stub traces wandering into the blocks, like copper into a board.
-      // seeded, not random: the street plan shouldn't rewire every repaint.
-      g.lineWidth = 1.6;
-      for (let bx = 0; bx < 8; bx++) {
-        for (let bz = 0; bz < 8; bz++) {
-          if (bx === 3 && bz === 4) continue;              // the park keeps its dark
-          for (let t = 0; t < 3; t++) {
-            const s = rnd(bx * 17 + bz * 5 + t * 3);
-            const x0 = bx * step + 14 + s * (step - 60);
-            const y0 = bz * step + 14 + rnd(s * 90) * (step - 60);
-            const L = 14 + rnd(s * 7) * 26;
-            g.strokeStyle = s < 0.5 ? "rgba(60,200,255,0.13)" : "rgba(255,150,60,0.11)";
-            g.beginPath();
-            g.moveTo(x0, y0);
-            if (s < 0.5) { g.lineTo(x0 + L, y0); g.lineTo(x0 + L, y0 + L * 0.7); }
-            else { g.lineTo(x0, y0 + L); g.lineTo(x0 + L * 0.7, y0 + L); }
-            g.stroke();
-          }
+    } else {
+      /* After dark the plan itself is the circuit: avenue traces run cyan,
+         street traces amber — two currents crossing at lit nodes — and the
+         boulevard wears continuous edge light up both kerbs, which is what
+         drags the eye down its length to the towers. Painted bloom
+         throughout: a wide soft pass under a thin hot core. */
+      const trace = (vert, m, rim, core, coreW = 2.4) => {
+        g.strokeStyle = rim; g.lineWidth = 10;
+        g.beginPath();
+        if (vert) { g.moveTo(cx(m), 0); g.lineTo(cx(m), 2048); } else { g.moveTo(0, rz(m)); g.lineTo(2048, rz(m)); }
+        g.stroke();
+        g.strokeStyle = core; g.lineWidth = coreW;
+        g.beginPath();
+        if (vert) { g.moveTo(cx(m), 0); g.lineTo(cx(m), 2048); } else { g.moveTo(0, rz(m)); g.lineTo(2048, rz(m)); }
+        g.stroke();
+      };
+      for (const x of CITY.AV) {
+        if (x === 0) continue;
+        trace(true, x, "rgba(48,190,255,0.10)", "rgba(120,225,255,0.5)");
+      }
+      for (const z of CITY.ST) trace(false, z, "rgba(255,140,50,0.10)", "rgba(255,190,110,0.45)");
+      // the boulevard: kerb light both sides, amber dashes down the median
+      for (const e of [-6.6, 6.6]) trace(true, e, "rgba(60,200,255,0.16)", "rgba(160,235,255,0.75)", 3);
+      g.fillStyle = "rgba(255,170,80,0.6)";
+      for (let z = -102; z < -12; z += 5) g.fillRect(cx(-0.35), rz(z), 0.7 * S, 2 * S);
+      // nodes where the currents cross
+      for (const x of CITY.AV) {
+        for (const z of CITY.ST) {
+          const warm = ((x + z) / 26 | 0) % 2 === 0;
+          g.fillStyle = warm ? "rgba(255,160,70,0.15)" : "rgba(60,200,255,0.15)";
+          g.fillRect(cx(x) - 6, rz(z) - 6, 12, 12);
+          g.fillStyle = warm ? "rgba(255,214,150,0.8)" : "rgba(170,238,255,0.8)";
+          g.fillRect(cx(x) - 1.6, rz(z) - 1.6, 3.2, 3.2);
+        }
+      }
+      // faint service traces wandering into the blocks — seeded, so the
+      // city doesn't rewire itself at every repaint
+      g.lineWidth = 1.5;
+      for (const b of CITY.blocks) {
+        if (b.park) continue;
+        for (let t = 0; t < 2; t++) {
+          const bs = rnd(b.i * 17 + b.j * 5 + t * 3);
+          const x0 = cx(b.x0 + 2 + bs * (b.x1 - b.x0 - 8));
+          const y0 = rz(b.zS + 2 + rnd(bs * 90) * (b.zN - b.zS - 8));
+          const L = (10 + rnd(bs * 7) * 18) * S / 9.3;
+          g.strokeStyle = bs < 0.5 ? "rgba(60,200,255,0.12)" : "rgba(255,150,60,0.10)";
+          g.beginPath();
+          g.moveTo(x0, y0);
+          if (bs < 0.5) { g.lineTo(x0 + L, y0); g.lineTo(x0 + L, y0 + L * 0.7); }
+          else { g.lineTo(x0, y0 + L); g.lineTo(x0 + L * 0.7, y0); }
+          g.stroke();
         }
       }
     }
     groundTex.tex.needsUpdate = true;
   }
-  groundTex.tex.wrapS = groundTex.tex.wrapT = THREE.RepeatWrapping;
-  groundTex.tex.repeat.set((GROUND_R * 2) / (GRID * 8), (GROUND_R * 2) / (GRID * 8));
   const ground = new THREE.Mesh(
     new THREE.CircleGeometry(GROUND_R, 64),
     new THREE.MeshBasicMaterial({ map: groundTex.tex, fog: false }));
@@ -1208,69 +1267,114 @@ function makeOutside() {
   const roofMat = new THREE.MeshBasicMaterial({ color: 0x2c313a, fog: false });
   const nearBlocks = new THREE.Group();
   group.add(nearBlocks);
-  /* Baked into ONE mesh. These forty blocks used to be forty Meshes wearing
-     six-group material arrays, and three.js draws every group separately:
-     ~240 draw calls for buildings that never move. Merged with the box
-     transforms applied up front, they cost TWO (walls + roofs), and the
-     underside faces — which nobody has ever seen — aren't in the bake at
-     all. The per-wall UV scaling survives, so the facades still tile in
-     metres.
+  /* Baked into ONE mesh, and built from the CITY plan — every box sits in a
+     block the plan drew, square to the grid, with the streets running
+     between. No random rotations: a real city is aligned, and the aligned
+     version is also the cheap version (~240 draw calls of scattered Meshes
+     became two: walls + roofs, undersides never baked at all).
 
-     While each box is in hand its edges go into a second buffer: four
-     verticals and the roofline, coloured mostly cyan with the odd amber.
-     That's the tron skin — one additive LineSegments, ONE draw call, and
-     it only shows at night. A dark building wearing a lit edge is the
-     whole reference image in a sentence. */
+     Three block habits, seeded per block so the skyline is varied but
+     deliberate: a full-block slab, a split pair with an alley, or a podium
+     wearing a slimmer tower — the tiered silhouette real blocks have.
+     Heights climb with distance from the glass, so the geometry stairs up
+     toward the painted downtown at the boulevard's vanishing point instead
+     of fighting it.
+
+     Each building's outline goes into a second buffer as it's baked: four
+     verticals and the roofline, cyan with the odd amber. One additive
+     LineSegments, one draw call, night only. The elevated freeway threads
+     the far street on stilts and gets amber running light up both edges. */
   let neonEdges = null;
   {
     const wallPos = [], wallUv = [], roofPos = [], edgePos = [], edgeCol = [];
-    const _b = new THREE.Matrix4(), _p = new THREE.Vector3();
     const cyan = new THREE.Color(0x35d7ff), amber = new THREE.Color(0xff8a30);
-    for (let i = 0; i < 40; i++) {
-      // nothing looms: the closest block sits 34 m out, and anything on the
-      // window's centre line has to stand back further still, so the city
-      // reads as a city instead of a wall two feet from the glass
-      const az = (rnd(i * 3) - 0.5) * 170;
-      const central = Math.abs(az) < 14;
-      const dist = (central ? 62 : 34) + rnd(i * 5 + 1) * (central ? 24 : 48);
-      const h = 4 + rnd(i * 7 + 2) * 13;   // low enough to leave sky and mountains
-      const w = 8 + rnd(i * 11 + 3) * 14;
-      const d = 8 + rnd(i * 13 + 4) * 14;
-      const a = az * Math.PI / 180;
-      _b.makeRotationY((rnd(i * 17) - 0.5) * 0.5);
-      _b.setPosition(Math.sin(a) * dist, OUT_GROUND + h / 2, -Math.cos(a) * dist);
+    const pushSeg = (ax, ay, az, bx, by, bz, c) => {
+      edgePos.push(ax, ay, az, bx, by, bz);
+      edgeCol.push(c.r, c.g, c.b, c.r, c.g, c.b);
+    };
+    // an axis-aligned box straight into the bake. flat boxes (the freeway)
+    // put every face in the untextured group — a 0.7 m concrete deck in a
+    // window-grid shirt would be a strange thing to drive on.
+    const pushBox = (bx, bz, w, h, d, baseY, opts = {}) => {
       const geo = new THREE.BoxGeometry(w, h, d).toNonIndexed();
-      geo.applyMatrix4(_b);
+      geo.translate(bx, baseY + h / 2, bz);
       const pos = geo.attributes.position, uv = geo.attributes.uv;
-      // unindexed box: 6 verts a face, face order +x,-x,+y,-y,+z,-z.
-      // walls are 0,1,4,5; the roof is 2; 3 is the underside and stays out.
       for (const f of [0, 1, 4, 5]) {
         const wide = (f === 0 || f === 1) ? d : w;
         for (let k = 0; k < 6; k++) {
           const vi = f * 6 + k;
+          if (opts.flat) { roofPos.push(pos.getX(vi), pos.getY(vi), pos.getZ(vi)); continue; }
           wallPos.push(pos.getX(vi), pos.getY(vi), pos.getZ(vi));
           wallUv.push(uv.getX(vi) * (wide / TILE_M), uv.getY(vi) * (h / TILE_M));
         }
       }
-      for (let k = 0; k < 6; k++) {
-        const vi = 2 * 6 + k;
-        roofPos.push(pos.getX(vi), pos.getY(vi), pos.getZ(vi));
+      for (const f of opts.under ? [2, 3] : [2]) {
+        for (let k = 0; k < 6; k++) {
+          const vi = f * 6 + k;
+          roofPos.push(pos.getX(vi), pos.getY(vi), pos.getZ(vi));
+        }
       }
       geo.dispose();
-      // the neon: pushed a hair proud of the faces so the lines never
-      // z-fight the wall they're drawn on
-      const col = rnd(i * 23) < 0.2 ? amber : cyan;
-      const hw = w / 2 + 0.05, hh = h / 2 + 0.05, hd = d / 2 + 0.05;
-      const seg = (ax, ay, az2, bx, by, bz) => {
-        _p.set(ax, ay, az2).applyMatrix4(_b); edgePos.push(_p.x, _p.y, _p.z); edgeCol.push(col.r, col.g, col.b);
-        _p.set(bx, by, bz).applyMatrix4(_b); edgePos.push(_p.x, _p.y, _p.z); edgeCol.push(col.r, col.g, col.b);
-      };
-      for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
-        seg(sx * hw, -hh, sz * hd, sx * hw, hh, sz * hd);      // the four verticals
+      if (opts.edges) {
+        const col = opts.col, hw = w / 2 + 0.05, hd = d / 2 + 0.05;
+        const y0 = baseY, y1 = baseY + h + 0.05;
+        for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+          pushSeg(bx + sx * hw, y0, bz + sz * hd, bx + sx * hw, y1, bz + sz * hd, col);
+        }
+        pushSeg(bx - hw, y1, bz - hd, bx + hw, y1, bz - hd, col);
+        pushSeg(bx + hw, y1, bz - hd, bx + hw, y1, bz + hd, col);
+        pushSeg(bx + hw, y1, bz + hd, bx - hw, y1, bz + hd, col);
+        pushSeg(bx - hw, y1, bz + hd, bx - hw, y1, bz - hd, col);
       }
-      seg(-hw, hh, -hd,  hw, hh, -hd); seg(hw, hh, -hd,  hw, hh, hd);   // the roofline
-      seg(hw, hh, hd,  -hw, hh, hd);   seg(-hw, hh, hd,  -hw, hh, -hd);
+    };
+    // a building = a box in a block, with its lit outline
+    const put = (x0, x1, zN, zS, h) => {
+      const col = rnd((x0 * 7 + zS) | 0) < 0.2 ? amber : cyan;
+      pushBox((x0 + x1) / 2, (zN + zS) / 2, x1 - x0, h, zN - zS, OUT_GROUND,
+        { edges: true, col });
+    };
+    // heights per street band: low at the glass, climbing toward downtown,
+    // capped so the painted towers behind still crown the view
+    const bandH = [[5, 6], [8, 10], [12, 9]];
+    for (const B of CITY.blocks) {
+      if (B.park) continue;
+      const s = rnd(B.i * 29 + B.j * 11);
+      const bw = B.x1 - B.x0, bd = B.zN - B.zS;
+      const central = B.j === 2 && Math.abs(B.cx) < 40 ? 3 + rnd(B.i) * 4 : 0;
+      const [hb, hs] = bandH[B.j];
+      const h1 = hb + rnd(B.i * 7 + B.j * 3) * hs + central;
+      if (s < 0.38) {
+        put(B.x0, B.x1, B.zN, B.zS, h1);
+      } else if (s < 0.72) {
+        const h2 = hb + rnd(B.i * 5 + B.j * 9) * hs + central * 0.6;
+        if (bw > bd) {
+          const mid = B.x0 + bw * (0.4 + s * 0.2);
+          put(B.x0, mid - 1.5, B.zN, B.zS, h1);
+          put(mid + 1.5, B.x1, B.zN, B.zS, h2);
+        } else {
+          const mid = B.zS + bd * (0.4 + s * 0.2);
+          put(B.x0, B.x1, B.zN, mid + 1.5, h1);
+          put(B.x0, B.x1, mid - 1.5, B.zS, h2);
+        }
+      } else {
+        put(B.x0, B.x1, B.zN, B.zS, Math.max(3, h1 * 0.45));
+        const inx = 2.5 + s * 2, inz = 2.5 + rnd(s * 40) * 2;
+        put(B.x0 + inx, B.x1 - inx, B.zN - inz, B.zS + inz, h1 + 3);
+      }
     }
+    // the freeway: a concrete deck over the far street, pillars in its
+    // median, running light along both parapets. its underside IS seen —
+    // from the street beneath — so that face stays in the bake.
+    const DECK_Y = OUT_GROUND + 7;
+    pushBox(0, CITY.FWZ, 209, 0.7, 11, DECK_Y, { flat: true, under: true });
+    for (const ax of CITY.AV) {
+      pushBox(ax, CITY.FWZ, 1.4, 7, 1.4, OUT_GROUND, { flat: true });
+      if (ax < 104) pushBox(ax + 13, CITY.FWZ, 1.4, 7, 1.4, OUT_GROUND, { flat: true });
+    }
+    const dt = DECK_Y + 0.74;
+    pushSeg(-104.5, dt, CITY.FWZ - 5.5, 104.5, dt, CITY.FWZ - 5.5, amber);
+    pushSeg(-104.5, dt, CITY.FWZ + 5.5, 104.5, dt, CITY.FWZ + 5.5, amber);
+
     const wallCount = wallPos.length / 3, roofCount = roofPos.length / 3;
     const P = new Float32Array(wallPos.length + roofPos.length);
     P.set(wallPos, 0); P.set(roofPos, wallPos.length);
@@ -1294,14 +1398,21 @@ function makeOutside() {
   }
 
   /* ================= traffic ================= */
-  // avenues laid where the window can actually see them: far enough out to
-  // clear the sill, near enough that a car is a car and not a pixel
+  /* Every lane is derived from a road in the CITY plan — right of the crown
+     going one way, left of it coming back — so the cars drive on the
+     streets the ground shows and the buildings line. The boulevard carries
+     two lanes a side; the freeway rides its elevated deck, faster, which
+     is what gives the night its long unbroken streaks. */
   const LANES = [];
-  for (const [along, off, dir] of [
-    [true, -24, 1], [true, -30, -1], [true, -48, 1], [true, -55, -1],
-    [true, -78, 1], [true, -86, -1],
-    [false, -34, 1], [false, -40, -1], [false, 30, 1], [false, 36, -1],
-  ]) LANES.push({ along, off, dir, y: OUT_GROUND + 0.9 });
+  const Y = OUT_GROUND + 0.9;
+  for (const z of [-16, -42]) for (const sgn of [-1, 1])
+    LANES.push({ along: true, off: z + sgn * 1.9, dir: sgn, y: Y, min: -104, max: 104 });
+  for (const [ox, d] of [[-4.7, -1], [-2.1, -1], [2.1, 1], [4.7, 1]])
+    LANES.push({ along: false, off: ox, dir: d, y: Y, min: -104, max: -12 });
+  for (const x of [-52, 52]) for (const sgn of [-1, 1])
+    LANES.push({ along: false, off: x + sgn * 1.9, dir: sgn, y: Y, min: -104, max: -12 });
+  for (const [oz, d] of [[-4.1, -1], [-1.6, -1], [1.6, 1], [4.1, 1]])
+    LANES.push({ along: true, off: -68 + oz, dir: d, y: OUT_GROUND + 8.65, min: -104, max: 104, fast: true });
   const CARS = 44;
 
   /* --- a car, built out of boxes and baked into one geometry so the whole
@@ -1409,11 +1520,14 @@ function makeOutside() {
   // is made of, with the occasional red or blue to catch the eye
   const PAINT = [0x1c1f25, 0x2e3238, 0x8d939c, 0xc9ced6, 0xe8ebee, 0x1c1f25,
                  0x7d2a24, 0x24406e, 0x2b4a35, 0x9a7b2e];
-  const carState = Array.from({ length: CARS }, (_, i) => ({
-    lane: LANES[i % LANES.length],
-    t: rnd(i * 9) * 200 - 100,
-    sp: 9 + rnd(i * 4) * 9,
-  }));
+  const carState = Array.from({ length: CARS }, (_, i) => {
+    const lane = LANES[i % LANES.length];
+    return {
+      lane,
+      t: lane.min + rnd(i * 9) * (lane.max - lane.min),
+      sp: (9 + rnd(i * 4) * 9) * (lane.fast ? 1.7 : 1),
+    };
+  });
   {
     const c = new THREE.Color();
     for (let i = 0; i < CARS; i++) cars.setColorAt(i, c.setHex(PAINT[(rnd(i * 21) * PAINT.length) | 0]));
@@ -1426,8 +1540,8 @@ function makeOutside() {
     for (let i = 0; i < CARS; i++) {
       const c = carState[i];
       c.t += c.sp * c.lane.dir * dt;
-      if (c.t > 105) c.t = -105;
-      if (c.t < -105) c.t = 105;
+      if (c.t > c.lane.max) c.t = c.lane.min;
+      if (c.t < c.lane.min) c.t = c.lane.max;
       const x = c.lane.along ? c.t : c.lane.off;
       const z = c.lane.along ? c.lane.off : c.t;
       // a car points where it's going — the old boxes never turned round,
