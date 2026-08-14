@@ -24,6 +24,13 @@
 
 const SYNTH = typeof speechSynthesis !== "undefined" ? speechSynthesis : null;
 
+/* The room's audio graph, handed in rather than imported: this file is the
+   one small door for speech and shouldn't reach into ambience.js on its own
+   (the standalone studio page loads it without a room). Set it and her
+   recordings ride the same master compressor as the rest of the room. */
+let graph = null;
+export function useAudioGraph(fn) { graph = fn; }
+
 // voices we like, best first — warm and un-robotic where the OS has one.
 // mac ships Samantha/Alex; chrome adds the Google set; everything else
 // falls back to whatever the first en-* voice is.
@@ -241,10 +248,54 @@ export async function loadClips() {
 }
 export const clipsReady = () => !!(clipSet && clipSet.size);
 
+/* How loud is she RIGHT NOW, 0..1.
+
+   Once she's playing real recordings this stops being a guess. The clip goes
+   through the room's own audio graph (so it rides the master compressor like
+   everything else does) by way of an analyser, and the level off that drives
+   her mouth and her glow. The difference is that she now pulses on her actual
+   syllables instead of on a sine wave pretending to be speech — you can see
+   her land on a stressed word.
+
+   The browser synth gives us nothing to measure, so that path keeps the
+   old oscillator and level() reports -1 to say "no idea, fake it". */
+let analyser = null, levelBuf = null, level = 0;
+export function voiceLevel() {
+  if (!analyser) return -1;
+  analyser.getByteTimeDomainData(levelBuf);
+  let peak = 0;
+  for (let i = 0; i < levelBuf.length; i += 4) {
+    const v = Math.abs(levelBuf[i] - 128) / 128;
+    if (v > peak) peak = v;
+  }
+  // speech peaks well below 1; lift it into a usable range and smooth the
+  // fall so she doesn't strobe between syllables
+  const want = Math.min(1, peak * 3.2);
+  level += (want - level) * (want > level ? 0.55 : 0.14);
+  return level;
+}
+
 function playClip(id, volume, onDone) {
   const a = new Audio(CLIP_DIR + id + ".mp3");
   a.volume = volume;
+  a.crossOrigin = "anonymous";
   audio = a;
+  // route through the room's graph so she's analysable AND compressed with
+  // everything else. if the context isn't up yet the element still plays on
+  // its own, we just don't get a level — never a reason to lose the line.
+  try {
+    const { ctx, master } = graph ? graph() : {};
+    if (ctx && master) {
+      if (ctx.state === "suspended") ctx.resume().catch(() => {});
+      const src = ctx.createMediaElementSource(a);
+      analyser = ctx.createAnalyser();
+      analyser.fftSize = 512;
+      analyser.smoothingTimeConstant = 0.4;
+      levelBuf = new Uint8Array(analyser.fftSize);
+      src.connect(analyser);
+      analyser.connect(master);
+    }
+  } catch (e) { analyser = null; }
   const done = (ok) => {
     if (a !== audio) return;
     audio = null;
@@ -316,6 +367,7 @@ export function stopSpeaking() {
   clearGap();
   curUtter = null;                 // so a late onend can't restart the chain
   if (audio) { const a = audio; audio = null; try { a.pause(); a.src = ""; } catch (e) {} }
+  analyser = null; level = 0;
   if (SYNTH) { try { SYNTH.cancel(); } catch (e) {} }
   silentUntil = 0;
   if (speaking) finish();

@@ -4,6 +4,25 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-08-13 — she glows on her own syllables
+
+**The card is gone from the normal path.** Once she had a real recorded
+voice, printing the same words beside her head was reading a subtitle to
+someone who can already hear it, and it ate the room you're trying to look
+at. It survives only for the case it was actually for: a device with no
+rendered clips AND no browser synth, where she'd otherwise mime at you in
+silence. Checked live, so nothing is stranded.
+
+**She reacts to the sound instead of to a flag.** Playing an mp3 means the
+amplitude can be MEASURED rather than guessed: the clip runs through the
+room's own audio graph by way of an analyser, and the level off that drives
+her mouth, her glow and her name. She lands on stressed words. A flat
+"brighter while talking" reads as a light switch; riding the envelope reads
+as a voice. The browser synth gives nothing to measure and reports -1, and
+that path keeps the old oscillator, so the fallback still looks alive.
+
+**Smaller ears.** They were doing too much.
+
 ## 2026-08-13 — a real voice
 
 **Trinity stopped synthesising and started playing recordings.** Her script

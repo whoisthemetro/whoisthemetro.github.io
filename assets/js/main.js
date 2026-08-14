@@ -22,7 +22,7 @@ import { startPlanes } from "./planes.js";
 import { Cat } from "./cat.js";
 import { Bartender } from "./bartender.js";
 import { Guide } from "./guide.js";
-import { speak, stopSpeaking, isSpeaking, isVoicing, voiceAvailable, voiceInfo, preferVoices, loadClips, clipsReady } from "./say.js";
+import { speak, stopSpeaking, isSpeaking, isVoicing, voiceAvailable, voiceInfo, preferVoices, loadClips, clipsReady, voiceLevel, useAudioGraph } from "./say.js";
 import { GUIDE_LINES, INTRO, ROOM_LINES, clipId } from "./lines.js";
 
 /* What Trinity should sound like, best first. Every visitor's device owns
@@ -36,6 +36,7 @@ preferVoices(["Ava", "Allison", "Samantha", "Susan", "Zoe", "Serena", "Nicky",
    voices above. Best-effort and fire-and-forget: no manifest simply means
    nothing has been rendered yet and she stays on the browser synth. */
 loadClips();
+useAudioGraph(audioGraph);   // her recordings ride the room's master bus
 import { makeSelfieMirror } from "./mirror.js";
 import { DEFAULT_SPEC } from "./avatar-builder.js";
 import { openOutfitPicker } from "./picker.js";
@@ -45,7 +46,7 @@ import { initPool } from "./pool.js";
 import { initBasket } from "./basketball.js";
 import { makeGymBall } from "./gymball.js";
 import { initDebug } from "./debug.js";
-import { PIANO_VOICES, GUITAR_VOICES } from "./ambience.js";
+import { PIANO_VOICES, GUITAR_VOICES, audioGraph } from "./ambience.js";
 import { createRadio, SR_STATIONS, LA_STATIONS } from "./radio.js";
 import { startTitleFX } from "./title.js";
 import { setupXR } from "./xr.js";
@@ -522,8 +523,12 @@ const guide = new Guide(world.scene, { x: 0.2, z: 0.9, yaw: 0.80, name: "Trinity
     if (!D || arcadeSide(fx) === arcadeSide(tx)) return null;
     return { x: D.x + (arcadeSide(tx) ? -0.45 : 0.45), z: D.z };
   },
-  speaking: isSpeaking,     // a line is in the air — the card stays up
-  voicing: isVoicing,       // she's actually sounding — the mouth moves
+  speaking: isSpeaking,     // a line is in the air
+  voicing: isVoicing,       // she's actually sounding
+  level: voiceLevel,        // and THIS loud, right now — drives the mouth and the glow
+  // no voice at all on this device? then and only then does she need the
+  // card, because otherwise she'd be miming at you in silence
+  silent: () => !clipsReady() && !voiceAvailable(),
   // one door for everything she says: subtitle it, speak it, and hand back
   // how long it'll take so her mouth runs exactly that long
   // NOT wrapped in bedroomSound — that wrapper swallows the return value and

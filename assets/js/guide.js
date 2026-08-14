@@ -94,6 +94,7 @@ export class Guide {
     this.stuckT = 0;             // how long she's been walking without getting closer
     this.lastD = Infinity;       // distance to you last frame, for that check
     this.popT = 0;               // the flare after a blink, so it isn't a silent jump cut
+    this.lvl = 0;                // smoothed loudness, 0..1, drives mouth and glow
     this._apply(0);
   }
 
@@ -260,15 +261,15 @@ export class Guide {
       return new THREE.ShapeGeometry(sh, 14);
     };
     const earDark = new THREE.MeshBasicMaterial({ color: 0x05101c, transparent: true, opacity: 0.86, depthWrite: false });
-    const outerEar = earShape(0.085, 0.26), innerEar = earShape(0.045, 0.16);
+    const outerEar = earShape(0.068, 0.19), innerEar = earShape(0.035, 0.115);
     for (const s of [-1, 1]) {
       const ear = new THREE.Mesh(outerEar, earDark);
-      ear.position.set(s * 0.125, 0.14, 0.015);
+      ear.position.set(s * 0.108, 0.145, 0.015);
       ear.rotation.z = s * -0.3;
       ear.renderOrder = 12;
       this.headGrp.add(ear);
       const inner = new THREE.Mesh(innerEar, this.coat(0x9fe4ff, 0.8));
-      inner.position.set(s * 0.128, 0.175, 0.021);
+      inner.position.set(s * 0.111, 0.168, 0.021);
       inner.rotation.z = s * -0.3;
       inner.renderOrder = 13;
       this.headGrp.add(inner);
@@ -344,12 +345,16 @@ export class Guide {
      out of the top of her skull; beside it, you can read the words and still
      watch her mouth move. */
   _buildPanel() {
-    // a portrait phone has no room for a card floating next to her — it eats
-    // the room you're trying to look at. she's audible; that's enough there.
-    // checked live rather than once at boot, so turning the phone sideways
-    // brings it back on the next line she says.
-    this.wantPanel = () => !(window.matchMedia
-      && window.matchMedia("(max-width: 700px) and (orientation: portrait)").matches);
+    /* The card is a FALLBACK now, not the default. Once she had a real
+       recorded voice, printing the same words beside her head was reading
+       out a subtitle to someone who can already hear it — and it ate the
+       room you're trying to look at. So it only appears when there's no
+       audible voice at all: no rendered clips AND no browser synth, which
+       is the case where she'd otherwise mime silently at you.
+
+       Checked live rather than once at boot, so a device that gets its
+       voice late still loses the card on the next line. */
+    this.wantPanel = () => (this.fx.silent ? this.fx.silent() : false);
     const W = 768, H = 432;
     const c = document.createElement("canvas");
     c.width = W; c.height = H;
@@ -421,7 +426,8 @@ export class Guide {
     g.fillText(text, 128, 32, 240);
     const tex = new THREE.CanvasTexture(c);
     tex.colorSpace = THREE.SRGBColorSpace;
-    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
+    this.tagMat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, opacity: 0.62 });
+    const sp = new THREE.Sprite(this.tagMat);
     sp.scale.set(1.0, 0.25, 1);
     sp.position.y = this.eyeY + 0.46;
     return sp;
@@ -536,6 +542,12 @@ export class Guide {
     const sounding = this.fx.voicing ? this.fx.voicing() : voiced;
     const talking = voiced || this.talkT > 0;
     const mouthing = this.fx.voicing ? sounding : talking;
+    /* How loud she is this instant. Playing a real recording we can MEASURE
+       it (fx.level reads an analyser on the clip), so she lands on her own
+       stressed words. The browser synth gives us nothing to measure and
+       reports -1, and that path keeps the old oscillator. */
+    const lvl = mouthing ? (this.fx.level ? this.fx.level() : -1) : 0;
+    this.lvl += ((lvl >= 0 ? lvl : 0) - this.lvl) * 0.35;
     this.blinkFor -= dt;
     if (this.blinkFor <= 0) {
       this.blinkIn -= dt;
@@ -543,9 +555,14 @@ export class Guide {
     }
     // two sines at odd rates, so the flap has syllables in it rather than
     // running like a metronome — a steady buzz is the thing that reads as fake
-    const mouth = mouthing
-      ? 0.2 + Math.abs(Math.sin(t * 10.5)) * (0.55 + Math.abs(Math.sin(t * 3.1)) * 0.25)
-      : 0;
+    const mouth = !mouthing ? 0
+      : lvl >= 0
+        // measured: the mouth IS the waveform, floored so it never looks shut
+        // mid-word and capped so a loud consonant doesn't gape
+        ? Math.min(1, 0.16 + this.lvl * 1.15)
+        // guessed: two sines at odd rates, so it has syllables in it rather
+        // than ticking like a metronome
+        : 0.2 + Math.abs(Math.sin(t * 10.5)) * (0.55 + Math.abs(Math.sin(t * 3.1)) * 0.25);
     this.face.draw({ blink: this.blinkFor > 0, mouth });
 
     this._apply(t, talking);
@@ -586,10 +603,18 @@ export class Guide {
     this.panel.visible = this.panelOp > 0.01;
 
     const pop = this.popT > 0 ? this.popT / 0.5 : 0;
-    const targetOp = 0.2 + (talking ? 0.14 : 0) + pop * 0.45;
-    this.mat.opacity += (targetOp - this.mat.opacity) * 0.2;
-    const targetCore = 0.34 + (talking ? 0.2 : 0) + pop * 0.5;
-    this.coreMat.opacity += (targetCore - this.coreMat.opacity) * 0.2;
+    /* She glows WITH the words. A flat "brighter while talking" reads as a
+       light switch; riding the envelope reads as a voice. The base lift is
+       kept so quiet passages still show she's the one speaking. */
+    const say = talking ? 0.06 + this.lvl * 0.34 : 0;
+    const targetOp = 0.2 + say * 0.55 + pop * 0.45;
+    this.mat.opacity += (targetOp - this.mat.opacity) * 0.3;
+    const targetCore = 0.34 + say * 0.9 + pop * 0.5;
+    this.coreMat.opacity += (targetCore - this.coreMat.opacity) * 0.3;
+    // and the name over her head lifts with it, so it reads as HER speaking
+    if (this.tagMat) this.tagMat.opacity = 0.62 + say * 1.1 + pop * 0.3;
+    // the wings beat a touch wider on the loud parts
+    if (this.wings) for (const w of this.wings) w.scale.z = 1 + this.lvl * 0.12;
     this.headGrp.rotation.x = this.nodT > 0 ? Math.sin((0.5 - this.nodT) / 0.5 * Math.PI) * 0.3 : 0;
     this.hitMesh.position.set(this.pos.x, this.hitY, this.pos.z);
   }
