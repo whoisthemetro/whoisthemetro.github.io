@@ -545,15 +545,19 @@ const guide = new Guide(world.scene, { x: 0.2, z: 0.9, yaw: 0.80, name: "Trinity
    wrong once. */
 /* She talks about the room she's STANDING IN. Following you into the arcade
    and then explaining the lava lamp would be worse than saying nothing, so
-   there are two pools and `inArcade()` picks. {you} is the name you typed on
-   the way in. */
+   there are two pools and `inArcade()` picks.
+
+   NOBODY'S NAME IN HERE. She says it once, in the introduction, and then
+   never again — a guide who keeps working your name into the conversation
+   sounds like someone selling you a car. The {you} token still substitutes
+   if a line ever wants it, but nothing below should. */
 const GUIDE_LINES = {
   bedroom: [
     "the drum pads are numbered for a reason. play them one through six, in order, and the room will take you somewhere you haven't been.",
     "the walls take notes. aim at any bare patch and leave one. it stays there, and everyone who comes after you reads it.",
     "look out the window. that's a real place, not a picture. press up against the glass and turn around, the city never runs out.",
     "that strip along the top is a real aeroplane. we sit ten miles off LAX, so when one crosses the window, one is genuinely up there. the flight number, the type, the altitude, all of it true.",
-    "watch the sky out there long enough and a jet goes over. you can take a shot at it, {you}. through the glass. i didn't tell you that.",
+    "watch the sky out there long enough and a jet goes over. you can take a shot at it. through the glass. i didn't tell you that.",
     "the cat is real, in the sense that matters. it gets hungry, it gets thirsty, and it remembers. there's a mouse on the floor if you want to throw something.",
     "the telecaster is tuned and waiting. a minor pentatonic lives on it, so you genuinely cannot play a wrong note.",
     "the pedals on the floor do what pedals do. click one to switch it on, click it again to bypass. the light goes dim when it's out of the chain.",
@@ -569,7 +573,7 @@ const GUIDE_LINES = {
     "careful with the door under the red neon. that one isn't a room. it walks you out of here to mix and master, so finish up first.",
   ],
   arcade: [
-    "four cabinets, {you}, and all four of them really play. no emulator, no rom. someone sat down and wrote them.",
+    "four cabinets, and all four of them really play. no emulator, no rom. someone sat down and wrote them.",
     "the marquee up there keeps the high scores. real ones, from real people who stood where you're standing.",
     "there's a barkeep at the counter. he'll fix you something and he'll be rude about it. don't take it personally, he's like that with everyone.",
     "the pool tables rack properly and the balls obey. you can play someone else on them, if there's someone else about.",
@@ -612,7 +616,7 @@ function guideNextLine() {
   } else if (guideGreetedRoom !== room) {
     guideGreetedRoom = room;
     line = room === "arcade"
-      ? `right, the arcade. different room, different things to tell you, ${youAre()}.`
+      ? `right, the arcade. different room, different things to tell you.`
       : `back in the bedroom, then. there's plenty in here i haven't got to yet.`;
   } else {
     line = guideBags[room]();
