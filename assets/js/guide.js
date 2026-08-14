@@ -7,13 +7,23 @@
    So somebody stands near where you land and offers to show you — one
    thing at a time, never the whole list.
 
-   She's the same glow-blob the visitors are, built from the bartender's
-   pattern (see bartender.js — same body, same 8-bit face, same
-   walk-up-and-she-clocks-you brain), with three differences: a cool
-   blue-white instead of his amber, a slow halo so she reads as
-   something the room provided rather than someone who wandered in, and
-   a mouth that flaps to a REAL voice instead of a timer — fx.speaking()
-   is asked every frame, so the flap matches whatever say.js is doing.
+   She's a small hovering bat: big ears, wings that beat, and the 8-bit
+   face on a dark screen. The BRAIN is the bartender's (see bartender.js
+   — same walk-up-and-she-clocks-you logic), but nothing about the body
+   is, and her mouth flaps to a REAL voice rather than a timer —
+   fx.speaking() is asked every frame, so it matches what say.js does.
+
+   The shape is swappable: `form` picks between bat (hers), person (the
+   glow-blob a visitor is), head and shard. Choosing between them meant
+   seeing them in this room's own light, so the losers stay buildable.
+
+   Two rules the lighting taught us, and both cost a round to find:
+   additive glow can't hold a SHAPE against a sunlit wall — it washes to
+   white — so anything that has to read as a silhouette (the face, the
+   ears) is a DARK plate on normal blending with the glow inside it.
+   And the halo she used to wear went in the bin when she grew ears: it
+   sliced straight through them, and the ears already say she isn't a
+   visitor, which was the only job the halo had.
 
    She mills about a small patch near her post and never wanders: a
    guide you have to go looking for isn't a guide. When you step away
@@ -51,6 +61,7 @@ export class Guide {
   constructor(scene, home, fx = {}) {
     this.home = { x: home.x, z: home.z, yaw: home.yaw || 0 };
     this.name = home.name || "guide";   // the caller names her; this file is just a body
+    this.form = home.form || "person";  // person | head | bat | shard
     this.fx = fx;
 
     this.grp = new THREE.Group();
@@ -59,8 +70,10 @@ export class Guide {
 
     // an invisible box you can actually click — same trick as the bartender,
     // since a glow blob with additive blending is a terrible raycast target
+    const [hw, hh, hy] = this.hit;      // set by whichever form was built
+    this.hitY = hy;
     this.hitMesh = new THREE.Mesh(
-      new THREE.BoxGeometry(0.72, 1.5, 0.72),
+      new THREE.BoxGeometry(hw, hh, hw),
       new THREE.MeshBasicMaterial({ visible: false }));
     this.hitMesh.userData.guide = true;
     scene.add(this.hitMesh);
@@ -126,37 +139,197 @@ export class Guide {
       color, transparent: true, opacity,
       blending: THREE.AdditiveBlending, depthWrite: false,
     });
-    const auraMat = coat(AURA, 0.2), coreMat = coat(CORE, 0.34);
+    const big = this.form !== "person";   // more surface = more additive light
+    const auraMat = coat(AURA, big ? 0.15 : 0.2), coreMat = coat(CORE, big ? 0.22 : 0.34);
     this.mat = auraMat; this.coreMat = coreMat;
+    this.coat = coat;
+    this._formStep = () => {};        // forms with moving parts replace this
 
-    // a touch shorter than the barkeep — she reads as a companion, not staff
-    this.body = new THREE.Group();
-    this.body.position.y = 0.78;
-    this.body.add(new THREE.Mesh(new THREE.CapsuleGeometry(0.19, 0.72, 6, 14), auraMat));
-    this.body.add(new THREE.Mesh(new THREE.CapsuleGeometry(0.145, 0.6, 6, 12), coreMat));
-    this.grp.add(this.body);
+    const form = this[`_form_${this.form}`] || this._form_person;
+    form.call(this, auraMat, coreMat);
 
-    this.headGrp = new THREE.Group();
-    this.headGrp.position.y = 1.46;
-    this.headGrp.add(new THREE.Mesh(new THREE.SphereGeometry(0.145, 14, 12), auraMat));
-    this.headGrp.add(new THREE.Mesh(new THREE.SphereGeometry(0.108, 12, 10), coreMat));
+    /* The visor. On the standing figure the face works because it's a small
+       bright thing on a dim head. On the bigger floating shapes it vanished:
+       an additive face drawn over an additive core is bright-on-bright, and
+       there's no contrast left to make eyes out of. So those forms get a dark
+       plate behind the face — NORMAL blending, not additive, the one thing in
+       here allowed to subtract — and the face reads as a lit screen on it. */
+    if (this.visorR) {
+      const visor = new THREE.Mesh(
+        new THREE.CircleGeometry(this.visorR, 24),
+        new THREE.MeshBasicMaterial({ color: 0x05101c, transparent: true, opacity: 0.82, depthWrite: false }));
+      visor.scale.y = 0.82;
+      visor.position.set(0, 0, this.faceZ - 0.006);
+      visor.renderOrder = 13;
+      this.headGrp.add(visor);
+    }
 
-    this.face = makeFace(0.26, "#bfefff");
-    this.face.mesh.position.set(0, 0.01, 0.135);
+    this.face = makeFace(this.faceSize, "#bfefff");
+    this.face.mesh.position.set(0, 0, this.faceZ);
     this.headGrp.add(this.face.mesh);
     this.grp.add(this.headGrp);
 
-    // the halo: a thin ring that hangs over her and turns slowly. the one
-    // thing that says "the room made her" — visitors don't come with these.
-    this.halo = new THREE.Mesh(
-      new THREE.TorusGeometry(0.15, 0.008, 6, 28),
-      coat(CORE, 0.75));
-    this.halo.rotation.x = Math.PI / 2;
-    this.halo.position.y = 1.74;
-    this.grp.add(this.halo);
+    // the halo: a thin ring that turns slowly overhead. the one thing that
+    // says "the room made her" — visitors don't come with these.
+    if (this.haloR) {
+      this.halo = new THREE.Mesh(new THREE.TorusGeometry(this.haloR, 0.008, 6, 28), coat(CORE, 0.75));
+      this.halo.rotation.x = Math.PI / 2;
+      this.halo.position.y = this.haloY;
+      this.grp.add(this.halo);
+    }
 
     this.grp.add(this._tag(this.name));
     this._buildPanel();
+  }
+
+  /* ---------- the forms ----------
+     Each one sets headGrp (carries the face and does the nodding), an eyeY
+     so the card and the tag sit at the right height whatever the shape is,
+     and optionally a body for the breathing bob. Anything that moves on its
+     own hangs off _formStep. */
+
+  // the original: a standing figure, the same glow-blob a visitor is
+  _form_person(aura, core) {
+    this.body = new THREE.Group();
+    this.body.position.y = 0.78;
+    this.body.add(new THREE.Mesh(new THREE.CapsuleGeometry(0.19, 0.72, 6, 14), aura));
+    this.body.add(new THREE.Mesh(new THREE.CapsuleGeometry(0.145, 0.6, 6, 12), core));
+    this.grp.add(this.body);
+    this.headGrp = new THREE.Group();
+    this.headGrp.position.y = 1.46;
+    this.headGrp.add(new THREE.Mesh(new THREE.SphereGeometry(0.145, 14, 12), aura));
+    this.headGrp.add(new THREE.Mesh(new THREE.SphereGeometry(0.108, 12, 10), core));
+    Object.assign(this, { eyeY: 1.46, faceSize: 0.26, faceZ: 0.135, haloR: 0.15, haloY: 1.74, hit: [0.72, 1.5, 0.95] });
+  }
+
+  // no body at all: a head at eye height with the wisp of one trailing off
+  // under it, and three motes going round. reads as something the room is
+  // projecting rather than somebody standing in it.
+  _form_head(aura, core) {
+    this.headGrp = new THREE.Group();
+    this.headGrp.position.y = 1.45;
+    this.headGrp.add(new THREE.Mesh(new THREE.SphereGeometry(0.26, 18, 14), aura));
+    this.headGrp.add(new THREE.Mesh(new THREE.SphereGeometry(0.19, 16, 12), core));
+    // the tail: a cone hanging under her, wide end up, fading into nothing
+    const tail = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.62, 14, 1, true), this.coat(0x2a7dff, 0.26));
+    tail.position.y = -0.3; tail.rotation.x = Math.PI;
+    this.headGrp.add(tail);
+    // three motes on their own little orbits
+    const motes = new THREE.Group();
+    for (let i = 0; i < 3; i++) {
+      const m = new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 6), this.coat(CORE, 1));
+      m.userData.a = (i / 3) * Math.PI * 2;
+      m.userData.r = 0.36 + i * 0.05;
+      m.userData.sp = 0.7 + i * 0.22;
+      m.userData.yy = -0.05 + i * 0.09;
+      motes.add(m);
+    }
+    this.headGrp.add(motes);
+    this._formStep = (t) => {
+      for (const m of motes.children) {
+        const a = m.userData.a + t * m.userData.sp;
+        m.position.set(Math.cos(a) * m.userData.r, m.userData.yy + Math.sin(t * 1.3 + m.userData.a) * 0.04, Math.sin(a) * m.userData.r);
+      }
+      tail.scale.y = 1 + Math.sin(t * 1.7) * 0.12;
+    };
+    Object.assign(this, { eyeY: 1.45, faceSize: 0.34, faceZ: 0.235, visorR: 0.17, haloR: 0.3, haloY: 1.83, hit: [0.6, 0.8, 1.45] });
+  }
+
+  // a small round bat, hovering. big ears, big eyes, wings that actually
+  // beat. the cute one — and a bat belongs in a room this nocturnal.
+  _form_bat(aura, core) {
+    this.headGrp = new THREE.Group();
+    this.headGrp.position.y = 1.4;
+    this.headGrp.add(new THREE.Mesh(new THREE.SphereGeometry(0.21, 16, 13), aura));
+    this.headGrp.add(new THREE.Mesh(new THREE.SphereGeometry(0.155, 14, 11), core));
+
+    /* Ears. The first pair were additive cones and they simply weren't there
+       against a sunlit wall — the same bright-on-bright problem the face had.
+       So they're built the way the visor is: a DARK flat shape that holds its
+       silhouette in any light, with a lit inner ear glowing inside it. Flat
+       plates rather than cones because she always turns to face you, so the
+       one angle they're seen from is the one that matters, and a rounded
+       triangle reads as "bat" far better than a cone does. */
+    const earShape = (w, h) => {
+      const sh = new THREE.Shape();
+      sh.moveTo(-w, 0);
+      sh.quadraticCurveTo(-w * 0.95, h * 0.62, -w * 0.16, h);   // outer edge up to the tip
+      sh.quadraticCurveTo(w * 0.2, h * 0.99, w * 0.62, h * 0.5); // over the rounded tip
+      sh.quadraticCurveTo(w * 0.9, h * 0.16, w, 0);              // inner edge back down
+      sh.quadraticCurveTo(0, -h * 0.12, -w, 0);                  // and across the base
+      return new THREE.ShapeGeometry(sh, 14);
+    };
+    const earDark = new THREE.MeshBasicMaterial({ color: 0x05101c, transparent: true, opacity: 0.86, depthWrite: false });
+    const outerEar = earShape(0.085, 0.26), innerEar = earShape(0.045, 0.16);
+    for (const s of [-1, 1]) {
+      const ear = new THREE.Mesh(outerEar, earDark);
+      ear.position.set(s * 0.125, 0.14, 0.015);
+      ear.rotation.z = s * -0.3;
+      ear.renderOrder = 12;
+      this.headGrp.add(ear);
+      const inner = new THREE.Mesh(innerEar, this.coat(0x9fe4ff, 0.8));
+      inner.position.set(s * 0.128, 0.175, 0.021);
+      inner.rotation.z = s * -0.3;
+      inner.renderOrder = 13;
+      this.headGrp.add(inner);
+    }
+
+    // wings: the classic scalloped membrane, built once and mirrored
+    const wingShape = new THREE.Shape();
+    wingShape.moveTo(0, 0);
+    wingShape.quadraticCurveTo(0.18, 0.12, 0.34, 0.06);
+    wingShape.quadraticCurveTo(0.28, 0.0, 0.33, -0.06);
+    wingShape.quadraticCurveTo(0.22, -0.03, 0.2, -0.12);
+    wingShape.quadraticCurveTo(0.12, -0.04, 0.06, -0.11);
+    wingShape.quadraticCurveTo(0.03, -0.05, 0, 0);
+    const wingGeo = new THREE.ShapeGeometry(wingShape);
+    this.wings = [];
+    for (const s of [-1, 1]) {
+      const w = new THREE.Mesh(wingGeo, this.coat(0x2f8cff, 0.72));
+      w.scale.x = s;
+      w.scale.setScalar(1.35); w.scale.x *= s; w.position.set(s * 0.18, 0.03, -0.02);
+      this.headGrp.add(w);
+      this.wings.push(w);
+    }
+    this._formStep = (t, talking) => {
+      // a slow hover beat that quickens while she's speaking
+      const beat = Math.sin(t * (talking ? 9 : 5.5));
+      this.wings[0].rotation.y = -0.5 - beat * 0.5;
+      this.wings[1].rotation.y = 0.5 + beat * 0.5;
+      for (const w of this.wings) w.rotation.z = beat * 0.12;
+    };
+    Object.assign(this, { eyeY: 1.4, faceSize: 0.26, faceZ: 0.2, visorR: 0.135, haloR: 0, haloY: 1.78, hit: [0.78, 0.85, 1.4] });
+  }
+
+  // no face-of-a-creature at all: a turning solid with shards in orbit.
+  // the room's own intelligence, wearing geometry instead of a body.
+  _form_shard(aura, core) {
+    this.headGrp = new THREE.Group();
+    this.headGrp.position.y = 1.42;
+    this.solid = new THREE.Mesh(new THREE.IcosahedronGeometry(0.3, 0), this.coat(CORE, 0.34));
+    this.headGrp.add(this.solid);
+    this.headGrp.add(new THREE.Mesh(new THREE.IcosahedronGeometry(0.42, 0), aura));
+    const shards = new THREE.Group();
+    for (let i = 0; i < 5; i++) {
+      const sh = new THREE.Mesh(new THREE.TetrahedronGeometry(0.075 + (i % 2) * 0.03), this.coat(CORE, 0.95));
+      sh.userData.a = (i / 5) * Math.PI * 2;
+      sh.userData.r = 0.42 + (i % 3) * 0.06;
+      sh.userData.sp = 0.5 + (i % 3) * 0.18;
+      sh.userData.tilt = (i - 2) * 0.1;
+      shards.add(sh);
+    }
+    this.headGrp.add(shards);
+    this._formStep = (t, talking) => {
+      // the solid turns on its own axis; the shards ride wider, slower rings
+      this.solid.rotation.y = t * 0.35;
+      this.solid.rotation.x = Math.sin(t * 0.4) * 0.25;
+      for (const sh of shards.children) {
+        const a = sh.userData.a + t * sh.userData.sp * (talking ? 1.9 : 1);
+        sh.position.set(Math.cos(a) * sh.userData.r, sh.userData.tilt + Math.sin(a * 2) * 0.05, Math.sin(a) * sh.userData.r);
+        sh.rotation.set(a, a * 1.4, 0);
+      }
+    };
+    Object.assign(this, { eyeY: 1.42, faceSize: 0.3, faceZ: 0.235, visorR: 0.15, haloR: 0.34, haloY: 1.82, hit: [0.7, 0.85, 1.42] });
   }
 
   /* Her words, in the room instead of on the glass.
@@ -189,7 +362,7 @@ export class Guide {
       new THREE.MeshBasicMaterial({ map: this.panelTex, transparent: true, opacity: 0, depthWrite: false }));
     // clear of her head, not over it: the card is 1.04 wide, so its inner edge
     // has to start past her shoulder or she's talking through the back of it
-    this.panel.position.set(1.02, 1.46, 0.1);
+    this.panel.position.set(1.02, this.eyeY, 0.1);
     this.panel.rotation.y = -0.26;        // angled in toward you, like she's holding it
     this.panel.renderOrder = 15;
     this.panel.visible = false;
@@ -250,7 +423,7 @@ export class Guide {
     tex.colorSpace = THREE.SRGBColorSpace;
     const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
     sp.scale.set(1.0, 0.25, 1);
-    sp.position.y = 1.92;
+    sp.position.y = this.eyeY + 0.46;
     return sp;
   }
 
@@ -387,13 +560,19 @@ export class Guide {
   _apply(t, talking) {
     this.grp.position.set(this.pos.x, 0, this.pos.z);
     this.grp.rotation.y = this.yaw;
-    const lift = Math.sin(t * 1.6 + this.bob) * 0.028;
-    this.body.position.y = 0.78 + lift;
-    this.headGrp.position.y = 1.46 + lift;
+    // a form with no legs floats, so it gets a deeper, slower bob than a
+    // figure standing on the carpet does
+    const floating = this.form !== "person";
+    const lift = Math.sin(t * (floating ? 1.15 : 1.6) + this.bob) * (floating ? 0.055 : 0.028);
+    if (this.body) this.body.position.y = 0.78 + lift;
+    this.headGrp.position.y = this.eyeY + lift;
+    this._formStep(t, !!talking);
     // the halo turns always and tips a little as she breathes
-    this.halo.position.y = 1.74 + lift * 1.4;
-    this.halo.rotation.z = t * 0.6;
-    this.halo.rotation.x = Math.PI / 2 + Math.sin(t * 0.9) * 0.09;
+    if (this.halo) {
+      this.halo.position.y = this.haloY + lift * 1.4;
+      this.halo.rotation.z = t * 0.6;
+      this.halo.rotation.x = Math.PI / 2 + Math.sin(t * 0.9) * 0.09;
+    }
     // she brightens while she's talking — same idea as the mic-reactive
     // player glow, except her "level" is whether a line is in the air
     // a blink shouldn't be a jump cut — she flares for half a second where she
@@ -412,6 +591,6 @@ export class Guide {
     const targetCore = 0.34 + (talking ? 0.2 : 0) + pop * 0.5;
     this.coreMat.opacity += (targetCore - this.coreMat.opacity) * 0.2;
     this.headGrp.rotation.x = this.nodT > 0 ? Math.sin((0.5 - this.nodT) / 0.5 * Math.PI) * 0.3 : 0;
-    this.hitMesh.position.set(this.pos.x, 0.95, this.pos.z);
+    this.hitMesh.position.set(this.pos.x, this.hitY, this.pos.z);
   }
 }

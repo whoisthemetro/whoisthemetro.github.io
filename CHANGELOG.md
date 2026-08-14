@@ -4,6 +4,29 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-08-13 — she's a bat
+
+**Trinity isn't shaped like a person any more.** She was the same glow-blob
+a visitor is, which made her read as another guest rather than as something
+the room provided. She's a small hovering bat now: big ears, wings that beat
+(faster while she's talking), and the 8-bit face on a dark screen.
+
+Three shapes were built and compared in the room's own light — a floating
+head trailing a wisp, a turning solid with shards in orbit, and the bat —
+because that comparison can't be done on paper. The losers stay buildable
+behind `?form=person|head|shard`.
+
+**The lighting taught us the same lesson twice.** Additive glow cannot hold
+a SHAPE against a sunlit wall: the face vanished into the core (bright on
+bright), and the first pair of ears simply weren't there. Anything that has
+to read as a silhouette is now a DARK plate on normal blending — the one
+thing in this room allowed to subtract — with the glow inside it. That's why
+she has a visor rather than a face, and why her ears are flat rounded
+triangles with a lit inner ear rather than cones.
+
+**The halo went in the bin.** It sliced straight through the new ears, and
+the ears already say she isn't a visitor, which was the only job it had.
+
 ## 2026-08-12 — somebody to ask
 
 **There's a guide in the bedroom now, and her name is Trinity.** The room hides

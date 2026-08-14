@@ -500,7 +500,11 @@ const bartender = new Bartender(world.scene, world.barInfo, {
    arithmetic: two metres out and 30° to the left puts her against the wall
    art instead of on top of the desk, so you see a person AND the room you
    just walked into. yaw 0.80 turns her to face the spawn point. */
-const guide = new Guide(world.scene, { x: 0.2, z: 0.9, yaw: 0.80, name: "Trinity" }, {
+// she's a bat. the other shapes stay in guide.js behind ?form=person|head|shard
+// because picking between them meant seeing them in this room's own light,
+// and that's worth being able to do again.
+const GUIDE_FORM = new URLSearchParams(location.search).get("form") || "bat";
+const guide = new Guide(world.scene, { x: 0.2, z: 0.9, yaw: 0.80, name: "Trinity", form: GUIDE_FORM }, {
   greet: bedroomSound(() => { try { beep(587, 0.08, "sine", 0.03); setTimeout(() => beep(880, 0.09, "sine", 0.028), 95); } catch (e) {} }),
   walkable: (x, z) => world.isWalkable(x, z),
   // the bedroom and the arcade share one 1.5 m opening. when she and you are
