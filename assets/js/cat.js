@@ -227,9 +227,40 @@ export class Cat {
     if (r < 0.50) return this._goto(s.windowFloor.x, s.windowFloor.z, "window", 0);
     // a MIDI song owns the keybed — the cat keeps off while one's playing
     if (r < 0.68 && !this.fx.songPlaying?.()) return this._goto(s.keys.x1, s.keys.z, "keys", s.keys.y);
-    // wander somewhere on the carpet
+    // wander somewhere on the carpet — somewhere that isn't inside the
+    // furniture. a few re-rolls is plenty; the room is mostly floor.
     const b = s.bounds;
-    return this._goto(rand(b.minX + 0.4, b.maxX - 0.4), rand(b.minZ + 0.4, b.maxZ - 0.4), "sit", 0);
+    for (let tries = 0; tries < 6; tries++) {
+      const x = rand(b.minX + 0.4, b.maxX - 0.4), z = rand(b.minZ + 0.4, b.maxZ - 0.4);
+      if (!this._inAvoid(x, z)) return this._goto(x, z, "sit", 0);
+    }
+    return this._goto(s.windowFloor.x, s.windowFloor.z, "sit", 0);
+  }
+
+  /* ---------- furniture: the room's no-go rects ----------
+     the cat used to walk straight lines through everything on the floor —
+     most visibly the kick drum. the world hands over axis-aligned rects
+     (spots.avoid); a step that would land in one slides along whichever
+     axis still works, the same trick the player and the guide use. the
+     ONE exception: a rect that contains the cat's own destination stays
+     passable, because the keybed and the chair are perches ON furniture,
+     and a cat that can't reach its perch just wedges at the edge. */
+  _inAvoid(x, z) {
+    for (const r of this.spots.avoid || []) {
+      if (x > r.x0 && x < r.x1 && z > r.z0 && z < r.z1) return r;
+    }
+    return null;
+  }
+  _stepTo(nx, nz) {
+    const r = this._inAvoid(nx, nz);
+    const t = this.target;
+    if (!r || (t && t.x > r.x0 && t.x < r.x1 && t.z > r.z0 && t.z < r.z1)) {
+      this.pos.x = nx; this.pos.z = nz;
+      return false;
+    }
+    if (!this._inAvoid(nx, this.pos.z)) { this.pos.x = nx; return false; }
+    if (!this._inAvoid(this.pos.x, nz)) { this.pos.z = nz; return false; }
+    return true;                        // wedged — the caller's clock decides
   }
 
   _goto(x, z, thenState, thenY) {
@@ -484,8 +515,8 @@ export class Cat {
         const want = Math.atan2(dx, dz);
         let dy = want - this.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
         this.yaw += dy * Math.min(1, dt * 6);
-        this.pos.x += (dx / dist) * 0.75 * dt;
-        this.pos.z += (dz / dist) * 0.75 * dt;
+        this._stepTo(this.pos.x + (dx / dist) * 0.75 * dt,
+                     this.pos.z + (dz / dist) * 0.75 * dt);
       }
     } else if (this.state === "dropToy") {
       // sets it down, gives it a proud little meow, sits and looks up at you
@@ -523,8 +554,19 @@ export class Cat {
         dy = Math.atan2(Math.sin(dy), Math.cos(dy));
         this.yaw += dy * Math.min(1, dt * 6);
         const spd = this.target.speed || WALK;
-        this.pos.x += (dx / dist) * spd * dt;
-        this.pos.z += (dz / dist) * spd * dt;
+        const blocked = this._stepTo(
+          this.pos.x + (dx / dist) * spd * dt,
+          this.pos.z + (dz / dist) * spd * dt);
+        // wedged against furniture with nowhere to slide: give the walk up
+        // rather than press into a kick drum forever, and pick again fresh
+        this.blockedT = blocked ? (this.blockedT || 0) + dt : 0;
+        if (this.blockedT > 1.2) {
+          this.blockedT = 0;
+          this.target = null;
+          this.state = "sit";
+          this.timer = rand(0.6, 1.6);
+          return;
+        }
         this.baseY += ((this.target.thenY && dist < 0.5 ? this.target.thenY : 0) - this.baseY) * dt * 5;
       }
     } else if (this.state === "keys") {

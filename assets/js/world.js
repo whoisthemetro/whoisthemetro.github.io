@@ -851,21 +851,23 @@ function makeOutside() {
     drawRidge(3, Rmts.rowOf(OUT_GROUND) - Rmts.rowOf(OUT_GROUND + 46), 0.45);
     drawRidge(7, Rmts.rowOf(OUT_GROUND) - Rmts.rowOf(OUT_GROUND + 74), 0.7);
 
-    /* --- HOLLYWOOD, up on the slope. white boards, each leaning its own
-       way like the real thing, sitting on a paler patch of hillside --- */
+    /* --- METROWORLD, up on the slope in neon. by day the tubes are off,
+       pale glass on a dark board; after dark the sign is LIT — painted
+       bloom, a wide soft halo under a hot core, magenta so it belongs to
+       neither of the grid's two currents. each letter still leans its own
+       way, because it's a sign on a hillside, not a logo on a screen. --- */
     {
       const az = 34;                                  // west of downtown
       const cx = Rmts.xOf(az);
       const yTopM = OUT_GROUND + 44;                  // high on the slope, clear of every roof
       const y = Rmts.rowOf(yTopM);
       const letterH = Rmts.rowOf(OUT_GROUND) - Rmts.rowOf(OUT_GROUND + 4.5);
-      const letters = "HOLLYWOOD";
+      const letters = "METROWORLD";
       const step = letterH * 0.82;
-      const w = letterH * 0.62;
       g.save();
       g.translate(cx - (letters.length * step) / 2, y);
-      // the hillside behind it, a shade lighter so the sign has something to sit on
-      g.fillStyle = `rgba(${pal.mtn},0.25)`;
+      // the dark board the tubes are mounted on
+      g.fillStyle = `rgba(${pal.mtn},0.35)`;
       g.beginPath();
       g.moveTo(-step, letterH * 1.5);
       g.lineTo(letters.length * step + step, letterH * 0.7);
@@ -879,12 +881,20 @@ function makeOutside() {
         const ly = letterH * 0.55 + (i / letters.length) * letterH * 0.55;   // the slope
         g.save();
         g.translate(lx, ly);
-        g.rotate((rnd(i * 3 + 1) - 0.5) * 0.14);      // each board its own lean
-        const shade = pal.night ? 190 : 246;
-        g.fillStyle = `rgba(${shade},${shade},${shade - 6},${pal.night ? 0.5 : 0.92})`;
-        g.fillRect(-w / 2, -letterH * 0.5, w, letterH);
-        g.fillStyle = pal.night ? "rgba(30,34,44,0.75)" : "rgba(120,128,140,0.55)";
-        g.fillText(letters[i], 0, letterH * 0.04);
+        g.rotate((rnd(i * 3 + 1) - 0.5) * 0.14);      // each letter its own lean
+        if (pal.night) {
+          g.shadowColor = "#ff3db0";
+          g.shadowBlur = letterH * 0.9;
+          g.fillStyle = "rgba(255,61,176,0.85)";
+          g.fillText(letters[i], 0, 0);
+          g.fillText(letters[i], 0, 0);               // twice: the halo builds up
+          g.shadowBlur = 0;
+          g.fillStyle = "#ffd9ef";                    // the tube itself, near-white hot
+          g.fillText(letters[i], 0, 0);
+        } else {
+          g.fillStyle = "rgba(216,176,200,0.8)";      // tubes off: pale pink glass
+          g.fillText(letters[i], 0, 0);
+        }
         g.restore();
       }
       g.restore();
@@ -9493,11 +9503,23 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     catSpots: {
       chair: { x: SWEET.x, z: SWEET.z, y: 0.51 },
       keys: { x1: -0.24, x2: 0.62, z: -2.45, y: 0.53 },
-      windowFloor: { x: -1.7, z: -2.7 },
+      // between the e-kit and the desk: the old spot (-1.7,-2.7) was six
+      // centimetres from the kick drum, so the cat's window seat was
+      // INSIDE the instrument. no collision system fixes a bed in a drum.
+      windowFloor: { x: -1.15, z: -2.72 },
       foodBowl: { x: 2.12, z: 0.75 },
       waterBowl: { x: 2.12, z: 1.08 },
       litter: { x: -2.1, z: 2.8 },
       bounds: ROOM.bounds,
+      /* floor furniture the cat walks AROUND now, not through. axis-aligned
+         rects, deliberately a little generous. a rect that contains the
+         cat's own destination stays passable — the keybed and the chair are
+         perches, and a cat that can't reach its perch just wedges. */
+      avoid: [
+        { x0: -2.65, x1: -1.25, z0: -3.3, z1: -2.05 },   // the e-kit
+        { x0: -0.85, x1: 1.30, z0: -3.3, z1: -2.38 },    // the desk
+        { x0: 1.45, x1: 2.45, z0: -2.7, z1: -1.15 },     // tele + amp corner
+      ],
     },
   };
 }

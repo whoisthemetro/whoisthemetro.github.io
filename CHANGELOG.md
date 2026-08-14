@@ -4,6 +4,27 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-08-14 — METROWORLD on the hill, and a cat that respects the drums
+
+**The sign on the ridge says METROWORLD now, in neon.** By day the tubes
+are off — pale glass letters on a dark board, each with its own lean. At
+night the sign is LIT: magenta, a wide painted halo under a near-white
+tube core, deliberately belonging to neither of the grid's two currents.
+
+**The cat stopped walking through the kick drum.** Two bugs, not one: the
+cat had no collision at all (it lerps straight at its targets), and its
+window-watching floor spot was SIX CENTIMETRES from the kick — its bed was
+inside the instrument, so no collision system alone could have fixed it.
+The spot moved out from between the e-kit and the desk, the world now
+hands the cat a list of furniture rects (e-kit, desk, tele-and-amp
+corner), and every step the cat takes axis-slides around them — the same
+trick the player and the guide use. The one exception is load-bearing: a
+rect containing the cat's own destination stays passable, because the
+keybed and the chair are perches ON furniture, and a cat that can't reach
+its perch just wedges at the edge. If it does wedge somewhere new, it
+gives the walk up after a second and sits down to reconsider, which is
+frankly what a real cat would do.
+
 ## 2026-08-14 — the city puts the grid on at night
 
 **The city got a plan before it got the lights.** The buildings, the
