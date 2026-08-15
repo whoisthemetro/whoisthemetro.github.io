@@ -36,8 +36,8 @@ The site runs in two modes:
 One continuous 3D space, nearly all of it generated procedurally in code —
 almost everything is canvas-drawn and then cel-shaded with a toon ramp. The
 exceptions are deliberate and few: scanned `.glb` props (the four arcade
-cabinets, some desk gear), the dumbek samples, visitors' own avatars, and
-one WebAssembly binary for the studio's synth. Spaces are separated by
+cabinets, some desk gear), the dumbek samples, and one WebAssembly binary
+for the studio's synth. Spaces are separated by
 distance and portals:
 
 - **The bedroom studio** — the home base. A real home-studio layout you can
@@ -127,12 +127,16 @@ throw reads the peak of your swing.
 
 ## Your avatar
 
-The mirror in the arcade opens an outfit picker — build, hair, fit, skin
-tone — and everyone sees what you're wearing. If you'd rather be yourself,
-drop a `.glb` file on the wardrobe (or paste a public link to one): it's
-loaded and parsed before it's worn, height-normalised, and its facing is
-worked out from its own skeleton, so models exported from anywhere tend to
-just work.
+**The podium** in the arcade's far corner, where a full-size you stands on a
+lit plinth and turns slowly. Click it and it opens an outfit picker — build, hair, beard,
+skin tone, shirt and trouser colour, **shoes** (sneaker, hi-top, chunky,
+platform, boot, any colour) and your chest text — and everyone in the room sees
+what you're wearing. Hold the mouse down and drag while it's open to turn yourself
+round and check the back.
+
+Everyone here is made of the same primitives. There's no uploading a model
+of yourself; the whole place is procedural and the avatars are part of
+that.
 
 ## Tech stack
 
@@ -213,7 +217,7 @@ assets/
     ambience.js       procedural WebAudio
     arcade.js         the cabinets and the games inside them
     xr.js             WebXR: the rig, controllers, wrist HUD, zero-g flight
-    avatar-glb.js     visitors' own .glb avatars (facing + gaze correction)
+    avatar-builder.js the block figure: build, hair, fit, beard
     studio/           the sequencer room: devices, audio, panels, pads, net
     config.js         your Supabase / PostHog keys (safe to publish)
     …                 cat, songs, radio, voice, stream/screen (venue), etc.

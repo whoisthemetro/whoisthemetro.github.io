@@ -4066,6 +4066,88 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     }
   }
 
+  /* --- THE PODIUM: where you build the person everyone else sees ---------
+     The mirror shows you a PICTURE of yourself, 40 cm wide, in a frame. This
+     is you at full size, standing in the room, and it's the corner nearest
+     the smoking tables — the one bit of this hall nobody had a use for.
+     It sits on the 45° out of that corner and faces the room, so there's no
+     angle you can come at it from where you're looking at its back.
+     world.js only builds the FURNITURE. main.js hangs the figure in `mount`
+     (built from your outfit spec, or your .glb if you're wearing one) —
+     avatars are Lambert on purpose and the toon pass at the end of
+     buildWorld would eat any figure that existed by then. --- */
+  const POD = { x: -4.75, z: 4.02, ry: -Math.PI * 0.75, top: 0.26 };
+  const POD_R = 0.9, POD_ARC = 1.05;   // backdrop radius + half-angle. CHECK THE ENDS,
+  // not the back: at ±1.05 rad they sit nearly at the podium's sides, and the
+  // two walls are only 70 cm away on the diagonal.
+  const podGroup = new THREE.Group();
+  podGroup.position.set(POD.x, 0, POD.z);
+  podGroup.rotation.y = POD.ry;                 // +z is its front; this aims it into the hall
+  add(podGroup);
+  const podHits = [];
+  {
+    const padd = (m) => { podGroup.add(m); return m; };
+    // the backdrop: an arc of wall behind the figure so it reads against
+    // something instead of against a dark corner. its own faint emissive does
+    // the lifting — a light here would be 70 cm from two walls.
+    const back = new THREE.Mesh(
+      new THREE.CylinderGeometry(POD_R, POD_R, 2.62, 20, 1, true, Math.PI - POD_ARC, POD_ARC * 2),
+      new THREE.MeshLambertMaterial({ color: 0x1b1728, emissive: 0x2a2348, side: THREE.DoubleSide }));
+    back.position.y = 1.31; padd(back);
+    // neon down both open edges of the arc — the same trick the lift and the
+    // restrooms door use: in a hall this dark a lit edge carries a long way
+    const podNeon = new THREE.MeshBasicMaterial({ color: 0xff2da0 });
+    for (const s of [-1, 1]) {
+      const a = Math.PI + s * POD_ARC;
+      const e = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 2.62, 6), podNeon);
+      e.position.set(Math.sin(a) * POD_R, 1.31, Math.cos(a) * POD_R); padd(e);
+    }
+    // the plinth: two steps, with a neon rim on the tread you stand on
+    const step0 = new THREE.Mesh(new THREE.CylinderGeometry(0.66, 0.7, 0.1, 24), lam(0x232232));
+    step0.position.y = 0.05; padd(step0);
+    const step1 = new THREE.Mesh(new THREE.CylinderGeometry(0.56, 0.62, 0.16, 24), lam(0x2c2a3e));
+    step1.position.y = 0.18; padd(step1);
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.56, 0.012, 6, 32), podNeon);
+    rim.rotation.x = Math.PI / 2; rim.position.y = POD.top; padd(rim);
+    blockers.push(step0, step1);
+    NO_WALK.push({ x0: POD.x - 0.82, x1: POD.x + 0.82, z0: POD.z - 0.82, z1: POD.z + 0.82 });
+
+    // the sign, hung off the top of the backdrop
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.02, 0.26),
+      new THREE.MeshBasicMaterial({
+        map: canvasTex(408, 104, (g) => {
+          g.fillStyle = "#0a0610"; g.fillRect(0, 0, 408, 104);
+          g.font = "900 46px monospace"; g.textAlign = "center"; g.textBaseline = "middle";
+          g.fillStyle = "#ff2da0"; g.shadowColor = "#ff2da0"; g.shadowBlur = 14;
+          g.fillText("YOUR LOOK", 204, 56);
+        }), transparent: true,
+      }));
+    sign.position.set(0, 2.5, 0.12); padd(sign);
+
+    // one grab volume for the whole figure: click it to open the creator,
+    // hold and drag it to turn yourself around
+    const grab = new THREE.Mesh(new THREE.CylinderGeometry(0.56, 0.56, 2.06, 12, 1, true),
+      new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide }));
+    grab.position.y = 1.06;
+    grab.userData.podium = true; padd(grab); podHits.push(grab);
+
+    /* light. two walls sit 70 cm away, so this is a SPOT pointing almost
+       straight down: every direction inside a 20° cone from 3.3 m still lands
+       on the plinth, and the nearest thing on the far side of either wall is
+       2 m out horizontally — outside the cone by a mile, whatever `distance`
+       says. Aimed away beats leashed; see the rules in CLAUDE.md. */
+    const podSpot = new THREE.SpotLight(0xffe4c4, 48, 4.4, 0.38, 0.5, 2);
+    podSpot.position.set(POD.x, 3.3, POD.z);
+    podSpot.target.position.set(POD.x, 0.2, POD.z);
+    add(podSpot); add(podSpot.target);
+    const podFix = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.07, 0.07, 10), lam(0x0c0e12));
+    podFix.position.set(POD.x, 3.34, POD.z); add(podFix);
+  }
+  // main.js owns what STANDS here; world.js owns the furniture it stands on
+  const podMount = new THREE.Group();
+  podMount.position.y = POD.top;
+  podGroup.add(podMount);
+
   /* --- the MARQUEE: high scores where the sign used to be -----------------
      The old neon "METRO'S ARCADE" said the room's name to a room you were
      already standing in. This says something you'd actually stop and read:
@@ -4313,8 +4395,15 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
   // the BATHROOM is cut from this same wall (the room itself is built in its
   // own section below) — its door edges are declared up here so the one wall
   // loop can leave both holes in a single pass.
-  const BATH = { x: -10.5, w: 4.2, d: 3.6, h: 2.7, dw: 1.15, dh: 2.05 };
+  // 8.4 x 4.2 and centred on its own door, which is what the floor plan wants.
+  // The door sits at -10.5 because that's the one stretch of this wall that
+  // isn't behind something: further west it opens into the middle of the
+  // basketball court. Holding it here pushes the room's east end out over the
+  // bar, so the bar's pendants had to become a low lamp with a short throw —
+  // see the note there. The lift's cab bounds the west end at -14.7.
+  const BATH = { x: -10.5, w: 8.4, d: 4.2, h: 2.7, dw: 1.15, dh: 2.05 };
   const bxL = BATH.x - BATH.dw / 2, bxR = BATH.x + BATH.dw / 2;
+  const BPX1 = BATH.x - 0.95, BPX2 = BATH.x + 0.95;   // the two bay partitions
   // CUT THE SOUTH WALL around both doorways: segments between the holes + a
   // lintel above each. (the rest of the arcade's south wall is built here,
   // not in the wall loop, because the lift and the bathroom need holes in it.)
@@ -4458,6 +4547,8 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
   // (used by the safety net in main.js) — true when you're standing in the cab
   const inElevatorCab = (x, z) => x >= xW && x <= xE && z >= zBack - 0.1 && z <= zWall + 0.05;
 
+  // filled in by the bathroom block: the body only its mirrors can see
+  let bathSelf = null;
   /* --- THE BATHROOM: a tiled box carved back through the south wall, west of
      the bar and across the aisle from where the air hockey lands. It's the
      one wall with a long empty run left on it, and a door in the middle of
@@ -4469,6 +4560,18 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
      that their edges hit the floor before they reach the wall plane and wash
      the hall through solid brick. Empty on purpose — fittings come next. --- */
   {
+    // everything this block adds to the scene gets tagged onto REFL_LAYER at
+    // the end, and the reflection camera renders ONLY that layer. A clipping
+    // plane hides the arcade but still SUBMITS it — 534 draw calls standing at
+    // a basin. Culling by layer is what makes the pass cost what this room
+    // costs instead of what the whole hall costs.
+    const REFL_LAYER = 5;                    // 1 and 2 are the XR eyes; 3 boat, 4 arena
+    const sceneMark = scene.children.length;
+    // hidden for the duration of the reflection pass: the handful of pieces
+    // that stand BETWEEN the virtual camera and the room. Layer culling has
+    // already removed the whole hall, so this is only ever the room's own
+    // entry wall and the doorway dressing on it.
+    const reflHide = [];
     const BZ0 = AR.z0;                              // shared wall — the bathroom's north face
     const BZ1 = AR.z0 - BATH.d;                     // its back wall, deep behind the arcade (-9.5)
     const bx0 = BATH.x - BATH.w / 2, bx1 = BATH.x + BATH.w / 2;
@@ -4494,12 +4597,20 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
         g.fillRect(c * 32 + 2, r * 32 + 2, 28, 28);
       }
     });
-    // one texture object per surface — they need their own repeats
+    // one texture object per surface — they need their own repeats.
+    // the EMISSIVE is doing a specific job: this room is 20 cm from the hall,
+    // so the corners nearest the door can't be lit by anything without that
+    // light also crossing the wall. A material that lifts its own floor can't
+    // leak — it isn't a light — and the toon pass carries emissive through to
+    // MeshToonMaterial, so it survives the cel-shading. It's what stands in
+    // for the bounce a real tiled box would have.
     const tiled = (tex, rx, ry) => {
       const t = tex.clone(); t.needsUpdate = true;
       t.wrapS = t.wrapT = THREE.RepeatWrapping;
       t.repeat.set(rx, ry);
-      return new THREE.MeshLambertMaterial({ map: t, side: THREE.DoubleSide });
+      return new THREE.MeshLambertMaterial({
+        map: t, side: THREE.DoubleSide, emissive: 0x1c2026,
+      });
     };
     const TS = 0.8;    // one texture square = 4 tiles = 80 cm of wall
 
@@ -4510,7 +4621,11 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     // nothing but the fill's falloff, which reads as a bright blob ringed by
     // black corners. Flat pale is also just what a lit diffuser panel looks
     // like, and the toon pass leaves Basic alone.
-    const bCeil = plane(BATH.w, BATH.d, new THREE.MeshBasicMaterial({ color: 0x8f979f }));
+    // ...and mid-grey rather than pale: Basic ignores falloff, so a bright
+    // ceiling stays bright right out to the corners, and the wedge of it you
+    // glimpse through the door head from the arcade reads as a hard white
+    // sliver next to walls that have fallen off to nothing.
+    const bCeil = plane(BATH.w, BATH.d, new THREE.MeshBasicMaterial({ color: 0x6e767e }));
     bCeil.rotation.x = Math.PI / 2;
     bCeil.position.set(BATH.x, BATH.h, bzMid); add(bCeil);
     // back wall, then the two sides — each faces INTO the room
@@ -4531,11 +4646,11 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     for (const [nx0, nx1] of [[bx0, bxL], [bxR, bx1]]) {
       const seg = plane(nx1 - nx0, BATH.h, tiled(wallTile, (nx1 - nx0) / TS, BATH.h / TS));
       seg.rotation.y = Math.PI;
-      seg.position.set((nx0 + nx1) / 2, BATH.h / 2, bnZ); add(seg);
+      seg.position.set((nx0 + nx1) / 2, BATH.h / 2, bnZ); add(seg); reflHide.push(seg);
     }
     const bnHead = plane(BATH.dw, BATH.h - BATH.dh, tiled(wallTile, BATH.dw / TS, (BATH.h - BATH.dh) / TS));
     bnHead.rotation.y = Math.PI;
-    bnHead.position.set(BATH.x, (BATH.h + BATH.dh) / 2, bnZ); add(bnHead);
+    bnHead.position.set(BATH.x, (BATH.h + BATH.dh) / 2, bnZ); add(bnHead); reflHide.push(bnHead);
 
     /* the reveal — the casing that lines the opening. ONE rule keeps this
        corner clean, and it's worth stating because breaking it is invisible in
@@ -4557,15 +4672,15 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     const hx0 = bxL + RJ, hx1 = bxR - RJ;
     for (const jx of [bxL + RJ / 2, bxR - RJ / 2]) {
       const jamb = box(RJ, BATH.dh, revD, bTrim);
-      jamb.position.set(jx, BATH.dh / 2, revC); add(jamb);
+      jamb.position.set(jx, BATH.dh / 2, revC); add(jamb); reflHide.push(jamb);
     }
     const bHeadTrim = box(hx1 - hx0, RJ, revD, bTrim);
-    bHeadTrim.position.set(BATH.x, BATH.dh - RJ / 2, revC); add(bHeadTrim);
+    bHeadTrim.position.set(BATH.x, BATH.dh - RJ / 2, revC); add(bHeadTrim); reflHide.push(bHeadTrim);
     // threshold: sunk so the floor tile passes THROUGH it rather than meeting
     // it face-to-face, and stopped short of the arcade plane so no lip juts
     // out onto the carpet
     const bSill = box(hx1 - hx0, 0.032, revD - 0.03, lam(0x6e767e));
-    bSill.position.set(BATH.x, 0.008, revC - 0.015); add(bSill);
+    bSill.position.set(BATH.x, 0.008, revC - 0.015); add(bSill); reflHide.push(bSill);
 
     // arcade side: a neon jamb outline + a lit sign, the same language the
     // lift speaks, so the door reads as a door from across the hall. NOTE the
@@ -4574,10 +4689,10 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     const neonZ = BZ0 + 0.05;
     for (const nx of [bxL - 0.03, bxR + 0.03]) {
       const v = box(0.03, BATH.dh + 0.06, 0.03, bNeon);
-      v.position.set(nx, (BATH.dh + 0.06) / 2, neonZ); add(v);
+      v.position.set(nx, (BATH.dh + 0.06) / 2, neonZ); add(v); reflHide.push(v);
     }
     const bNeonTop = box(BATH.dw + 0.12, 0.03, 0.03, bNeon);
-    bNeonTop.position.set(BATH.x, BATH.dh + 0.06, neonZ); add(bNeonTop);
+    bNeonTop.position.set(BATH.x, BATH.dh + 0.06, neonZ); add(bNeonTop); reflHide.push(bNeonTop);
     const bSign = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.2),
       new THREE.MeshBasicMaterial({
         map: canvasTex(288, 64, (g) => {
@@ -4587,26 +4702,385 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
           g.fillText("RESTROOMS", 144, 34);
         }), transparent: true,
       }));
-    bSign.position.set(BATH.x, BATH.dh + 0.26, neonZ); add(bSign);
+    bSign.position.set(BATH.x, BATH.dh + 0.26, neonZ); add(bSign); reflHide.push(bSign);
 
-    // two downlights. pulled 35 cm back from centre so the cone's edge lands
-    // on the floor short of the wall plane — it physically cannot spill into
-    // the arcade, which is the only rule this room really has.
-    for (const lx of [BATH.x - 1.0, BATH.x + 1.0]) {
-      const s = new THREE.SpotLight(0xdfe9ff, 30, 4.6, 0.68, 0.6, 1.5);
-      s.position.set(lx, BATH.h - 0.06, bzMid - 0.35);
-      s.target.position.set(lx, 0, bzMid - 0.35);
+    /* light. the hall is 20 cm the other side of that wall and three.js lights
+       ignore geometry, so every fixture in here has to be aimed or leashed to
+       stay home. There are two safe shapes and this room uses both:
+         DOWNLIGHTS sit deep enough that the cone's edge lands on the floor
+         short of the wall plane — a `distance`-and-angle argument, and it has
+         to be recomputed if either the light or the wall ever moves.
+         WALL-WASHERS sit right AT the door and point away from it, which is
+         the stronger guarantee: if the beam axis tilts away from the arcade by
+         more than the cone's half-angle, then EVERY direction inside the cone
+         still carries a negative z, and no part of it can travel back through
+         the wall however far it throws. Distance stops mattering.
+       Downlights alone gave a bright floor under black walls — which, glimpsed
+       from the hall through the door, read as a void with a lit sliver of
+       ceiling floating in it. The washers are what make it a room. */
+    const bSpot = (px, py, pz, tx, ty, tz, angle, dist, inten) => {
+      const s = new THREE.SpotLight(0xdfe9ff, inten, dist, angle, 0.65, 1.5);
+      s.position.set(px, py, pz);
+      s.target.position.set(tx, ty, tz);
       add(s); add(s.target);
+      return s;
+    };
+    for (let i = 0; i < 4; i++) {
+      const lx = bx0 + 1.05 + i * 2.1;
+      bSpot(lx, BATH.h - 0.06, bzMid - 0.35, lx, 0, bzMid - 0.35, 0.68, 4.6, 22);
       const pan = box(0.52, 0.03, 0.52, new THREE.MeshBasicMaterial({ color: 0xf2f6ff }));
       pan.position.set(lx, BATH.h - 0.05, bzMid - 0.35); add(pan);
     }
-    // downlights alone leave the ceiling and the top of the walls black, so
-    // one fill light sits mid-room to lift them. a POINT light this close to
-    // the hall is only safe because `distance` is a hard cutoff: from here
-    // the nearest arcade floor is 2.87 m and the wall plane 2.2 m, so a 2.0 m
-    // throw dies inside this room no matter which way you measure it.
-    const bFill = add(new THREE.PointLight(0xdfe9ff, 9, 2.0, 2));
-    bFill.position.set(BATH.x, 1.85, bzMid - 0.4);
+    // toed IN rather than straight at the far corners: aimed wide, the cones
+    // miss each other and leave a dark V down the middle of the back wall.
+    // 0.45 rad of axis tilt + 0.72 of cone is well under the 1.571 that would
+    // let a ray turn back toward the arcade.
+    for (const sd of [-1, 1]) {
+      bSpot(BATH.x + sd * 2.6, BATH.h - 0.12, BZ0 - 0.4,
+            BATH.x + sd * 3.8, 0.9, BZ1 + 0.7, 0.72, 6.4, 20);
+    }
+
+    /* ===== the fittings ==================================================
+       Three bays: stalls along the back of each, four basins along the entry
+       wall of each, and the accessible one in the middle with the vestibule
+       under it. The two side bays are MIRRORS of each other about the door —
+       the plan they came from splits them (urinals on one side only), but the
+       only partition face those could mount on is the one you walk through.
+       Keep both bays identical and the room stays usable from either hand.
+       ===================================================================== */
+    // every fitting carries the same small emissive the tile does, for the
+    // same reason: a stall panel's back face is lit by nothing in here, and
+    // without a floor it lands on the toon ramp's bottom step and goes black.
+    const porc = new THREE.MeshLambertMaterial({ color: 0xeef2f0, emissive: 0x191d1f });
+    const steel = new THREE.MeshLambertMaterial({ color: 0xbcc4cc, emissive: 0x15181b });
+    const panelMat = new THREE.MeshLambertMaterial({ color: 0x2e5a63, emissive: 0x102429 });
+    const SF = BZ1 + 1.45;                                       // stall fronts
+    const AF = BZ1 + 1.90;                                       // the accessible one is deeper
+
+    // --- bay partitions: full height, with a walk-through in the vestibule
+    // stretch. boxes, so both faces are tiled without a second plane.
+    // every end runs PAST what it meets — into the floor, the ceiling, the end
+    // walls, and into each other over the opening. A partition sized exactly
+    // to the room leaves its top face in the ceiling's plane and its ends in
+    // the wall planes, which is four coplanar seams the length of the room.
+    const partition = (px) => {
+      for (const [z0, z1] of [[BZ1 - 0.06, -7.86], [-6.64, BZ0 - 0.06]]) {
+        const seg = box(0.12, BATH.h + 0.08, z1 - z0, tiled(wallTile, (z1 - z0) / TS, BATH.h / TS));
+        seg.position.set(px, BATH.h / 2, (z0 + z1) / 2); add(seg);
+      }
+      // the head is deliberately THINNER and shorter than the segments it
+      // laps into: same thickness would put its side faces and its top in the
+      // segments' planes, and coplanar-with-overlap is the whole failure mode.
+      const head = box(0.10, 0.67, 1.38, tiled(wallTile, 1.38 / TS, 0.67 / TS));
+      head.position.set(px, 2.385, -7.25); add(head);
+    };
+    partition(BPX1); partition(BPX2);
+
+    // --- a toilet. simple forms: the toon ramp does more for the read here
+    // than polygons would.
+    const toilet = (px, pz) => {
+      const g = new THREE.Group();
+      const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.16, 0.20, 12), porc);
+      foot.position.y = 0.10; g.add(foot);
+      const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.20, 0.15, 0.21, 14), porc);
+      bowl.position.y = 0.305; bowl.scale.z = 1.15; g.add(bowl);
+      const seat = new THREE.Mesh(new THREE.TorusGeometry(0.155, 0.035, 8, 18), porc);
+      seat.rotation.x = Math.PI / 2; seat.position.y = 0.425; seat.scale.z = 1.15; g.add(seat);
+      const tank = box(0.40, 0.40, 0.16, porc);
+      tank.position.set(0, 0.60, -0.27); g.add(tank);
+      const lid = box(0.44, 0.045, 0.20, porc);
+      lid.position.set(0, 0.82, -0.27); g.add(lid);
+      const flush = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.05, 8), steel);
+      flush.rotation.z = Math.PI / 2; flush.position.set(0.21, 0.74, -0.25); g.add(flush);
+      g.position.set(px, 0, pz); add(g); return g;
+    };
+
+    // --- a wall-hung basin. local -z is its back, so rotY aims it at a wall.
+    const basin = (px, pz, rotY) => {
+      const g = new THREE.Group();
+      const body = new THREE.Mesh(new THREE.CylinderGeometry(0.23, 0.16, 0.17, 16), porc);
+      body.position.y = 0.80; body.scale.z = 0.82; g.add(body);
+      const inset = new THREE.Mesh(new THREE.CylinderGeometry(0.185, 0.185, 0.02, 16), lam(0xd2d9d6));
+      inset.position.y = 0.856; inset.scale.z = 0.82; g.add(inset);
+      const splash = box(0.50, 0.17, 0.05, porc);
+      splash.position.set(0, 0.855, -0.19); g.add(splash);
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.13, 8), steel);
+      post.position.set(0, 0.955, -0.15); g.add(post);
+      const spout = new THREE.Mesh(new THREE.CylinderGeometry(0.017, 0.017, 0.13, 8), steel);
+      spout.rotation.x = Math.PI / 2; spout.position.set(0, 1.01, -0.10); g.add(spout);
+      g.position.set(px, 0, pz); g.rotation.y = rotY; add(g); return g;
+    };
+
+    // --- a row of stalls between x=a and x=b. interior dividers only: the bay
+    // walls are the outer sides, and a panel laid flat on tile is just a
+    // coplanar face waiting to speckle. doors hang ajar at varied angles so
+    // the row reads as depth instead of a flat wall of doors.
+    const stallRow = (a, b, n) => {
+      const w = (b - a) / n;
+      for (let i = 1; i < n; i++) {
+        const px = a + i * w;
+        const d = box(0.045, 1.90, SF - BZ1 + 0.06, panelMat);
+        d.position.set(px, 1.10, (BZ1 - 0.06 + SF) / 2); add(d);
+        NO_WALK.push({ x0: px - 0.10, x1: px + 0.10, z0: BZ1, z1: SF });
+      }
+      for (let i = 0; i < n; i++) {
+        const cx = a + (i + 0.5) * w;
+        toilet(cx, BZ1 + 0.44);
+        NO_WALK.push({ x0: cx - 0.28, x1: cx + 0.28, z0: BZ1, z1: BZ1 + 0.80 });
+        const hinge = new THREE.Group();
+        hinge.position.set(a + i * w + 0.055, 0, SF);
+        const leaf = box(w - 0.15, 1.80, 0.035, panelMat);
+        leaf.position.set((w - 0.15) / 2, 1.12, 0); hinge.add(leaf);
+        const knob = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.10, 8), steel);
+        knob.rotation.x = Math.PI / 2;
+        knob.position.set(w - 0.24, 1.12, 0.055); hinge.add(knob);
+        hinge.rotation.y = -0.42 - (i % 3) * 0.30;      // swings out into the bay
+        add(hinge);
+      }
+    };
+    stallRow(bx0, BPX1 - 0.06, 3);        // west bay
+    stallRow(BPX2 + 0.06, bx1, 3);        // east bay
+
+    // --- the accessible stall, filling the centre bay behind the vestibule:
+    // wider, deeper, toilet pushed to one side to leave the transfer space,
+    // and two grab bars.
+    {
+      const cx = BATH.x;
+      toilet(BPX1 + 0.60, BZ1 + 0.44);
+      NO_WALK.push({ x0: BPX1 + 0.32, x1: BPX1 + 0.88, z0: BZ1, z1: BZ1 + 0.80 });
+      // a fixed leaf across the west third, then a wide door on the rest.
+      // it hangs open toward the EAST half of the vestibule so the walk in
+      // from the entry stays clear — swung the other way it lay straight
+      // across the doorway you just came through.
+      const HG = BPX1 + 0.85;                                    // where the two meet
+      const front = box(HG - BPX1 - 0.06, 1.90, 0.05, panelMat); // the fixed leaf
+      front.position.set((BPX1 + HG) / 2, 1.10, AF); add(front);
+      NO_WALK.push({ x0: BPX1, x1: HG, z0: AF - 0.09, z1: AF + 0.09 });
+      const hinge = new THREE.Group();
+      hinge.position.set(HG, 0, AF);
+      const leaf = box(0.95, 1.80, 0.04, panelMat);
+      leaf.position.set(0.475, 1.12, 0); hinge.add(leaf);
+      const aknob = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.10, 8), steel);
+      aknob.rotation.x = Math.PI / 2; aknob.position.set(0.80, 1.12, 0.055); hinge.add(aknob);
+      hinge.rotation.y = -0.75; add(hinge);
+      // two grab bars: one across the back wall, one down the side wall
+      const barBack = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.78, 10), steel);
+      barBack.rotation.z = Math.PI / 2;                          // lies along x
+      barBack.position.set(cx - 0.02, 0.95, BZ1 + 0.07); add(barBack);
+      const barSide = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.98, 10), steel);
+      barSide.rotation.x = Math.PI / 2;                          // lies along z
+      barSide.position.set(BPX1 + 0.11, 0.83, BZ1 + 0.72); add(barSide);
+    }
+
+    /* --- the mirrors REFLECT, on ONE render pass for both -----------------
+       Both hang on the same wall facing the same way, so the mirrored camera
+       and the texture it produces are identical — the two only differ in
+       which part of that texture they sample. The trick that lets them share
+       is in the vertex shader: it projects WORLD position instead of baking
+       each mirror's own model matrix into the texture matrix, the way
+       three.js's Reflector does. One pass, two mirrors.
+
+       Three things keep it cheap enough to be worth having:
+        - the target is 256x144. A mirror reads as soft glass anyway, and this
+          is a cel-shaded room — there's no fine detail to lose.
+        - the virtual camera's FAR is 12 m. The mirror faces INTO a sealed
+          4.2 m room, so there is nothing beyond the back wall it could ever
+          show — and that one number frustum-culls the entire city, the whole
+          arcade and every other room out of the pass for free.
+        - it's driven from onBeforeRender, so it runs only when a mirror is
+          actually on screen. Walk out of the room and it costs nothing at
+          all, with no position test to keep in sync. The time guard both caps
+          the rate and makes the second mirror reuse what the first rendered.
+
+       Render-target discipline (see CLAUDE.md): save and RESTORE the previous
+       target rather than setting null, and turn xr off across the pass — in a
+       session three.js has the headset's framebuffer bound and clearing to
+       null sends the room to the canvas instead of the eyes. --- */
+    const REFL = { w: 320, h: 180, hz: 30, far: 12 };
+    const reflRT = new THREE.WebGLRenderTarget(REFL.w, REFL.h, {
+      minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, stencilBuffer: false,
+    });
+    const reflTexMat = new THREE.Matrix4();
+    const reflCam = new THREE.PerspectiveCamera();
+    const mirrorMeshes = [];
+    let reflAt = -1e9;
+    const rN = new THREE.Vector3(), rView = new THREE.Vector3(), rTgt = new THREE.Vector3();
+    const rLook = new THREE.Vector3(), rRot = new THREE.Matrix4();
+    const rMirror = new THREE.Vector3(), rCam = new THREE.Vector3();
+
+    function drawReflection(renderer, scene, camera, mesh) {
+      const now = performance.now();
+      if (now - reflAt < 1000 / REFL.hz) return;   // also: mirror #2 reuses #1
+      reflAt = now;
+
+      rMirror.setFromMatrixPosition(mesh.matrixWorld);
+      rCam.setFromMatrixPosition(camera.matrixWorld);
+      rRot.extractRotation(mesh.matrixWorld);
+      rN.set(0, 0, 1).applyMatrix4(rRot);
+      rView.subVectors(rMirror, rCam);
+      if (rView.dot(rN) > 0) return;               // we're behind the glass
+      rView.reflect(rN).negate().add(rMirror);
+
+      rRot.extractRotation(camera.matrixWorld);
+      rLook.set(0, 0, -1).applyMatrix4(rRot).add(rCam);
+      rTgt.subVectors(rMirror, rLook).reflect(rN).negate().add(rMirror);
+
+      reflCam.position.copy(rView);
+      reflCam.up.set(0, 1, 0).applyMatrix4(rRot).reflect(rN);
+      reflCam.lookAt(rTgt);
+      if (Number.isFinite(camera.fov) && Number.isFinite(camera.aspect)) {
+        reflCam.fov = camera.fov; reflCam.aspect = camera.aspect;
+        reflCam.near = camera.near; reflCam.far = REFL.far;
+        reflCam.updateProjectionMatrix();
+      } else {
+        reflCam.projectionMatrix.copy(camera.projectionMatrix);   // XR: take what we're given
+      }
+      reflCam.updateMatrixWorld();
+      reflCam.layers.set(REFL_LAYER);
+
+      reflTexMat.set(0.5, 0, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0, 0.5, 0.5, 0, 0, 0, 1);
+      reflTexMat.multiply(reflCam.projectionMatrix);
+      reflTexMat.multiply(reflCam.matrixWorldInverse);
+      // deliberately NOT multiplied by mesh.matrixWorld — that omission is
+      // the whole reason one matrix can serve both mirrors
+
+
+      const prevTarget = renderer.getRenderTarget();
+      const prevXr = renderer.xr.enabled, prevShadow = renderer.shadowMap.autoUpdate;
+      /* Everything between the virtual camera and the glass has to go, or the
+         pass renders the back of the entry wall. Reflector shears the
+         projection into an oblique near plane for this; that degenerates when
+         you stand square to a mirror — which is most of the time at a row of
+         basins — and blanks the target. renderer.clippingPlanes works from
+         every angle but is GLOBAL renderer state, and toggling it inside
+         onBeforeRender re-clips everything drawn after the mirror in the same
+         frame: the room loses its own walls. Plain visibility is neither. */
+      for (const m of mirrorMeshes) m.visible = false;   // and no recursion
+      for (const m of reflHide) m.visible = false;
+      renderer.xr.enabled = false;
+      renderer.shadowMap.autoUpdate = false;
+      renderer.setRenderTarget(reflRT);
+      renderer.state.buffers.depth.setMask(true);
+      if (renderer.autoClear === false) renderer.clear();
+      renderer.render(scene, reflCam);
+      for (const m of mirrorMeshes) m.visible = true;
+      for (const m of reflHide) m.visible = true;
+      renderer.xr.enabled = prevXr;
+      renderer.shadowMap.autoUpdate = prevShadow;
+      renderer.setRenderTarget(prevTarget);
+      if (camera.viewport !== undefined) renderer.state.viewport(camera.viewport);
+    }
+
+    const reflUniforms = {
+      tDiffuse: { value: reflRT.texture },
+      textureMatrix: { value: reflTexMat },
+      tint: { value: new THREE.Color(0xdae4ec) },
+    };
+    const mirror = (w, h, px, py, pz, ry) => {
+      const frame = box(w + 0.06, h + 0.06, 0.02, steel);
+      frame.position.set(px, py, pz); frame.rotation.y = ry; add(frame);
+      reflHide.push(frame);          // it sits BEHIND the glass — from the
+                                     // virtual camera it's a slab across the view
+      const m = plane(w, h, new THREE.ShaderMaterial({
+        uniforms: reflUniforms,
+        vertexShader: `
+          uniform mat4 textureMatrix;
+          varying vec4 vProj;
+          varying vec2 vLocal;
+          void main() {
+            vLocal = uv;
+            vec4 wp = modelMatrix * vec4(position, 1.0);
+            vProj = textureMatrix * wp;
+            gl_Position = projectionMatrix * viewMatrix * wp;
+          }`,
+        fragmentShader: `
+          uniform sampler2D tDiffuse;
+          uniform vec3 tint;
+          varying vec4 vProj;
+          varying vec2 vLocal;
+          void main() {
+            // The virtual camera sits OUTSIDE the room, so the edges of its
+            // frustum graze past the walls into space the room doesn't fill,
+            // and that comes back as the scene's near-black clear. Floored
+            // here rather than by swapping scene.background for the pass —
+            // that's global state, and changing it mid-frame corrupts the
+            // frame the mirror is being drawn into.
+            vec3 refl = max(texture2DProj(tDiffuse, vProj).rgb, vec3(0.055, 0.062, 0.072)) * tint;
+            // grime toward the edges, so it reads as glass and not a hole cut
+            // in the wall
+            float e = smoothstep(0.0, 0.11, vLocal.x) * smoothstep(1.0, 0.89, vLocal.x)
+                    * smoothstep(0.0, 0.09, vLocal.y) * smoothstep(1.0, 0.91, vLocal.y);
+            gl_FragColor = vec4(mix(refl * 0.80, refl, e), 1.0);
+          }`,
+      }));
+      m.position.set(px + Math.sin(ry) * 0.02, py, pz + Math.cos(ry) * 0.02);
+      m.rotation.y = ry;
+      /* a vanity light over the glass, aimed down INTO the room. This wall
+         couldn't carry a light before — it's 24 cm off the hall and a leash
+         short enough to stay home wouldn't reach the floor — but AIMED works
+         where leashed doesn't: 0.68 rad of tilt away from the hall plus a
+         0.55 cone is well under the 1.571 that would let a ray turn back
+         through the wall. It lights the basins, which were the dimmest corner
+         of the room, and it lights YOU: without it the figure in the mirror
+         is a silhouette against the lit room behind it. */
+      // the emitter sits BELOW its own housing — level with it and the spot
+      // lights the fixture at point-blank range, which blows a white hole in
+      // the middle of it
+      bSpot(px, py + 0.52, pz - 0.30, px, 0.95, pz - 1.85, 0.62, 4.2, 11);
+      const vfix = box(w * 0.55, 0.05, 0.14, steel);
+      vfix.position.set(px, py + 0.58, pz - 0.28); add(vfix); reflHide.push(vfix);
+      const vglow = box(w * 0.5, 0.02, 0.10, new THREE.MeshBasicMaterial({ color: 0xf2f6ff }));
+      vglow.position.set(px, py + 0.555, pz - 0.28); add(vglow); reflHide.push(vglow);
+      m.onBeforeRender = (r, s, c) => drawReflection(r, s, c, m);
+      mirrorMeshes.push(m);
+      add(m);
+    };
+    // BOTH bays get the same run, mirrored about the door: four basins along
+    // the entry wall under a long mirror.
+    // The plan put urinals on the centre partition's east face instead — but
+    // that face IS the way into the east bay, so the run stood square in the
+    // gap you walk through and you couldn't get in at all. A fitting mounted
+    // on a partition has to be on a stretch of it that isn't a doorway; here
+    // there wasn't one. Symmetry is worth more than the plan's split.
+    const basinRun = (sd) => {                   // -1 = west bay, +1 = east
+      const edge = BATH.w / 2;
+      for (let i = 0; i < 4; i++)
+        basin(BATH.x + sd * (edge - 0.60 - i * 0.72), bnZ - 0.18, Math.PI);
+      mirror(2.90, 0.95, BATH.x + sd * (edge - 1.68), 1.56, bnZ - 0.02, Math.PI);
+      const a = BATH.x + sd * 0.95, b = BATH.x + sd * edge;   // partition → end wall
+      NO_WALK.push({ x0: Math.min(a, b), x1: Math.max(a, b), z0: bnZ - 0.52, z1: BZ0 });
+    };
+    basinRun(-1); basinRun(1);
+
+    /* YOU, for the mirrors only. First person has no body in the scene, so a
+       planar reflection has nothing of you to reflect — it was showing an
+       empty room you were standing in. This group rides the camera and is
+       tagged onto the reflection layer ONLY, never layer 0: the main camera
+       can't render it, so there's no way to walk into the back of your own
+       head, and it costs nothing anywhere else because the only camera that
+       renders layer 5 is the one that runs when a mirror is on screen.
+       main.js owns WHAT stands here, the same split the podium uses — avatars
+       are built after buildWorld so the toon pass can't eat them. */
+    const selfMount = new THREE.Group();
+    add(selfMount);
+    bathSelf = {
+      mount: selfMount,
+      set(node) {
+        while (selfMount.children.length) selfMount.remove(selfMount.children[0]);
+        if (node) { selfMount.add(node); node.traverse((o) => o.layers.set(REFL_LAYER)); }
+      },
+      // avatars are modelled facing +Z and a player at yaw 0 looks down -Z,
+      // so the figure is turned half a turn out of your yaw — same as ghosts
+      pose(x, z, yaw) { selfMount.position.set(x, 0, z); selfMount.rotation.y = yaw + Math.PI; },
+    };
+
+    // tag the room onto the reflection layer — meshes AND its own lights, since
+    // three.js collects lights through the same camera-layer test it culls
+    // meshes with. Miss the lights and the reflection comes back pitch black.
+    for (let i = sceneMark; i < scene.children.length; i++)
+      scene.children[i].traverse((o) => o.layers.enable(REFL_LAYER));
+    skyFill.layers.enable(REFL_LAYER);       // the world's ambient, so the
+                                             // reflection matches the room
   }
 
   // cabinet factory — one per game
@@ -4883,8 +5357,9 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     const topY = 1.05, LEN = 3.8;
 
     // back-bar cabinet + two lit shelves of bottles
-    const backCab = box(LEN, 0.95, 0.3, lam(0x241d2c));
-    backCab.position.set(ABX, 0.475, backZ); add(backCab);
+    const backCab = box(LEN, 0.95, 0.3,
+      new THREE.MeshLambertMaterial({ color: 0x241d2c, emissive: 0x120e17 }));
+    backCab.position.set(ABX, 0.475, backZ + 0.02); add(backCab);   // off the wall plane
     const barBottleCols = [0x4a7a5a, 0x7a4a5a, 0x4a5a7a, 0xa8853c, 0x5a7a4a, 0x7a5a4a, 0x4a6a7a, 0x8a4a6a];
     let abi = 0;
     for (const sy of [1.28, 1.66]) {
@@ -4893,9 +5368,15 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
       for (let k = 0; k < 9; k++) {
         const col = barBottleCols[abi++ % barBottleCols.length];
         const hgt = 0.20 + (abi % 3) * 0.03;
+        // the bottles carry their own colour as emissive. The lamp had to come
+        // down to a 0.8 m throw (the bathroom is behind this wall now) and
+        // can't reach the back shelves any more — but there's a lit strip
+        // right behind every bottle, so backlit glass is what they should have
+        // been doing all along. It costs no light and so can't leak.
         const b = new THREE.Mesh(new THREE.CylinderGeometry(0.030, 0.034, hgt, 8),
-          new THREE.MeshLambertMaterial({ color: col, transparent: true, opacity: 0.8 }));
-        b.position.set(ABX - 1.65 + k * 0.41, sy + 0.015 + hgt / 2, backZ + 0.02); add(b);
+          new THREE.MeshLambertMaterial({ color: col, transparent: true, opacity: 0.8,
+            emissive: new THREE.Color(col).multiplyScalar(0.45) }));
+        b.position.set(ABX - 1.65 + k * 0.41, sy + 0.005 + hgt / 2, backZ + 0.02); add(b);
       }
       const strip = box(LEN - 0.2, 0.02, 0.04, new THREE.MeshBasicMaterial({ color: 0xffc88a }));
       strip.position.set(ABX, sy - 0.05, backZ + 0.12); add(strip);
@@ -4927,7 +5408,14 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     // a bar lamp hung low over the counter — the FIXTURE and the light, modeled
     // on the pool table's billiard lamp so it reads as part of the room. biased
     // a touch toward the bartender's side so he's lit, not lurking in the dark.
-    const lampY = 2.15, lampZ = counterZ - 0.25;
+    // hung LOW — 1.80 rather than 2.15. The bathroom's east bay now sits
+    // behind this wall, 0.85 m from the bulbs, and `distance` is the only
+    // leash a point light has: to die inside that gap the throw has to be
+    // under 0.85, and from 2.15 a throw that short doesn't even reach the
+    // counter. Dropping the lamp is what buys it. Nobody can walk under it —
+    // it's inside the bar's NO_WALK — and a low lamp over a counter is what
+    // the fixture was always modelled on.
+    const lampY = 1.80, lampZ = counterZ - 0.25;
     const shade = box(2.6, 0.13, 0.42, lam(0x2a1f14));
     shade.position.set(ABX, lampY, lampZ); add(shade);
     const shadeLip = box(2.66, 0.045, 0.48, lam(0x6a5028));
@@ -4939,8 +5427,12 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
       const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, rodLen, 6), lam(0x2a2228));
       rod.position.set(ABX + ru, lampY + 0.06 + rodLen / 2, lampZ); add(rod);
     }
-    for (const lu of [-0.78, 0.78]) {                // two warm bulbs down the bar
-      const bulb = new THREE.PointLight(0xffd6a0, 9, 3.7, 2);
+    // FOUR bulbs at 0.8 m instead of two at 3.7. Short throws mean small
+    // pools, so it takes twice as many to cover the counter — but from 1.62
+    // each one still reaches the top, the bartender's side, and the stools,
+    // and none of them can reach through the wall behind.
+    for (const lu of [-1.35, -0.45, 0.45, 1.35]) {
+      const bulb = new THREE.PointLight(0xffd6a0, 7, 0.8, 2);
       bulb.position.set(ABX + lu, lampY - 0.18, lampZ); add(bulb);
     }
   }
@@ -5285,7 +5777,10 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
         if (t >= 0.32) { clearInterval(iv); net.scale.set(1, 1, 1); net.position.y = rimY - 0.18; }
       }, 25);
     }
-    const hoopLamp = new THREE.PointLight(0xfff0d6, 5.5, 3.6, 2);
+    // short throw: the bathroom's west bay now sits behind this stretch of
+    // wall, and its ceiling is only 1.27 m from this lamp. 1.15 keeps the
+    // light on the rim and the board, which is all it was ever for.
+    const hoopLamp = new THREE.PointLight(0xfff0d6, 7, 1.15, 2);
     hoopLamp.position.set(BX, 3.6, rimZ + 0.4); add(hoopLamp);
 
     // --- the court: a painted hardwood decal floating 2 cm over the floor ---
@@ -9432,11 +9927,18 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     // so there's no dead strip at the threshold
     { x0: AR.x1 - 0.6, x1: -2.2, z0: CZ - OPEN_W / 2 + 0.15, z1: CZ + OPEN_W / 2 - 0.15 },
     { x0: AR.x0 + 1.15, x1: AR.x1 - 0.15, z0: AR.z0 + 0.45, z1: AR.z1 - 0.45 },
-    // the bathroom, back through the south wall: its floor inset off the tile,
-    // plus a narrow strip through the doorway that reaches into the arcade
-    // rect — overlapping again, so the threshold has no dead step in it
-    { x0: BATH.x - BATH.w / 2 + 0.35, x1: BATH.x + BATH.w / 2 - 0.35,
-      z0: AR.z0 - BATH.d + 0.35, z1: AR.z0 - 0.25 },
+    // the bathroom: one rect per bay, two more bridging the gaps through the
+    // bay partitions, and the doorway strip that reaches into the arcade rect
+    // — overlapping again, so the threshold has no dead step in it. the
+    // stalls are INSIDE these rects on purpose (you can walk into one); it's
+    // NO_WALK that holds the dividers and the fixtures.
+    { x0: BATH.x - BATH.w / 2 + 0.14, x1: BPX1 - 0.1,
+      z0: AR.z0 - BATH.d + 0.16, z1: AR.z0 - 0.30 },
+    { x0: BPX1 + 0.1, x1: BPX2 - 0.1, z0: AR.z0 - BATH.d + 0.16, z1: AR.z0 - 0.15 },
+    { x0: BPX2 + 0.1, x1: BATH.x + BATH.w / 2 - 0.14,
+      z0: AR.z0 - BATH.d + 0.16, z1: AR.z0 - 0.30 },
+    { x0: BPX1 - 0.22, x1: BPX1 + 0.22, z0: -7.85, z1: -6.65 },
+    { x0: BPX2 - 0.22, x1: BPX2 + 0.22, z0: -7.85, z1: -6.65 },
     { x0: bxL + 0.12, x1: bxR - 0.12, z0: AR.z0 - 0.4, z1: AR.z0 + 0.7 },
     // the boat room exists far away; you can only get there by knowing
     { x0: BOAT.x - 1.75, x1: BOAT.x + 1.75, z0: BOAT.z - 1.15, z1: BOAT.z + 1.15 },
@@ -9583,6 +10085,16 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     closetOpen: () => closet.open,
     arcadeHits,
     smokeHits, puffSmoke,
+    // the bathroom's mirror-only body — main.js hangs your figure in it
+    bath: bathSelf,
+    // the avatar podium in the arcade's far corner. `mount` is where main.js
+    // hangs the figure; `spin` turns it (drag-to-turn lives in the creator).
+    podium: {
+      group: podGroup, mount: podMount, hits: podHits,
+      anchor: { x: POD.x, y: 1.1, z: POD.z, ry: POD.ry },
+      spin: (r) => { podMount.rotation.y = r; },
+      spinOf: () => podMount.rotation.y,
+    },
     // real-LAX hooks
     triggerPlane: (dir) => {
       if (planeT < 0) {
@@ -9694,7 +10206,6 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     },
     // the arcade mirror: east wall, just south of the entrance doorway (a hard
     // left as you walk in). sits proud of the wall (AR.x1), glass facing -x.
-    mirrorAnchor: { x: AR.x1 - 0.05, y: 1.45, z: -3.6, ry: -Math.PI / 2 },
     clubExitHit: clubDoor,
     deckHits, setOnAir, setBoothHeadcount, setClubEnergy,
     clubWindowHit: glassClick, clubFireworks, clubFog,

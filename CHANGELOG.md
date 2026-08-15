@@ -4,29 +4,264 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-08-15 — the selfie mirror comes off the wall
+
+The framed panel by the bar rendered a live "you" into a 40 cm off-screen view
+and opened the outfit picker when you clicked it. The podium does the same job
+at full size, in a corner built for it, with a figure you can turn round by
+hand — so the mirror was a second door into a room that only needed one, plus
+an extra render pass every frame you were anywhere near the arcade. Gone:
+`mirror.js`, `world.mirrorAnchor`, its click target and aim tip, and the
+`where` argument on `openPicker`, which now only ever means the podium.
+
+(The bathroom's mirrors are a different thing and stay — those reflect the room
+you're standing in.)
+
+## 2026-08-15 — one fit, five pairs of shoes
+
+**The jacket and the dress are gone, and so are shorts and skirts.** At this
+polygon count a "jacket" is a torso with two dark stripes down it — it was
+never going to read as a jacket, and pretending otherwise just spent options on
+something nobody could see. There's one fit now: a tee and trousers, each its
+own colour.
+
+**What replaces them is shoes**, which are the one thing on a figure this size
+you actually read from across a room. Five pairs — **sneaker, hi-top, chunky,
+platform, boot** — in any of ten colours, and the colour you pick is the WHOLE
+shoe, flat: sole, upper, toe cap, collar, one material. Two earlier passes gave
+the sole its own colour and then its own shade, and both read as a band stuck
+under the foot. The shape comes from the geometry, not from a second colour.
+
+A platform genuinely makes you taller: the shoes are built at floor level and
+the whole rest of the person rides in a group lifted by whatever the pair adds
+underfoot, so the sole raises you instead of swallowing your ankle.
+
+Two things had to change for any of it to be visible. The trouser leg was
+**wider than the shoe**, so the hem hung over it and all you saw of a red hi-top
+was a sliver of sole on the floor — the ankle tapers hard now. And every collar
+and shaft has to be wider than the shin it sleeves, or it renders inside the leg
+and shows nothing at all.
+
+**The slim build's neck was floating.** A capsule's height is length + 2·radius
+and the radius rides the build, so a fixed length put the slim torso's top 3 cm
+lower than the average one — with the neck still pinned where it always was. The
+trunk's length is solved from the radius now, so the shoulders land on the same
+line for every build. While that was open the torso lost its rounded bottom too:
+a capsule's lower cap tapers to a point below the waistband and hung out between
+the legs like a shirt-tail. It's a trunk with a dome on top now — flat hem, and
+the waistband caps it.
+
+## 2026-08-15 — no more .glb, and a body that hangs together
+
+**The whole bring-your-own-avatar path is gone.** The wardrobe overlay, its
+CSS, `avatar-glb.js`, `store.uploadAvatar`, the `avatar` field on presence,
+`identity.avatar`, the GLB tier in ghosts.js and the stanchion that had just
+been built beside the podium — all out. Everything in this world is made of
+primitives and the people in it are part of that; a scanned mesh standing in
+the arcade was always going to look like a visitor from another renderer.
+ghosts.js has two look tiers now, blocks and the glow-blob. (The Supabase
+`avatars` bucket is still in `site.sql` with nothing writing to it.)
+
+**The torso was too tall and the arms were tucked into the hips.** A capsule's
+top cap IS its shoulders, and the old one ran up to 1.35 — under the chin, no
+neck showing — so the arms hung off a dome with no shoulder line in it. The
+torso now stops at 1.19, which is where the neck starts and where the arms
+hang from. The arms themselves were tilted INWARD by a sign error (`-sx` swings
+a hand into the hip; `sx` swings it out) and now splay 0.22 rad, which is what
+it takes for the forearm and hand to clear the widest part of the body and the
+belt under it. Shoulder joints stay buried in the torso cap, because an arm
+that starts clear of the body reads as detached.
+
+## 2026-08-15 — the bathroom mirrors actually reflect
+
+**Both mirrors, one render pass.** They hang on the same wall facing the same
+way, so the mirrored camera and the texture it produces are identical — the
+two only differ in which part of it they sample. Sharing works because the
+vertex shader projects world position rather than baking each mirror's own
+model matrix into the texture matrix, the way three.js's Reflector does.
+
+It's deliberately cheap. The target is 320x180 and reads as soft glass, which
+is right for a cel-shaded room with no fine detail to lose. The virtual
+camera's far plane is 12 m — the mirror faces into a sealed 4.2 m room, so
+there is nothing beyond the back wall it could ever show. And the pass is
+driven from `onBeforeRender`, so it runs only when a mirror is on screen: walk
+out and it costs nothing, with no position test to keep in sync. A time guard
+caps it at 30 Hz and makes the second mirror reuse what the first rendered.
+**Frame time is unchanged with both mirrors in view** — 60 fps, same as the
+empty room.
+
+**And you're in it.** The point of a mirror is to see yourself, and first
+person has no body in the scene — the reflection was showing an empty room you
+happened to be standing in. There's a second copy of your figure now (the
+podium keeps its own, and one node can't stand in two places) that rides the
+camera: your position, your facing, your current look, rebuilt whenever you
+change it. It's tagged onto the reflection layer ONLY, never layer 0, so the
+main camera physically cannot render it — there's no way to walk into the back
+of your own head, and it costs nothing anywhere else because the only camera
+that draws that layer is the one that runs when a mirror is on screen.
+
+**Which meant the mirrors needed their own light.** The wall-washers point away
+from the entry wall, so the strip where you actually stand was the dimmest part
+of the room and the figure came back a black silhouette against the lit room
+behind it. That wall couldn't carry a light before — it's 24 cm off the hall
+and a leash short enough to stay home wouldn't reach the floor — but AIMED
+works where leashed doesn't: a vanity bar over each mirror, tilted away from
+the hall by more than its own half-angle. It lights you, and it lights the
+basins, which had been the dimmest corner of the room since the day it was
+built. (Its emitter sits below its own housing, incidentally — level with it
+and the spot lights the fixture at point-blank range and blows a white hole in
+the middle of it.)
+
+**Getting there cost four wrong answers**, all now written into CLAUDE.md.
+Reflector's oblique near plane blanks the target when you stand square to a
+mirror, which at a row of basins is most of the time. `renderer.clippingPlanes`
+fixes that from every angle but is global renderer state — set inside
+`onBeforeRender` it re-clips everything drawn after the mirror, and the room
+loses its own walls. Clipping also discards fragments while still submitting
+geometry: 534 draw calls standing at a basin, because the whole hall was still
+going through the pass. Object-level layer culling is what actually makes it
+cheap, and it renders black until you remember that lights are collected
+through the same camera-layer test as meshes. And the last one: the mirror's
+own frame sits *behind* the glass, so the virtual camera was staring at the
+back of a steel slab — a black band straight across the reflection.
+
+## 2026-08-15 — a podium in the corner, and you can turn yourself round
+
+**The creator has somewhere to stand.** The mirror shows you a picture of
+yourself, 40 cm wide, in a frame. The podium is you at full size, standing in
+the room — in the corner nearest the smoking tables, the one stretch of that
+hall nobody had a use for. It sits on the 45° out of the corner and faces the
+room, so there's no angle you can come at it from where you're looking at its
+back: a curved backdrop with neon down both open edges, a two-step plinth with
+a lit rim, YOUR LOOK overhead, and a spotlight straight down on it.
+
+It shows the look everyone else sees and turns itself slowly, because a figure
+that never moves reads as furniture. Click it and the creator opens on it.
+
+**You can drag it round.** Hold the mouse down anywhere on the view while the
+creator is open and the figure turns — 300 px of hand is half a turn, so the
+back of your head is one flick away. It's plain clientX deltas rather than the
+`dragLock`/`movementX` path the studio's knobs use: the pointer is already
+unlocked in the creator because the panel needs it.
+
+**Two walls, 70 cm away.** The backdrop is an arc, and the thing that hit the
+walls wasn't its back but its ENDS — at ±1.05 rad they swing out nearly to the
+podium's sides, and the first version put both of them through solid brick.
+The light is a spot pointing almost straight down: from 3.3 m, every direction
+inside a 22° cone lands on the plinth, and the nearest thing on the far side
+of either wall is 2 m out horizontally. Aimed away beats leashed.
+
+## 2026-08-15 — the block avatars get a body, and hair that isn't a swim cap
+
+**The hair was the complaint; the diagnosis was geometry.** Every style was a
+smooth `SphereGeometry` cap sat on a smooth `SphereGeometry` head. Two
+concentric spheres have no edge between them, so it read as a swim cap — and
+"long" was an open-ended cylinder, which is to say a tube. Colour and polygon
+count were never going to fix that. Three things did:
+
+- **The crown is tipped back.** A sphere cap's rim sits at one height the
+  whole way round and real hair doesn't: high at the forehead, low at the
+  nape. Rotating the cap back ~0.3 rad buys both at once, which also retired
+  the separate nape patch that was making everyone look hooded.
+- **The hairline is locks, not the rim.** Five-sided tapers laid across the
+  brow at different angles, with a part off to one side, so the edge you read
+  is a diagonal. Same primitive builds the mohawk's crest, the locs, the long
+  curtains and the loose strands at a bun.
+- **No shell dips inside the skull.** Offset a cap back further than (its
+  radius − the head's) and its front cuts through the face; that's where the
+  ragged notch over one eye came from.
+
+Eight styles now — **none, buzz, short, mohawk, long, locs, bun, afro** — and
+they read as eight different silhouettes from across the room, which is the
+only test that matters. Beards were the same cone-off-the-chin problem and got
+the same treatment: a jaw mass with an edge along the cheek, a moustache above
+the mouth block, and a taper hanging off it for "long".
+
+**The figure had no arms.** It was a torso, two legs and a head — a bowling
+pin. It now has arms that hang (sleeved for a jacket, bare forearms for a tee,
+bare for a dress), hands, shoes with soles, a neck, ears, and a waist band
+that stops a dark top and dark trousers reading as one lump. The jacket lost
+its black chest slab — a panel that size reads as a door and fought the chest
+logo for the same space — and got lapels, a zip and a collar instead. Slim and
+broad builds also stand a hair shorter and taller, so a room full of peers
+stops looking like one person cloned.
+
+Palettes grew: four more tops/bottoms, and hair in platinum, cyber-teal and
+hot pink. A mohawk's shaved sides are drawn as **skin with stubble on it**, not
+dark hair — a hair-coloured cap under a crest just puts the swim cap back on.
+
 ## 2026-08-14 — the arcade gets a bathroom
 
 **A door in the south wall that isn't the lift.** The arcade's south wall had
 one long empty run left on it, between the elevator out west and the bar to
-the east, right across the aisle from where the air hockey is taped out. A
-1.15 m doorway is cut into it now, lined with a real tiled reveal and outlined
-in green neon with a RESTROOMS sign over it, the same language the lift
-speaks. In a hall that dark, a lit doorway carries a long way.
+the east. A 1.15 m doorway is cut into it now, lined with a real tiled reveal
+and outlined in green neon with a RESTROOMS sign over it, the same language
+the lift speaks. In a hall that dark, a lit doorway carries a long way.
 
-Behind it is a tiled box, 4.2 × 3.6 m, ceiling at 2.7 against the hall's 4.3 —
-the drop is what makes it read as somewhere else the moment you step through,
-instead of more arcade. Two downlights aimed at the floor plus one contained
-fill light. Empty on purpose; the fittings come next.
+Behind it is a proper mall washroom, built off a floor plan: **8.4 × 4.2 m**,
+three bays. Stalls along the back of each — three west, three east, teal doors
+hung ajar at varied angles so the row reads as depth instead of a flat wall.
+The accessible stall fills the middle bay behind the entry vestibule, wider
+and deeper, toilet pushed to one side for the transfer space, two grab bars.
+Four basins under a long mirror along the entry wall of each. Ceiling at 2.7
+against the hall's 4.3; the drop is what makes it read as somewhere else the
+moment you step through.
 
-**The room found a lighting bug that was always there, just harmless.** The
-arcade's magenta neon sat 1.2 m off that south wall throwing 4.2 m. Nothing
-was behind the wall, so nothing noticed — until something was, and the new
-white tile came out pink through solid brick. `distance` is the only leash a
-point light has, and it had been tuned against a neighbour that no longer
-existed. It's pulled north and reined in so its throw dies with 10 cm to
-spare. The bar pendants and the hoop lamp still graze the room's near corner
-faintly; they're doing real work in the arcade and the bleed reads as warmth,
-so they stay.
+**The two side bays are mirrors of each other**, which the plan they came from
+isn't — it puts urinals on one side only. The trouble is that the sole
+partition face those could mount on is the same face you walk through to get
+into that bay, so the run stood square in the gap and the right-hand half of
+the room was sealed off. There was no other stretch of partition to use. Two
+identical bays is worth more than the plan's split, so the urinals came out
+and the west bay's basin run is mirrored across the door.
+
+**The entry is at −10.5 and the room is built around it.** That's the one
+stretch of this wall that isn't behind something — a few metres west and the
+door opens into the middle of the basketball court, which looks wrong from
+the hall. Holding it there pushes the room's east end out behind the bar, so
+two of the hall's fixtures had to change: the hoop lamp's throw came in (the
+new ceiling is 1.27 m from it), and **the bar lamp came down** — from 2.15 to
+1.80, with four short-throw bulbs instead of two long ones. A 0.8 m throw is
+what fits in the 0.85 m between those bulbs and the tile behind the wall, and
+from 2.15 a throw that short couldn't even reach the counter. Dropping the
+lamp is what buys it, and a low lamp over a counter is what the fixture was
+always modelled on. The bottles now carry their own colour as emissive, since
+there's a lit strip behind every one of them — backlit glass, no light needed,
+nothing to leak.
+
+**Three things were intersecting that shouldn't have been**, all found by the
+edge probe rather than by eye: the rear grab bar ran straight through the
+accessible cistern; the back-bar cabinet's rear face sat exactly in the arcade
+wall's plane; and every bottle's base sat exactly on its shelf's top face. The
+last two had been there since the bar was built.
+
+**The room found two lighting bugs that were always there, just harmless.**
+The arcade's magenta neon sat 1.2 m off that south wall throwing 4.2 m, and
+the bar's pendants threw 3.7 m from 0.85 m off it. Nothing was behind the
+wall, so nothing noticed — until something was, and the new white tile came
+out pink at one end and tan at the other, straight through solid brick.
+`distance` is the only leash a point light has, and both had been tuned
+against a neighbour that no longer existed. The magenta is pulled north and
+reined in; the pendants are down to a 1.7 m pool, which is what a shaded
+billiard-style lamp should have thrown all along — the old radius was a bare
+bulb's. Both still do their job in the hall. The hoop lamp grazes the
+bathroom's far corner at 3% and stays.
+
+**Clean edges.** The doorway casing was built 30 cm deep to line a wall
+thickness that was actually 3 cm, so it jutted into the hall and buried the
+green neon bar inside itself — the strobing you could see from across the
+arcade. The two wall planes are now genuinely 22 cm apart with the casing
+fitted between them, the frame pieces butt instead of overlapping, and the
+neon sits clear in front of all of it. Nothing in the doorway shares a plane
+with anything else any more.
+
+**And the room is lit like a room.** Downlights alone gave a bright floor
+under black walls, which through the door read as a void with a lit sliver of
+ceiling hanging in it. Two wall-washers now sit at the door pointing inward —
+aimed away from the hall, so they're contained by geometry rather than by a
+distance number — and the tile carries a faint emissive so the corners
+nearest the door, which nothing can light without shining through the wall,
+still read as tile instead of a hole.
 
 ## 2026-08-14 — the moon stops being two balls
 

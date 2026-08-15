@@ -38,7 +38,7 @@ for python-heredoc edits, so **leave them intact.**
 | The cat's corner, dimmer, mix & master neon | 5812–5998 | `cat.js` |
 | **THE ARCADE** — the hall itself, lighting, floorplan | shell @3784, lights @3860, floor plan @4807, bar @4850 | — |
 | The arcade elevator | @4296 | `main.js` (room transitions) |
-| **THE BATHROOM** — off the arcade's south wall | door cut @4309, room @4461 | — |
+| **THE BATHROOM** — three bays off the arcade's south wall | `BATH`/`BPX1,2` + door cut @4309, room + fittings @4461 | — |
 | The smoking corner + its scanned props | @3906, `swapProp` @4740 | `assets/models/{bong,ashtray,joint}.glb` |
 | The marquee / high scores | @4069 | `main.js` (`refreshScores`), `store.js`, `supabase/arcade.sql` |
 | The arcade cabinets (GLB swap) | `cabinet()` @4517, `swapCabinetModel` @4665 | `arcade.js` |
@@ -70,7 +70,8 @@ for python-heredoc edits, so **leave them intact.**
 | The bartender | `bartender.js` |
 | The guide (bedroom tutor) | `guide.js`, `say.js` (the voice), `main.js` ~475 (placement + lines) |
 | Notes on the wall | `notes3d.js`, `store.js` |
-| Avatars / other people | `avatar-glb.js`, `ghosts.js`, `avatar-builder.js`, `picker.js` (the chooser), `mirror.js` (what opens it), `#wardrobe` in index.html |
+| Avatars / other people | `avatar-builder.js` (the figure + hair), `ghosts.js`, `picker.js` (the chooser), `main.js` ~670–860 (podium figure, drag-to-spin, `openPicker`) |
+| **THE PODIUM** — the avatar creator in the arcade's far corner | `POD` block just before the MARQUEE anchor | `main.js` ~700–930 |
 | Presence + netcode | `presence.js` |
 | Voice chat | `voice.js` |
 | Data, DB, RPCs, rate limits | `store.js`, `supabase/*.sql` |

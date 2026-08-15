@@ -11,11 +11,14 @@
 import { OPTIONS } from "./avatar-builder.js";
 
 const LABELS = {
-  build: "Build", hair: "Hair", top: "Top", bottom: "Bottom", beard: "Beard",
+  build: "Build", hair: "Hair", shoe: "Shoes", beard: "Beard",
+  // the colour rows say what the colour is ON, not what it's called
+  skin: "Skin", hairColor: "Hair colour", topColor: "Shirt", bottomColor: "Trousers",
+  shoeColor: "Shoe colour", faceColor: "Face glow",
 };
 const TITLE = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
-export function openOutfitPicker(spec, { onChange, onSave, onClose, extra } = {}) {
+export function openOutfitPicker(spec, { onChange, onSave, onClose } = {}) {
   const work = { ...spec };
   document.getElementById("outfit-picker")?.remove();
 
@@ -67,7 +70,7 @@ export function openOutfitPicker(spec, { onChange, onSave, onClose, extra } = {}
   function swatches(key, colors) {
     const wrap = document.createElement("div"); wrap.style.cssText = "margin:0 0 14px";
     const lab = document.createElement("div");
-    lab.textContent = TITLE(key).replace("color", " color").replace("Color", " color");
+    lab.textContent = LABELS[key] || TITLE(key);
     lab.style.cssText = "font:700 11px monospace;letter-spacing:.1em;color:#8aa;margin-bottom:6px;text-transform:uppercase";
     wrap.appendChild(lab);
     const row = document.createElement("div"); row.style.cssText = "display:flex;flex-wrap:wrap;gap:7px";
@@ -101,29 +104,34 @@ export function openOutfitPicker(spec, { onChange, onSave, onClose, extra } = {}
   swatches("skin", OPTIONS.skinTones);
   chips("hair", OPTIONS.hair);
   swatches("hairColor", OPTIONS.hairColors);
-  chips("top", OPTIONS.top);
-  swatches("topColor", OPTIONS.swatches);
-  chips("bottom", OPTIONS.bottom);
-  swatches("bottomColor", OPTIONS.swatches);
   chips("beard", OPTIONS.beard);
+  swatches("topColor", OPTIONS.swatches);
+  swatches("bottomColor", OPTIONS.swatches);
+  chips("shoe", OPTIONS.shoe);
+  swatches("shoeColor", OPTIONS.shoeColors);
   swatches("faceColor", OPTIONS.faceColors);
   textField("logo", "METRO", 8);
 
-  // an optional doorway to something beyond the blocks (the real-avatar
-  // creator, when the site has keys for it)
-  if (extra && extra.label) {
-    const ex = document.createElement("button");
-    ex.textContent = extra.label;
-    ex.style.cssText = "width:100%;margin-top:10px;padding:11px;border-radius:10px;border:1px solid #6a5acd;cursor:pointer;font:800 14px Archivo;background:#241f38;color:#cfc4ff";
-    ex.onclick = () => { close(); extra.onClick && extra.onClick(); };
-    panel.appendChild(ex);
-  }
+  // a line, not a button: bringing your own .glb is a thing you do at the
+  // podium's stanchion now, so this panel stays about the blocks
+  const note = document.createElement("div");
+  note.textContent = "drag the view to turn yourself round";
+  note.style.cssText = "margin:2px 0 10px;font:600 11px monospace;letter-spacing:.06em;color:#6b7a8a;text-align:center";
+  panel.appendChild(note);
 
+  // SAVE sticks to the bottom of the panel: there are eleven rows above it now
+  // and on a laptop it was scrolling off the end of a list you can't finish
+  const foot = document.createElement("div");
+  foot.style.cssText = [
+    "position:sticky", "bottom:-24px", "margin:4px -16px -24px", "padding:12px 16px 18px",
+    "background:linear-gradient(180deg,rgba(12,11,18,0) 0%,rgba(12,11,18,0.96) 30%)",
+  ].join(";");
   const done = document.createElement("button");
   done.textContent = "✓ Save look";
-  done.style.cssText = "width:100%;margin-top:6px;padding:11px;border-radius:10px;border:none;cursor:pointer;font:800 15px Archivo;background:#2f6b4a;color:#fff";
+  done.style.cssText = "width:100%;padding:11px;border-radius:10px;border:none;cursor:pointer;font:800 15px Archivo;background:#2f6b4a;color:#fff";
   done.onclick = () => { onSave && onSave({ ...work }); close(); };
-  panel.appendChild(done);
+  foot.appendChild(done);
+  panel.appendChild(foot);
 
   const x = document.createElement("button");
   x.textContent = "✕";

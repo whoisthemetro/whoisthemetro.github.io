@@ -7,8 +7,6 @@ import { buildWorld } from "./world.js";
 import { Controls } from "./controls.js";
 import { NotesWall } from "./notes3d.js";
 import { Ghosts } from "./ghosts.js";
-import { loadGlbAvatar } from "./avatar-glb.js";
-import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { store } from "./store.js";
 import { presence } from "./presence.js";
 import { startAmbience, citySound, pianoNote, semitoneToKey, audioNow, purr, setRain, setWater, setRoomTone, setClubTone, setClubBed, kettleBoil, setThruster, boostSound, discSound, goalHorn, meow, hiss, careSound, drumHit, setArcadeZone, punchSound, shieldClang, stunBuzz, edrumHit, guitarPluck, guitarNote, shotSound, smokeSound, setFx, setDelayTempo, setBusLevel, setGuitarFilter, startVacuum, stopVacuum, beep, fireSound } from "./ambience.js";
@@ -37,8 +35,7 @@ preferVoices(["Ava", "Allison", "Samantha", "Susan", "Zoe", "Serena", "Nicky",
    nothing has been rendered yet and she stays on the browser synth. */
 loadClips();
 useAudioGraph(audioGraph);   // her recordings ride the room's master bus
-import { makeSelfieMirror } from "./mirror.js";
-import { DEFAULT_SPEC } from "./avatar-builder.js";
+import { DEFAULT_SPEC, buildAvatarFigure } from "./avatar-builder.js";
 import { openOutfitPicker } from "./picker.js";
 import { initAnalytics, track, analyticsBuffer } from "./analytics.js";
 import { openArcade, closeArcade, arcadeIsOpen, arcadeWantsEsc, handleGameMessage, setScoreHook, vrFrame as arcadeVrFrame, vrKey as arcadeVrKey } from "./arcade.js";
@@ -670,161 +667,113 @@ function loadOutfit() {
   const base = { ...DEFAULT_SPEC, faceColor: identity.color || DEFAULT_SPEC.faceColor };
   try {
     const s = JSON.parse(localStorage.getItem("metro.outfit"));
-    if (s) { const m = { ...base, ...s }; if (m.top === "hoodie") m.top = "tee"; return m; }  // hoodie retired
+    if (s) return { ...base, ...s };   // merge, so a save from before a new option still fills in
   } catch (e) {}
-  return base;   // merge so saves from before a new option (e.g. skin) still fill in
+  return base;
 }
 function saveOutfit(spec) { try { localStorage.setItem("metro.outfit", JSON.stringify(spec)); } catch (e) {} }
 let outfitSpec = loadOutfit();
 identity.outfit = outfitSpec;   // broadcast over presence so others see your fit
-identity.avatar = loadAvatarUrl();   // and the scanned avatar, if they made one
 
-// the arcade mirror — a framed panel that renders a live "you" (your dressed
-// figure + 8-bit face, driven by your mic level). click it to open the picker.
-const mirror = makeSelfieMirror(renderer, outfitSpec);
-{
-  const a = world.mirrorAnchor;
-  mirror.group.position.set(a.x, a.y, a.z);
-  mirror.group.rotation.y = a.ry;
-  world.scene.add(mirror.group);
-}
-/* ---------------- the wardrobe: bring your own avatar ----------------
-   Every hosted avatar-creator either died (Ready Player Me), demands
-   per-visitor accounts (Avaturn), or charges rent (MetaPerson). So the
-   wardrobe takes the one thing that can't be rug-pulled: a direct link
-   to a .glb. Make yourself anywhere — Blender, VRoid, a scanner, any
-   exporter — put the file at a public URL, paste it here. We load it
-   before we believe it: only a model that actually parses becomes you. */
-function loadAvatarUrl() {
-  try { return localStorage.getItem("metro.avatarGlb") || null; } catch (e) { return null; }
-}
-function saveAvatarUrl(url) {
-  try { url ? localStorage.setItem("metro.avatarGlb", url) : localStorage.removeItem("metro.avatarGlb"); } catch (e) {}
-}
-let wardrobeOpen = false;
-function openWardrobe() {
-  if (vrBlocked("the wardrobe needs a flat screen")) return;
-  if (wardrobeOpen) return;
-  wardrobeOpen = true; modalOpen = true; controls.unlock();
-  $("#wardrobe-url").value = loadAvatarUrl() || "";
-  $("#wardrobe-status").textContent = "";
-  show($("#wardrobe"));
-  $("#wardrobe-url").focus();
-}
-function closeWardrobe() {
-  if (!wardrobeOpen) return;
-  wardrobeOpen = false; modalOpen = false;
-  hide($("#wardrobe"));
-  if (entered) safeLock();
-}
-$("#wardrobe-close").addEventListener("click", closeWardrobe);
+/* ---------------- the podium: you, at full size ----------------
+   world.js built the plinth; this hangs the figure on it. It shows the look
+   everyone ELSE sees, and it's the live preview while the creator is open.
+   Nothing here is toon-shaded: avatars are built after buildWorld on
+   purpose, same as the ghosts and the mirror. */
+let podFig = null;                  // { node, setVoice, dispose } | null
+let podSpin = 0, podIdle = true;    // radians, and whether it turns itself
 
-// adopt a model — but only after it proves it IS one
-async function adoptAvatarExport(url) {
-  if (!url || typeof url !== "string" || !/^https:\/\//.test(url)) return false;
-  const st = $("#wardrobe-status");
-  st.textContent = "fetching the model…";
-  const gltf = await loadGlbAvatar(url);
-  if (!gltf) {
-    st.textContent = "couldn't load that — needs a direct, public https link to a .glb file";
-    return false;
-  }
-  saveAvatarUrl(url);
-  identity.avatar = url;                      // heartbeats carry it from here on
-  presence.updateMeta({ avatar: url });
-  toast("that's you now — everyone sees it");
-  closeWardrobe();
-  return true;
+function clearPodium() {
+  if (!podFig) return;
+  world.podium.mount.remove(podFig.node);
+  try { podFig.dispose && podFig.dispose(); } catch (e) {}
+  podFig = null;
 }
-$("#wardrobe-set").addEventListener("click", () => adoptAvatarExport($("#wardrobe-url").value.trim()));
+function setPodiumBlocks(spec) {
+  clearPodium();
+  const a = buildAvatarFigure(spec);
+  podFig = { node: a.group, setVoice: a.setVoice, dispose: a.dispose };
+  world.podium.mount.add(a.group);
+}
+setPodiumBlocks(outfitSpec);
 
-// ---- a dropped file: prove it's a model, give it a public address, wear it ----
-async function wearFile(file) {
-  const st = $("#wardrobe-status");
-  if (!file) return false;
-  if (!/\.glb$/i.test(file.name) && file.type !== "model/gltf-binary") {
-    st.textContent = "that's not a .glb"; return false;
-  }
-  if (file.size > 16 * 1024 * 1024) {
-    st.textContent = "too big — keep it under 16MB (1K textures are plenty in here)"; return false;
-  }
-  try {
-    st.textContent = "checking the model…";
-    const buf = await file.arrayBuffer();
-    // parse before upload: broken files die here, not on everyone's screen
-    await new Promise((ok, no) => new GLTFLoader().parse(buf.slice(0), "", ok, no));
-    st.textContent = "hanging it up…";
-    const url = await store.uploadAvatar(identity.uid, buf);
-    return adoptAvatarExport(url);
-  } catch (e) {
-    st.textContent = (e && e.message) ? String(e.message).slice(0, 120) : "couldn't read that file";
-    return false;
-  }
+/* the same figure again, for the bathroom mirrors. A SECOND build rather than
+   the podium's node moved around: the podium keeps its own showcase spin in
+   the arcade, and one node can't stand in two places. It only ever renders
+   into the reflection pass, so it costs nothing the rest of the time. */
+let selfFig = null;
+function setMirrorSelf(spec) {
+  if (!world.bath) return;
+  if (selfFig) { try { selfFig.dispose && selfFig.dispose(); } catch (e) {} }
+  const a = buildAvatarFigure(spec);
+  selfFig = { node: a.group, setVoice: a.setVoice, dispose: a.dispose };
+  world.bath.set(a.group);
 }
-{
-  const drop = $("#wardrobe-drop");
-  drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("armed"); });
-  drop.addEventListener("dragleave", () => drop.classList.remove("armed"));
-  drop.addEventListener("drop", (e) => {
-    e.preventDefault(); drop.classList.remove("armed");
-    wearFile(e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]);
-  });
-  $("#wardrobe-file").addEventListener("change", (e) => wearFile(e.target.files && e.target.files[0]));
-}
-$("#wardrobe-url").addEventListener("keydown", (e) => {
-  if (e.key === "Enter") { e.preventDefault(); adoptAvatarExport($("#wardrobe-url").value.trim()); }
-  e.stopPropagation();                        // typing an URL must not walk you around
-});
-// worn backwards? one press turns you around (and presses again turn back)
-$("#wardrobe-flip").addEventListener("click", () => {
-  const cur = loadAvatarUrl();
-  if (!cur) { $("#wardrobe-status").textContent = "nothing worn yet — wear a model first"; return; }
-  const next = /#flip\b/.test(cur) ? cur.replace(/#flip\b/, "") : cur + "#flip";
-  saveAvatarUrl(next);
-  identity.avatar = next;
-  presence.updateMeta({ avatar: next });
-  toast("turned around — ask them if you're facing them now");
-});
-$("#wardrobe-off").addEventListener("click", () => {
-  saveAvatarUrl(null); identity.avatar = null;
-  presence.updateMeta({ avatar: null });
-  toast("back to blocks");
-  closeWardrobe();
-});
+setMirrorSelf(outfitSpec);
 
 let pickerOpen = false;
 let pickerReturn = null;
 function openPicker() {
-  if (vrBlocked("the mirror needs a flat screen")) return;
+  if (vrBlocked("changing your look needs a flat screen")) return;
   if (pickerOpen) return;
   pickerOpen = true; modalOpen = true; controls.unlock();
-  // pull the camera back to frame the WHOLE mirror (nothing cut off): straight
-  // in front of it, centred on its middle, far enough that the full panel fits.
   pickerReturn = { x: controls.pos.x, z: controls.pos.z, yaw: controls.yaw, pitch: controls.pitch };
-  const a = world.mirrorAnchor;
-  const dist = 1.7, side = 0.3;            // back up to fit the full panel; small shift to clear the left UI
-  controls.pos.x = a.x - 0.02 - dist; controls.pos.z = a.z + side;
+  // stand out along the podium's own facing (45° out of its corner), shifted a
+  // little to the side so the panel down the left edge doesn't cover the figure
+  const a = world.podium.anchor, d = 2.2;
+  const fx = Math.sin(a.ry), fz = Math.cos(a.ry);
+  controls.pos.x = a.x + fx * d - fz * 0.42;
+  controls.pos.z = a.z + fz * d + fx * 0.42;
   camera.position.set(controls.pos.x, a.y, controls.pos.z);
   camera.lookAt(a.x, a.y, a.z);
+  podIdle = false;                         // you're driving it now
+  podSpin = 0; world.podium.spin(0);       // face out, so a drag starts from the front
   controls.yaw = camera.rotation.y; controls.pitch = camera.rotation.x;
   camera.updateMatrixWorld(true);
+  const preview = (s) => { setPodiumBlocks(s); setMirrorSelf(s); };
   openOutfitPicker(outfitSpec, {
-    onChange: (s) => mirror.setSpec(s),
+    onChange: preview,
     onSave: (s) => {
-      outfitSpec = s; saveOutfit(s); mirror.setSpec(s);
-      // choosing blocks again also takes the scanned avatar off
-      if (identity.avatar) { identity.avatar = null; saveAvatarUrl(null); presence.updateMeta({ avatar: null, outfit: s }); }
-      else presence.updateMeta({ outfit: s });
+      outfitSpec = s; saveOutfit(s);
+      presence.updateMeta({ outfit: s });
+      setPodiumBlocks(s); setMirrorSelf(s);
       toast("look saved");
     },
-    extra: { label: "✦ use a 3D avatar (.glb link)", onClick: () => openWardrobe() },
     onClose: () => {
-      pickerOpen = false; modalOpen = false; mirror.setSpec(outfitSpec);
+      pickerOpen = false; modalOpen = false;
+      podIdle = true; setPodiumBlocks(outfitSpec); setMirrorSelf(outfitSpec);
       if (pickerReturn) { controls.pos.x = pickerReturn.x; controls.pos.z = pickerReturn.z; controls.yaw = pickerReturn.yaw; controls.pitch = pickerReturn.pitch; pickerReturn = null; }
       if (entered) safeLock();
     },
   });
 }
+
+/* ---- turning yourself around: hold the mouse down anywhere on the view
+   while the creator is open and drag. The pointer is already unlocked here
+   (the panel needs it), so this is plain client-x deltas, not the
+   movementX path the studio knobs use. 300 px of hand = half a turn. ---- */
+let lookDrag = null;
+renderer.domElement.addEventListener("mousedown", (e) => {
+  if (!pickerOpen || e.button !== 0) return;
+  lookDrag = { x: e.clientX, spin: podSpin };
+});
+window.addEventListener("mousemove", (e) => {
+  if (!lookDrag) return;
+  podSpin = lookDrag.spin + (e.clientX - lookDrag.x) / 300 * Math.PI;
+  world.podium.spin(podSpin);
+});
+window.addEventListener("mouseup", () => { lookDrag = null; });
+// same on a phone, where the creator is the likeliest place to want it
+renderer.domElement.addEventListener("touchstart", (e) => {
+  if (!pickerOpen || !e.touches[0]) return;
+  lookDrag = { x: e.touches[0].clientX, spin: podSpin };
+}, { passive: true });
+window.addEventListener("touchmove", (e) => {
+  if (!lookDrag || !e.touches[0]) return;
+  podSpin = lookDrag.spin + (e.touches[0].clientX - lookDrag.x) / 220 * Math.PI;
+  world.podium.spin(podSpin);
+}, { passive: true });
+window.addEventListener("touchend", () => { lookDrag = null; });
 
 // shared cat needs — bowls and litter are the same for every visitor
 let catState = null;
@@ -984,7 +933,7 @@ function castAt(ndcX, ndcY) {
     raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera);
   }
   // doors are included as blockers so notes can't be pinned onto them
-  const targets = [cat.hitMesh, toyHit, bartender.hitMesh, guide.hitMesh, mirror.glass, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, ...world.elevHits, ...world.elevCallHits, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.guitarVoiceHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, world.pool.hit, world.pool.resetHit, world.pool.joinHit, world.pool2.hit, world.pool2.resetHit, world.pool2.joinHit, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.radioHits, ...world.laRadioHits, ...world.filterPedalHit, ...world.vacuumHits, ...world.studio.screens, ...world.studio.doorHits, ...notesWall.raycastTargets(), screenMesh, world.gym.joinHit, world.gym.exitHit, ...world.gym.readyHits, ...world.blockers];
+  const targets = [cat.hitMesh, toyHit, bartender.hitMesh, guide.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, ...world.elevHits, ...world.elevCallHits, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.guitarVoiceHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, world.pool.hit, world.pool.resetHit, world.pool.joinHit, world.pool2.hit, world.pool2.resetHit, world.pool2.joinHit, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.radioHits, ...world.laRadioHits, ...world.filterPedalHit, ...world.vacuumHits, ...world.studio.screens, ...world.studio.doorHits, ...notesWall.raycastTargets(), screenMesh, world.gym.joinHit, world.gym.exitHit, ...world.gym.readyHits, ...world.podium.hits, ...world.blockers];
   const hits = raycaster.intersectObjects(targets, false);
   return hits[0] || null;
 }
@@ -1338,9 +1287,9 @@ controls.onAction((ndcX, ndcY) => {
     if (!useful) { tryPunch(); return; }
   }
   if (!hit) return;
-  if (hit.object.userData.mirror && hit.distance < 3.5) {
-    aItem("mirror");
-    openPicker();
+  if (hit.object.userData.podium && hit.distance < 3.6) {
+    aItem("podium");
+    openPicker("podium");
   } else if (hit.object.userData.bartender && hit.distance < 3.2) {
     aItem("bartender");
     const line = bartender.serve();
@@ -1618,8 +1567,8 @@ setInterval(() => {
   if (hit && hit.object.userData.vacuum && hit.distance < 2.6) {
     aimTip.textContent = `${TAP} to grab the vacuum`;
     aimTip.classList.add("show");
-  } else if (hit && hit.object.userData.mirror && hit.distance < 3.5) {
-    aimTip.textContent = `${TAP} — change your look`;
+  } else if (hit && hit.object.userData.podium && hit.distance < 3.6) {
+    aimTip.textContent = `${TAP} — build your look`;
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.bartender && hit.distance < 3.2) {
     aimTip.textContent = `${TAP} — order a drink`;
@@ -4773,12 +4722,11 @@ window.METRO_DEBUG = { renderer, camera, world, controls, xr, disc, hoop: hoopGa
   // a hand on the sequencer, same habit as the rest of the room
   studio: { state: sState, act: sAct, rec: sRec, hit: sHitPanel, apply: applyStudioHit,
             steps: sStepCount, playhead: sPlayhead, mi: () => SA.miStatus(),
-            dragBegin: beginStudioDrag, dragTick: tickStudioDrag, dragEnd: endStudioDrag,
-            wardrobe: { adopt: adoptAvatarExport, open: openWardrobe, wearFile }, percReady: () => SA.percReady(), percLast: () => SA.percLast() }, THREE, cat, bartender, guide, ghosts, voice, screen, stream, setScreen, clearScreen,
+            dragBegin: beginStudioDrag, dragTick: tickStudioDrag, dragEnd: endStudioDrag, percReady: () => SA.percReady(), percLast: () => SA.percLast() }, THREE, cat, bartender, guide, ghosts, voice, screen, stream, setScreen, clearScreen,
     // what the crosshair is actually on — the smoke harness can't pointer-lock,
     // so this is how a test sees what a click would have hit
     castAt: (x = 0, y = 0) => { const h = castAt(x, y); return h ? { ud: Object.keys(h.object.userData), d: +h.distance.toFixed(2) } : null; },
-    say: { speak, stopSpeaking, isSpeaking, isVoicing, voiceAvailable, voiceInfo, clipsReady }, room: () => aRoomNow(), jump: adminJump, mirror, openPicker, analytics: analyticsBuffer, notesWall,
+    say: { speak, stopSpeaking, isSpeaking, isVoicing, voiceAvailable, voiceInfo, clipsReady }, room: () => aRoomNow(), jump: adminJump, openPicker, analytics: analyticsBuffer, notesWall,
   layout: { set: setLayoutMode, select: layoutSelect, nudge: layoutNudge, scale: layoutScale, click: layoutClick, on: () => layoutMode, sel: () => layoutSel },
   uid: identity.uid, pool: poolGame, pool2: poolGame2, sitAtPool, leavePool,
   toy: () => toy, grabToy, throwToy,
@@ -4908,9 +4856,15 @@ renderer.setAnimationLoop(() => {
   const guideHome = !inBoat && !inArena && !inClub && !inGym && !inStudio;
   guide.tick(dt, t, guideHome ? controls.pose() : null);
   if (!guideHome && isSpeaking()) stopSpeaking();
-  // the arcade mirror renders a live "you" from your own mic level — only while
-  // you're in the bedroom/arcade (skip the extra render when off in another room)
-  if (!inBoat && !inArena && !inClub && !inGym) mirror.update(dt, voice.selfLevel());
+  // your body in the bathroom mirrors — stand it where you stand, facing where
+  // you face. Three assignments; the figure only ever draws in the reflection.
+  if (world.bath) world.bath.pose(controls.pos.x, controls.pos.z, controls.yaw);
+  // the podium's figure: a slow showcase turn when nobody's editing it, and
+  // your own mic on its face (a worn .glb has no 8-bit face to flap)
+  if (!inBoat && !inArena && !inClub && !inGym) {
+    if (podIdle && !lookDrag) { podSpin += dt * 0.22; world.podium.spin(podSpin); }
+    if (podFig && podFig.setVoice) podFig.setVoice(voice.selfLevel(), dt);
+  }
   discTick(dt);
   // the tunnel current: for 8 s after GO the tubes carry you at 10 m/s.
   // it only ever speeds you up — an early push keeps its extra speed,

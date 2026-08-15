@@ -71,7 +71,7 @@ function sendPoseLoop() {
 function channelName(space) { return space === "venue" ? "metro-venue" : "metro-presence"; }
 
 function trackSelf(ch) {
-  try { ch.track({ name: me.name, color: me.color, avatar: me.avatar || null, outfit: me.outfit || null }); } catch (e) {}
+  try { ch.track({ name: me.name, color: me.color, outfit: me.outfit || null }); } catch (e) {}
 }
 
 function wireSupabase(name) {
@@ -83,7 +83,7 @@ function wireSupabase(name) {
       for (const uid of Object.keys(state)) {
         if (uid === me.uid) continue;
         const meta = state[uid][0] || {};
-        peers.set(uid, { name: meta.name || "", color: meta.color || "#ffb347", avatar: meta.avatar || null, outfit: meta.outfit || null });
+        peers.set(uid, { name: meta.name || "", color: meta.color || "#ffb347", outfit: meta.outfit || null });
       }
       // someone NEW walked in → they've heard nothing about where anyone
       // stands. break the idle dedupe so our next tick tells them at once.
@@ -108,7 +108,7 @@ function wireLocal(name) {
     if (m.uid === me.uid) return;
     if (m.type === "hb") {
       const known = peers.has(m.uid);
-      peers.set(m.uid, { name: m.name, color: m.color, avatar: m.avatar || null, outfit: m.outfit || null, lastSeen: Date.now() });
+      peers.set(m.uid, { name: m.name, color: m.color, outfit: m.outfit || null, lastSeen: Date.now() });
       if (!known) { lastSent = ""; emitPeers(); }   // a newcomer needs our pose now, not when we next move
     } else if (m.type === "pose") { emitPose(m.uid, m); }
     else if (m.type === "note") { noteListeners.forEach(fn => { try { fn(m.uid, m.i, m.v); } catch (e) {} }); }
@@ -119,7 +119,7 @@ function wireLocal(name) {
     else if (m.type === "signal") { if (m.payload.from !== clientId) signalListeners.forEach(fn => { try { fn(m.payload); } catch (e) {} }); }
     else if (m.type === "bye") { if (peers.delete(m.uid)) emitPeers(); }
   };
-  const hb = () => channel.postMessage({ type: "hb", uid: me.uid, name: me.name, color: me.color, avatar: me.avatar || null, outfit: me.outfit || null });
+  const hb = () => channel.postMessage({ type: "hb", uid: me.uid, name: me.name, color: me.color, outfit: me.outfit || null });
   hb();
   if (localTimer) clearInterval(localTimer);
   localTimer = setInterval(() => {
@@ -196,12 +196,12 @@ export const presence = {
     if (chan) chan.send({ type: "broadcast", event: "chat", payload });
     else bc?.postMessage({ type: "chat", payload });
   },
-  // re-announce yourself (e.g. after making an avatar) without rejoining
+  // re-announce yourself (e.g. after saving a new look) without rejoining
   updateMeta(patch) {
     if (!me) return;
     Object.assign(me, patch);
-    if (chan) chan.track({ name: me.name, color: me.color, avatar: me.avatar || null, outfit: me.outfit || null });
-    else bc?.postMessage({ type: "hb", uid: me.uid, name: me.name, color: me.color, avatar: me.avatar || null, outfit: me.outfit || null });
+    if (chan) chan.track({ name: me.name, color: me.color, outfit: me.outfit || null });
+    else bc?.postMessage({ type: "hb", uid: me.uid, name: me.name, color: me.color, outfit: me.outfit || null });
   },
   sendAct(payload) {
     if (!me) return;

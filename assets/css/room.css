@@ -957,38 +957,3 @@ body.in-club #flight-strip { display: none; }
 /* the studio is a separate room: the cat and LAX stay home */
 body.in-studio #cat-pill, body.in-studio #flight-strip { display: none; }
 
-/* ---- the wardrobe: the avatar creator wearing our chrome ---- */
-#wardrobe .wardrobe-shell {
-  width: min(94vw, 480px);
-  display: flex; flex-direction: column;
-  background: #0a0d10; border: 1px solid #232a30; border-radius: 14px; overflow: hidden;
-}
-.wardrobe-body { padding: 4px 16px 16px; display: flex; flex-direction: column; gap: 12px; }
-.wardrobe-body p { color: var(--dim); font-size: 13px; line-height: 1.55; }
-.wardrobe-body b { color: var(--ink); }
-#wardrobe-url {
-  width: 100%; padding: 12px 14px; border-radius: 8px;
-  background: #0d1116; border: 1px solid #2c353d; color: var(--ink);
-  font: 500 13px/1 "SF Mono", ui-monospace, Menlo, Consolas, monospace; outline: none;
-}
-#wardrobe-url:focus { border-color: var(--amber); }
-.wardrobe-status { min-height: 16px; color: var(--amber); font-size: 12px; }
-.wardrobe-row { display: flex; gap: 8px; }
-.wardrobe-fine { font-size: 11px; color: #5d6a76; }
-.wardrobe-head {
-  display: flex; align-items: center; gap: 14px; padding: 12px 16px;
-  font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
-  color: var(--amber); font-size: 13px; letter-spacing: 0.14em; font-weight: 700;
-}
-.wardrobe-hint { flex: 1; color: var(--dim); font-size: 11px; letter-spacing: 0.03em; font-weight: 400; }
-
-/* the wardrobe's drop zone: a big obvious landing pad for a file */
-.wardrobe-drop {
-  position: relative; border: 2px dashed #38465a; border-radius: 10px;
-  padding: 26px 12px; text-align: center; color: var(--dim);
-  font-size: 13px; line-height: 1.6; cursor: pointer;
-  transition: border-color .12s, background .12s;
-}
-.wardrobe-drop em { color: #5d6a76; font-style: normal; font-size: 11px; }
-.wardrobe-drop.armed { border-color: var(--amber); background: rgba(255, 179, 71, 0.06); color: var(--ink); }
-.wardrobe-drop input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }

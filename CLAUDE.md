@@ -43,14 +43,17 @@ At the end of buildWorld, every Lambert/Standard material is swapped for `MeshTo
 ### Hard-won three.js rules (do not relearn these)
 
 - **`light.layers` does NOT scope illumination.** A directional light reaches every object in the scene. Cross-room "suns" must be **SpotLights** (cones physically can't reach the other room). Point lights are contained by short `distance` instead — keep arcade/boat point-light throws shorter than the gap to the next room.
-- **Building a room behind an existing wall inherits that wall's lights.** A `distance` leash is only correct against the neighbours that existed when it was tuned. The arcade's magenta neon sat 1.2 m off the south wall throwing 4.2 m, which was fine while that wall had nothing behind it — the moment the bathroom went in, it painted white tile pink through solid brick. Before adding a room, sample its volume against every light in the scene (`/tmp/metro-smoke/bathleak.js`: walk `scene.traverse`, skip lights inside the new room, and for each remaining one test `distance` plus the spot cone against a grid of interior points). It names the offenders in seconds and tells you which are worth moving — the global sun and hemisphere reach everything and are meant to; a 14-intensity point light at 1.6 m is not.
+- **Building a room behind an existing wall inherits that wall's lights.** A `distance` leash is only correct against the neighbours that existed when it was tuned. The arcade's magenta neon sat 1.2 m off the south wall throwing 4.2 m, which was fine while that wall had nothing behind it — the moment the bathroom went in, it painted white tile pink through solid brick. Before adding a room, sample its volume against every light in the scene (`/tmp/metro-smoke/bathleak.js`: walk `scene.traverse`, skip lights inside the new room, and for each remaining one test `distance` plus the spot cone against a grid of interior points). It names the offenders in seconds and tells you which are worth moving — the global sun and hemisphere reach everything and are meant to; a 14-intensity point light at 1.6 m is not. (It now tests BOTH directions: lights leaking out of the new room matter as much as lights leaking in.) There are only two ways to keep a fixture home. A **distance leash** — `distance` shorter than the gap to the nearest thing on the other side — which is exact but has to be rechecked every time either end moves. Or **aim it away**: if a spot's axis tilts away from the wall by more than its own half-angle, every direction inside the cone still carries velocity away from that wall, so no part of the beam can reach it no matter how far it throws. The second is the stronger guarantee and the one to reach for; the bathroom's wall-washers sit at its door pointing inward for exactly that reason.
 - Light layers (boat = layer 3, arena = layer 4) are still used for raycast/visibility bookkeeping: `camera.layers.enable(3|4)` and `raycaster.layers.enableAll()` in main.js are required. **Never use layers 1 or 2** — three.js assigns those to the left/right eye in a WebXR session, so anything on them renders to one eye only.
 - **The toon pass REPLACES `o.material`** with a fresh MeshToonMaterial, so any Lambert/Standard material reference captured during buildWorld is a dead object by the time anything ticks. Read `mesh.material` per frame instead of holding the material (the hoop's fire does this). MeshBasicMaterial is untouched and safe to hold.
 - **Particle pools must park dead particles somewhere real.** `bucketRoomGeometry` sorts by BOUNDING-BOX CENTRE, so a Points cloud whose spare slots sit at `-999` gets filed under `studio` (`c.z < -40`) and is invisible everywhere else. Park them at the emitter with a black vertex colour instead — on an additive blend that's the same as gone.
 - **Additive glow dies in daylight.** The bartender's single additive shell reads because the arcade is dark — additive ADDS to the background, so over black his amber stays amber. Do the same in the *bedroom* and a pale colour walks a sunlit wall toward white: you get a grey smudge. Two fixes, use both: push the colour deep and saturated (a near-zero red channel shifts the background's HUE instead of just brightening it), and build the body in two coats — a wide soft aura plus a smaller, stronger core inside it. The core holds an edge in daylight; the aura is what glows once the room dims. `guide.js` is the worked example.
 - **Every material-group is its own draw call.** A Mesh wearing a six-entry material array costs six calls even when only two materials are distinct — the forty window buildings cost ~240 calls this way until they were baked into one BufferGeometry with two groups (world.js, the near-blocks bake; spawn view went 660→483). Static geometry that shares materials gets merged with its transforms applied up front; per-face UV work survives the bake fine. While the boxes are in hand, push their outline corners a hair proud (+0.05) into a single additive LineSegments — neon edges for the whole city cost one call.
-- **Z-fighting:** anything mounted on a wall sits ≥3 cm proud of it (notes use `0.03 + seq stagger` in notes3d.js).
+- **Z-fighting:** anything mounted on a wall sits ≥3 cm proud of it (notes use `0.03 + seq stagger` in notes3d.js). Two more shapes of the same bug turn up whenever a doorway gets built: a casing sized to "line the wall thickness" needs the two wall planes ACTUALLY set that far apart — the bathroom's was 30 cm deep between planes 3 cm apart, so it squirted 13 cm into the hall and swallowed the neon bar whole. And frame pieces should BUTT (head spans only between the jambs), not overlap: overlapping leaves two coplanar faces sharing an area, which speckles even when both are the same colour. `/tmp/metro-smoke/edges.js` finds both — it walks the meshes in a volume and reports BURIED (one AABB mostly inside another) and COPLANAR (parallel faces within 2 mm that also overlap in area). The rule that keeps a fitted-out room clean is **every end runs PAST what it meets**: a partition sized exactly to the room leaves its top in the ceiling's plane and its ends in the wall planes, and where two pieces lap, the lapping one is made thinner and shorter so its side faces aren't in the other's planes either. Read COPLANAR, not BURIED: BURIED is AABB-based, so it cries wolf on anything rotated (a door knob inside a swung door's bounding box) or deliberately nested (a basin's bowl disc).
+- **`emissive` survives the toon pass** (it's copied onto the MeshToonMaterial), which makes it the way to lift a room's black corners when a light can't be placed. A material that raises its own floor cannot leak through a wall, because it isn't a light. The bathroom's tile carries `emissive: 0x1c2026` for exactly this — the corners nearest its door are close enough to the hall that nothing could light them without crossing the wall.
+- **Planar reflections (the bathroom mirrors) — the four things that cost a session.** (1) `renderer.clippingPlanes` is GLOBAL renderer state. Setting it inside `onBeforeRender` re-clips everything drawn *after* that mesh in the same frame — the room loses its own walls. Hide the few blockers with `.visible` instead. (2) three.js's `Reflector` kills blockers by shearing the projection into an oblique near plane; that degenerates when you stand square to the mirror and returns an empty target. (3) Clipping/oblique planes discard fragments but still SUBMIT geometry — 534 draw calls at a basin. Object-level **layer culling** is what makes the pass cost the room instead of the hall: tag the room onto a layer (5 here; 1–2 are XR eyes, 3 boat, 4 arena) and `camera.layers.set()` it, remembering that lights are collected through the same camera-layer test — miss them and the reflection renders black. (4) The mirror's own FRAME sits *behind* the glass, so the virtual camera stares at its back: hide it alongside the mirror. Coplanar, co-facing mirrors can share ONE pass and one texture if the vertex shader projects `modelMatrix * position` instead of baking each mirror's model matrix into the texture matrix. Drive it from `onBeforeRender` so it runs only when a mirror is actually on screen, and time-guard it so the second mirror reuses the first's render.
 - Shadow masks around the window are thick DoubleSide boxes, not thin planes.
+- **A sphere cap on a sphere has no edge.** Sit a `SphereGeometry` cap on a `SphereGeometry` head and you get a swim cap, however you colour it — two concentric surfaces read as one. Two rules got the avatars' hair out of it (`avatar-builder.js`): **tip the cap back** (~0.3 rad) so its rim rides high at the front and low at the nape, because a cap's rim is otherwise at one height the whole way round and hair never is; and **break the rim with separate pieces** — five-sided tapered cylinders make cheap angular locks, and three of them across the brow at different angles turn a circular hairline into a diagonal one. Matching trap: a shell offset backwards further than (its radius − the head's) dips INSIDE the head at the front, and the intersection curve shows up as a ragged notch over one eye.
 
 ### Shader art — shaderart.js
 
@@ -64,9 +67,56 @@ Postable walls are entries in `walls[]`: `{id, mesh, w, h, origin, uDir, vDir, n
 
 Dual mode: Supabase when `config.js` has keys, otherwise localStorage + BroadcastChannel ("local mode"). Everything privileged goes through **security-definer RPCs** with `set search_path = ''` (so pgcrypto is `extensions.crypt`) and IP rate limits via `private.post_log` with prefixed keys. Realtime: postgres_changes (notes, cat, scores, room_state) + presence channel.
 
-### Real avatars — avatar-glb.js + the wardrobe
+### Avatars — avatar-builder.js + the mirror + THE PODIUM
 
-`meta.avatar` (a GLB URL) is the top look tier in ghosts.js (above `outfit` blocks and the glow-blob): loaded via GLTFLoader, cached per URL, cloned per ghost with SkeletonUtils, height-normalized to 1.72m, swaps in async over the fallback figure. The `#wardrobe` overlay (reached from the mirror's outfit picker, always offered) is **bring-your-own**: drop a .glb file (validated by GLTFLoader.parse locally, then uploaded to the public `avatars` storage bucket as `{uid}.glb` with upsert — helper `store.uploadAvatar`; local mode refuses with a message) or paste a public https link to any .glb — hosted creators were all dead ends (RPM shut down by Netflix Jan 2026; Avaturn wants per-visitor logins; MetaPerson charges ~$800), so the URL is the interface. `adoptAvatarExport(url)` loads the model FIRST and only a parse-clean GLB is worn → localStorage `metro.avatarGlb` + `identity.avatar` + presence meta. Saving a block outfit takes it off again.
+**Everyone is made of the same primitives.** There is no .glb tier and no
+upload: the wardrobe, `avatar-glb.js`, the `avatars` storage bucket's only
+caller and `identity.avatar` were all removed on 2026-08-15 — the world is
+procedural and the people in it are part of that. ghosts.js has two look tiers
+now, `outfit` blocks and the glow-blob, and `lookKey` is the outfit alone. (The
+Supabase `avatars` bucket + policies are still in `site.sql`; nothing writes to
+them.)
+
+`buildAvatarFigure(spec)` builds the figure from primitives — see its header
+for why the hair is built the way it is, and the sphere-cap rule in the three.js
+section. **There is ONE fit**, a tee and trousers: the jacket and the dress were
+retired on 2026-08-15, because at this polygon count a "jacket" is a torso with
+two dark stripes on it. Character comes from colour, hair and **shoes** —
+sneaker / hi-top / chunky / platform / boot, in any colour, and the colour is
+the WHOLE shoe, flat — one material, no contrast sole (both a contrasting sole
+and a shaded one read as a band stuck under the foot).
+
+Four numbers hold the body together and each one cost a round of screenshots.
+`TORSO_TOP` is where the shoulder dome lands for EVERY build — solve the trunk's
+length from the radius, because the radius rides `wide` and a fixed length left
+the slim torso short with its neck hanging in the air. `HIP_Y` is a FLAT hem: a
+capsule's lower cap tapers to a point below the waistband and hangs between the
+legs like a shirt-tail. The arms' `sx * 0.24` splay is what clears the forearms
+and hands off the hips — the sign matters, `-sx` buries them in the body. And
+the ankle tapers to 0.056·wide so the trouser leg is narrower than the shoe;
+wider and the hem hangs over it and you see nothing but a sliver of sole.
+
+Shoes are built on the outer `group` at floor level while everything else goes
+in an inner `body` group raised by the pair's **lift** — that's what makes a
+platform make you taller instead of swallowing your ankle, and it keeps the
+"feet at y=0" contract intact.
+
+**The podium is the ONE way into the creator.** It stands in the arcade's far
+corner, the one nearest the smoking tables, and clicking it calls `openPicker()`
+— the camera flies out along the podium's own facing and the figure standing on
+it IS the live preview. The framed selfie mirror that used to hang on the east
+wall by the bar (`mirror.js`, `world.mirrorAnchor`) was deleted on 2026-08-15:
+a 40 cm render-target panel and a full-size figure were two doors into the same
+panel, and the panel only needed one. (The BATHROOM mirrors are unrelated and
+still there — different code, `world.bath`.)
+
+The podium is world.js furniture only (`world.podium` = `{ group, mount, hits,
+anchor, spin, spinOf }`); main.js hangs the figure in `mount`, because avatars
+are Lambert on purpose and the toon pass at the end of `buildWorld` would eat
+anything standing there by then. Off the creator it turns itself slowly. **Hold
+the mouse down and drag** while the creator is open to turn yourself round — the
+pointer is already unlocked there (the panel needs it), so it's plain clientX
+deltas, NOT the `controls.dragLock`/`dragDX` path the studio knobs use.
 
 ### Presence — presence.js
 

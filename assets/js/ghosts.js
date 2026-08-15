@@ -10,7 +10,6 @@
 import * as THREE from "three";
 import { makeFace } from "./face.js";
 import { buildAvatarFigure } from "./avatar-builder.js";
-import { loadGlbAvatar, instanceGlbAvatar } from "./avatar-glb.js";
 
 function nameSprite(name, color) {
   const c = document.createElement("canvas");
@@ -55,40 +54,18 @@ function makeBlob(color) {
   };
 }
 
-// build a peer's visual from their meta, best look first: a real scanned
-// avatar (GLB url) beats a block outfit beats the glow-blob. The GLB loads
-// async, so the figure stands in as its fallback and swaps skins when the
-// model lands — nobody is ever invisible while a download runs.
+// build a peer's visual from their meta: their block outfit if they've built
+// one, the glow-blob if they haven't. There is no third tier — everybody in
+// here is made of the same primitives, which is the look.
 function buildPeerVisual(meta) {
-  const base = meta.outfit
-    ? (() => { const a = buildAvatarFigure(meta.outfit); return { node: a.group, setVoice: a.setVoice, dispose: a.dispose }; })()
-    : makeBlob(meta.color || "#ffb347");
-  if (!meta.avatar) return base;
-
-  const shell = new THREE.Group();
-  shell.add(base.node);
-  const vis = { node: shell, setVoice: base.setVoice, dispose: base.dispose, dead: false };
-  // "#flip" on the url is the wearer saying "my model points backwards" —
-  // it rides presence like the rest of the look
-  const flip = /#flip\b/.test(meta.avatar);
-  loadGlbAvatar(meta.avatar.replace(/#.*$/, "")).then((gltf) => {
-    if (vis.dead) return;
-    const real = instanceGlbAvatar(gltf, { flip });
-    if (!real) return;                        // bad url → keep the fallback look
-    shell.remove(base.node);
-    base.dispose && base.dispose();
-    shell.add(real);
-    vis.setVoice = null;                      // a scanned face doesn't flap; voice shows on the nameplate ring
-  });
-  const dispose0 = vis.dispose;
-  vis.dispose = () => { vis.dead = true; dispose0 && dispose0(); };
-  return vis;
+  if (!meta.outfit) return makeBlob(meta.color || "#ffb347");
+  const a = buildAvatarFigure(meta.outfit);
+  return { node: a.group, setVoice: a.setVoice, dispose: a.dispose };
 }
 
 // a key that changes when someone's look changes, so we rebuild only then
 function lookKey(meta) {
-  return (meta.avatar ? "g:" + meta.avatar + "|" : "") +
-         (meta.outfit ? "o:" + JSON.stringify(meta.outfit) : "c:" + (meta.color || ""));
+  return meta.outfit ? "o:" + JSON.stringify(meta.outfit) : "c:" + (meta.color || "");
 }
 
 export class Ghosts {
