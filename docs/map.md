@@ -36,10 +36,12 @@ for python-heredoc edits, so **leave them intact.**
 | Instruments — e-kit, telecaster, pedalboard, filter treadle | 2957–3375 | `main.js` 1933–2143, `ambience.js` |
 | The desk rig — mixer, monitors, rack, lava lamp, radio | 5288–5760 | `main.js` 1933–2010, `radio.js` |
 | The cat's corner, dimmer, mix & master neon | 5812–5998 | `cat.js` |
-| **THE ARCADE** — the hall itself, lighting, floorplan, elevator | 3460–3970, 4344 | — |
-| The smoking corner + its scanned props | 3578–3740, `swapProp` @4271 | `assets/models/{bong,ashtray,joint}.glb` |
-| The marquee / high scores | 3741 | `main.js` (`refreshScores`), `store.js`, `supabase/arcade.sql` |
-| The arcade cabinets (GLB swap) | `swapCabinetModel` @4196 | `arcade.js` |
+| **THE ARCADE** — the hall itself, lighting, floorplan | shell @3784, lights @3860, floor plan @4807, bar @4850 | — |
+| The arcade elevator | @4296 | `main.js` (room transitions) |
+| **THE BATHROOM** — off the arcade's south wall | door cut @4309, room @4461 | — |
+| The smoking corner + its scanned props | @3906, `swapProp` @4740 | `assets/models/{bong,ashtray,joint}.glb` |
+| The marquee / high scores | @4069 | `main.js` (`refreshScores`), `store.js`, `supabase/arcade.sql` |
+| The arcade cabinets (GLB swap) | `cabinet()` @4517, `swapCabinetModel` @4665 | `arcade.js` |
 | The basketball court + the fire | `hoops` IIFE @4753 | `basketball.js`, `main.js` 1094 |
 | The pool tables | `buildPool` @4473 | `pool.js`, `main.js` 1017 |
 | **THE DESI** (boat) | 5998–6670 | `astro.js`, `main.js` 2204 |
@@ -68,7 +70,7 @@ for python-heredoc edits, so **leave them intact.**
 | The bartender | `bartender.js` |
 | The guide (bedroom tutor) | `guide.js`, `say.js` (the voice), `main.js` ~475 (placement + lines) |
 | Notes on the wall | `notes3d.js`, `store.js` |
-| Avatars / other people | `avatar-glb.js`, `ghosts.js`, `avatar-builder.js` |
+| Avatars / other people | `avatar-glb.js`, `ghosts.js`, `avatar-builder.js`, `picker.js` (the chooser), `mirror.js` (what opens it), `#wardrobe` in index.html |
 | Presence + netcode | `presence.js` |
 | Voice chat | `voice.js` |
 | Data, DB, RPCs, rate limits | `store.js`, `supabase/*.sql` |

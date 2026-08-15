@@ -3891,9 +3891,13 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
       arcSpot(gx, gz, (arcSi++ % 2) ? 0xffe6c4 : 0xccd6ff, 40);
     }
   }
-  // deep neon pools — short throw, far from the bedroom wall
-  const magenta = add(new THREE.PointLight(0xff2da0, 14, 4.2, 2));
-  magenta.position.set(-12, 2.3, -4.7);
+  // deep neon pools — short throw, far from the bedroom wall. the SOUTH wall
+  // is a second boundary now that the bathroom lives behind it: this one used
+  // to sit 1.2 m off that wall throwing 4.2 m, which painted the bathroom's
+  // white tile pink straight through the brick. pulled north and reined in so
+  // its throw dies with 10 cm to spare.
+  const magenta = add(new THREE.PointLight(0xff2da0, 11, 2.3, 2));
+  magenta.position.set(-12, 2.3, -3.5);
   const cyan = add(new THREE.PointLight(0x22d4ff, 14, 4.2, 2));
   cyan.position.set(-15, 2.3, 4.5);
   const violet = add(new THREE.PointLight(0x9d4dff, 12, 4.0, 2));
@@ -4306,15 +4310,22 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
   const elBody = lam(0x23272e);             // brushed-graphite cab shell
   const elDoorMat = lam(0x33424e);          // doors a touch bluer than the shell
   const elTrim = lam(0x4a515c);
-  // CUT THE SOUTH WALL around the doorway: a segment each side + a lintel above.
-  // (the rest of the arcade's south wall is built here, not in the wall loop,
-  // because the lift needs a hole in it.)
-  for (const [sx0, sx1] of [[AR.x0, xOL], [xOR, AR.x1]]) {
+  // the BATHROOM is cut from this same wall (the room itself is built in its
+  // own section below) — its door edges are declared up here so the one wall
+  // loop can leave both holes in a single pass.
+  const BATH = { x: -10.5, w: 4.2, d: 3.6, h: 2.7, dw: 1.15, dh: 2.05 };
+  const bxL = BATH.x - BATH.dw / 2, bxR = BATH.x + BATH.dw / 2;
+  // CUT THE SOUTH WALL around both doorways: segments between the holes + a
+  // lintel above each. (the rest of the arcade's south wall is built here,
+  // not in the wall loop, because the lift and the bathroom need holes in it.)
+  for (const [sx0, sx1] of [[AR.x0, xOL], [xOR, bxL], [bxR, AR.x1]]) {
     const seg = plane(sx1 - sx0, ARC_H, arcMatWall.clone());
     seg.position.set((sx0 + sx1) / 2, ARC_H / 2, zWall); add(seg);
   }
   const elLintel = plane(OW, ARC_H - ELC.dh, arcMatWall.clone());
   elLintel.position.set(ELC.x, (ARC_H + ELC.dh) / 2, zWall); add(elLintel);
+  const bathLintel = plane(BATH.dw, ARC_H - BATH.dh, arcMatWall.clone());
+  bathLintel.position.set(BATH.x, (ARC_H + BATH.dh) / 2, zWall); add(bathLintel);
   // the cab shell, recessed behind the wall: back + two sides + ceiling + floor
   const elBack = box(ELC.w, ELC.h, 0.07, elBody);
   elBack.position.set(ELC.x, ELC.h / 2, zBack - 0.035); add(elBack);
@@ -4446,6 +4457,157 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
   const ELWALK = { x0: ELC.x - 0.5, x1: ELC.x + 0.5, z0: zBack + 0.1, z1: zWall + 0.5 };
   // (used by the safety net in main.js) — true when you're standing in the cab
   const inElevatorCab = (x, z) => x >= xW && x <= xE && z >= zBack - 0.1 && z <= zWall + 0.05;
+
+  /* --- THE BATHROOM: a tiled box carved back through the south wall, west of
+     the bar and across the aisle from where the air hockey lands. It's the
+     one wall with a long empty run left on it, and a door in the middle of
+     that run is findable from the arcade door.
+     Ceiling at 2.7 against the hall's 4.3 — the drop is the whole trick, it
+     reads as somewhere ELSE the moment you step through instead of more hall.
+     Lit by DOWNWARD SPOTLIGHTS for the same reason the arcade is: three.js
+     lights ignore walls, so the cones are pulled deep enough into the room
+     that their edges hit the floor before they reach the wall plane and wash
+     the hall through solid brick. Empty on purpose — fittings come next. --- */
+  {
+    const BZ0 = AR.z0;                              // shared wall — the bathroom's north face
+    const BZ1 = AR.z0 - BATH.d;                     // its back wall, deep behind the arcade (-9.5)
+    const bx0 = BATH.x - BATH.w / 2, bx1 = BATH.x + BATH.w / 2;
+    const bzMid = (BZ0 + BZ1) / 2;
+    // square wall tile with grout, a few tiles run darker so the wall isn't a
+    // flat sheet. the toon pass cel-shades this like any other Lambert.
+    // 20 cm tiles, not mosaic — small tiles at this scale read as graph paper
+    // once the toon ramp quantizes them. Bright, too: the only light in here
+    // points at the FLOOR, so an upper wall only ever gets the spill, and a
+    // dark albedo up there lands on the ramp's bottom step and goes black.
+    const wallTile = canvasTex(256, 256, (g) => {
+      g.fillStyle = "#aeb6bc"; g.fillRect(0, 0, 256, 256);      // grout
+      for (let r = 0; r < 4; r++) for (let c = 0; c < 4; c++) {
+        const n = (r * 5 + c * 3) % 7;
+        g.fillStyle = n === 0 ? "#dfe7e4" : n === 4 ? "#eef3ef" : "#f4f7f3";
+        g.fillRect(c * 64 + 3, r * 64 + 3, 58, 58);
+      }
+    });
+    const floorTile = canvasTex(256, 256, (g) => {
+      g.fillStyle = "#5e666e"; g.fillRect(0, 0, 256, 256);      // darker grout underfoot
+      for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) {
+        g.fillStyle = (r + c) % 2 ? "#9aa2aa" : "#b3bac1";
+        g.fillRect(c * 32 + 2, r * 32 + 2, 28, 28);
+      }
+    });
+    // one texture object per surface — they need their own repeats
+    const tiled = (tex, rx, ry) => {
+      const t = tex.clone(); t.needsUpdate = true;
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      t.repeat.set(rx, ry);
+      return new THREE.MeshLambertMaterial({ map: t, side: THREE.DoubleSide });
+    };
+    const TS = 0.8;    // one texture square = 4 tiles = 80 cm of wall
+
+    const bFloor = plane(BATH.w, BATH.d, tiled(floorTile, BATH.w / TS, BATH.d / TS));
+    bFloor.rotation.x = -Math.PI / 2;
+    bFloor.position.set(BATH.x, 0.003, bzMid); add(bFloor);
+    // MeshBasic, not Lambert: a Lambert ceiling above downlights is lit by
+    // nothing but the fill's falloff, which reads as a bright blob ringed by
+    // black corners. Flat pale is also just what a lit diffuser panel looks
+    // like, and the toon pass leaves Basic alone.
+    const bCeil = plane(BATH.w, BATH.d, new THREE.MeshBasicMaterial({ color: 0x8f979f }));
+    bCeil.rotation.x = Math.PI / 2;
+    bCeil.position.set(BATH.x, BATH.h, bzMid); add(bCeil);
+    // back wall, then the two sides — each faces INTO the room
+    const bBack = plane(BATH.w, BATH.h, tiled(wallTile, BATH.w / TS, BATH.h / TS));
+    bBack.position.set(BATH.x, BATH.h / 2, BZ1); add(bBack);
+    for (const [wx, ry] of [[bx0, Math.PI / 2], [bx1, -Math.PI / 2]]) {
+      const sw = plane(BATH.d, BATH.h, tiled(wallTile, BATH.d / TS, BATH.h / TS));
+      sw.rotation.y = ry;
+      sw.position.set(wx, BATH.h / 2, bzMid); add(sw);
+    }
+    // the inside face of the shared wall: tiled like the rest, in two segments
+    // around the doorway plus a piece over it. it's set back by the full depth
+    // of the reveal below — the two planes used to sit 3 cm apart, so a casing
+    // built to "line the wall thickness" had nowhere to live and squirted out
+    // both sides of it.
+    const REV = 0.22;                        // how deep the doorway reads
+    const bnZ = BZ0 - REV;
+    for (const [nx0, nx1] of [[bx0, bxL], [bxR, bx1]]) {
+      const seg = plane(nx1 - nx0, BATH.h, tiled(wallTile, (nx1 - nx0) / TS, BATH.h / TS));
+      seg.rotation.y = Math.PI;
+      seg.position.set((nx0 + nx1) / 2, BATH.h / 2, bnZ); add(seg);
+    }
+    const bnHead = plane(BATH.dw, BATH.h - BATH.dh, tiled(wallTile, BATH.dw / TS, (BATH.h - BATH.dh) / TS));
+    bnHead.rotation.y = Math.PI;
+    bnHead.position.set(BATH.x, (BATH.h + BATH.dh) / 2, bnZ); add(bnHead);
+
+    /* the reveal — the casing that lines the opening. ONE rule keeps this
+       corner clean, and it's worth stating because breaking it is invisible in
+       code and obvious on screen: every piece either tucks BEHIND the tiled
+       face or stands PROUD of the arcade wall, and nothing is flush with
+       either plane. The casing spans the gap and steps 5 cm into the opening;
+       the neon then sits clear in FRONT of the casing's front face. It used to
+       be buried inside it, which is what made the green edge strobe. */
+    const revZ0 = bnZ - 0.05;                // tucked behind the tile
+    const revZ1 = BZ0 + 0.015;               // a hair proud of the arcade wall
+    const revD = revZ1 - revZ0, revC = (revZ0 + revZ1) / 2;
+    const bTrim = lam(0x2a2f36);
+    const RJ = 0.05;                         // how far the casing steps in
+    // head and sill span only BETWEEN the jambs rather than running past them.
+    // Butt joints: the faces that meet are facing each OTHER, so they're both
+    // hidden. Overlapping the pieces instead leaves two coplanar faces sharing
+    // an area, which is the same speckle as any other z-fight even when both
+    // are the same colour.
+    const hx0 = bxL + RJ, hx1 = bxR - RJ;
+    for (const jx of [bxL + RJ / 2, bxR - RJ / 2]) {
+      const jamb = box(RJ, BATH.dh, revD, bTrim);
+      jamb.position.set(jx, BATH.dh / 2, revC); add(jamb);
+    }
+    const bHeadTrim = box(hx1 - hx0, RJ, revD, bTrim);
+    bHeadTrim.position.set(BATH.x, BATH.dh - RJ / 2, revC); add(bHeadTrim);
+    // threshold: sunk so the floor tile passes THROUGH it rather than meeting
+    // it face-to-face, and stopped short of the arcade plane so no lip juts
+    // out onto the carpet
+    const bSill = box(hx1 - hx0, 0.032, revD - 0.03, lam(0x6e767e));
+    bSill.position.set(BATH.x, 0.008, revC - 0.015); add(bSill);
+
+    // arcade side: a neon jamb outline + a lit sign, the same language the
+    // lift speaks, so the door reads as a door from across the hall. NOTE the
+    // z — everything here lives in front of revZ1, clear of the casing.
+    const bNeon = new THREE.MeshBasicMaterial({ color: 0x3bff7a });
+    const neonZ = BZ0 + 0.05;
+    for (const nx of [bxL - 0.03, bxR + 0.03]) {
+      const v = box(0.03, BATH.dh + 0.06, 0.03, bNeon);
+      v.position.set(nx, (BATH.dh + 0.06) / 2, neonZ); add(v);
+    }
+    const bNeonTop = box(BATH.dw + 0.12, 0.03, 0.03, bNeon);
+    bNeonTop.position.set(BATH.x, BATH.dh + 0.06, neonZ); add(bNeonTop);
+    const bSign = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.2),
+      new THREE.MeshBasicMaterial({
+        map: canvasTex(288, 64, (g) => {
+          g.fillStyle = "#050a07"; g.fillRect(0, 0, 288, 64);
+          g.font = "900 30px monospace"; g.textAlign = "center"; g.textBaseline = "middle";
+          g.fillStyle = "#3bff7a"; g.shadowColor = "#3bff7a"; g.shadowBlur = 10;
+          g.fillText("RESTROOMS", 144, 34);
+        }), transparent: true,
+      }));
+    bSign.position.set(BATH.x, BATH.dh + 0.26, neonZ); add(bSign);
+
+    // two downlights. pulled 35 cm back from centre so the cone's edge lands
+    // on the floor short of the wall plane — it physically cannot spill into
+    // the arcade, which is the only rule this room really has.
+    for (const lx of [BATH.x - 1.0, BATH.x + 1.0]) {
+      const s = new THREE.SpotLight(0xdfe9ff, 30, 4.6, 0.68, 0.6, 1.5);
+      s.position.set(lx, BATH.h - 0.06, bzMid - 0.35);
+      s.target.position.set(lx, 0, bzMid - 0.35);
+      add(s); add(s.target);
+      const pan = box(0.52, 0.03, 0.52, new THREE.MeshBasicMaterial({ color: 0xf2f6ff }));
+      pan.position.set(lx, BATH.h - 0.05, bzMid - 0.35); add(pan);
+    }
+    // downlights alone leave the ceiling and the top of the walls black, so
+    // one fill light sits mid-room to lift them. a POINT light this close to
+    // the hall is only safe because `distance` is a hard cutoff: from here
+    // the nearest arcade floor is 2.87 m and the wall plane 2.2 m, so a 2.0 m
+    // throw dies inside this room no matter which way you measure it.
+    const bFill = add(new THREE.PointLight(0xdfe9ff, 9, 2.0, 2));
+    bFill.position.set(BATH.x, 1.85, bzMid - 0.4);
+  }
 
   // cabinet factory — one per game
   const arcadeHits = [];
@@ -9270,6 +9432,12 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     // so there's no dead strip at the threshold
     { x0: AR.x1 - 0.6, x1: -2.2, z0: CZ - OPEN_W / 2 + 0.15, z1: CZ + OPEN_W / 2 - 0.15 },
     { x0: AR.x0 + 1.15, x1: AR.x1 - 0.15, z0: AR.z0 + 0.45, z1: AR.z1 - 0.45 },
+    // the bathroom, back through the south wall: its floor inset off the tile,
+    // plus a narrow strip through the doorway that reaches into the arcade
+    // rect — overlapping again, so the threshold has no dead step in it
+    { x0: BATH.x - BATH.w / 2 + 0.35, x1: BATH.x + BATH.w / 2 - 0.35,
+      z0: AR.z0 - BATH.d + 0.35, z1: AR.z0 - 0.25 },
+    { x0: bxL + 0.12, x1: bxR - 0.12, z0: AR.z0 - 0.4, z1: AR.z0 + 0.7 },
     // the boat room exists far away; you can only get there by knowing
     { x0: BOAT.x - 1.75, x1: BOAT.x + 1.75, z0: BOAT.z - 1.15, z1: BOAT.z + 1.15 },
     // the club: the open floor, a full-width strip behind the dj coffin,

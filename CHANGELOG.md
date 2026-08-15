@@ -4,6 +4,30 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-08-14 — the arcade gets a bathroom
+
+**A door in the south wall that isn't the lift.** The arcade's south wall had
+one long empty run left on it, between the elevator out west and the bar to
+the east, right across the aisle from where the air hockey is taped out. A
+1.15 m doorway is cut into it now, lined with a real tiled reveal and outlined
+in green neon with a RESTROOMS sign over it, the same language the lift
+speaks. In a hall that dark, a lit doorway carries a long way.
+
+Behind it is a tiled box, 4.2 × 3.6 m, ceiling at 2.7 against the hall's 4.3 —
+the drop is what makes it read as somewhere else the moment you step through,
+instead of more arcade. Two downlights aimed at the floor plus one contained
+fill light. Empty on purpose; the fittings come next.
+
+**The room found a lighting bug that was always there, just harmless.** The
+arcade's magenta neon sat 1.2 m off that south wall throwing 4.2 m. Nothing
+was behind the wall, so nothing noticed — until something was, and the new
+white tile came out pink through solid brick. `distance` is the only leash a
+point light has, and it had been tuned against a neighbour that no longer
+existed. It's pulled north and reined in so its throw dies with 10 cm to
+spare. The bar pendants and the hoop lamp still graze the room's near corner
+faintly; they're doing real work in the arcade and the bleed reads as warmth,
+so they stay.
+
 ## 2026-08-14 — the moon stops being two balls
 
 **There was a black ball hanging over the city in daylight.** The moon was
