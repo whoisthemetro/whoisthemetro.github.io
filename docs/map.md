@@ -38,7 +38,8 @@ for python-heredoc edits, so **leave them intact.**
 | The cat's corner, dimmer, mix & master neon | 5812–5998 | `cat.js` |
 | **THE ARCADE** — the hall itself, lighting, floorplan | shell @3784, lights @3860, floor plan @4807, bar @4850 | — |
 | The arcade elevator | @4296 | `main.js` (room transitions) |
-| **THE BATHROOM** — three bays off the arcade's south wall | `BATH`/`BPX1,2` + door cut @4309, room + fittings @4461 | — |
+| The arcade bathroom — three bays back through its south wall | `BATH`/`BPX1,2` + door cut @4309, room + fittings @4461 | — |
+| …its mirrors (shared planar reflection + the body you see in them) | `REFL`/`drawReflection` @4899, `bathSelf` @5066 | `main.js` (`setMirrorSelf`, `world.bath.pose`) |
 | The smoking corner + its scanned props | @3906, `swapProp` @4740 | `assets/models/{bong,ashtray,joint}.glb` |
 | The marquee / high scores | @4069 | `main.js` (`refreshScores`), `store.js`, `supabase/arcade.sql` |
 | The arcade cabinets (GLB swap) | `cabinet()` @4517, `swapCabinetModel` @4665 | `arcade.js` |
