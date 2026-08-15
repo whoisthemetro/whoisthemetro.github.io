@@ -4,6 +4,27 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-08-14 — the moon stops being two balls
+
+**There was a black ball hanging over the city in daylight.** The moon was
+drawn as a pale disc with a second, dark navy disc painted beside it to
+carve the crescent — a trick that only disappears against a night sky. In
+daylight the shadow stopped hiding and read as exactly what it was: a black
+circle floating next to a white one, out over the rooftops.
+
+The crescent is now CUT out of the disc rather than painted over, on a
+scratch canvas so the erase can't take a bite out of the jet or the bat
+signal already sitting on that layer. The real sky shows through at any
+hour. A daytime moon is also faded to a pale ghost with no halo, which is
+what one actually looks like.
+
+Two more bugs fell out while it was open. The shadow offset was INVERTED —
+it shrank as the moon filled, so a full moon put the shadow dead centre and
+blacked the moon out completely, while a new moon shone brightest. And
+`fraction` alone can't say which limb is lit, so waxing and waning crescents
+were drawn identically; `getMoonIllumination` returns `phase` now and the
+crescent points the right way.
+
 ## 2026-08-14 — METROWORLD on the hill, and a cat that respects the drums
 
 **The sign on the ridge says METROWORLD now, in neon.** By day the tubes

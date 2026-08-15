@@ -761,6 +761,11 @@ function makeOutside() {
   const Rzilla = mkRing(90, 720, 280, 16, -16, -15, { arc: FX_AZ * 2 });   // behind the towers
   const Rfx = mkRing(86, 720, 280, 16, -16, -12, { arc: FX_AZ * 2 });      // jet, bat, sun, moon
 
+  // a scratch pad for the moon: the crescent is cut out of a disc here so
+  // the erase can't touch the jet or the bat signal on the fx layer
+  const moonCv = document.createElement("canvas");
+  moonCv.width = moonCv.height = 64;
+
   /* ---- stars, spread over the whole painted arc ---- */
   const stars = Array.from({ length: 260 }, () => [
     Math.random() * 2048, Math.random() * 300, Math.random(),
@@ -1569,7 +1574,7 @@ function makeOutside() {
   }
 
   /* ================= the fast-changing layer ================= */
-  function paintFx(pal, fx, sun, moon, moonFrac) {
+  function paintFx(pal, fx, sun, moon, moonFrac, moonPhase) {
     const { g, cw, ch } = Rfx;
     g.clearRect(0, 0, cw, ch);
     const night = pal.night;
@@ -1619,17 +1624,41 @@ function makeOutside() {
       g.beginPath(); g.arc(sp.x, sp.y, 18, 0, 7); g.fill();
       g.shadowBlur = 0;
     }
+    /* The moon is a crescent CUT OUT of a disc, not a pale disc with a dark
+       one parked next to it. The old way painted the shadow in a fixed dark
+       navy, which only disappears against a night sky — in daylight it
+       stopped hiding and became a black ball floating beside a white one
+       over the city. The cut happens on a scratch canvas so the real sky
+       shows through at any hour, and so the erase can't take a chunk out of
+       the jet or the bat signal already sitting on this layer.
+
+       The offset was also inverted: it shrank as the moon filled, so a FULL
+       moon put the shadow dead centre and blacked the moon out entirely,
+       while a new moon shone brightest. It's 2R*fraction now — 0 at new
+       (fully cut away), a clear 2R at full (the cut misses) — and the side
+       comes from the phase, because a waxing and a waning crescent are the
+       same fraction and opposite pictures. */
     const mp = place(moon.azimuth, moon.altitude);
     if (mp && moon.altitude > 0) {
-      const bright = 0.55 + 0.45 * moonFrac;
-      g.fillStyle = `rgba(235,240,248,${bright})`;
-      g.shadowColor = "rgba(220,230,250,0.9)"; g.shadowBlur = 26;
-      g.beginPath(); g.arc(mp.x, mp.y, 13, 0, 7); g.fill();
+      const R = 13, waxing = (moonPhase ?? 0.25) < 0.5;
+      const mg = moonCv.getContext("2d");
+      mg.clearRect(0, 0, 64, 64);
+      // a moon in a blue sky is a pale ghost, not a lamp
+      const day = Math.max(0, Math.min(1, (pal.sunAlt + 6) / 12));
+      mg.fillStyle = `rgba(235,240,248,${(0.55 + 0.45 * moonFrac) * (1 - day * 0.6)})`;
+      mg.beginPath(); mg.arc(32, 32, R, 0, 7); mg.fill();
+      mg.globalCompositeOperation = "destination-out";
+      // destination-out removes in proportion to the SOURCE alpha, and the
+      // disc above is deliberately faint — reusing its fill would rub out
+      // a quarter of the moon and leave the rest of the shadow showing
+      mg.fillStyle = "#000";
+      mg.beginPath();
+      mg.arc(32 + 2 * R * moonFrac * (waxing ? -1 : 1), 32, R, 0, 7); mg.fill();
+      mg.globalCompositeOperation = "source-over";
+      g.shadowColor = "rgba(220,230,250,0.9)";
+      g.shadowBlur = 26 * (1 - day);        // and it carries no halo by day
+      g.drawImage(moonCv, mp.x - 32, mp.y - 32);
       g.shadowBlur = 0;
-      g.fillStyle = "rgba(10,15,31,0.85)";
-      g.beginPath();
-      g.arc(mp.x + 26 * (1 - moonFrac) * (moonFrac < 0.5 ? 1 : -1) * 0.6, mp.y, 13, 0, 7);
-      g.fill();
     }
     Rfx.tex.needsUpdate = true;
   }
@@ -1643,7 +1672,7 @@ function makeOutside() {
 
   /* ---- what actually gets called ---- */
   let slowHash = "", skyHash = "", zHash = "";
-  function draw(sun, moon, moonFrac, wx = { clouds: 0, fog: false, rain: 0 }, fx = {}) {
+  function draw(sun, moon, moonFrac, wx = { clouds: 0, fog: false, rain: 0 }, fx = {}, moonPhase = 0.25) {
     const pal = palette(sun.altitude / (Math.PI / 180));
     /* Two clocks now, where there used to be one. The star twinkle used to
        ride the same hash as everything else, so a clear night repainted the
@@ -1681,7 +1710,7 @@ function makeOutside() {
     }
     const zh = fx.zilla ? `${fx.zilla.x | 0},${fx.zilla.y | 0},${fx.zilla.f | 0}` : "";
     if (zh !== zHash) { zHash = zh; paintZilla(pal, fx); }
-    paintFx(pal, fx, sun, moon, moonFrac);
+    paintFx(pal, fx, sun, moon, moonFrac, moonPhase);
   }
 
   function tick(elapsed, dt, ppos) {
@@ -3121,16 +3150,16 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
   function redrawSky(beaconOn) {
     if (!skyCache) return;
     sky.draw(skyCache.sun, skyCache.moon, skyCache.fraction, wx,
-      { beacon: beaconOn, plane: planeFx(), zilla, bat });
+      { beacon: beaconOn, plane: planeFx(), zilla, bat }, skyCache.phase);
   }
 
   function updateSky() {
     const now = new Date();
     const sun = getSunPosition(now, LAT, LNG);
     const moon = getMoonPosition(now, LAT, LNG);
-    const { fraction } = getMoonIllumination(now);
-    skyCache = { sun, moon, fraction };
-    sky.draw(sun, moon, fraction, wx, { beacon: true, plane: planeFx(), zilla, bat });
+    const { fraction, phase } = getMoonIllumination(now);
+    skyCache = { sun, moon, fraction, phase };
+    sky.draw(sun, moon, fraction, wx, { beacon: true, plane: planeFx(), zilla, bat }, phase);
 
     // aim the beam from where the body actually hangs over LA.
     // The window faces due south; in room coordinates that makes
@@ -9430,11 +9459,17 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     // stomp a one-off paint before the screenshot fires. updateSky()
     // still takes it back within a minute; for a screenshot that's forever.
     // interior light is untouched; this is the VIEW only.
-    skyPreview: (altDeg) => {
-      skyCache = { sun: { azimuth: 0.4, altitude: altDeg * Math.PI / 180 },
-                   // the moon only comes out for night previews — a moon on a
-                   // day sky paints its phase shadow as a floating dark blob
-                   moon: { azimuth: -0.6, altitude: altDeg < 0 ? 0.5 : -0.5 }, fraction: 0.6 };
+    skyPreview: (altDeg, o = {}) => {
+      const D = Math.PI / 180;
+      skyCache = {
+        sun: { azimuth: (o.sunAz ?? 23) * D, altitude: altDeg * D },
+        // the moon follows the sun below the horizon unless a caller asks
+        // for it — moonAlt/moonAz/frac exist so a test can put a daylight
+        // moon in frame on purpose, which is the case that had a bug in it
+        moon: { azimuth: (o.moonAz ?? -34) * D, altitude: (o.moonAlt ?? (altDeg < 0 ? 30 : -30)) * D },
+        fraction: o.frac ?? 0.6,
+        phase: o.phase ?? 0.25,
+      };
       redrawSky(true);
     },
     edrumHits, pressEdrum, guitarHits, strumTele, guitarVoiceHits, setGuitarVoiceSwitch,

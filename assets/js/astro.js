@@ -67,7 +67,17 @@ export function getMoonIllumination(date) {
     Math.sin(s.dec) * Math.sin(m.dec) +
     Math.cos(s.dec) * Math.cos(m.dec) * Math.cos(s.ra - m.ra));
   const inc = Math.atan2(sdist * Math.sin(phi), m.dist - sdist * Math.cos(phi));
-  return { fraction: (1 + Math.cos(inc)) / 2 };
+  // fraction alone can't say WHICH limb is lit — a waxing and a waning
+  // crescent are the same number and opposite pictures. phase does:
+  // 0 new, 0.25 first quarter, 0.5 full, 0.75 last quarter, so anything
+  // under 0.5 is waxing and lit on the side the sun is.
+  const angle = Math.atan2(
+    Math.cos(s.dec) * Math.sin(s.ra - m.ra),
+    Math.sin(s.dec) * Math.cos(m.dec) - Math.cos(s.dec) * Math.sin(m.dec) * Math.cos(s.ra - m.ra));
+  return {
+    fraction: (1 + Math.cos(inc)) / 2,
+    phase: 0.5 + 0.5 * inc * (angle < 0 ? -1 : 1) / Math.PI,
+  };
 }
 
 /* ---------------- the deep sky: 25 bright stars ----------------
