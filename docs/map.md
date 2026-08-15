@@ -75,6 +75,38 @@ for python-heredoc edits, so **leave them intact.**
 | Flight strips | `planes.js` |
 | Screen share / streams | `screen.js`, `stream.js` |
 
+## The bedroom and the arcade are ONE space
+
+Every other room in this world is far away and culls itself. These two share
+a doorway, so an arcade job can break the bedroom and vice versa. That isn't
+a thing to fix — being able to see the arcade through the door is the point
+— but it IS a short, finite list, and it's the whole reason a fresh chat on
+one of them should read this:
+
+1. **`isWalkable`.** The passage rect deliberately OVERLAPS both room rects
+   (world.js, `WALK_RECTS`) so there's no dead strip at the threshold. Shrink
+   either room's rect and you can get wedged in the doorway.
+2. **`world.arcadeDoor`** is the threshold waypoint the guide steers for.
+   Move the opening and she walks into brick until her stuck-timer blinks her.
+3. **Light throw.** Arcade point lights must not reach the bedroom — keep
+   their `distance` shorter than the gap (see the three.js rules in
+   CLAUDE.md). Brightening an arcade lamp can light a bedroom wall.
+4. **Cull scope.** Both rooms are the SAME scope (`home`); neither culls the
+   other, and LA is visible from both. Nothing you add to one disappears in
+   the other.
+5. **The toon pass** runs over everything at the end of `buildWorld()`, both
+   rooms included.
+6. **Trinity** follows you through the doorway and keeps a separate arcade
+   line pool in `lines.js`. New arcade features probably want a line.
+7. **The bartender** lives in the arcade but is ticked whenever you're not in
+   boat/arena/club/gym — so he's running while you're in the bedroom.
+8. **`inArcade()`** (`arcadeZoneLevel >= 0.5`) gates the bedroom's instrument
+   sounds so they don't carry through the wall, and picks Trinity's pool.
+9. **`castAt`** is ONE shared raycast target list in main.js. Adding an
+   arcade clickable edits the same line the bedroom's clickables live on.
+10. **Draw calls** are one budget, and the window city is visible from the
+    arcade doorway.
+
 ## What a job chat still has to know
 
 Some things bite regardless of which job you're on, and they're already
