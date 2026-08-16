@@ -4,6 +4,36 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-08-15 — you can write on the bathroom walls
+
+**Click a wall or a stall panel and the pointer unlocks; from there it's a
+drag.** Drawing with a locked crosshair would mean steering your whole head to
+make a letter. Seven colours, strokes go out live over presence, and the wall
+persists the way the blinds and the lava lamp do — as a room flag.
+
+Walls and stall panels only. The mirrors, the floor and the ceiling are simply
+never registered as surfaces, so a ray that lands on one isn't a place you can
+write and there's no special case anywhere. The mirrors needed one extra thing:
+they're click-SOLID now, like doors and furniture, because a ray aimed at glass
+otherwise passes straight through and lands on the tiled wall behind it — you'd
+have been writing on a surface you couldn't see.
+
+**Two bugs the test caught that looked fine on screen.** Surfaces were keyed by
+mesh uuid, and three.js mints a fresh uuid every build — so a reload loaded
+yesterday's writing into surfaces that no longer existed and painted nothing at
+all, while still reporting the right stroke count. They have stable names now.
+And u/v come from the LOCAL hit point rather than `hit.uv`: a BoxGeometry gives
+every face its own 0..1 with the orientation varying per face, so trusting it
+would flip and rotate a tag depending on which side of a stall door you wrote
+on.
+
+Each surface gets its own transparent overlay carrying its own canvas, built
+lazily on the first stroke that lands — a bathroom nobody has written in costs
+nothing. Strokes quantize u/v to a byte, which is what keeps a whole wall of
+them small enough to sit in a flag. 400 of them, oldest scrubbing off first,
+and `METRO_DEBUG.scrubWall()` wipes it: it's a public wall on a public site and
+the cap is a bound, not moderation.
+
 ## 2026-08-15 — the selfie mirror comes off the wall
 
 The framed panel by the bar rendered a live "you" into a 40 cm off-screen view

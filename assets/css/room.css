@@ -957,3 +957,27 @@ body.in-club #flight-strip { display: none; }
 /* the studio is a separate room: the cat and LAX stay home */
 body.in-studio #cat-pill, body.in-studio #flight-strip { display: none; }
 
+
+/* --- writing on the bathroom walls --- */
+#tag-bar {
+  position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(14px);
+  display: none; gap: 10px; align-items: center;
+  padding: 10px 14px; border-radius: 999px;
+  background: rgba(10, 8, 18, 0.82); border: 1px solid rgba(255, 45, 160, 0.45);
+  backdrop-filter: blur(8px); z-index: 60; opacity: 0; transition: opacity .15s, transform .15s;
+}
+#tag-bar.show { display: flex; opacity: 1; transform: translateX(-50%) translateY(0); }
+.tag-swatch {
+  width: 26px; height: 26px; border-radius: 50%; cursor: pointer;
+  border: 2px solid rgba(255, 255, 255, 0.25); padding: 0;
+}
+.tag-swatch.on { border-color: #fff; box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.18); }
+.tag-done {
+  margin-left: 6px; padding: 5px 12px; border-radius: 999px; cursor: pointer;
+  background: transparent; color: #cfd6e6; border: 1px solid rgba(207, 214, 230, 0.35);
+  font: 600 12px/1 ui-monospace, monospace; letter-spacing: .06em;
+}
+.tag-done:hover { color: #fff; border-color: #fff; }
+/* while you're writing, the cursor is the brush and the crosshair is noise */
+body.tagging { cursor: crosshair; }
+body.tagging #aim-tip { display: none; }

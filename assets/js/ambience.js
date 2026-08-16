@@ -1278,6 +1278,18 @@ export function stunBuzz() {
 // scales the in-room volume AND the bedroom bleed together. tune to taste.
 const ARCADE_LEVEL = 0.5;
 let arcadeZone = null;
+/* What the room is actually making a noise with, for the smoke harness —
+   reading the gain nodes themselves rather than trusting the code that set
+   them. Room scoping is the one thing here you cannot check by looking at a
+   screenshot. */
+export function audioDebug() {
+  return {
+    roomTone: roomToneGains ? +roomToneGains[0].gain.value.toFixed(5) : null,
+    rain: rainNodes ? +rainNodes.g.gain.value.toFixed(5) : null,
+    arcade: arcadeZone ? +arcadeZone.out.gain.value.toFixed(3) : null,
+  };
+}
+
 export function setArcadeZone(level) {
   if (!ctx) return;
   if (!arcadeZone) {

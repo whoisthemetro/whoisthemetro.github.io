@@ -26,6 +26,7 @@ import { rand, IS_TOUCH } from "./util.js";
 import { getSunPosition, getMoonPosition, getMoonIllumination, getStarPosition, getPlanetPositions, STARS } from "./astro.js";
 import { makeAttractScreen } from "./arcade.js";
 import { SHADER_ART, KUKO_A, KUKO_B, KUKO_IMAGE } from "./shaderart.js";
+import { createGraffiti } from "./graffiti.js";
 import { buildRoom as buildStudioRoom } from "./studio/room.js";
 
 export const ROOM = {
@@ -4573,6 +4574,11 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     // entry wall and the doorway dressing on it.
     const reflHide = [];
     const bathHits = [];        // click targets in here (the toilets, so far)
+    /* what you can write on: tiled walls and stall panels. NOT the mirrors,
+       the floor or the ceiling — the mirrors aren't registered at all, so a
+       ray that lands on one is simply not a surface and the stroke is
+       refused. Nothing to special-case. */
+    const tags = createGraffiti(THREE, scene);
     const BZ0 = AR.z0;                              // shared wall — the bathroom's north face
     const BZ1 = AR.z0 - BATH.d;                     // its back wall, deep behind the arcade (-9.5)
     const bx0 = BATH.x - BATH.w / 2, bx1 = BATH.x + BATH.w / 2;
@@ -4633,11 +4639,11 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     bCeil.position.set(BATH.x, BATH.h, bzMid); add(bCeil);
     // back wall, then the two sides — each faces INTO the room
     const bBack = plane(BATH.w, BATH.h, tiled(wallTile, BATH.w / TS, BATH.h / TS));
-    bBack.position.set(BATH.x, BATH.h / 2, BZ1); add(bBack);
-    for (const [wx, ry] of [[bx0, Math.PI / 2], [bx1, -Math.PI / 2]]) {
+    bBack.position.set(BATH.x, BATH.h / 2, BZ1); add(bBack); tags.addSurface(bBack, null, "back");
+    for (const [wx, ry, sname] of [[bx0, Math.PI / 2, "side-w"], [bx1, -Math.PI / 2, "side-e"]]) {
       const sw = plane(BATH.d, BATH.h, tiled(wallTile, BATH.d / TS, BATH.h / TS));
       sw.rotation.y = ry;
-      sw.position.set(wx, BATH.h / 2, bzMid); add(sw);
+      sw.position.set(wx, BATH.h / 2, bzMid); add(sw); tags.addSurface(sw, null, sname);
     }
     // the inside face of the shared wall: tiled like the rest, in two segments
     // around the doorway plus a piece over it. it's set back by the full depth
@@ -4646,10 +4652,10 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     // both sides of it.
     const REV = 0.22;                        // how deep the doorway reads
     const bnZ = BZ0 - REV;
-    for (const [nx0, nx1] of [[bx0, bxL], [bxR, bx1]]) {
+    for (const [ni, [nx0, nx1]] of [[bx0, bxL], [bxR, bx1]].entries()) {
       const seg = plane(nx1 - nx0, BATH.h, tiled(wallTile, (nx1 - nx0) / TS, BATH.h / TS));
       seg.rotation.y = Math.PI;
-      seg.position.set((nx0 + nx1) / 2, BATH.h / 2, bnZ); add(seg); reflHide.push(seg);
+      seg.position.set((nx0 + nx1) / 2, BATH.h / 2, bnZ); add(seg); reflHide.push(seg); tags.addSurface(seg, null, "north-" + ni);
     }
     const bnHead = plane(BATH.dw, BATH.h - BATH.dh, tiled(wallTile, BATH.dw / TS, (BATH.h - BATH.dh) / TS));
     bnHead.rotation.y = Math.PI;
@@ -4791,10 +4797,10 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     // walls, and into each other over the opening. A partition sized exactly
     // to the room leaves its top face in the ceiling's plane and its ends in
     // the wall planes, which is four coplanar seams the length of the room.
-    const partition = (px) => {
-      for (const [z0, z1] of [[BZ1 - 0.06, -7.86], [-6.64, BZ0 - 0.06]]) {
+    const partition = (px, pname) => {
+      for (const [pi, [z0, z1]] of [[BZ1 - 0.06, -7.86], [-6.64, BZ0 - 0.06]].entries()) {
         const seg = box(0.12, BATH.h + 0.08, z1 - z0, tiled(wallTile, (z1 - z0) / TS, BATH.h / TS));
-        seg.position.set(px, BATH.h / 2, (z0 + z1) / 2); add(seg);
+        seg.position.set(px, BATH.h / 2, (z0 + z1) / 2); add(seg); tags.addSurface(seg, "x", `${pname}-${pi}`);
       }
       // the head is deliberately THINNER and shorter than the segments it
       // laps into: same thickness would put its side faces and its top in the
@@ -4802,7 +4808,7 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
       const head = box(0.10, 0.67, 1.38, tiled(wallTile, 1.38 / TS, 0.67 / TS));
       head.position.set(px, 2.385, -7.25); add(head);
     };
-    partition(BPX1); partition(BPX2);
+    partition(BPX1, "part-w"); partition(BPX2, "part-e");
 
     // --- a toilet. simple forms: the toon ramp does more for the read here
     // than polygons would.
@@ -4852,12 +4858,12 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     // walls are the outer sides, and a panel laid flat on tile is just a
     // coplanar face waiting to speckle. doors hang ajar at varied angles so
     // the row reads as depth instead of a flat wall of doors.
-    const stallRow = (a, b, n) => {
+    const stallRow = (a, b, n, bay) => {
       const w = (b - a) / n;
       for (let i = 1; i < n; i++) {
         const px = a + i * w;
         const d = box(0.045, 1.90, SF - BZ1 + 0.06, panelMat);
-        d.position.set(px, 1.10, (BZ1 - 0.06 + SF) / 2); add(d);
+        d.position.set(px, 1.10, (BZ1 - 0.06 + SF) / 2); add(d); tags.addSurface(d, "x", `${bay}-div-${i}`);
         NO_WALK.push({ x0: px - 0.10, x1: px + 0.10, z0: BZ1, z1: SF });
       }
       for (let i = 0; i < n; i++) {
@@ -4867,7 +4873,7 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
         const hinge = new THREE.Group();
         hinge.position.set(a + i * w + 0.055, 0, SF);
         const leaf = box(w - 0.15, 1.80, 0.035, panelMat);
-        leaf.position.set((w - 0.15) / 2, 1.12, 0); hinge.add(leaf);
+        leaf.position.set((w - 0.15) / 2, 1.12, 0); hinge.add(leaf); tags.addSurface(leaf, "z", `${bay}-door-${i}`);
         const knob = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.10, 8), steel);
         knob.rotation.x = Math.PI / 2;
         knob.position.set(w - 0.24, 1.12, 0.055); hinge.add(knob);
@@ -4875,8 +4881,8 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
         add(hinge);
       }
     };
-    stallRow(bx0, BPX1 - 0.06, 3);        // west bay
-    stallRow(BPX2 + 0.06, bx1, 3);        // east bay
+    stallRow(bx0, BPX1 - 0.06, 3, "w");   // west bay
+    stallRow(BPX2 + 0.06, bx1, 3, "e");   // east bay
 
     // --- the accessible stall, filling the centre bay behind the vestibule:
     // wider, deeper, toilet pushed to one side to leave the transfer space,
@@ -4891,12 +4897,12 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
       // across the doorway you just came through.
       const HG = BPX1 + 0.85;                                    // where the two meet
       const front = box(HG - BPX1 - 0.06, 1.90, 0.05, panelMat); // the fixed leaf
-      front.position.set((BPX1 + HG) / 2, 1.10, AF); add(front);
+      front.position.set((BPX1 + HG) / 2, 1.10, AF); add(front); tags.addSurface(front, "z", "acc-front");
       NO_WALK.push({ x0: BPX1, x1: HG, z0: AF - 0.09, z1: AF + 0.09 });
       const hinge = new THREE.Group();
       hinge.position.set(HG, 0, AF);
       const leaf = box(0.95, 1.80, 0.04, panelMat);
-      leaf.position.set(0.475, 1.12, 0); hinge.add(leaf);
+      leaf.position.set(0.475, 1.12, 0); hinge.add(leaf); tags.addSurface(leaf, "z", "acc-door");
       const aknob = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.10, 8), steel);
       aknob.rotation.x = Math.PI / 2; aknob.position.set(0.80, 1.12, 0.055); hinge.add(aknob);
       hinge.rotation.y = -0.75; add(hinge);
@@ -5016,7 +5022,8 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     const mirror = (w, h, px, py, pz, ry) => {
       const frame = box(w + 0.06, h + 0.06, 0.02, steel);
       frame.position.set(px, py, pz); frame.rotation.y = ry; add(frame);
-      reflHide.push(frame);          // it sits BEHIND the glass — from the
+      reflHide.push(frame); blockers.push(frame);
+                                     // it sits BEHIND the glass — from the
                                      // virtual camera it's a slab across the view
       const m = plane(w, h, new THREE.ShaderMaterial({
         uniforms: reflUniforms,
@@ -5065,11 +5072,17 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
       // the middle of it
       bSpot(px, py + 0.52, pz - 0.30, px, 0.95, pz - 1.85, 0.62, 4.2, 11);
       const vfix = box(w * 0.55, 0.05, 0.14, steel);
-      vfix.position.set(px, py + 0.58, pz - 0.28); add(vfix); reflHide.push(vfix);
+      vfix.position.set(px, py + 0.58, pz - 0.28); add(vfix); reflHide.push(vfix); blockers.push(vfix);
       const vglow = box(w * 0.5, 0.02, 0.10, new THREE.MeshBasicMaterial({ color: 0xf2f6ff }));
       vglow.position.set(px, py + 0.555, pz - 0.28); add(vglow); reflHide.push(vglow);
       m.onBeforeRender = (r, s, c) => drawReflection(r, s, c, m);
       mirrorMeshes.push(m);
+      /* click-SOLID, the same way doors and furniture are: a ray aimed at the
+         glass would otherwise pass straight through it and land on the tiled
+         wall behind, so you'd be writing on a surface you can't see. Being a
+         blocker is what makes "not on the mirrors" true without a special
+         case anywhere. */
+      blockers.push(m);
       add(m);
     };
     // BOTH bays get the same run, mirrored about the door: four basins along
@@ -5105,6 +5118,7 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     bathSelf = {
       mount: selfMount,
       hits: bathHits,
+      tags,
       // one authority for "is this x/z in the bathroom" — the fart reverb, the
       // voice reverb and the sample loader all have to agree on it
       inside: (x, z) => x > bx0 && x < bx1 && z < BZ0 && z > BZ1,

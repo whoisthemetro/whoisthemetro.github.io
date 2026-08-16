@@ -125,7 +125,7 @@ declare
   v_ip text;
   v_recent int;
 begin
-  if p_key not in ('blinds', 'curtains', 'closet', 'lava', 'radio_sr', 'radio_la', 'grime', 'layout', 'studio') then
+  if p_key not in ('blinds', 'curtains', 'closet', 'lava', 'radio_sr', 'radio_la', 'grime', 'layout', 'studio', 'graffiti') then
     raise exception 'unknown room flag: %', p_key;
   end if;
   begin

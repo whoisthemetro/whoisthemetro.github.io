@@ -9,7 +9,7 @@ import { NotesWall } from "./notes3d.js";
 import { Ghosts } from "./ghosts.js";
 import { store } from "./store.js";
 import { presence } from "./presence.js";
-import { startAmbience, citySound, pianoNote, semitoneToKey, audioNow, purr, setRain, setWater, setRoomTone, setClubTone, setClubBed, kettleBoil, setThruster, boostSound, discSound, goalHorn, meow, hiss, careSound, drumHit, setArcadeZone, punchSound, shieldClang, stunBuzz, edrumHit, guitarPluck, guitarNote, shotSound, smokeSound, setFx, setDelayTempo, setBusLevel, setGuitarFilter, startVacuum, stopVacuum, beep, fireSound, loadFarts, fartsReady, fart, bathroomSend } from "./ambience.js";
+import { startAmbience, citySound, pianoNote, semitoneToKey, audioNow, purr, setRain, setWater, setRoomTone, setClubTone, setClubBed, kettleBoil, setThruster, boostSound, discSound, goalHorn, meow, hiss, careSound, drumHit, setArcadeZone, punchSound, shieldClang, stunBuzz, edrumHit, guitarPluck, guitarNote, shotSound, smokeSound, setFx, setDelayTempo, setBusLevel, setGuitarFilter, startVacuum, stopVacuum, beep, fireSound, audioDebug, loadFarts, fartsReady, fart, bathroomSend } from "./ambience.js";
 import { SONGS, playSong, stopSong, currentSongId } from "./songs.js";
 import { progress } from "./progress.js";
 import { voice } from "./voice.js";
@@ -36,6 +36,7 @@ preferVoices(["Ava", "Allison", "Samantha", "Susan", "Zoe", "Serena", "Nicky",
 loadClips();
 useAudioGraph(audioGraph);   // her recordings ride the room's master bus
 import { DEFAULT_SPEC, buildAvatarFigure } from "./avatar-builder.js";
+import { TAG_COLORS } from "./graffiti.js";
 import { openOutfitPicker } from "./picker.js";
 import { initAnalytics, track, analyticsBuffer } from "./analytics.js";
 import { openArcade, closeArcade, arcadeIsOpen, arcadeWantsEsc, handleGameMessage, setScoreHook, vrFrame as arcadeVrFrame, vrKey as arcadeVrKey } from "./arcade.js";
@@ -224,7 +225,8 @@ controls.pos.x = world.spawn.x;
 controls.pos.z = world.spawn.z;
 controls.yaw = world.spawn.yaw;
 
-world.setCityListener((type) => { if (!inBoat && !inArena && !inClub && !inGym && !inStudio) citySound(type); });
+// LA comes in through the bedroom WINDOW, so it stops at the arcade wall —
+world.setCityListener((type) => { if (bedroomHere()) citySound(type); });
 
 // the arcade hums and chirps when you're near it — spatial by position
 setInterval(() => {
@@ -462,7 +464,17 @@ function applyGuitarFilter() { setGuitarFilter(gtrFilterLevel); world.setGuitarP
 
 // the cat — its key-walking plays the same piano visitors can play.
 // All bedroom sounds are gated: aboard THE DESI you hear only the sea.
+/* Two scopes, and the difference matters. `bedroomSound` means "the origin
+   cluster" — the bedroom AND the arcade — and it's what the bartender and the
+   basketball hoop use, because they LIVE in the arcade and must be audible
+   there. `bedroomOnly` is the bedroom itself: past the doorway it goes quiet.
+   Anything that belongs to the bedroom's own furniture wants the second one. */
 const bedroomSound = (fn) => (...a) => { if (!inBoat && !inArena && !inClub && !inGym && !inStudio) fn(...a); };
+const bedroomHere = () => !inBoat && !inArena && !inClub && !inGym && !inStudio && !inArcade();
+// which side of the arcade wall the continuous beds think you're on, and
+// what we last actually told the audio (so a room return can be corrected)
+let inArcadeBed = false, bedApplied = null, bedWasAway = false;
+const bedroomOnly = (fn) => (...a) => { if (bedroomHere()) fn(...a); };
 // the arcade is effectively its own room (walled off, through the opening): its
 // zone reads ~1 inside, ~0.72 in the doorway, ≤0.14 from the bedroom. once you've
 // crossed in, the bedroom's INSTRUMENTS shouldn't carry over the wall (the cat's
@@ -471,10 +483,12 @@ const inArcade = () => world.arcadeZoneLevel(controls.pos.x, controls.pos.z) >= 
 let toy = null;   // the fetch toy (built just below the cat); hooks reference it
 const cat = new Cat(world.scene, world.catSpots, {
   plink: bedroomSound((i) => { if (inArcade()) return; pianoNote(i % 15, pianoVoice); world.pressPianoKey(i % 15); }),
-  purr: bedroomSound(purr),
-  meow: bedroomSound(meow),
-  hiss: bedroomSound(hiss),
-  dig: bedroomSound(() => careSound("sand")),
+  // the cat is a bedroom animal: its voice used to carry through the doorway
+  // on purpose, and doesn't any more
+  purr: bedroomOnly(purr),
+  meow: bedroomOnly(meow),
+  hiss: bedroomOnly(hiss),
+  dig: bedroomOnly(() => careSound("sand")),
   // the music owns the keys — the cat keeps off while a MIDI song plays OR the
   // bedroom radio is on (radios is built further down; only ever read at tick)
   songPlaying: () => currentSongId() !== null || !!(radios.la && radios.la.radio.info().on),
@@ -674,6 +688,104 @@ function loadOutfit() {
 function saveOutfit(spec) { try { localStorage.setItem("metro.outfit", JSON.stringify(spec)); } catch (e) {} }
 let outfitSpec = loadOutfit();
 identity.outfit = outfitSpec;   // broadcast over presence so others see your fit
+
+/* ---------------- writing on the walls ----------------
+   Click a tiled wall or a stall panel in the bathroom and the pointer
+   unlocks: from there it's a drag to draw, because drawing with a locked
+   crosshair means steering your whole head to make a letter. The mirrors,
+   the floor and the ceiling aren't registered as surfaces at all, so a ray
+   that lands on one simply isn't a place you can write — no special case.
+   Strokes go out live over presence and the wall persists as a room flag,
+   the same shelf the blinds and the lava lamp live on. */
+let tagMode = false, tagColor = 0, tagWidth = 3, tagBar = null;
+let tagSaveT = null;
+
+function tagSurfaceUnder() {
+  const h = castAt(0, 0);
+  return h && h.distance < 4.2 && world.bath && world.bath.tags.surfaceAt(h) ? h : null;
+}
+function scheduleTagSave() {
+  clearTimeout(tagSaveT);
+  tagSaveT = setTimeout(() => {
+    if (!world.bath || !world.bath.tags.isDirty()) return;
+    store.saveRoomFlag("graffiti", world.bath.tags.all())
+      .then(() => world.bath.tags.clean())
+      .catch(() => {});          // pre-migration: the key isn't whitelisted yet
+  }, 2500);
+}
+
+/* a public wall anybody can write on, that persists, on a public site. The
+   400-stroke cap and the flag rate limit bound the damage but neither is
+   moderation — this is the scrub bucket. */
+function scrubWall() {
+  if (!world.bath) return 0;
+  const n = world.bath.tags.count();
+  world.bath.tags.clear();
+  store.saveRoomFlag("graffiti", []).catch(() => {});
+  toast(`scrubbed ${n} stroke${n === 1 ? "" : "s"} off the wall`);
+  return n;
+}
+
+function buildTagBar() {
+  if (tagBar) return tagBar;
+  tagBar = document.createElement("div");
+  tagBar.id = "tag-bar";
+  TAG_COLORS.forEach((c, i) => {
+    const b = document.createElement("button");
+    b.className = "tag-swatch" + (i === tagColor ? " on" : "");
+    b.style.background = c;
+    b.onclick = () => { tagColor = i;
+      [...tagBar.querySelectorAll(".tag-swatch")].forEach((n, j) => n.classList.toggle("on", j === i)); };
+    tagBar.appendChild(b);
+  });
+  const done = document.createElement("button");
+  done.className = "tag-done"; done.textContent = "done";
+  done.onclick = () => exitTagMode();
+  tagBar.appendChild(done);
+  document.body.appendChild(tagBar);
+  return tagBar;
+}
+
+function enterTagMode() {
+  if (tagMode) return;
+  if (vrBlocked("writing on the wall needs a flat screen")) return;
+  tagMode = true; modalOpen = true; controls.unlock();
+  buildTagBar().classList.add("show");
+  document.body.classList.add("tagging");
+  toast("drag to write · esc when you're done");
+}
+function exitTagMode() {
+  if (!tagMode) return;
+  tagMode = false; modalOpen = false;
+  if (tagBar) tagBar.classList.remove("show");
+  document.body.classList.remove("tagging");
+  scheduleTagSave();
+  if (entered) safeLock();
+}
+
+// a ray from wherever the mouse is, not from the crosshair — the pointer is
+// unlocked in here, so the mouse IS the brush
+function tagHitAt(e) {
+  const r = renderer.domElement.getBoundingClientRect();
+  const x = ((e.clientX - r.left) / r.width) * 2 - 1;
+  const y = -((e.clientY - r.top) / r.height) * 2 + 1;
+  return castAt(x, y);
+}
+renderer.domElement.addEventListener("pointerdown", (e) => {
+  if (!tagMode || e.button !== 0) return;
+  const h = tagHitAt(e);
+  if (h && world.bath.tags.begin(h, tagColor, tagWidth)) e.preventDefault();
+});
+renderer.domElement.addEventListener("pointermove", (e) => {
+  if (!tagMode || !world.bath.tags.drawing()) return;
+  const h = tagHitAt(e);
+  if (h) world.bath.tags.extend(h);
+});
+window.addEventListener("pointerup", () => {
+  if (!tagMode || !world.bath || !world.bath.tags.drawing()) return;
+  const st = world.bath.tags.end();
+  if (st) { presence.sendAct({ kind: "tag", s: st }); scheduleTagSave(); }
+});
 
 /* ---------------- the toilets ----------------
    27 one-shots, drawn from a shuffle bag in ambience.js so all of them play
@@ -960,7 +1072,7 @@ function castAt(ndcX, ndcY) {
     raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera);
   }
   // doors are included as blockers so notes can't be pinned onto them
-  const targets = [cat.hitMesh, toyHit, bartender.hitMesh, guide.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, ...world.elevHits, ...world.elevCallHits, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.guitarVoiceHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, world.pool.hit, world.pool.resetHit, world.pool.joinHit, world.pool2.hit, world.pool2.resetHit, world.pool2.joinHit, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.radioHits, ...world.laRadioHits, ...world.filterPedalHit, ...world.vacuumHits, ...world.studio.screens, ...world.studio.doorHits, ...notesWall.raycastTargets(), screenMesh, world.gym.joinHit, world.gym.exitHit, ...world.gym.readyHits, ...world.podium.hits, ...(world.bath ? world.bath.hits : []), ...world.blockers];
+  const targets = [cat.hitMesh, toyHit, bartender.hitMesh, guide.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, ...world.elevHits, ...world.elevCallHits, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.guitarVoiceHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, world.pool.hit, world.pool.resetHit, world.pool.joinHit, world.pool2.hit, world.pool2.resetHit, world.pool2.joinHit, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.radioHits, ...world.laRadioHits, ...world.filterPedalHit, ...world.vacuumHits, ...world.studio.screens, ...world.studio.doorHits, ...notesWall.raycastTargets(), screenMesh, world.gym.joinHit, world.gym.exitHit, ...world.gym.readyHits, ...world.podium.hits, ...(world.bath ? world.bath.hits : []), ...(world.bath ? world.bath.tags.meshes() : []), ...world.blockers];
   const hits = raycaster.intersectObjects(targets, false);
   return hits[0] || null;
 }
@@ -1397,6 +1509,9 @@ controls.onAction((ndcX, ndcY) => {
       openVrArcadePanel();
       xrRef.note("stick moves · A fires · trigger starts · GRIP walks away");
     }
+  } else if (hit.object.userData.tagSurface && hit.distance < 4.2
+             && world.bath && world.bath.tags.surfaceAt(hit)) {
+    enterTagMode();
   } else if (hit.object.userData.toilet && hit.distance < 2.6) {
     pullTheChain();
   } else if (hit.object.userData.arcadeSoon && hit.distance < 3.2) {
@@ -1543,7 +1658,7 @@ controls.onAction((ndcX, ndcY) => {
     if (shot) {
       shotSound();
       if (shot === "hit") {
-        setTimeout(() => { if (!inBoat && !inArena && !inClub && !inStudio) citySound("boom"); }, 300);
+        setTimeout(() => { if (bedroomHere()) citySound("boom"); }, 300);
         toast("🛩️💥 got it. somewhere over Inglewood, a pilot is very confused");
         presence.sendAct({ kind: "planeshot" });
       }
@@ -1593,6 +1708,12 @@ setInterval(() => {
     return;
   }
   const hit = castAt(0, 0);
+  if (hit && hit.object.userData.tagSurface && hit.distance < 4.2
+      && world.bath && world.bath.tags.surfaceAt(hit)) {
+    aimTip.textContent = `${TAP} to write on the wall`;
+    aimTip.classList.add("show");
+    return;
+  }
   if (hit && hit.object.userData.toilet && hit.distance < 2.6) {
     aimTip.textContent = `${TAP} to flush`;
     aimTip.classList.add("show");
@@ -2109,7 +2230,10 @@ radios.sr = {
 radios.la = {
   radio: createRadio({ stations: LA_STATIONS, storeKey: "metro.radio.la", onStatus: makeRadioStatus("la") }),
   setNeedle: world.setLaRadioNeedle, setPower: world.setLaRadioPower, pos: world.laRadioPos,
-  audible: () => !inBoat && !inArena && !inClub,
+  // the LA set sits on the bedroom rack, so it goes quiet through the wall
+  // like everything else in there — distance alone still had it playing from
+  // the arcade doorway
+  audible: () => !inBoat && !inArena && !inClub && !inArcade(),
   which: "la", shared: { on: false, idx: 0, at: 0 },
 };
 
@@ -2156,6 +2280,7 @@ function applyRoomFlags(f, withRadio = true) {
   if (typeof f.closet === "boolean") world.setCloset(f.closet);
   if (typeof f.lava === "boolean") world.setLava(f.lava);
   applyGrime(f.grime);   // accumulated dirt + vacuumed lanes, shared across visitors
+  if (f.graffiti && world.bath) world.bath.tags.load(f.graffiti);
   if (withRadio && entered) for (const which of ["sr", "la"]) {
     const rs = f["radio_" + which];
     if (rs && typeof rs.idx === "number") {
@@ -4350,6 +4475,7 @@ function closeArcadeOverlay() {
 $("#arcade-close").addEventListener("click", closeArcadeOverlay);
 
 addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && tagMode) { exitTagMode(); return; }
   if (e.key === "Escape" && modalOpen) {
     if (composer.classList.contains("show")) closeComposer(false);
     if (reader.classList.contains("show")) closeReader();
@@ -4492,6 +4618,8 @@ addEventListener("keydown", (e) => {
       toast(p.open ? "someone gathered the blinds" : "someone drew the blinds");
     } else if (p.kind === "lava") {
       world.setLava(p.on);
+    } else if (p.kind === "tag") {
+      if (world.bath && p.s) world.bath.tags.add(p.s);
     } else if (p.kind === "toilet") {
       if (fartsReady()) {
         const here = world.bath && world.bath.inside(controls.pos.x, controls.pos.z);
@@ -4765,7 +4893,10 @@ window.METRO_DEBUG = { renderer, camera, world, controls, xr, disc, hoop: hoopGa
     // what the crosshair is actually on — the smoke harness can't pointer-lock,
     // so this is how a test sees what a click would have hit
     castAt: (x = 0, y = 0) => { const h = castAt(x, y); return h ? { ud: Object.keys(h.object.userData), d: +h.distance.toFixed(2) } : null; },
-    say: { speak, stopSpeaking, isSpeaking, isVoicing, voiceAvailable, voiceInfo, clipsReady }, room: () => aRoomNow(), jump: adminJump, openPicker, analytics: analyticsBuffer, notesWall,
+    say: { speak, stopSpeaking, isSpeaking, isVoicing, voiceAvailable, voiceInfo, clipsReady },
+    // room scoping can't be seen in a screenshot — this is how a test hears it
+    audio: audioDebug, radioAudible: () => radios.la.audible(), room: () => aRoomNow(), jump: adminJump, openPicker, analytics: analyticsBuffer, notesWall,
+  scrubWall,
   layout: { set: setLayoutMode, select: layoutSelect, nudge: layoutNudge, scale: layoutScale, click: layoutClick, on: () => layoutMode, sel: () => layoutSel },
   uid: identity.uid, pool: poolGame, pool2: poolGame2, sitAtPool, leavePool,
   toy: () => toy, grabToy, throwToy,
@@ -4849,6 +4980,35 @@ renderer.setAnimationLoop(() => {
     vrArcade.tex.needsUpdate = true;
   }
   world.tick(dt, controls.pos);
+
+  /* The bedroom's two CONTINUOUS beds — its room tone and the rain on its
+     window — stop at the arcade wall. Every other room turns these off on the
+     way in (the club and the gym both do), but the arcade isn't a transition:
+     you walk through a doorway, so nothing fires. This watches the boundary
+     instead, and only acts when it's actually crossed.
+
+     Hysteresis on purpose. arcadeZoneLevel is a smooth ramp, so a single
+     threshold would thrash tone and rain on and off while you stand in the
+     opening — and setRain TEARS DOWN its nodes, so thrashing it is not free.
+     In at 0.6, out at 0.4; the gap is the doorway.
+
+     And it RE-ASSERTS on the way home, it doesn't only watch for crossings.
+     The lift comes back into the arcade, and every room's exit turns the
+     bedroom's tone back on as it goes — so returning from the venue would
+     otherwise start the bedroom humming while you stood at the cabinets, with
+     no crossing left to fire. */
+  {
+    const away = inBoat || inArena || inClub || inGym || inStudio;
+    const z = world.arcadeZoneLevel(controls.pos.x, controls.pos.z);
+    if (!away) inArcadeBed = z > 0.6 ? true : z < 0.4 ? false : inArcadeBed;
+    const want = !inArcadeBed;                    // beds on = you're in the bedroom
+    if (!away && (want !== bedApplied || bedWasAway)) {
+      bedApplied = want;
+      setRoomTone(want);
+      try { setRain(want ? (world.getWeather() && world.getWeather().rain) || 0 : 0); } catch (e) {}
+    }
+    bedWasAway = away;
+  }
   // each radio rides its own room — full up close, gone by ~7 m, and paused
   // (radio.js cuts the live feed at gain 0) anywhere it isn't audible
   for (const key in radios) {
