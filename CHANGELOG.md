@@ -43,8 +43,8 @@ actually standing. Someone talking from the stalls sounds like it while the hall
 outside stays dry, and you hear the difference through the open door.
 
 **And the lighting went neon.** Magenta and cyan overhead on the arcade's own two
-colours, violet and ice washing the back wall, a cove line along both long walls,
-a hard line under every basin and a strip down each partition. Lights make pools;
+colours, violet and ice washing the back wall, a cove line along both long walls
+and a hard line under every basin. Lights make pools;
 lit EDGES are what sell a room like this, and those are MeshBasic strips that
 cost no light and can't leak anywhere. Two things had to move with it: the pale
 grey ceiling was the one surface still reading as a hospital and went dark

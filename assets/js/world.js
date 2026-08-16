@@ -4761,14 +4761,12 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     };
     for (const [zz, col] of [[BZ1 + 0.05, NEON_M], [bnZ - 0.05, NEON_C]])
       neonStrip(BATH.w - 0.3, 0.025, 0.025, col, BATH.x, BATH.h - 0.13, zz);
-    for (const sd of [-1, 1]) {
-      const px2 = BATH.x + sd * 0.95;
-      // deliberately STRADDLING the partition face (at px2 + sd*0.06) rather
-      // than sitting on it — flush would put two coplanar faces together and
-      // speckle the whole length of it. Half-buried reads as recessed anyway.
-      neonStrip(0.03, BATH.dh - 0.1, 0.03, sd < 0 ? NEON_M : NEON_C,
-                px2 + sd * 0.055, (BATH.dh - 0.1) / 2, -7.25);
-    }
+    // (there WAS a neon upright on each partition here. Its x was the
+    // partition's, but its z was -7.25 — which is the middle of the
+    // walk-through, not a piece of wall. It stood as a bar across the gap you
+    // walk through, pink one side and blue the other. There is no stretch of
+    // that partition to put one on: the opening takes the middle and the
+    // stalls take the rest.)
 
     /* ===== the fittings ==================================================
        Three bays: stalls along the back of each, four basins along the entry
