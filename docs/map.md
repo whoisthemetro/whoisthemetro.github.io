@@ -73,7 +73,8 @@ for python-heredoc edits, so **leave them intact.**
 | Shader art on the slabs | `shaderart.js` (+ `PANEL_SHADERS` in world.js) |
 | The cat | `cat.js` |
 | The bartender | `bartender.js` |
-| The guide (bedroom tutor) | `guide.js`, `say.js` (the voice), `main.js` ~475 (placement + lines) |
+| The guide (bedroom tutor) | `guide.js`, `say.js` (the voice), `lines.js` (everything she says), `main.js` ~475 (placement) |
+| …re-rendering her voice | `tools/voice/render.mjs` — just run it, it finds its key in `~/.config/metro/voice.env` |
 | Notes on the wall | `notes3d.js`, `store.js` |
 | Avatars / other people | `avatar-builder.js` (the figure + hair), `ghosts.js`, `picker.js` (the chooser), `main.js` ~670–860 (podium figure, drag-to-spin, `openPicker`) |
 | **THE PODIUM** — the avatar creator in the arcade's far corner | `POD` block just before the MARQUEE anchor | `main.js` ~700–930 |

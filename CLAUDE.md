@@ -135,6 +135,7 @@ VR (xr.js): WebXR — [ enter vr ] appears post-entry on XR browsers; left stick
 ## Supabase / secrets
 
 - `supabase/*.sql` are idempotent, paste-into-SQL-Editor migrations. `supabase/EVERYTHING.local.sql` (gitignored) is the concatenation of all pending migrations **including the real Discord webhook** — regenerate it with `cat cat.sql inbox.sql arcade.sql site.sql discord.local.sql > EVERYTHING.local.sql` after editing any part. Never commit `*.local.sql`; the repo is public.
+- **Secrets that outlive a chat live in `~/.config/metro/`, never in the repo and never in a session scratchpad** (that's per-chat and is deleted with it). `voice.env` holds `ELEVENLABS_API_KEY` for Trinity's voice render; `tools/voice/render.mjs` reads it itself, so just run the tool. If Metro hands you a key, write it to that file yourself (mkdir 700, file 600) rather than handing back shell commands — he's said he'd rather it pass through the chat than do it by hand. Anything else long-lived that needs a secret goes in the same place and reads it the same way.
 - The anon key in `assets/js/config.js` is fine to ship; the service_role key never is. (The user has previously pasted the wrong one — check which key you're given.)
 - New event types must be added to the `events` table check constraint in `site.sql` before `store.logEvent()` can use them; same for new wall ids in the notes constraint.
 

@@ -8,13 +8,10 @@
    to have installed, no key in the client, no per-visit cost, and nothing
    to go wrong at runtime.
 
-     ELEVENLABS_API_KEY=sk_... node tools/voice/render.mjs
+     node tools/voice/render.mjs          (--dry to list, --prune to tidy)
 
-   Options (env): EL_VOICE_ID, EL_MODEL, plus --force to re-render
-   everything and --dry to just list what WOULD be made.
-
-   The key is read from the environment and never written anywhere. Don't
-   put it in a file inside this repo — the repo is public.
+   The key finds itself — see below. Options (env): EL_VOICE_ID, EL_MODEL,
+   plus --force to re-render everything.
 
    Change-detection is the filename: a clip is named for a hash of its own
    spoken text (clipId in assets/js/lines.js), so editing one line orphans
@@ -22,7 +19,8 @@
    ============================================================ */
 
 import { writeFile, readFile, mkdir, readdir, unlink } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -31,7 +29,31 @@ import { allSpoken, clipId } from "../../assets/js/lines.js";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.resolve(HERE, "../../assets/audio/trinity");
 
-const KEY = process.env.ELEVENLABS_API_KEY;
+/* The key finds ITSELF. It used to be pasted into a session scratchpad, which
+   is scoped to one chat and deleted with it — so the key vanished, and no
+   other chat ever knew one existed. It lives at ~/.config/metro/voice.env
+   now: OUTSIDE the repo (this repo is public, so a key inside it is one
+   `git add -A` away from being published) and outside any one session.
+
+   Anything running this tool just runs it. The value never needs to be
+   pasted into a chat again, and never appears in a transcript. To set or
+   rotate it, in a terminal:
+
+     mkdir -p ~/.config/metro && chmod 700 ~/.config/metro
+     printf 'ELEVENLABS_API_KEY=sk_your_key_here\n' > ~/.config/metro/voice.env
+     chmod 600 ~/.config/metro/voice.env
+*/
+const SECRETS = path.join(os.homedir(), ".config", "metro", "voice.env");
+function keyFromFile() {
+  try {
+    for (const line of readFileSync(SECRETS, "utf8").split(/\r?\n/)) {
+      const m = /^\s*(?:export\s+)?ELEVENLABS_API_KEY\s*=\s*(.+?)\s*$/.exec(line);
+      if (m) return m[1].replace(/^["']|["']$/g, "");
+    }
+  } catch (e) {}
+  return null;
+}
+const KEY = process.env.ELEVENLABS_API_KEY || keyFromFile();
 // Rachel — a long-standing stock voice, warm and unfussy. Swap via
 // EL_VOICE_ID once you've picked one from your own account.
 const VOICE = process.env.EL_VOICE_ID || "21m00Tcm4TlvDq8ikWAM";
@@ -40,10 +62,13 @@ const FORCE = process.argv.includes("--force");
 const DRY = process.argv.includes("--dry");
 
 if (!KEY && !DRY) {
-  console.error("no ELEVENLABS_API_KEY in the environment.\n" +
+  console.error(
+    `no ElevenLabs key. looked in $ELEVENLABS_API_KEY and ${SECRETS}\n\n` +
     "it must be the KEY, not the key id — real ones start with sk_ and are\n" +
-    "only shown when the key is created or rotated.\n\n" +
-    "  ELEVENLABS_API_KEY=sk_... node tools/voice/render.mjs\n");
+    "only shown when the key is created or rotated. to store it once, for good:\n\n" +
+    "  mkdir -p ~/.config/metro && chmod 700 ~/.config/metro\n" +
+    "  printf 'ELEVENLABS_API_KEY=sk_your_key_here\\n' > ~/.config/metro/voice.env\n" +
+    "  chmod 600 ~/.config/metro/voice.env\n");
   process.exit(1);
 }
 
