@@ -1608,6 +1608,7 @@ export function fart({ wet = 0, gain = 0.85, rate = 1, index = null } = {}) {
    just get quieter through a wall, it gets DULLER — losing the top as you
    walk out is most of what makes it read as coming from in there. */
 let muzSrc = null, muzGain = null, muzMuffle = null, muzBuf = null, muzLoading = null;
+let speakerIn = null, muzBed = null;      // the speaker itself, and the music into it
 const MUZ_URL = "assets/audio/muzak/bathroom-loop.mp3";
 const MUZ_CEILING = 0.085;      // it is background. it should never be the point.
 
@@ -1639,20 +1640,96 @@ export function startBathMusic() {
   muzMuffle.type = "lowpass"; muzMuffle.frequency.value = 3600; muzMuffle.Q.value = 0.4;
   muzGain = ctx.createGain(); muzGain.gain.value = 0;     // fades up from silence
 
-  src.connect(hp).connect(honk).connect(lp).connect(grit).connect(muzMuffle).connect(muzGain);
+  /* Everything the speaker plays goes in HERE, not just the music — the DJ
+     has to come out of the same driver or the joke doesn't land. The music
+     gets its own gain on the way in so he can duck it while he talks. */
+  speakerIn = ctx.createGain();
+  muzBed = ctx.createGain(); muzBed.gain.value = 1;
+  src.connect(muzBed).connect(speakerIn);
+  speakerIn.connect(hp).connect(honk).connect(lp).connect(grit).connect(muzMuffle).connect(muzGain);
   muzGain.connect(master);
   const wet = ctx.createGain(); wet.gain.value = 0.85;    // same tiled room as everything else
   muzGain.connect(wet).connect(bathroomSend());
   src.start(ctx.currentTime + 0.02);
   muzSrc = src;
+  muzNextTalk = ctx.currentTime + muzBuf.duration;   // he speaks at the wrap
   return true;
 }
+
+/* --- the voice between the songs ------------------------------------
+   Rendered once by tools/voice/render-dj.mjs, same as Trinity's lines. No
+   manifest on disk means nobody has rendered him yet, and he simply stays
+   quiet — the room is not broken by a missing gag. */
+const DJ_DIR = "assets/audio/dj/";
+let djIds = null, djLoading = null;
+const djBufs = new Map();
+let djBag = [], djLast = -1, muzNextTalk = 0, djTalking = false;
+
+export function loadDJ() {
+  if (djIds) return Promise.resolve(djIds.length > 0);
+  if (djLoading) return djLoading;
+  djLoading = fetch(DJ_DIR + "manifest.json", { cache: "force-cache" })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((m) => { djIds = (m && m.clips) || []; return djIds.length > 0; })
+    .catch(() => { djIds = []; return false; });
+  return djLoading;
+}
+export function djReady() { return !!(djIds && djIds.length); }
+
+// same shuffle bag as the toilets: all of them before any repeat, and a new
+// bag never opens with the one you just heard
+function nextDJ() {
+  if (!djIds || !djIds.length) return null;
+  if (!djBag.length) {
+    djBag = djIds.map((_, i) => i);
+    for (let i = djBag.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [djBag[i], djBag[j]] = [djBag[j], djBag[i]];
+    }
+    if (djBag.length > 1 && djBag[djBag.length - 1] === djLast) {
+      [djBag[0], djBag[djBag.length - 1]] = [djBag[djBag.length - 1], djBag[0]];
+    }
+  }
+  djLast = djBag.pop();
+  return djIds[djLast];
+}
+
+async function playDJ() {
+  if (djTalking || !ctx || !speakerIn || !djReady()) return;
+  const id = nextDJ(); if (!id) return;
+  let buf = djBufs.get(id);
+  if (!buf) {
+    buf = await loadSample(DJ_DIR + id + ".mp3");
+    if (!buf) return;
+    djBufs.set(id, buf);
+  }
+  djTalking = true;
+  const t = ctx.currentTime + 0.05;
+  const src = ctx.createBufferSource(); src.buffer = buf;
+  const g = ctx.createGain();
+  g.gain.value = 3.2;                       // over the bed, still inside the ceiling
+  src.connect(g).connect(speakerIn);
+  // duck the music under him and bring it back — radio does this, and it's
+  // the difference between a voice and a voice fighting a song
+  muzBed.gain.setTargetAtTime(0.35, t, 0.15);
+  muzBed.gain.setTargetAtTime(1, t + buf.duration, 0.4);
+  src.start(t);
+  src.onended = () => { djTalking = false; };
+}
+export function djTalkNow() { return playDJ(); }
 
 /* level 0..1 (distance) and open 0..1 (how much of the top survives the wall).
    Ramped, not set: a gain that steps per frame ticks audibly. */
 export function setBathMusic(level, open = 1) {
   if (!ctx || !muzGain) return;
   const t = ctx.currentTime;
+  /* He talks when the song wraps. Checked here because this is already
+     called every frame, and gated on level so an empty bathroom doesn't
+     broadcast to nobody — the loop runs whether you're there or not. */
+  if (muzNextTalk && t >= muzNextTalk) {
+    muzNextTalk = t + (muzBuf ? muzBuf.duration : 90);
+    if (level > 0.15) playDJ();
+  }
   muzGain.gain.setTargetAtTime(Math.max(0, Math.min(1, level)) * MUZ_CEILING, t, 0.25);
   const f = 700 + Math.max(0, Math.min(1, open)) * 2900;
   muzMuffle.frequency.setTargetAtTime(f, t, 0.25);
@@ -1662,6 +1739,7 @@ export function bathMusicOn() { return !!muzSrc; }
 // prove the falloff is real rather than trusting that the maths looked right
 export function bathMusicState() {
   return muzGain
-    ? { gain: +muzGain.gain.value.toFixed(4), cutoff: Math.round(muzMuffle.frequency.value) }
+    ? { gain: +muzGain.gain.value.toFixed(4), cutoff: Math.round(muzMuffle.frequency.value),
+        bed: muzBed ? +muzBed.gain.value.toFixed(3) : -1, talking: djTalking }
     : null;
 }

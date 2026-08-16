@@ -4,6 +4,34 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-08-15 — a radio DJ between the songs
+
+**Mall radio needs a voice, so there's one.** Six lines, rendered once to mp3
+by `tools/voice/render-dj.mjs` the same way Trinity's script is — one voice for
+everybody, no key in the client, no per-visit bill, and a clip named for a hash
+of its own text so editing a line orphans one file and mints one new name. He's
+a separate script from her on purpose: different voice, different settings
+(style up and stability down, because he IS a performance where she deliberately
+isn't), different folder. Her pipeline is not a thing to risk for a gag on a
+ceiling speaker.
+
+He comes out of the SAME driver as the music — the same highpass, honk, lowpass
+and soft clip, the same tiled-room convolver, the same distance and the same
+wall-muffle — because a voice that didn't share the speaker wouldn't be coming
+out of the speaker. The music ducks to 0.35 under him and comes back after,
+which is what radio does and the difference between a voice and a voice
+fighting a song.
+
+He speaks when the loop wraps, and only if somebody is close enough to hear it:
+the loop runs whether the room is occupied or not, and broadcasting to an empty
+bathroom is just a wasted decode. Lines are drawn from the same shuffle bag the
+toilets use.
+
+**Nothing renders without an `ELEVENLABS_API_KEY`,** and there isn't one on this
+machine. With no manifest on disk `loadDJ()` returns false and he simply stays
+quiet — the room is not broken by a missing gag. Everything else is built and
+tested; one command fills it in.
+
 ## 2026-08-15 — there's music in the bathroom now
 
 **A song on a loop out of a ceiling speaker.** The chain that makes it sound

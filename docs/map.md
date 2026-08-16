@@ -41,7 +41,8 @@ for python-heredoc edits, so **leave them intact.**
 | The arcade bathroom — three bays back through its south wall | `BATH`/`BPX1,2` + door cut @4309, room + fittings @4461 | — |
 | …its mirrors (shared planar reflection + the body you see in them) | `REFL`/`drawReflection` @4899, `bathSelf` @5066 | `main.js` (`setMirrorSelf`, `world.bath.pose`) |
 | …the graffiti on its walls | `tags.addSurface` calls through the bathroom block | `graffiti.js`, `main.js` (tag mode, `scrubWall`), `supabase/site.sql` (flag whitelist) |
-| …its ceiling speaker (the muzak loop) | `bath.distance` | `ambience.js` (`loadBathMusic`/`startBathMusic`/`setBathMusic`), `assets/audio/muzak/` |
+| …its ceiling speaker + the radio DJ between songs | `bath.distance` | `ambience.js` (`startBathMusic`/`setBathMusic`/`loadDJ`), `djlines.js`, `tools/voice/render-dj.mjs`, `assets/audio/{muzak,dj}/` |
+| …(the muzak loop itself) | `bath.distance` | `ambience.js` (`loadBathMusic`/`startBathMusic`/`setBathMusic`), `assets/audio/muzak/` |
 | …its toilets + the tiled-room reverb | `bathHits` on the toilet builder | `ambience.js` (`bathroomSend`/`loadFarts`/`fart`), `voice.js` (`setSpeakerBath`), `assets/audio/farts/` |
 | The smoking corner + its scanned props | @3906, `swapProp` @4740 | `assets/models/{bong,ashtray,joint}.glb` |
 | The marquee / high scores | @4069 | `main.js` (`refreshScores`), `store.js`, `supabase/arcade.sql` |

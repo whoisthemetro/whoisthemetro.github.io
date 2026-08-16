@@ -9,7 +9,7 @@ import { NotesWall } from "./notes3d.js";
 import { Ghosts } from "./ghosts.js";
 import { store } from "./store.js";
 import { presence } from "./presence.js";
-import { startAmbience, citySound, pianoNote, semitoneToKey, audioNow, purr, setRain, setWater, setRoomTone, setClubTone, setClubBed, kettleBoil, setThruster, boostSound, discSound, goalHorn, meow, hiss, careSound, drumHit, setArcadeZone, punchSound, shieldClang, stunBuzz, edrumHit, guitarPluck, guitarNote, shotSound, smokeSound, setFx, setDelayTempo, setBusLevel, setGuitarFilter, startVacuum, stopVacuum, beep, fireSound, audioDebug, loadFarts, fartsReady, fart, bathroomSend, loadBathMusic, startBathMusic, setBathMusic, bathMusicOn } from "./ambience.js";
+import { startAmbience, citySound, pianoNote, semitoneToKey, audioNow, purr, setRain, setWater, setRoomTone, setClubTone, setClubBed, kettleBoil, setThruster, boostSound, discSound, goalHorn, meow, hiss, careSound, drumHit, setArcadeZone, punchSound, shieldClang, stunBuzz, edrumHit, guitarPluck, guitarNote, shotSound, smokeSound, setFx, setDelayTempo, setBusLevel, setGuitarFilter, startVacuum, stopVacuum, beep, fireSound, audioDebug, loadFarts, fartsReady, fart, bathroomSend, loadBathMusic, startBathMusic, setBathMusic, bathMusicOn, loadDJ } from "./ambience.js";
 import { SONGS, playSong, stopSong, currentSongId } from "./songs.js";
 import { progress } from "./progress.js";
 import { voice } from "./voice.js";
@@ -585,8 +585,11 @@ function guideNextLine() {
   const room = inArcade() ? "arcade" : "bedroom";
   let line, spoken;
   if (!guideMet) {
+    // she introduces herself where she's STANDING. meet her in the arcade and
+    // she talks arcade from the first word, and she never introduces herself
+    // again — walk back to the bedroom later and she just carries on.
     guideMet = true; guideGreetedRoom = room;
-    line = INTRO.display; spoken = INTRO.spoken;
+    line = INTRO[room].display; spoken = INTRO[room].spoken;
   } else if (guideGreetedRoom !== room) {
     guideGreetedRoom = room;
     line = spoken = ROOM_LINES[room];
@@ -5157,6 +5160,7 @@ renderer.setAnimationLoop(() => {
     if (!bathMusicOn() && bd < 7 && !bathMuzPending) {
       bathMuzPending = true;
       loadBathMusic().then((ok) => { if (ok) startBathMusic(); bathMuzPending = false; });
+      loadDJ();                       // his manifest, so he can speak at the wrap
     }
     if (bathMusicOn()) {
       const away = inBoat || inArena || inClub || inGym || inStudio;

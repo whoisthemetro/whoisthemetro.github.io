@@ -34,14 +34,27 @@ export function clipId(text) {
    draft ran 25 seconds, which is a long time to stand still being talked
    at before you're allowed to touch anything. */
 export const INTRO = {
-  display: "hey {you}, i'm Trinity. this room is alive, and it remembers. leave a note on the wall and it stays, for everyone, long after you've gone. nothing in here resets. anything else, just ask me.",
-  spoken: "hey, i'm Trinity. this room is alive, and it remembers. leave a note on the wall and it stays, for everyone, long after you've gone. nothing in here resets. anything else, just ask me.",
+  bedroom: {
+    display: "hey {you}, i'm Trinity. this room is alive, and it remembers. leave a note on the wall and it stays, for everyone, long after you've gone. nothing in here resets. anything else, just ask me.",
+    spoken: "hey, i'm Trinity. this room is alive, and it remembers. leave a note on the wall and it stays, for everyone, long after you've gone. nothing in here resets. anything else, just ask me.",
+  },
+  // she introduces herself ONCE, wherever she happens to be standing when you
+  // finally turn round. the old single intro was bedroom-flavoured — it
+  // offered you the notes wall — so meeting her in the arcade opened with a
+  // description of a room you weren't in. same idea, arcade proof: the thing
+  // that persists here is your name on a machine.
+  arcade: {
+    display: "hey {you}, i'm Trinity. this place is alive, and it remembers. put your name up on one of these machines and it stays there, for everyone, long after you've gone. nothing in here resets. anything else, just ask me.",
+    spoken: "hey, i'm Trinity. this place is alive, and it remembers. put your name up on one of these machines and it stays there, for everyone, long after you've gone. nothing in here resets. anything else, just ask me.",
+  },
 };
 
 // what she says on crossing a threshold, once per room
 export const ROOM_LINES = {
   arcade: "right, the arcade. different room, different things to tell you.",
-  bedroom: "back in the bedroom, then. there's plenty in here i haven't got to yet.",
+  // NOT "back in the bedroom" — you may never have been. these fire on any
+  // crossing, including the first, in whichever order you happen to walk it.
+  bedroom: "the bedroom. there's plenty in here i haven't shown you yet.",
 };
 
 /* She talks about the room she's STANDING IN. Following you into the arcade
@@ -92,5 +105,5 @@ export const GUIDE_LINES = {
 
 // every distinct thing she can say, for the renderer to walk
 export function allSpoken() {
-  return [INTRO.spoken, ...Object.values(ROOM_LINES), ...GUIDE_LINES.bedroom, ...GUIDE_LINES.arcade];
+  return [INTRO.bedroom.spoken, INTRO.arcade.spoken, ...Object.values(ROOM_LINES), ...GUIDE_LINES.bedroom, ...GUIDE_LINES.arcade];
 }
