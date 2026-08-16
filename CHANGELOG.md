@@ -27,10 +27,17 @@ the loop runs whether the room is occupied or not, and broadcasting to an empty
 bathroom is just a wasted decode. Lines are drawn from the same shuffle bag the
 toilets use.
 
-**Nothing renders without an `ELEVENLABS_API_KEY`,** and there isn't one on this
-machine. With no manifest on disk `loadDJ()` returns false and he simply stays
-quiet — the room is not broken by a missing gag. Everything else is built and
-tested; one command fills it in.
+**He's rendered.** Six clips, 184 KB the lot, 22 kHz mono at 40k — everything he
+says goes through a 3.6 kHz lowpass at the far end, so shipping 44.1 kHz stereo
+would be paying to send detail the room throws away.
+
+The key that renders him now finds ITSELF, from `~/.config/metro/voice.env` —
+outside the repo (this one is public, so a key inside it is one `git add -A`
+from being published) and outside any one session, which is where the last one
+died. `render-dj.mjs` reads the same store `render.mjs` does: one key, one
+place, every tool and every chat. If it's ever missing there's no manifest, and
+with no manifest he simply stays quiet — the room is not broken by a missing
+gag.
 
 ## 2026-08-15 — there's music in the bathroom now
 

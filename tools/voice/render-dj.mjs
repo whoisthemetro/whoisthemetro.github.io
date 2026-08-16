@@ -7,16 +7,16 @@
    settings going to a different folder, and Trinity's pipeline is not a
    thing to put at risk for a gag on a ceiling speaker.
 
-     ELEVENLABS_API_KEY=sk_... node tools/voice/render-dj.mjs
+     node tools/voice/render-dj.mjs      (--dry to list, --prune to tidy)
 
-   Options (env): DJ_VOICE_ID, DJ_MODEL. Flags: --force, --dry, --prune.
-
-   The key is read from the environment and never written anywhere. Don't put
-   it in a file inside this repo — the repo is public.
+   The key finds itself, same as render.mjs — ~/.config/metro/voice.env,
+   outside the repo and outside any one session. Options (env): DJ_VOICE_ID,
+   DJ_MODEL. Flags: --force, --dry, --prune.
    ============================================================ */
 
 import { writeFile, readFile, mkdir, readdir, unlink } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -25,7 +25,18 @@ import { djClips } from "../../assets/js/djlines.js";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.resolve(HERE, "../../assets/audio/dj");
 
-const KEY = process.env.ELEVENLABS_API_KEY;
+// same store render.mjs reads — one key, one place, every tool and chat
+const SECRETS = path.join(os.homedir(), ".config", "metro", "voice.env");
+function keyFromFile() {
+  try {
+    for (const line of readFileSync(SECRETS, "utf8").split(/\r?\n/)) {
+      const m = /^\s*(?:export\s+)?ELEVENLABS_API_KEY\s*=\s*(.+?)\s*$/.exec(line);
+      if (m) return m[1].replace(/^["']|["']$/g, "");
+    }
+  } catch (e) {}
+  return null;
+}
+const KEY = process.env.ELEVENLABS_API_KEY || keyFromFile();
 // Adam — the closest stock voice to a station ident. Swap via DJ_VOICE_ID.
 const VOICE = process.env.DJ_VOICE_ID || "pNInz6obpgDQGcFmaJgB";
 const MODEL = process.env.DJ_MODEL || "eleven_multilingual_v2";
@@ -33,10 +44,9 @@ const FORCE = process.argv.includes("--force");
 const DRY = process.argv.includes("--dry");
 
 if (!KEY && !DRY) {
-  console.error("no ELEVENLABS_API_KEY in the environment.\n" +
+  console.error(`no ElevenLabs key. looked in $ELEVENLABS_API_KEY and ${SECRETS}\n\n` +
     "it must be the KEY, not the key id — real ones start with sk_ and are\n" +
-    "only shown when the key is created or rotated.\n\n" +
-    "  ELEVENLABS_API_KEY=sk_... node tools/voice/render-dj.mjs\n");
+    "only shown when the key is created or rotated.\n");
   process.exit(1);
 }
 
