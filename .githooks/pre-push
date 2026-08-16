@@ -1,0 +1,80 @@
+#!/bin/sh
+# ---------------------------------------------------------------------------
+# Two chats, one repo.
+#
+# Working one-job-per-chat means two sessions can be editing this repo at the
+# same time, and they overlap: world.js is in half of all commits, main.js and
+# CHANGELOG.md in most of the rest. Git already refuses the second push (that
+# IS the lock). What it does NOT do is make sure the two edits still WORK
+# together, and a chat that only ran `node --check` on its own copy has proven
+# nothing about the merged result.
+#
+# So this hook does two things, in order:
+#   1. Refuses to push when the branch has moved underneath you. Rebase first.
+#   2. Syntax-checks every JS file AFTER that, so what lands is what was checked.
+#
+# It is deliberately dumb and deliberately strict. No agent has to remember it,
+# and a fresh chat inherits it for free.
+#
+# Enabled with:  git config core.hooksPath .githooks
+# Bypass (rare, deliberate):  git push --no-verify
+# ---------------------------------------------------------------------------
+
+remote="$1"
+branch=$(git rev-parse --abbrev-ref HEAD)
+
+# --- 1. is someone else's work already up there? ---------------------------
+if ! git fetch -q "$remote" "$branch" 2>/dev/null; then
+  echo "pre-push: could not reach $remote, skipping the up-to-date check."
+else
+  behind=$(git rev-list --count "HEAD..FETCH_HEAD" 2>/dev/null || echo 0)
+  if [ "$behind" -gt 0 ]; then
+    echo ""
+    echo "  BLOCKED: origin/$branch has $behind commit(s) you don't have."
+    echo "  Another chat pushed while you were working."
+    echo ""
+    echo "  Fix it:   git pull --rebase origin $branch"
+    echo "            (resolve anything it stops on, then push again)"
+    echo ""
+    echo "  Recently landed up there:"
+    git log --oneline -5 HEAD..FETCH_HEAD | sed 's/^/    /'
+    echo ""
+    exit 1
+  fi
+fi
+
+# --- 2. does the code still parse? -----------------------------------------
+# after the rebase, not before: the whole point is to check the MERGED tree.
+#
+# NOTE: `node --check foo.js` is NOT enough. On a file with import/export Node
+# parses as CommonJS first, fails, retries as ESM, and that retry is lenient —
+# it happily passed `function broken( {` appended to a real module. 38 of the
+# 39 files here are ES modules, so the obvious check was missing the exact
+# thing it was there to catch. Copying to a .mjs forces the strict ESM parse.
+fail=0
+tmp=$(mktemp -d)
+for f in assets/js/*.js assets/js/studio/*.js; do
+  [ -e "$f" ] || continue
+  cp "$f" "$tmp/c.mjs"
+  if ! node --check "$tmp/c.mjs" 2>"$tmp/err"; then
+    echo "  SYNTAX ERROR in $f"
+    # node prints "path:line", two blank lines, then the message. take the
+    # two lines that mean something and put the real filename back in. (macOS
+    # reports /private/var/... where mktemp said /var/..., so match the tail.)
+    { head -1 "$tmp/err"; grep -m1 -E "Error" "$tmp/err"; } \
+      | sed "s|.*/c\\.mjs|$f|g" | sed 's/^/    /'
+    fail=1
+  fi
+done
+rm -rf "$tmp"
+
+if [ "$fail" -ne 0 ]; then
+  echo ""
+  echo "  BLOCKED: the tree doesn't parse. Every push to main deploys, so this"
+  echo "  would take the live site down."
+  echo ""
+  exit 1
+fi
+
+echo "pre-push: up to date with $remote, all JS parses. pushing."
+exit 0
