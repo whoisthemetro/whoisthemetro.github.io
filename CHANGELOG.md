@@ -17,6 +17,41 @@ an extra render pass every frame you were anywhere near the arcade. Gone:
 (The bathroom's mirrors are a different thing and stay — those reflect the room
 you're standing in.)
 
+## 2026-08-15 — the toilets work, and the room sounds like tile
+
+**27 one-shots, and you'll hear all of them before you hear one twice.** The
+toilets are click targets now — a fat invisible volume around each, because a
+bowl is a stack of small cylinders and clicking one of those at walking pace is
+a game of darts. The pack is drawn from a shuffle bag: all 27 play before any
+repeat, and a fresh bag never opens with the one you just heard, since the seam
+between bags is the one place a repeat could still land and exactly where you'd
+notice it. Half a megabyte, so it loads on the first click rather than on the
+way in — most visits never open that door. Everyone in the room hears it; a
+joke only you can hear isn't one.
+
+**The room has a reverb, and it's synthesized like everything else here.** A
+tiled room is an easy impulse response to describe: a handful of discrete slaps
+in the first 50 ms, which is where the ear gets the wall distances from, then a
+diffuse tail kept deliberately BRIGHT — tile reflects high frequencies instead
+of eating them, and that hard ringy quality is the whole character of a public
+bathroom. It's a send bus built on first use, and it's shared: the farts go
+through it, and so does anyone talking.
+
+**Voice reverb follows the SPEAKER, not you.** It's a send on each speaker's own
+chain rather than one flag on the bus, driven per frame from where everyone is
+actually standing. Someone talking from the stalls sounds like it while the hall
+outside stays dry, and you hear the difference through the open door.
+
+**And the lighting went neon.** Magenta and cyan overhead on the arcade's own two
+colours, violet and ice washing the back wall, a cove line along both long walls,
+a hard line under every basin and a strip down each partition. Lights make pools;
+lit EDGES are what sell a room like this, and those are MeshBasic strips that
+cost no light and can't leak anywhere. Two things had to move with it: the pale
+grey ceiling was the one surface still reading as a hospital and went dark
+violet, and the porcelain had to carry itself — the vanity bars point away from
+their own wall (they have to, to stay out of the hall), so the basins under them
+went black until their emissive came up.
+
 ## 2026-08-15 — one fit, five pairs of shoes
 
 **The jacket and the dress are gone, and so are shorts and skirts.** At this

@@ -10,3 +10,8 @@ supabase/*.local.sql
 
 # supabase CLI scratch
 supabase/.temp/
+
+# Claude Code's local permission list — it accumulates real commands, and some
+# of them have had admin passwords in them. A global ignore already catches it;
+# this keeps that true for a fresh clone on another machine.
+.claude/settings.local.json

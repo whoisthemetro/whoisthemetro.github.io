@@ -1474,3 +1474,109 @@ export function citySound(type = "siren") {
     src.stop(t + dur + 0.2);
   }
 }
+
+/* ===================================================================
+   THE BATHROOM — a convolution reverb, and the toilets' sample pack
+   =================================================================== */
+
+/* The impulse response is SYNTHESIZED, not shipped. Everything else in this
+   file makes its own sound and an IR is just a buffer; a tiled room is an easy
+   one to describe. Two parts, and both matter:
+     - early reflections, a handful of discrete slaps in the first 50 ms. These
+       are what make it read as a small ROOM rather than a plate — the ear gets
+       the wall distances from them. Offset per channel so it has width.
+     - a diffuse tail under an exponential decay, kept BRIGHT. Tile reflects
+       high frequencies instead of eating them, and that hard ringy quality is
+       the entire character of a public bathroom. */
+function buildBathIR() {
+  const sr = ctx.sampleRate, len = Math.floor(sr * 1.15);
+  const buf = ctx.createBuffer(2, len, sr);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = buf.getChannelData(ch);
+    for (let i = 0; i < len; i++) {
+      const t = i / sr;
+      d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.2) * Math.exp(-t * 2.6);
+    }
+    let amp = 0.85;
+    for (const tap of (ch ? [0.009, 0.018, 0.027, 0.039, 0.052] : [0.007, 0.015, 0.029, 0.036, 0.050])) {
+      const i = Math.floor(tap * sr);
+      if (i < len) d[i] += amp * (ch ? -1 : 1);
+      amp *= 0.72;
+    }
+  }
+  return buf;
+}
+
+let bathIn = null;
+/* the send BUS: connect a gain into this and that gain is your wet amount.
+   Built on first use — most visits to this world never open the door. */
+export function bathroomSend() {
+  if (bathIn || !ctx) return bathIn;
+  const conv = ctx.createConvolver();
+  conv.buffer = buildBathIR();
+  const tone = ctx.createBiquadFilter();      // trim the very top: bright, not hissy
+  tone.type = "highshelf"; tone.frequency.value = 6200; tone.gain.value = -5;
+  const ret = ctx.createGain(); ret.gain.value = 0.85;
+  bathIn = ctx.createGain();
+  bathIn.connect(conv).connect(tone).connect(ret).connect(master);
+  return bathIn;
+}
+
+/* --- the toilets' pack. 27 one-shots, loaded the first time somebody opens
+   that door and never on the way in. --- */
+const FART_N = 27;
+let fartBufs = null, fartLoading = null;
+export function loadFarts() {
+  if (fartBufs) return Promise.resolve(fartBufs.length > 0);
+  if (fartLoading) return fartLoading;
+  if (!ctx) return Promise.resolve(false);
+  const urls = Array.from({ length: FART_N }, (_, i) =>
+    `assets/audio/farts/fart-${String(i + 1).padStart(2, "0")}.mp3`);
+  fartLoading = Promise.all(urls.map(loadSample)).then((bufs) => {
+    fartBufs = bufs.filter(Boolean);
+    return fartBufs.length > 0;
+  });
+  return fartLoading;
+}
+export function fartsReady() { return !!(fartBufs && fartBufs.length); }
+
+/* A SHUFFLE BAG, the same rule the studio's dumbek row runs on: draw without
+   replacement so all 27 play before any repeats, and a fresh bag never opens
+   with the one you just heard — otherwise the seam between bags is the one
+   place a repeat can still happen, and that's exactly where you'd notice it. */
+let fartBag = [], fartLast = -1;
+function nextFart() {
+  if (!fartBufs || !fartBufs.length) return -1;
+  if (!fartBag.length) {
+    fartBag = fartBufs.map((_, i) => i);
+    for (let i = fartBag.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [fartBag[i], fartBag[j]] = [fartBag[j], fartBag[i]];
+    }
+    // the bag is drawn from the END, so the last element is the next one out
+    if (fartBag.length > 1 && fartBag[fartBag.length - 1] === fartLast) {
+      [fartBag[0], fartBag[fartBag.length - 1]] = [fartBag[fartBag.length - 1], fartBag[0]];
+    }
+  }
+  fartLast = fartBag.pop();
+  return fartLast;
+}
+
+/* No attack ramp on purpose — the transient IS the joke, and playSample's
+   fade would round it off. `wet` is how much goes to the tiled room. */
+export function fart({ wet = 0, gain = 0.85, rate = 1, index = null } = {}) {
+  if (!ctx || !fartBufs || !fartBufs.length) return -1;
+  const i = index != null && fartBufs[index] ? index : nextFart();
+  if (i < 0) return -1;
+  const src = ctx.createBufferSource();
+  src.buffer = fartBufs[i];
+  src.playbackRate.value = rate;
+  const g = ctx.createGain(); g.gain.value = gain;
+  src.connect(g).connect(master);
+  if (wet > 0) {
+    const w = ctx.createGain(); w.gain.value = wet;
+    g.connect(w).connect(bathroomSend());
+  }
+  src.start(ctx.currentTime);
+  return i;
+}

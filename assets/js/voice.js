@@ -298,7 +298,16 @@ function makePlayer(ctx, master) {
   const ana = ctx.createAnalyser();
   ana.fftSize = 256;
   out.connect(ana);
-  return { out, dryIn, fxIn, playhead: 0, ana, buf: new Uint8Array(ana.fftSize), level: 0 };
+  /* a send into the bathroom's convolver, per SPEAKER. It has to be per
+     speaker and not one flag on the bus: what matters is where the person
+     talking is standing, not where you are. Someone shouting from the stalls
+     should sound like it while the room outside stays dry. Built lazily —
+     ambience only makes that reverb when something asks for it. */
+  const bath = ctx.createGain();
+  bath.gain.value = 0;
+  out.connect(bath);
+  return { out, dryIn, fxIn, bath, bathOn: false,
+           playhead: 0, ana, buf: new Uint8Array(ana.fftSize), level: 0 };
 }
 
 export const voice = {
@@ -307,6 +316,16 @@ export const voice = {
   mode: () => mode,
   isOn: () => mode !== "off",
   setArenaFx(on) { arenaFx = !!on; },
+  /* main.js knows where everyone is standing; it tells us, per uid, per frame.
+     `send` is the node ambience hands back for its tiled-room convolver — we
+     take it as an argument so voice.js never has to import the audio room. */
+  setSpeakerBath(uid, wet, send) {
+    const pl = players.get(uid);
+    if (!pl || !send) return;
+    if (!pl.bathOn) { try { pl.bath.connect(send); pl.bathOn = true; } catch (e) { return; } }
+    const g = pl.bath.gain;
+    if (Math.abs(g.value - wet) > 0.01) g.setTargetAtTime(wet, ctx ? ctx.currentTime : 0, 0.12);
+  },
   setInClub(on) {
     inClubFlag = !!on;
     if (!inClubFlag) {

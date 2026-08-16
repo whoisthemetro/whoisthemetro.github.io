@@ -4572,6 +4572,7 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     // already removed the whole hall, so this is only ever the room's own
     // entry wall and the doorway dressing on it.
     const reflHide = [];
+    const bathHits = [];        // click targets in here (the toilets, so far)
     const BZ0 = AR.z0;                              // shared wall — the bathroom's north face
     const BZ1 = AR.z0 - BATH.d;                     // its back wall, deep behind the arcade (-9.5)
     const bx0 = BATH.x - BATH.w / 2, bx1 = BATH.x + BATH.w / 2;
@@ -4619,13 +4620,15 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     bFloor.position.set(BATH.x, 0.003, bzMid); add(bFloor);
     // MeshBasic, not Lambert: a Lambert ceiling above downlights is lit by
     // nothing but the fill's falloff, which reads as a bright blob ringed by
-    // black corners. Flat pale is also just what a lit diffuser panel looks
-    // like, and the toon pass leaves Basic alone.
+    // black corners, and the toon pass leaves Basic alone. Dark violet rather
+    // than the pale grey it used to be — once the room went neon a light grey
+    // ceiling was the one surface still reading as a hospital, and a lid this
+    // big sets the mood of everything under it.
     // ...and mid-grey rather than pale: Basic ignores falloff, so a bright
     // ceiling stays bright right out to the corners, and the wedge of it you
     // glimpse through the door head from the arcade reads as a hard white
     // sliver next to walls that have fallen off to nothing.
-    const bCeil = plane(BATH.w, BATH.d, new THREE.MeshBasicMaterial({ color: 0x6e767e }));
+    const bCeil = plane(BATH.w, BATH.d, new THREE.MeshBasicMaterial({ color: 0x241f33 }));
     bCeil.rotation.x = Math.PI / 2;
     bCeil.position.set(BATH.x, BATH.h, bzMid); add(bCeil);
     // back wall, then the two sides — each faces INTO the room
@@ -4718,17 +4721,23 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
        Downlights alone gave a bright floor under black walls — which, glimpsed
        from the hall through the door, read as a void with a lit sliver of
        ceiling floating in it. The washers are what make it a room. */
-    const bSpot = (px, py, pz, tx, ty, tz, angle, dist, inten) => {
-      const s = new THREE.SpotLight(0xdfe9ff, inten, dist, angle, 0.65, 1.5);
+    const bSpot = (px, py, pz, tx, ty, tz, angle, dist, inten, col = 0xdfe9ff) => {
+      const s = new THREE.SpotLight(col, inten, dist, angle, 0.65, 1.5);
       s.position.set(px, py, pz);
       s.target.position.set(tx, ty, tz);
       add(s); add(s.target);
       return s;
     };
+    // the ceiling grid runs MAGENTA / CYAN, the arcade's own two colours, and
+    // the panels are lit to match so the source of each pool is obvious. White
+    // downlights made this read as a hospital; the hall outside is neon and
+    // this is a room in it.
+    const NEON_M = 0xff2da0, NEON_C = 0x22d4ff;
     for (let i = 0; i < 4; i++) {
       const lx = bx0 + 1.05 + i * 2.1;
-      bSpot(lx, BATH.h - 0.06, bzMid - 0.35, lx, 0, bzMid - 0.35, 0.68, 4.6, 22);
-      const pan = box(0.52, 0.03, 0.52, new THREE.MeshBasicMaterial({ color: 0xf2f6ff }));
+      const col = i % 2 ? NEON_C : NEON_M;
+      bSpot(lx, BATH.h - 0.06, bzMid - 0.35, lx, 0, bzMid - 0.35, 0.68, 4.6, 26, col);
+      const pan = box(0.52, 0.03, 0.52, new THREE.MeshBasicMaterial({ color: col }));
       pan.position.set(lx, BATH.h - 0.05, bzMid - 0.35); add(pan);
     }
     // toed IN rather than straight at the far corners: aimed wide, the cones
@@ -4737,7 +4746,28 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     // let a ray turn back toward the arcade.
     for (const sd of [-1, 1]) {
       bSpot(BATH.x + sd * 2.6, BATH.h - 0.12, BZ0 - 0.4,
-            BATH.x + sd * 3.8, 0.9, BZ1 + 0.7, 0.72, 6.4, 20);
+            BATH.x + sd * 3.8, 0.9, BZ1 + 0.7, 0.72, 6.4, 22,
+            sd < 0 ? 0x9d4dff : 0x2de0ff);          // violet one end, ice the other
+    }
+
+    /* --- the neon itself. Lights make POOLS; what sells a room like this is
+       the lit EDGES, and those are MeshBasic strips that cost no light and
+       can't leak anywhere. A cove line along the top of each long wall, a
+       hard line under every basin run, and a strip down the outer edge of
+       each bay partition so the walls have a drawn edge in the dark. --- */
+    const neonStrip = (w, h, d, col, x, y, z) => {
+      const m = box(w, h, d, new THREE.MeshBasicMaterial({ color: col }));
+      m.position.set(x, y, z); add(m); return m;
+    };
+    for (const [zz, col] of [[BZ1 + 0.05, NEON_M], [bnZ - 0.05, NEON_C]])
+      neonStrip(BATH.w - 0.3, 0.025, 0.025, col, BATH.x, BATH.h - 0.13, zz);
+    for (const sd of [-1, 1]) {
+      const px2 = BATH.x + sd * 0.95;
+      // deliberately STRADDLING the partition face (at px2 + sd*0.06) rather
+      // than sitting on it — flush would put two coplanar faces together and
+      // speckle the whole length of it. Half-buried reads as recessed anyway.
+      neonStrip(0.03, BATH.dh - 0.1, 0.03, sd < 0 ? NEON_M : NEON_C,
+                px2 + sd * 0.055, (BATH.dh - 0.1) / 2, -7.25);
     }
 
     /* ===== the fittings ==================================================
@@ -4751,8 +4781,8 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     // every fitting carries the same small emissive the tile does, for the
     // same reason: a stall panel's back face is lit by nothing in here, and
     // without a floor it lands on the toon ramp's bottom step and goes black.
-    const porc = new THREE.MeshLambertMaterial({ color: 0xeef2f0, emissive: 0x191d1f });
-    const steel = new THREE.MeshLambertMaterial({ color: 0xbcc4cc, emissive: 0x15181b });
+    const porc = new THREE.MeshLambertMaterial({ color: 0xeef2f0, emissive: 0x242c33 });
+    const steel = new THREE.MeshLambertMaterial({ color: 0xbcc4cc, emissive: 0x1d2329 });
     const panelMat = new THREE.MeshLambertMaterial({ color: 0x2e5a63, emissive: 0x102429 });
     const SF = BZ1 + 1.45;                                       // stall fronts
     const AF = BZ1 + 1.90;                                       // the accessible one is deeper
@@ -4792,6 +4822,15 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
       lid.position.set(0, 0.82, -0.27); g.add(lid);
       const flush = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.05, 8), steel);
       flush.rotation.z = Math.PI / 2; flush.position.set(0.21, 0.74, -0.25); g.add(flush);
+      // a fat invisible volume around the whole thing: the bowl is a stack of
+      // small cylinders and clicking one of those at a walking pace is a game
+      // of darts. `visible:false` on the MATERIAL keeps it out of the render
+      // while the Object3D stays raycastable, same trick the guitar strings use.
+      const hit = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.95, 0.78),
+        new THREE.MeshBasicMaterial({ visible: false }));
+      hit.position.set(0, 0.47, -0.10);
+      hit.userData.toilet = true;
+      g.add(hit); bathHits.push(hit);
       g.position.set(px, 0, pz); add(g); return g;
     };
 
@@ -5047,6 +5086,8 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
       for (let i = 0; i < 4; i++)
         basin(BATH.x + sd * (edge - 0.60 - i * 0.72), bnZ - 0.18, Math.PI);
       mirror(2.90, 0.95, BATH.x + sd * (edge - 1.68), 1.56, bnZ - 0.02, Math.PI);
+      const nb = box(3.05, 0.02, 0.02, new THREE.MeshBasicMaterial({ color: 0x2de0ff }));
+      nb.position.set(BATH.x + sd * (edge - 1.68), 0.70, bnZ - 0.07); add(nb);
       const a = BATH.x + sd * 0.95, b = BATH.x + sd * edge;   // partition → end wall
       NO_WALK.push({ x0: Math.min(a, b), x1: Math.max(a, b), z0: bnZ - 0.52, z1: BZ0 });
     };
@@ -5065,6 +5106,10 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     add(selfMount);
     bathSelf = {
       mount: selfMount,
+      hits: bathHits,
+      // one authority for "is this x/z in the bathroom" — the fart reverb, the
+      // voice reverb and the sample loader all have to agree on it
+      inside: (x, z) => x > bx0 && x < bx1 && z < BZ0 && z > BZ1,
       set(node) {
         while (selfMount.children.length) selfMount.remove(selfMount.children[0]);
         if (node) { selfMount.add(node); node.traverse((o) => o.layers.set(REFL_LAYER)); }

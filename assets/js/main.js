@@ -9,7 +9,7 @@ import { NotesWall } from "./notes3d.js";
 import { Ghosts } from "./ghosts.js";
 import { store } from "./store.js";
 import { presence } from "./presence.js";
-import { startAmbience, citySound, pianoNote, semitoneToKey, audioNow, purr, setRain, setWater, setRoomTone, setClubTone, setClubBed, kettleBoil, setThruster, boostSound, discSound, goalHorn, meow, hiss, careSound, drumHit, setArcadeZone, punchSound, shieldClang, stunBuzz, edrumHit, guitarPluck, guitarNote, shotSound, smokeSound, setFx, setDelayTempo, setBusLevel, setGuitarFilter, startVacuum, stopVacuum, beep, fireSound } from "./ambience.js";
+import { startAmbience, citySound, pianoNote, semitoneToKey, audioNow, purr, setRain, setWater, setRoomTone, setClubTone, setClubBed, kettleBoil, setThruster, boostSound, discSound, goalHorn, meow, hiss, careSound, drumHit, setArcadeZone, punchSound, shieldClang, stunBuzz, edrumHit, guitarPluck, guitarNote, shotSound, smokeSound, setFx, setDelayTempo, setBusLevel, setGuitarFilter, startVacuum, stopVacuum, beep, fireSound, loadFarts, fartsReady, fart, bathroomSend } from "./ambience.js";
 import { SONGS, playSong, stopSong, currentSongId } from "./songs.js";
 import { progress } from "./progress.js";
 import { voice } from "./voice.js";
@@ -675,6 +675,33 @@ function saveOutfit(spec) { try { localStorage.setItem("metro.outfit", JSON.stri
 let outfitSpec = loadOutfit();
 identity.outfit = outfitSpec;   // broadcast over presence so others see your fit
 
+/* ---------------- the toilets ----------------
+   27 one-shots, drawn from a shuffle bag in ambience.js so all of them play
+   before any repeats. The pack is half a megabyte and most people never open
+   that door, so it loads on the first click and the first click is the one
+   that has to wait — after that it's instant. Everyone in the room hears it:
+   a joke only you can hear isn't one. */
+let fartLoadPending = false;
+let voiceBathOn = false;   // once the reverb exists, keep steering everyone's send
+function pullTheChain(remote = false) {
+  if (!fartsReady()) {
+    if (!remote && !fartLoadPending) {
+      fartLoadPending = true;
+      loadFarts().then((ok) => {
+        fartLoadPending = false;
+        if (ok) pullTheChain();
+        else toast("the pack didn't load");
+      });
+    }
+    return;
+  }
+  // in the tiled room it's all reverb; heard from the arcade through the open
+  // door it's mostly reverb and quieter, which is what a wall does
+  const here = world.bath && world.bath.inside(controls.pos.x, controls.pos.z);
+  const i = fart({ wet: here ? 0.55 : 0.75, gain: here ? 0.85 : 0.4 });
+  if (!remote && i >= 0) presence.sendAct({ kind: "toilet", i });
+}
+
 /* ---------------- the podium: you, at full size ----------------
    world.js built the plinth; this hangs the figure on it. It shows the look
    everyone ELSE sees, and it's the live preview while the creator is open.
@@ -933,7 +960,7 @@ function castAt(ndcX, ndcY) {
     raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera);
   }
   // doors are included as blockers so notes can't be pinned onto them
-  const targets = [cat.hitMesh, toyHit, bartender.hitMesh, guide.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, ...world.elevHits, ...world.elevCallHits, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.guitarVoiceHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, world.pool.hit, world.pool.resetHit, world.pool.joinHit, world.pool2.hit, world.pool2.resetHit, world.pool2.joinHit, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.radioHits, ...world.laRadioHits, ...world.filterPedalHit, ...world.vacuumHits, ...world.studio.screens, ...world.studio.doorHits, ...notesWall.raycastTargets(), screenMesh, world.gym.joinHit, world.gym.exitHit, ...world.gym.readyHits, ...world.podium.hits, ...world.blockers];
+  const targets = [cat.hitMesh, toyHit, bartender.hitMesh, guide.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, ...world.elevHits, ...world.elevCallHits, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.guitarVoiceHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, world.pool.hit, world.pool.resetHit, world.pool.joinHit, world.pool2.hit, world.pool2.resetHit, world.pool2.joinHit, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.radioHits, ...world.laRadioHits, ...world.filterPedalHit, ...world.vacuumHits, ...world.studio.screens, ...world.studio.doorHits, ...notesWall.raycastTargets(), screenMesh, world.gym.joinHit, world.gym.exitHit, ...world.gym.readyHits, ...world.podium.hits, ...(world.bath ? world.bath.hits : []), ...world.blockers];
   const hits = raycaster.intersectObjects(targets, false);
   return hits[0] || null;
 }
@@ -1370,6 +1397,8 @@ controls.onAction((ndcX, ndcY) => {
       openVrArcadePanel();
       xrRef.note("stick moves · A fires · trigger starts · GRIP walks away");
     }
+  } else if (hit.object.userData.toilet && hit.distance < 2.6) {
+    pullTheChain();
   } else if (hit.object.userData.arcadeSoon && hit.distance < 3.2) {
     toast(`${hit.object.userData.arcadeSoon} — cabinet's dark. coming soon.`);
   } else if (inStudio && hit.object.userData.kind && hit.uv && hit.distance < 5.5) {
@@ -1564,6 +1593,11 @@ setInterval(() => {
     return;
   }
   const hit = castAt(0, 0);
+  if (hit && hit.object.userData.toilet && hit.distance < 2.6) {
+    aimTip.textContent = `${TAP} to flush`;
+    aimTip.classList.add("show");
+    return;
+  }
   if (hit && hit.object.userData.vacuum && hit.distance < 2.6) {
     aimTip.textContent = `${TAP} to grab the vacuum`;
     aimTip.classList.add("show");
@@ -4458,6 +4492,11 @@ addEventListener("keydown", (e) => {
       toast(p.open ? "someone gathered the blinds" : "someone drew the blinds");
     } else if (p.kind === "lava") {
       world.setLava(p.on);
+    } else if (p.kind === "toilet") {
+      if (fartsReady()) {
+        const here = world.bath && world.bath.inside(controls.pos.x, controls.pos.z);
+        fart({ index: p.i, wet: here ? 0.55 : 0.75, gain: here ? 0.7 : 0.3 });
+      }
     } else if (p.kind === "pet") {
       if (!inBoat && !inArena && !inClub && !inGym) cat.remoteHearts();
     } else if (p.kind === "dimmer") {
@@ -4847,6 +4886,23 @@ renderer.setAnimationLoop(() => {
   const sc = myScope();
   if (sc !== lastMyScope) { lastMyScope = sc; refreshGhostScope(); applyLightCull(sc); world.setRoomCull(sc); }
   ghosts.tick(dt, t, (uid) => voice.level(uid));
+  /* voice reverb follows the SPEAKER: whoever is standing in the tiled room
+     gets the tail, everyone else stays dry, and you hear the difference from
+     outside the door. Only runs once the reverb exists, which is the first
+     time anything in there makes a sound. */
+  if (world.bath && ghosts.count()) {
+    const poses = ghosts.poses();
+    // don't ASK for the reverb unless somebody's actually in there — calling
+    // bathroomSend() is what builds it, and an empty bathroom shouldn't cost
+    // a convolver
+    const anyIn = poses.some((g) => world.bath.inside(g.x, g.z));
+    if (anyIn || voiceBathOn) {
+      voiceBathOn = true;
+      const send = bathroomSend();
+      for (const g of poses)
+        voice.setSpeakerBath(g.uid, world.bath.inside(g.x, g.z) ? 0.5 : 0, send);
+    }
+  }
   cat.tick(dt, t, controls.pose());
   toyTick(dt, t);
   // the bartender reacts to you only when you're in the bedroom/arcade with him

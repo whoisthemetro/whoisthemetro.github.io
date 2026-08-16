@@ -160,4 +160,13 @@ export class Ghosts {
   }
 
   count() { return this.byUid.size; }
+
+  // where everyone is right now — the voice reverb needs to know which of
+  // them is standing in the bathroom, and this is already the only place
+  // that knows
+  poses() {
+    const out = [];
+    for (const [uid, g] of this.byUid) if (g.target) out.push({ uid, x: g.target.x, z: g.target.z });
+    return out;
+  }
 }
