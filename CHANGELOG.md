@@ -4,6 +4,66 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-08-16 — the bedroom stays in the bedroom
+
+**Walk into the arcade and the bedroom goes quiet.** The instruments were
+already gated, but four other things weren't and nobody had noticed: LA coming
+in through the window (traffic, horns, the jet going over), the rain, the room
+tone, and the LA radio, which faded with distance but was still playing from
+the doorway. Every other room turns those off on the way in — the club and the
+gym both do — but the arcade isn't a transition, you just walk through a
+doorway, so nothing ever fired.
+
+There are two scopes now, and the difference is load-bearing. `bedroomSound`
+means the origin CLUSTER, bedroom and arcade together, and the bartender and
+the basketball hoop keep it because they live in the arcade and must be heard
+there. `bedroomOnly` is the bedroom itself. The cat moved to the second one:
+its voice used to carry through the doorway on purpose, and doesn't any more.
+
+The two continuous beds get a boundary watcher rather than a transition, with
+hysteresis on purpose — in at 0.6, out at 0.4 — because `setRain` tears its
+nodes down and a single threshold would thrash them while you stood in the
+opening. It re-asserts on the way home too: the lift comes back into the
+ARCADE and every room's exit turns bedroom tone back on as it goes, so
+returning from the venue would otherwise start the bedroom humming while you
+stood at the cabinets, with no crossing left to fire. `ambience.audioDebug()`
+reads the gain nodes, because room scoping is the one thing here you cannot
+check in a screenshot.
+
+**The cat stopped pacing the keybed on a loop** — and it was the collision fix
+from the day before that caused it. The desk rect runs z −3.3 to −2.38 and the
+cat's keybed perch sits at −2.45, inside it. The rule let the cat IN (a rect
+holding its destination stays open) and then refused every step OUT, because
+each one still landed inside. So it wedged, gave up, sat, picked the keys
+again, forever. It looked like it was stuck on the pedalboard because that's
+the edge it was pressing against. The rule that was missing: standing inside a
+rect means every direction is out. These stop the cat entering furniture; they
+must never stop it leaving.
+
+**The MIDI keyboard is a movable prop.** It's two meshes with two jobs — the
+chassis is the piano-voice selector, the strip is what you play — so
+registering the strip alone picked up the keys and left the keyboard behind.
+They're one group now via `attach()`, which re-parents without moving
+anything. The cat's perch is derived from the keybed's live world position
+rather than written down beside it, so pulling the keyboard out doesn't leave
+the cat pacing thin air where it used to be.
+
+**Trinity introduces herself wherever she's standing.** Her one introduction
+was bedroom-flavoured — it offered you the notes wall — so meeting her in the
+arcade opened with a description of a room you weren't in. There's an arcade
+introduction now that makes the same point (the place is alive, it remembers,
+what you leave outlasts you) with the high scores instead of the notes. She
+still only introduces herself once: walk back to the bedroom afterwards and
+she carries straight on. The bedroom crossing line stopped saying "back in the
+bedroom" for the same reason — these fire on any crossing, including the
+first, in whatever order you happen to walk it.
+
+**And her voice key stopped evaporating.** It had been living in the session
+scratchpad, which belongs to one chat and is deleted with it — so the key
+vanished and no parallel chat knew one existed. It's in `~/.config/metro/`
+now, outside the repo (this one is public) and outside any session;
+`tools/voice/render.mjs` reads it itself, so any chat just runs the tool.
+
 ## 2026-08-15 — a radio DJ between the songs
 
 **Mall radio needs a voice, so there's one.** Six lines, rendered once to mp3
