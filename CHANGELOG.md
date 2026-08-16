@@ -4,6 +4,27 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-08-15 — there's music in the bathroom now
+
+**A song on a loop out of a ceiling speaker.** The chain that makes it sound
+like one is almost entirely SUBTRACTIVE — a mall speaker isn't a small hi-fi,
+it's a 4-inch driver in a ceiling tile. Highpass at 360 so there's no bass, a
++5 dB peak at 1.65k for the boxy honk, a lowpass at 3.6k so there's no top, and
+a soft clip for the tired little amp behind it. Nothing in there adds anything.
+It runs through the same convolver the toilets do, because it's in the same
+tiled room and would sound wrong dry next to them.
+
+**It's quiet on purpose.** The ceiling is 0.085 — about a tenth of a flush. It's
+background, and background that makes you notice it has failed.
+
+**And it's positioned.** Level falls on real distance to the room, and a second
+filter closes as you leave: sound through a wall doesn't just get quieter, it
+gets DULLER, and losing the top is most of what makes it read as coming from in
+there. Measured walking out — full and open at 3.6 kHz inside, 0.068 and 2.6 kHz
+at the door, 0.023 and 705 Hz a few paces down the hall, gone by the far side of
+the arcade. It loads and starts only once you're within about 7 m, so a visit
+that never opens that door never fetches it.
+
 ## 2026-08-15 — you can write on the bathroom walls
 
 **Click a wall or a stall panel and the pointer unlocks; from there it's a

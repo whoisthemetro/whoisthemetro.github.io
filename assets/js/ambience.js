@@ -1592,3 +1592,76 @@ export function fart({ wet = 0, gain = 0.85, rate = 1, index = null } = {}) {
   src.start(ctx.currentTime);
   return i;
 }
+
+/* --- the bathroom's ceiling speaker -----------------------------------
+   One song on a loop, through a chain that is mostly SUBTRACTIVE. A mall
+   speaker isn't a small hi-fi, it's a 4-inch driver in a ceiling tile: no
+   bass, no top, a honk in the middle, and just enough grit to sound like a
+   cheap amplifier. Building that is a highpass, a peak, a lowpass and a soft
+   clip — nothing here adds anything.
+
+   It goes through the SAME convolver the toilets do, because it's in the same
+   tiled room and would sound wrong dry next to them.
+
+   Two things are driven from main.js per frame: `level`, which is distance,
+   and `muffle`, which is a lowpass that closes as you leave. Sound doesn't
+   just get quieter through a wall, it gets DULLER — losing the top as you
+   walk out is most of what makes it read as coming from in there. */
+let muzSrc = null, muzGain = null, muzMuffle = null, muzBuf = null, muzLoading = null;
+const MUZ_URL = "assets/audio/muzak/bathroom-loop.mp3";
+const MUZ_CEILING = 0.085;      // it is background. it should never be the point.
+
+export function loadBathMusic() {
+  if (muzBuf) return Promise.resolve(true);
+  if (muzLoading) return muzLoading;
+  if (!ctx) return Promise.resolve(false);
+  muzLoading = loadSample(MUZ_URL).then((b) => { muzBuf = b; return !!b; });
+  return muzLoading;
+}
+
+export function startBathMusic() {
+  if (muzSrc || !ctx || !muzBuf) return false;
+  const src = ctx.createBufferSource();
+  src.buffer = muzBuf; src.loop = true;
+
+  const hp = ctx.createBiquadFilter();                    // no bass out of a ceiling tile
+  hp.type = "highpass"; hp.frequency.value = 360; hp.Q.value = 0.7;
+  const honk = ctx.createBiquadFilter();                  // the boxy midrange
+  honk.type = "peaking"; honk.frequency.value = 1650; honk.Q.value = 1.1; honk.gain.value = 5;
+  const lp = ctx.createBiquadFilter();                    // and no top either
+  lp.type = "lowpass"; lp.frequency.value = 3600; lp.Q.value = 0.6;
+  const grit = ctx.createWaveShaper();                    // a tired little amp
+  const c = new Float32Array(256);
+  for (let i = 0; i < 256; i++) c[i] = Math.tanh(((i / 127.5) - 1) * 1.6);
+  grit.curve = c;
+
+  muzMuffle = ctx.createBiquadFilter();                   // the wall, driven per frame
+  muzMuffle.type = "lowpass"; muzMuffle.frequency.value = 3600; muzMuffle.Q.value = 0.4;
+  muzGain = ctx.createGain(); muzGain.gain.value = 0;     // fades up from silence
+
+  src.connect(hp).connect(honk).connect(lp).connect(grit).connect(muzMuffle).connect(muzGain);
+  muzGain.connect(master);
+  const wet = ctx.createGain(); wet.gain.value = 0.85;    // same tiled room as everything else
+  muzGain.connect(wet).connect(bathroomSend());
+  src.start(ctx.currentTime + 0.02);
+  muzSrc = src;
+  return true;
+}
+
+/* level 0..1 (distance) and open 0..1 (how much of the top survives the wall).
+   Ramped, not set: a gain that steps per frame ticks audibly. */
+export function setBathMusic(level, open = 1) {
+  if (!ctx || !muzGain) return;
+  const t = ctx.currentTime;
+  muzGain.gain.setTargetAtTime(Math.max(0, Math.min(1, level)) * MUZ_CEILING, t, 0.25);
+  const f = 700 + Math.max(0, Math.min(1, open)) * 2900;
+  muzMuffle.frequency.setTargetAtTime(f, t, 0.25);
+}
+export function bathMusicOn() { return !!muzSrc; }
+// what the speaker is actually doing right now — the smoke test reads this to
+// prove the falloff is real rather than trusting that the maths looked right
+export function bathMusicState() {
+  return muzGain
+    ? { gain: +muzGain.gain.value.toFixed(4), cutoff: Math.round(muzMuffle.frequency.value) }
+    : null;
+}

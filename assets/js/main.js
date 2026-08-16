@@ -9,7 +9,7 @@ import { NotesWall } from "./notes3d.js";
 import { Ghosts } from "./ghosts.js";
 import { store } from "./store.js";
 import { presence } from "./presence.js";
-import { startAmbience, citySound, pianoNote, semitoneToKey, audioNow, purr, setRain, setWater, setRoomTone, setClubTone, setClubBed, kettleBoil, setThruster, boostSound, discSound, goalHorn, meow, hiss, careSound, drumHit, setArcadeZone, punchSound, shieldClang, stunBuzz, edrumHit, guitarPluck, guitarNote, shotSound, smokeSound, setFx, setDelayTempo, setBusLevel, setGuitarFilter, startVacuum, stopVacuum, beep, fireSound, audioDebug, loadFarts, fartsReady, fart, bathroomSend } from "./ambience.js";
+import { startAmbience, citySound, pianoNote, semitoneToKey, audioNow, purr, setRain, setWater, setRoomTone, setClubTone, setClubBed, kettleBoil, setThruster, boostSound, discSound, goalHorn, meow, hiss, careSound, drumHit, setArcadeZone, punchSound, shieldClang, stunBuzz, edrumHit, guitarPluck, guitarNote, shotSound, smokeSound, setFx, setDelayTempo, setBusLevel, setGuitarFilter, startVacuum, stopVacuum, beep, fireSound, audioDebug, loadFarts, fartsReady, fart, bathroomSend, loadBathMusic, startBathMusic, setBathMusic, bathMusicOn } from "./ambience.js";
 import { SONGS, playSong, stopSong, currentSongId } from "./songs.js";
 import { progress } from "./progress.js";
 import { voice } from "./voice.js";
@@ -865,6 +865,7 @@ window.addEventListener("pointerup", () => {
    a joke only you can hear isn't one. */
 let fartLoadPending = false;
 let voiceBathOn = false;   // once the reverb exists, keep steering everyone's send
+let bathMuzPending = false;
 function pullTheChain(remote = false) {
   if (!fartsReady()) {
     if (!remote && !fartLoadPending) {
@@ -5147,6 +5148,24 @@ renderer.setAnimationLoop(() => {
   const guideHome = !inBoat && !inArena && !inClub && !inGym && !inStudio;
   guide.tick(dt, t, guideHome ? controls.pose() : null);
   if (!guideHome && isSpeaking()) stopSpeaking();
+  /* the bathroom's ceiling speaker. It fades on real distance to the room and
+     loses its top as you leave, which is what a wall does to a sound — dull
+     first, quiet second. Loaded and started only once you're close enough to
+     hear it, so a visit that never opens that door never fetches it. */
+  if (world.bath && entered) {
+    const bd = world.bath.distance(controls.pos.x, controls.pos.z);
+    if (!bathMusicOn() && bd < 7 && !bathMuzPending) {
+      bathMuzPending = true;
+      loadBathMusic().then((ok) => { if (ok) startBathMusic(); bathMuzPending = false; });
+    }
+    if (bathMusicOn()) {
+      const away = inBoat || inArena || inClub || inGym || inStudio;
+      // inside: full. through the door: gone by about 7 m. dull as soon as
+      // you're the wrong side of the wall.
+      const lvl = away ? 0 : Math.max(0, 1 - bd / 7) ** 1.6;
+      setBathMusic(lvl, bd < 0.2 ? 1 : Math.max(0, 1 - bd / 2.5));
+    }
+  }
   // your body in the bathroom mirrors — stand it where you stand, facing where
   // you face. Three assignments; the figure only ever draws in the reflection.
   if (world.bath) world.bath.pose(controls.pos.x, controls.pos.z, controls.yaw);

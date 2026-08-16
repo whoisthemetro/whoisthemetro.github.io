@@ -5122,6 +5122,11 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
       // one authority for "is this x/z in the bathroom" — the fart reverb, the
       // voice reverb and the sample loader all have to agree on it
       inside: (x, z) => x > bx0 && x < bx1 && z < BZ0 && z > BZ1,
+      // metres from the nearest point of the room; 0 once you're in it. The
+      // ceiling speaker fades on this, so it has to be a real distance and
+      // not a room flag — the doorway is the interesting part.
+      distance: (x, z) => Math.hypot(
+        Math.max(bx0 - x, 0, x - bx1), Math.max(BZ1 - z, 0, z - BZ0)),
       set(node) {
         while (selfMount.children.length) selfMount.remove(selfMount.children[0]);
         if (node) { selfMount.add(node); node.traverse((o) => o.layers.set(REFL_LAYER)); }
