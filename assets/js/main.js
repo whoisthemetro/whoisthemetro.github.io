@@ -805,7 +805,7 @@ function enterTagMode() {
   buildTagBar().classList.add("show");
   refreshTagBar();
   document.body.classList.add("tagging");
-  toast("drag to write · esc when you're done");
+  toast("drag to write · right-click a stroke to lift it · esc when done");
 }
 function exitTagMode() {
   if (!tagMode) return;
@@ -825,10 +825,26 @@ function tagHitAt(e) {
   return castAt(x, y);
 }
 renderer.domElement.addEventListener("pointerdown", (e) => {
-  if (!tagMode || e.button !== 0) return;
+  if (!tagMode) return;
+  /* right-click lifts ONE stroke of yours off the wall. Undo is last-first,
+     which is no use when the one you regret is old and you'd rather keep
+     everything you've drawn since. Only ever picks your own. */
+  if (e.button === 2) {
+    e.preventDefault();
+    const h = tagHitAt(e);
+    const id = h && world.bath.tags.pickMine(h);
+    if (!id) { toast("nothing of yours under there"); return; }
+    world.bath.tags.removeOne(id);
+    presence.sendAct({ kind: "untag", ids: [id] });
+    scheduleTagSave(); refreshTagBar();
+    return;
+  }
+  if (e.button !== 0) return;
   const h = tagHitAt(e);
   if (h && world.bath.tags.begin(h, tagColor, tagWidth)) e.preventDefault();
 });
+// no browser menu on top of the wall while you're working on it
+renderer.domElement.addEventListener("contextmenu", (e) => { if (tagMode) e.preventDefault(); });
 renderer.domElement.addEventListener("pointermove", (e) => {
   if (!tagMode || !world.bath.tags.drawing()) return;
   const h = tagHitAt(e);

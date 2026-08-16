@@ -27,13 +27,22 @@ every face its own 0..1 with the orientation varying per face, so trusting it
 would flip and rotate a tag depending on which side of a stall door you wrote
 on.
 
+**Right-click lifts one stroke off the wall.** Undo is strictly last-first,
+which is no help when the tag you regret is an old one and you'd rather keep
+everything you've drawn since — so right-clicking picks the nearest of YOUR
+strokes under the pointer and takes just that one. Nearest segment wins and the
+later stroke breaks ties, so where they overlap you get the one you can
+actually see. Other people's are never candidates.
+
 **Undo and erase.** Undo steps back your last stroke (⌘Z / Ctrl-Z too); erase
 takes everything you've written in the room. Both only ever touch YOUR
 strokes — other people's writing isn't yours to bin — which meant every stroke
 now carries a short id and a short author. The id is what goes over the wire:
 "the last one" is meaningless to a peer whose list is in a different order.
-Erase arms on the first press and fires on the second rather than opening a
-confirm dialog, because a modal on top of an unlocked pointer mid-drawing is
+Because your uid lives in localStorage and every stroke carries it, undo keeps
+walking back through work from earlier sessions too, and stops when nothing on
+the wall is yours. Erase arms on the first press and fires on the second rather
+than opening a confirm dialog, because a modal on top of an unlocked pointer mid-drawing is
 worse than the mistake it prevents. Strokes saved before this shipped have no
 author, so nobody owns them and nobody can rub them out — `scrubWall()` still
 takes the lot.

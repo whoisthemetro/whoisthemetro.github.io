@@ -197,6 +197,43 @@ export function createGraffiti(THREE, scene) {
       strokes.push(s); paint(s);
       if (strokes.length > MAX_STROKES) { strokes.splice(0, strokes.length - MAX_STROKES); repaintAll(); }
     },
+    /* which of MY strokes is under this point? Undo is strictly last-first,
+       which is no help when the tag you regret is an old one and you'd rather
+       not lose everything you've drawn since. Distance from the point to each
+       segment of the polyline, nearest wins, latest breaks ties — so when
+       strokes overlap you get the one drawn on top, which is the one you can
+       see. Only ever mine. */
+    pickMine(hit, tol = 0.028) {
+      const f = faceOf(hit); if (!f) return null;
+      const { u, v } = uvOf(hit, f);
+      const px = u * 255, py = v * 255, lim = tol * 255;
+      let best = null, bestD = Infinity;
+      for (let k = 0; k < strokes.length; k++) {
+        const st = strokes[k];
+        if (st.s !== f.id || !st.u || st.u !== me) continue;
+        for (let i = 0; i + 3 < st.p.length; i += 2) {
+          const ax = st.p[i], ay = st.p[i + 1], bx = st.p[i + 2], by = st.p[i + 3];
+          const dx = bx - ax, dy = by - ay, len2 = dx * dx + dy * dy;
+          const t = len2 ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2)) : 0;
+          const qx = ax + t * dx, qy = ay + t * dy;
+          const d = Math.hypot(px - qx, py - qy);
+          if (d <= lim && d <= bestD) { bestD = d; best = st; }   // <=, so later wins ties
+        }
+        // a single-point dab has no segment to measure against
+        if (st.p.length === 2) {
+          const d = Math.hypot(px - st.p[0], py - st.p[1]);
+          if (d <= lim && d <= bestD) { bestD = d; best = st; }
+        }
+      }
+      return best ? best.i || null : null;
+    },
+    // take one named stroke of mine off the wall
+    removeOne(id) {
+      const k = strokes.findIndex((x) => x.i === id && x.u && x.u === me);
+      if (k < 0) return false;
+      strokes.splice(k, 1); repaintAll(); dirty = true;
+      return true;
+    },
     // how many on this wall are mine — the delete button needs to know
     mineCount() { return strokes.filter((x) => x.u && x.u === me).length; },
     // step back my most recent one; returns its id so it can go out on the wire
