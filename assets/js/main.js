@@ -22,6 +22,7 @@ import { Bartender } from "./bartender.js";
 import { Guide } from "./guide.js";
 import { speak, stopSpeaking, isSpeaking, isVoicing, voiceAvailable, voiceInfo, preferVoices, loadClips, clipsReady, voiceLevel, useAudioGraph } from "./say.js";
 import { GUIDE_LINES, INTRO, ROOM_LINES, clipId } from "./lines.js";
+import { whatsNew, dayLabel } from "./whatsnew.js";
 
 /* What Trinity should sound like, best first. Every visitor's device owns
    its own voice list, so this is a wish rather than a setting: on a mac with
@@ -4375,6 +4376,7 @@ function termBanner() {
   termPrint("─".repeat(34), "dim");
   termPrint("the room is always on.");
   termPrint("type 'help' to see what this thing does.", "dim");
+  termPrint("type 'new' for what's changed lately.", "dim");
   termPrint("");
 }
 const laTime = () => new Date().toLocaleString("en-US", {
@@ -4389,6 +4391,35 @@ const TERM_COMMANDS = {
       if (c.admin && !adminMode) continue;
       termPrint(`  ${name.padEnd(10)} ${c.blurb}`, "");
     }
+  } },
+  /* What changed since you were last in. Kept in whatsnew.js in plain
+     words — CHANGELOG.md is the builder's log and reads like one. Shows the
+     three most recent days by default because a wall of history is the same
+     as no history; `new all` for the lot. */
+  new: { blurb: "what's changed lately", run(args) {
+    const all = whatsNew();
+    const show = (args && /^(all|full|-a)$/i.test(args[0] || "")) ? all : all.slice(0, 3);
+    if (!show.length) return termPrint("nothing logged yet.", "dim");
+    termPrint("what's new", "bright");
+    termPrint("─".repeat(34), "dim");
+    for (const day of show) {
+      termPrint(dayLabel(day.date), "bright");
+      for (const line of day.items) {
+        // wrap by words so a long line doesn't run off a phone screen
+        const words = line.split(" ");
+        let row = "";
+        const flush = (first) => { if (row) termPrint(`${first ? "  · " : "    "}${row}`); row = ""; };
+        let first = true;
+        for (const w of words) {
+          if ((row + " " + w).trim().length > 58) { flush(first); first = false; }
+          row = (row ? row + " " : "") + w;
+        }
+        flush(first);
+      }
+      termPrint("");
+    }
+    if (show.length < all.length) termPrint(`'new all' for everything (${all.length} days)`, "dim");
+    termPrint("trinity knows the room too — she's the bat.", "dim");
   } },
   msg: { blurb: "send metro a message / file", run() {
     hide(pcOverlay); openDM(true);   // straight to the composer, no passcode ever
@@ -4424,6 +4455,9 @@ const TERM_EGGS = {
   sudo: () => termPrint("this is metro's computer. nice try though.", "err"),
   pwd: () => termPrint("/home/metro/studio"),
   quit: () => TERM_COMMANDS.exit.run(),
+  changelog: (a) => TERM_COMMANDS.new.run(a),
+  whatsnew: (a) => TERM_COMMANDS.new.run(a),
+  updates: (a) => TERM_COMMANDS.new.run(a),
 };
 function runTerm(line) {
   termPrint(`${termPromptEl.textContent} ${line}`, "cmdline");

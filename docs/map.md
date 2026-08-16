@@ -76,6 +76,7 @@ for python-heredoc edits, so **leave them intact.**
 | The guide (bedroom tutor) | `guide.js`, `say.js` (the voice), `lines.js` (everything she says), `main.js` ~475 (placement) |
 | …re-rendering her voice | `tools/voice/render.mjs` — just run it, it finds its key in `~/.config/metro/voice.env` |
 | Notes on the wall | `notes3d.js`, `store.js` |
+| METRO OS (the desk computer) + the visitor changelog | `whatsnew.js` (the copy), `main.js` `TERM_COMMANDS`, `#pc` in index.html |
 | Avatars / other people | `avatar-builder.js` (the figure + hair), `ghosts.js`, `picker.js` (the chooser), `main.js` ~670–860 (podium figure, drag-to-spin, `openPicker`) |
 | **THE PODIUM** — the avatar creator in the arcade's far corner | `POD` block just before the MARQUEE anchor | `main.js` ~700–930 |
 | Presence + netcode | `presence.js` |

@@ -86,7 +86,7 @@ export const GUIDE_LINES = {
     "give the lava lamp a click. and know that everyone else in here sees it come on too. that lamp belongs to the room, not to you.",
     "the blinds and the curtains both move. draw them and it's just you and the glow. open them and you've got the whole city back.",
     "the light switch dims rather than flips. somewhere between the two ends is the version of this room i like best.",
-    "the computer on the desk actually boots. METRO OS. rooms, messages, music. have a poke around in it.",
+    "the computer on the desk actually boots. type help and it'll tell you what it does. type new and it'll tell you what changed since you were last here.",
     "the keys play, and you can change the sound they make. same for the guitar, if the voice it's wearing isn't the one you want.",
     "the open doorway goes through to the arcade. i'll come with you.",
     "careful with the door under the red neon. that one isn't a room. it walks you out of here to mix and master, so finish up first.",

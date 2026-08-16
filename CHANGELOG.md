@@ -4,6 +4,23 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-08-16 — the computer tells you what's new
+
+**Type `new` at the desk computer and it tells you what's changed, by day.**
+"today", "yesterday", then dates, three days at a time with `new all` for the
+lot. `changelog`, `whatsnew` and `updates` all reach it, because those are what
+people actually type, and the boot banner says it's there.
+
+The copy lives in `assets/js/whatsnew.js` and it is a TRANSLATION of this file,
+not a copy of it. This log is the builder's: long, technical, full of the
+reasons a thing was done a particular way. That one is a visitor's: one plain
+line per thing, no jargon, no file names, nothing about how it works. The rule
+that keeps it worth reading is written at the top of it and in CLAUDE.md — a
+change nobody could notice from inside the room does NOT get a line. Padding it
+with invisible work is how it turns into noise.
+
+Trinity points at it now, and the terminal points back at her.
+
 ## 2026-08-16 — the bedroom stays in the bedroom
 
 **Walk into the arcade and the bedroom goes quiet.** The instruments were
