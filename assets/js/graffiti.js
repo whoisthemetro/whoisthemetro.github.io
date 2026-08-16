@@ -37,6 +37,15 @@ export function createGraffiti(THREE, scene) {
   const strokes = [];
   let live = null;                       // the stroke being drawn right now
   let dirty = false;
+  let me = "";                           // whose hand is on the pen
+
+  /* Every stroke carries a short id and a short author. Undo and delete both
+     need to name a stroke over the wire — "the last one" is meaningless to a
+     peer whose list is in a different order — and delete needs to know which
+     ones are YOURS, because wiping other people's writing is a different and
+     much bigger button. Strokes saved before this shipped have neither, which
+     just means nobody owns them and nobody can delete them. */
+  const sid = () => Math.random().toString(36).slice(2, 8);
 
   /* register a face. `axis` is the thin axis of a panel ("x" or "z"); pass
      null for a PlaneGeometry, whose face is always its own local xy.
@@ -153,10 +162,11 @@ export function createGraffiti(THREE, scene) {
     // is the thing under the crosshair something you can write on?
     surfaceAt(hit) { return hit && faceOf(hit) ? true : false; },
 
+    setAuthor(uid) { me = String(uid || "").slice(0, 8); },
     begin(hit, colorIdx, width) {
       const f = faceOf(hit); if (!f) return false;
       const { u, v } = uvOf(hit, f);
-      live = { s: f.id, c: colorIdx, w: width, p: [Q(u), Q(v)] };
+      live = { i: sid(), u: me, s: f.id, c: colorIdx, w: width, p: [Q(u), Q(v)] };
       return true;
     },
     // returns true if the point was far enough from the last to be worth keeping
@@ -186,6 +196,37 @@ export function createGraffiti(THREE, scene) {
       if (!s || !s.s) return;
       strokes.push(s); paint(s);
       if (strokes.length > MAX_STROKES) { strokes.splice(0, strokes.length - MAX_STROKES); repaintAll(); }
+    },
+    // how many on this wall are mine — the delete button needs to know
+    mineCount() { return strokes.filter((x) => x.u && x.u === me).length; },
+    // step back my most recent one; returns its id so it can go out on the wire
+    undoMine() {
+      for (let i = strokes.length - 1; i >= 0; i--) {
+        if (strokes[i].u && strokes[i].u === me) {
+          const id = strokes[i].i;
+          strokes.splice(i, 1); repaintAll(); dirty = true;
+          return id || null;
+        }
+      }
+      return null;
+    },
+    // everything I've written in here, gone. Other people's stays.
+    removeMine() {
+      const ids = strokes.filter((x) => x.u && x.u === me).map((x) => x.i);
+      if (!ids.length) return [];
+      for (let i = strokes.length - 1; i >= 0; i--)
+        if (strokes[i].u && strokes[i].u === me) strokes.splice(i, 1);
+      repaintAll(); dirty = true;
+      return ids;
+    },
+    // somebody else took theirs back
+    remove(ids) {
+      if (!Array.isArray(ids) || !ids.length) return;
+      const kill = new Set(ids);
+      let hit = false;
+      for (let i = strokes.length - 1; i >= 0; i--)
+        if (strokes[i].i && kill.has(strokes[i].i)) { strokes.splice(i, 1); hit = true; }
+      if (hit) repaintAll();
     },
     load(list) {
       strokes.length = 0;

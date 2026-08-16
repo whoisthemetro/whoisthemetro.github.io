@@ -726,6 +726,47 @@ function scrubWall() {
   return n;
 }
 
+function tagUndo() {
+  if (!world.bath) return;
+  const id = world.bath.tags.undoMine();
+  if (!id) { toast("nothing of yours to take back"); return; }
+  presence.sendAct({ kind: "untag", ids: [id] });
+  scheduleTagSave();
+  refreshTagBar();
+}
+/* Two presses, not a confirm dialog: a modal on top of an unlocked pointer in
+   the middle of drawing is worse than the mistake it prevents. It only ever
+   takes YOUR strokes — other people's writing isn't yours to bin. */
+let tagWipeArmed = 0;
+function tagDelete() {
+  if (!world.bath) return;
+  const n = world.bath.tags.mineCount();
+  if (!n) { toast("you haven't written anything in here"); return; }
+  if (Date.now() - tagWipeArmed > 4000) {
+    tagWipeArmed = Date.now();
+    toast(`press again to rub out your ${n} stroke${n === 1 ? "" : "s"}`);
+    refreshTagBar();
+    return;
+  }
+  tagWipeArmed = 0;
+  const ids = world.bath.tags.removeMine();
+  if (ids.length) { presence.sendAct({ kind: "untag", ids }); scheduleTagSave(); }
+  toast("rubbed out");
+  refreshTagBar();
+}
+function refreshTagBar() {
+  if (!tagBar || !world.bath) return;
+  const n = world.bath.tags.mineCount();
+  const u = tagBar.querySelector(".tag-undo"), d = tagBar.querySelector(".tag-del");
+  if (u) u.disabled = !n;
+  if (d) {
+    d.disabled = !n;
+    const armed = !!n && Date.now() - tagWipeArmed < 4000;
+    d.classList.toggle("armed", armed);
+    d.textContent = armed ? "sure?" : "erase";
+  }
+}
+
 function buildTagBar() {
   if (tagBar) return tagBar;
   tagBar = document.createElement("div");
@@ -738,8 +779,18 @@ function buildTagBar() {
       [...tagBar.querySelectorAll(".tag-swatch")].forEach((n, j) => n.classList.toggle("on", j === i)); };
     tagBar.appendChild(b);
   });
+  const undo = document.createElement("button");
+  undo.className = "tag-btn tag-undo"; undo.textContent = "undo";
+  undo.title = "take back your last stroke (\u2318Z)";
+  undo.onclick = () => tagUndo();
+  tagBar.appendChild(undo);
+  const del = document.createElement("button");
+  del.className = "tag-btn tag-del"; del.textContent = "erase";
+  del.title = "rub out everything you've written in here";
+  del.onclick = () => tagDelete();
+  tagBar.appendChild(del);
   const done = document.createElement("button");
-  done.className = "tag-done"; done.textContent = "done";
+  done.className = "tag-btn tag-done"; done.textContent = "done";
   done.onclick = () => exitTagMode();
   tagBar.appendChild(done);
   document.body.appendChild(tagBar);
@@ -750,7 +801,9 @@ function enterTagMode() {
   if (tagMode) return;
   if (vrBlocked("writing on the wall needs a flat screen")) return;
   tagMode = true; modalOpen = true; controls.unlock();
+  world.bath.tags.setAuthor(identity.uid);
   buildTagBar().classList.add("show");
+  refreshTagBar();
   document.body.classList.add("tagging");
   toast("drag to write · esc when you're done");
 }
@@ -785,6 +838,7 @@ window.addEventListener("pointerup", () => {
   if (!tagMode || !world.bath || !world.bath.tags.drawing()) return;
   const st = world.bath.tags.end();
   if (st) { presence.sendAct({ kind: "tag", s: st }); scheduleTagSave(); }
+  refreshTagBar();
 });
 
 /* ---------------- the toilets ----------------
@@ -4475,6 +4529,9 @@ function closeArcadeOverlay() {
 $("#arcade-close").addEventListener("click", closeArcadeOverlay);
 
 addEventListener("keydown", (e) => {
+  if (tagMode && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
+    e.preventDefault(); tagUndo(); return;
+  }
   if (e.key === "Escape" && tagMode) { exitTagMode(); return; }
   if (e.key === "Escape" && modalOpen) {
     if (composer.classList.contains("show")) closeComposer(false);
@@ -4620,6 +4677,8 @@ addEventListener("keydown", (e) => {
       world.setLava(p.on);
     } else if (p.kind === "tag") {
       if (world.bath && p.s) world.bath.tags.add(p.s);
+    } else if (p.kind === "untag") {
+      if (world.bath && p.ids) world.bath.tags.remove(p.ids);
     } else if (p.kind === "toilet") {
       if (fartsReady()) {
         const here = world.bath && world.bath.inside(controls.pos.x, controls.pos.z);

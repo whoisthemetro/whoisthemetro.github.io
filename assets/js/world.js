@@ -6540,6 +6540,16 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
   midiKeybed.position.set(0, 0.494, 0.345);
   midiKeybed.userData.piano = true;
   desk.add(midiKeybed);
+  /* The whole instrument, in one handle. The body and the keybed are separate
+     meshes with separate jobs — the chassis is the piano-voice selector, the
+     strip is what you play — so the layout editor was picking up the keys and
+     leaving the keyboard behind. attach() re-parents without moving anything,
+     the same trick wrapDeskItem uses for the loose desk gear. */
+  const midiKeys = new THREE.Group();
+  midiKeys.position.set(0, 0.46, 0.27);
+  desk.add(midiKeys);
+  midiKeys.attach(midiBody);
+  midiKeys.attach(midiKeybed);
   let keyResetTimer = null;
   function pressPianoKey(i) {
     drawKeys(i);
@@ -10074,7 +10084,7 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
      rotation.y transplant cleanly. homes are recorded so reset works and
      a bad saved layout can always be walked back. --- */
   const movables = {
-    tele, pedalboard, kbpedals: kbPedals, radio: laRadio.group,
+    tele, pedalboard, kbpedals: kbPedals, midikeys: midiKeys, radio: laRadio.group,
     lava, mixer, clock: deskClock,
     monitor: deskMonitor, interface: deskInterface, keyboard: deskKeyboard,
     trackball: deskTrackball, meters: deskMeters, mug: deskMug, mac: deskMac,
@@ -10273,7 +10283,15 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     // where the cat likes to be
     catSpots: {
       chair: { x: SWEET.x, z: SWEET.z, y: 0.51 },
-      keys: { x1: -0.24, x2: 0.62, z: -2.45, y: 0.53 },
+      /* Derived, not written down. The keybed is a movable prop now (the
+         booth can pull it out from the desk), and a hardcoded perch would
+         leave the cat pacing thin air where the keyboard used to be. Half a
+         key-width in at each end so it walks the keys rather than the rim. */
+      get keys() {
+        const p = new THREE.Vector3();
+        midiKeybed.getWorldPosition(p);
+        return { x1: p.x - 0.43, x2: p.x + 0.43, z: p.z, y: p.y + 0.04 };
+      },
       // between the e-kit and the desk: the old spot (-1.7,-2.7) was six
       // centimetres from the kick drum, so the cat's window seat was
       // INSIDE the instrument. no collision system fixes a bed in a drum.

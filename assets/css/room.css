@@ -960,7 +960,7 @@ body.in-studio #cat-pill, body.in-studio #flight-strip { display: none; }
 
 /* --- writing on the bathroom walls --- */
 #tag-bar {
-  position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(14px);
+  position: fixed; left: 50%; bottom: 84px; transform: translateX(-50%) translateY(14px);   /* clear of the toast */
   display: none; gap: 10px; align-items: center;
   padding: 10px 14px; border-radius: 999px;
   background: rgba(10, 8, 18, 0.82); border: 1px solid rgba(255, 45, 160, 0.45);
@@ -972,12 +972,17 @@ body.in-studio #cat-pill, body.in-studio #flight-strip { display: none; }
   border: 2px solid rgba(255, 255, 255, 0.25); padding: 0;
 }
 .tag-swatch.on { border-color: #fff; box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.18); }
-.tag-done {
-  margin-left: 6px; padding: 5px 12px; border-radius: 999px; cursor: pointer;
+.tag-btn {
+  padding: 5px 12px; border-radius: 999px; cursor: pointer;
   background: transparent; color: #cfd6e6; border: 1px solid rgba(207, 214, 230, 0.35);
   font: 600 12px/1 ui-monospace, monospace; letter-spacing: .06em;
 }
-.tag-done:hover { color: #fff; border-color: #fff; }
+.tag-btn:hover:not(:disabled) { color: #fff; border-color: #fff; }
+.tag-btn:disabled { opacity: .35; cursor: default; }
+.tag-undo { margin-left: 6px; }
+/* armed = one more press and your writing is gone; say so in the colour */
+.tag-del.armed { color: #ff2da0; border-color: #ff2da0; }
+.tag-done { margin-left: 2px; }
 /* while you're writing, the cursor is the brush and the crosshair is noise */
 body.tagging { cursor: crosshair; }
 body.tagging #aim-tip { display: none; }

@@ -252,8 +252,22 @@ export class Cat {
     return null;
   }
   _stepTo(nx, nz) {
+    /* NEVER TRAP THE CAT. These rects stop it ENTERING furniture; they must
+       never stop it leaving. The keybed perch sits inside the desk rect — the
+       cat is let in to reach it — and the first version then refused every
+       step back out, because each one still landed inside the rect. It wedged,
+       gave up, sat, picked the keys again, and did it forever: the cat looked
+       stuck on the pedalboard, walking the keyboard on a loop.
+
+       So: standing inside one means every direction is out. Go. */
+    if (this._inAvoid(this.pos.x, this.pos.z)) {
+      this.pos.x = nx; this.pos.z = nz;
+      return false;
+    }
     const r = this._inAvoid(nx, nz);
     const t = this.target;
+    // and a rect holding the cat's own destination stays open, or it could
+    // never get onto the keys (or the chair) in the first place
     if (!r || (t && t.x > r.x0 && t.x < r.x1 && t.z > r.z0 && t.z < r.z1)) {
       this.pos.x = nx; this.pos.z = nz;
       return false;

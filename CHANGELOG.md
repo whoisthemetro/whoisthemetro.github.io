@@ -27,6 +27,17 @@ every face its own 0..1 with the orientation varying per face, so trusting it
 would flip and rotate a tag depending on which side of a stall door you wrote
 on.
 
+**Undo and erase.** Undo steps back your last stroke (⌘Z / Ctrl-Z too); erase
+takes everything you've written in the room. Both only ever touch YOUR
+strokes — other people's writing isn't yours to bin — which meant every stroke
+now carries a short id and a short author. The id is what goes over the wire:
+"the last one" is meaningless to a peer whose list is in a different order.
+Erase arms on the first press and fires on the second rather than opening a
+confirm dialog, because a modal on top of an unlocked pointer mid-drawing is
+worse than the mistake it prevents. Strokes saved before this shipped have no
+author, so nobody owns them and nobody can rub them out — `scrubWall()` still
+takes the lot.
+
 Each surface gets its own transparent overlay carrying its own canvas, built
 lazily on the first stroke that lands — a bathroom nobody has written in costs
 nothing. Strokes quantize u/v to a byte, which is what keeps a whole wall of
