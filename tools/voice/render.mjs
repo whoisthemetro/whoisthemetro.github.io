@@ -56,7 +56,14 @@ function keyFromFile() {
 const KEY = process.env.ELEVENLABS_API_KEY || keyFromFile();
 // Rachel — a long-standing stock voice, warm and unfussy. Swap via
 // EL_VOICE_ID once you've picked one from your own account.
-const VOICE = process.env.EL_VOICE_ID || "21m00Tcm4TlvDq8ikWAM";
+/* Lily, a PREMADE ElevenLabs voice. She used to be Janet, which is a
+   `professional` library voice, and on 2026-08-18 ElevenLabs began refusing
+   those over the API on the free tier (402 paid_plan_required) — credits had
+   nothing to do with it, the account had 9,000 sitting unused. Premade voices
+   have no such restriction, so her whole script moved here and re-rendered.
+   Keep this ID in the code rather than an env var: a hidden override is how a
+   later session renders half her lines in a different person's voice. */
+const VOICE = process.env.EL_VOICE_ID || "pFZP5JQG7iQjIQuC4Bku";
 const MODEL = process.env.EL_MODEL || "eleven_multilingual_v2";
 const FORCE = process.argv.includes("--force");
 const DRY = process.argv.includes("--dry");

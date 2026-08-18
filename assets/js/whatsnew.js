@@ -23,6 +23,13 @@
 
 export const WHATS_NEW = [
   {
+    date: "2026-08-18",
+    items: [
+      "trinity has a new voice, and it's her voice everywhere now instead of changing on you halfway through",
+      "she gives you a proper tour of the bedroom too, and she tells you where things actually are. the radio on the right hand end of the desk, the drum pads in the far corner, that sort of thing",
+    ],
+  },
+  {
     date: "2026-08-17",
     items: [
       "trinity gives you the room in a sensible order now, starting with the walls and leaving the arcade until last. and if you already found the radio yourself, she won't walk you to it",

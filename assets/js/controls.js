@@ -19,6 +19,26 @@ const GYM_JUMP_V = 5.9;       // launch speed → apex ≈1.1 m
 const GYM_STAM_DRAIN = 1.6;   // seconds of full-sprint to empty the meter (a real burst, then it's gone)
 const GYM_STAM_REGEN = 4.2;   // seconds to refill from empty
 
+// THE STICK. A thumb resting on the pad is not an input — without a deadzone a
+// hand that isn't asking for anything still creeps you across the room. And a
+// LINEAR stick has no slow walk in it: the room is 3.1 m/s wide open, so half a
+// throw is a march, and there is no way to ease up to a note wall and stop. So:
+// cut a deadzone, rescale what's left back to a full 0..1 (or the deadzone
+// steals your top speed), then bend the response so the bottom of the throw
+// buys the bottom of the speed. Shape the MAGNITUDE, never the direction —
+// bending the components separately swings the heading off your thumb.
+const DETOUR_ARC = 0.95;     // ~66° off the bearing — enough to clear furniture
+const DETOUR_PROBE = 0.9;   // how far ahead we ask "is there floor this way?"
+const STICK_DZ = 0.14;
+const STICK_CURVE = 1.6;
+function shapeStick(x, y) {
+  const m = Math.hypot(x, y);
+  if (m < STICK_DZ) return { x: 0, y: 0, mag: 0 };
+  const t = Math.min(1, (m - STICK_DZ) / (1 - STICK_DZ));
+  const k = Math.pow(t, STICK_CURVE) / m;
+  return { x: x * k, y: y * k, mag: m };
+}
+
 export class Controls {
   constructor(camera, canvas, bounds, walkable = null) {
     this.camera = camera;
@@ -69,11 +89,14 @@ export class Controls {
     this.pitch = 0;
     this.pos = { x: 0, z: 2.6 };
     this.keys = new Set();
-    this.joy = { x: 0, y: 0, active: false, pid: null };
+    // x/y are SHAPED (deadzoned + curved) — what the legs do. mag is the RAW
+    // throw — what the thumb is doing. anything that means "pushed to the rim"
+    // has to read mag, or the curve silently moves the threshold under it.
+    this.joy = { x: 0, y: 0, mag: 0, active: false, pid: null };
     this.goto = null;         // tap-to-walk destination, {x,z}, cleared on any real input
     // right look-stick (mobile, gym only): deflection drives the camera, a quick
     // tap fires onLookTap (grab). pressure-touch isn't a thing on modern phones.
-    this.lookJoy = { x: 0, y: 0, active: false, pid: null };
+    this.lookJoy = { x: 0, y: 0, mag: 0, active: false, pid: null };
     this.lookStickOn = false;
     this.lookTapFns = [];
     this.aimLockTarget = null;   // {x,y,z} the camera eases onto while winding up a shot
@@ -117,7 +140,15 @@ export class Controls {
   exitAim() { this.aiming = false; this.aimCharge = false; this._applyCamera(); }
 
   // main.js hands us a floor spot from a tap; update() drives there and turns
-  walkTo(x, z) { this.goto = { x, z }; this._gotoStuck = 0; this._gotoLast = null; }
+  walkTo(x, z) {
+    this.goto = { x, z };
+    this._gotoStuck = 0;
+    this._gotoBest = Infinity;   // closest we've been; the only honest progress metric
+    this._gotoT = 0;             // total time on this trip (the hard give-up)
+    this._detour = 0;            // seconds left crabbing around an obstacle
+    this._detourSide = 0;        // which way we committed (-1 left, +1 right)
+    this._detours = 0;           // corners taken; a budget, so we can't loop forever
+  }
   // gym jump — called from main.js's keydown (fires reliably, pointer-lock or
   // not) and from the mobile JUMP button. only leaves the floor when grounded.
   gymJump() { if (this.gym && this.grounded) { this.vy = GYM_JUMP_V; this.grounded = false; this.onJump?.(); } }
@@ -206,28 +237,40 @@ export class Controls {
     const nub = document.getElementById("joystick-nub");
     joyEl.classList.add("show");
 
-    joyEl.addEventListener("pointerdown", (e) => {
-      this.joy.active = true;
-      this.joy.pid = e.pointerId;
-      joyEl.setPointerCapture(e.pointerId);
-      e.preventDefault();
-    });
-    joyEl.addEventListener("pointermove", (e) => {
-      if (!this.joy.active || e.pointerId !== this.joy.pid) return;
+    // one reader for down AND move: a press that lands off-centre and never
+    // wiggles is a held direction, and the old code waited for a pointermove
+    // that a still thumb never sends — you stood there pushing a dead stick.
+    const readJoy = (e) => {
       const r = joyEl.getBoundingClientRect();
       const dx = (e.clientX - (r.left + r.width / 2)) / (r.width / 2);
       const dy = (e.clientY - (r.top + r.height / 2)) / (r.height / 2);
       const len = Math.hypot(dx, dy) || 1;
       const s = len > 1 ? 1 / len : 1;
-      this.joy.x = dx * s;
-      this.joy.y = dy * s;
+      const tx = dx * s, ty = dy * s;             // clamped to the ring: the thumb
+      const sh = shapeStick(tx, ty);              // deadzoned + curved: the legs
+      this.joy.x = sh.x; this.joy.y = sh.y; this.joy.mag = sh.mag;
+      // the NUB rides the THUMB, not the curve. drawing the shaped value would
+      // leave the nub trailing your finger inside the deadzone and lagging it
+      // everywhere else — the stick would feel like it was sticking.
       nub.style.transform =
-        `translate(calc(-50% + ${this.joy.x * 33}px), calc(-50% + ${this.joy.y * 33}px))`;
+        `translate(calc(-50% + ${tx * 33}px), calc(-50% + ${ty * 33}px))`;
+    };
+    joyEl.addEventListener("pointerdown", (e) => {
+      this.joy.active = true;
+      this.joy.pid = e.pointerId;
+      joyEl.setPointerCapture(e.pointerId);
+      readJoy(e);
+      e.preventDefault();
+    });
+    joyEl.addEventListener("pointermove", (e) => {
+      if (!this.joy.active || e.pointerId !== this.joy.pid) return;
+      readJoy(e);
     });
     const joyEnd = (e) => {
       if (e.pointerId !== this.joy.pid) return;
       this.joy.active = false;
-      this.joy.x = this.joy.y = 0;
+      this.joy.pid = null;
+      this.joy.x = this.joy.y = this.joy.mag = 0;
       nub.style.transform = "translate(-50%,-50%)";
     };
     joyEl.addEventListener("pointerup", joyEnd);
@@ -250,14 +293,18 @@ export class Controls {
         const dx = (e.clientX - (r.left + r.width / 2)) / (r.width / 2);
         const dy = (e.clientY - (r.top + r.height / 2)) / (r.height / 2);
         const len = Math.hypot(dx, dy) || 1, s = len > 1 ? 1 / len : 1;
-        this.lookJoy.x = dx * s; this.lookJoy.y = dy * s;
+        const tx = dx * s, ty = dy * s;
+        const sh = shapeStick(tx, ty);   // same deal as the move stick, and it
+        // doubles as tap protection: a thumb that never leaves the deadzone
+        // adds nothing to rMoved, so a grab-tap can't be read as a look
+        this.lookJoy.x = sh.x; this.lookJoy.y = sh.y; this.lookJoy.mag = sh.mag;
         rMoved += Math.abs(this.lookJoy.x) + Math.abs(this.lookJoy.y);
-        rNub.style.transform = `translate(calc(-50% + ${this.lookJoy.x * 33}px), calc(-50% + ${this.lookJoy.y * 33}px))`;
+        rNub.style.transform = `translate(calc(-50% + ${tx * 33}px), calc(-50% + ${ty * 33}px))`;
       });
       const rEnd = (e) => {
         if (e.pointerId !== this.lookJoy.pid) return;
         if (performance.now() - rStart < 300 && rMoved < 0.6) this.lookTapFns.forEach(f => f());  // tap = grab
-        this.lookJoy.active = false; this.lookJoy.x = this.lookJoy.y = 0; this.lookJoy.pid = null;
+        this.lookJoy.active = false; this.lookJoy.x = this.lookJoy.y = this.lookJoy.mag = 0; this.lookJoy.pid = null;
         rNub.style.transform = "translate(-50%,-50%)";
       };
       rEl.addEventListener("pointerup", rEnd);
@@ -321,18 +368,69 @@ export class Controls {
         const gx = this.goto.x - this.pos.x, gz = this.goto.z - this.pos.z;
         const gd = Math.hypot(gx, gz);
         if (gd < 0.28) this.goto = null;                 // arrived
+        else if ((this._gotoT += dt) > 12) this.goto = null;   // whatever this is, it isn't working
         else {
-          // ease the view onto the bearing, then just walk forward
-          let dyaw = Math.atan2(-gx, -gz) - this.yaw;
-          while (dyaw > Math.PI) dyaw -= 2 * Math.PI;
-          while (dyaw < -Math.PI) dyaw += 2 * Math.PI;
-          this.yaw += dyaw * Math.min(1, dt * 6);
-          fwd = 1;
-          const before = this.pos.x + this.pos.z;
-          this._gotoStuck = Math.abs(before - (this._gotoLast ?? before)) < 1e-5
-            ? (this._gotoStuck || 0) + dt : 0;
-          this._gotoLast = before;
-          if (this._gotoStuck > 0.45) this.goto = null;  // walked into something; give up
+          /* AM I GETTING THERE? The old answer was "did x+z change", which is
+             wrong twice: sliding along a 45° wall moves you a metre and reads
+             as frozen, and any sidestep reads as progress. Distance to the spot
+             is the only thing that actually means arriving, so we track the
+             closest we've ever been and call it stalled when that stops
+             falling. Sliding along a wall keeps its own timer honest. */
+          if (gd < this._gotoBest - 0.02) {
+            this._gotoBest = gd; this._gotoStuck = 0; this._detours = 0;
+          } else if (this._detour <= 0) this._gotoStuck += dt;
+
+          let aim = Math.atan2(-gx, -gz);   // bearing to the spot
+
+          /* WALKED INTO SOMETHING. Giving up here was the old behaviour, and on
+             a phone it reads as the tap having failed — you point past the bed
+             and nothing happens. The armchair is 60 cm wide; you don't need a
+             path, you need to go round it. So pick the side with open floor,
+             crab that way for a beat, then aim at the spot again and see if the
+             corner is behind us. Three corners is the budget (reset by any real
+             progress), and 12 s ends the trip regardless. */
+          if (this._detour > 0) {
+            this._detour -= dt;
+            if (this._detour > 0) aim += this._detourSide * DETOUR_ARC;
+            else { this._gotoBest = gd; this._gotoStuck = 0; }   // fresh run at it
+          } else if (this._gotoStuck > 0.35) {
+            // probe a step out to each side: null means solid, otherwise how
+            // far that step leaves us from the spot
+            const probe = (side) => {
+              if (!this.walkable) return null;
+              const a = aim + side * DETOUR_ARC;
+              const px = this.pos.x - Math.sin(a) * DETOUR_PROBE;
+              const pz = this.pos.z - Math.cos(a) * DETOUR_PROBE;
+              return this.walkable(px, pz)
+                ? Math.hypot(this.goto.x - px, this.goto.z - pz) : null;
+            };
+            const dL = probe(-1), dR = probe(1);
+            // already committed to a side? stay on it while it's open. picking
+            // afresh at every stall is how you end up rocking in a corner,
+            // going left round the chair and right round it and left again.
+            // first choice goes to whichever step lands NEARER the spot.
+            let side = 0;
+            if (this._detourSide && (this._detourSide < 0 ? dL : dR) !== null) side = this._detourSide;
+            else if (dL !== null && dR !== null) side = dL <= dR ? -1 : 1;
+            else if (dL !== null) side = -1;
+            else if (dR !== null) side = 1;
+            if (side && this._detours < 3) {
+              this._detours++;
+              this._detourSide = side;
+              this._detour = 0.7;
+              this._gotoStuck = 0;
+              aim += side * DETOUR_ARC;
+            } else this.goto = null;   // boxed in — the spot really can't be reached
+          }
+
+          if (this.goto) {
+            // ease the view onto the heading, then just walk forward
+            let dyaw = aim - this.yaw;
+            while (dyaw > Math.PI) dyaw -= 2 * Math.PI;
+            while (dyaw < -Math.PI) dyaw += 2 * Math.PI;
+            this.yaw += dyaw * Math.min(1, dt * 6);
+            fwd = 1;
+          }
         }
       }
     }
@@ -374,7 +472,7 @@ export class Controls {
     // WARM-UP (before the room readies up): unlimited boost so it's easy to move
     // around — the meter stays pinned full and even carrying the ball can't lock
     // it. once the game tips off the real Echo-style stamina rules below kick in.
-    const stickBoost = Math.hypot(this.joy.x, this.joy.y) > 0.92;
+    const stickBoost = this.joy.mag > 0.92;   // RAW, not shaped — see joy above
     const warmup = this.gymWarmup;
     const wantSprint = (this.keys.has("ShiftLeft") || this.keys.has("ShiftRight") || this.touchSprint || stickBoost) && (warmup || !this.holdingBall);
     if (warmup) {

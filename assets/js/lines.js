@@ -50,6 +50,58 @@ export const INTRO = {
 };
 
 
+/* ---------------------------------------------------------------------------
+   THE TOUR — what she says the FIRST time, in order.
+
+   The pool below is what she draws on afterwards. This is the walkthrough,
+   and it exists because a first visitor used to be told about the lava lamp
+   and then pointed at the arcade before touching anything in the room they
+   were standing in. The arcade is a door OUT of the bedroom, so it is last.
+
+   Each step names WHERE the thing is, because "there is a radio" is useless
+   in a room you have never stood in. The positions were read out of the
+   running world, not guessed:
+     the desk + window   z -3.0 to -3.3, straight ahead of the spawn
+     the LA radio        x  2.27  the right-hand end of that desk
+     the keys            x  0.2   on the desk
+     the telecaster      x  1.59  stood beside it
+     the drum pads       x -2.15  the far corner, other side
+     the arcade doorway  x -2.25  the left-hand wall
+
+   `need` is the thing you have to actually DO. main.js reports it, and she
+   skips a step you already did and acknowledges it instead. Nothing is
+   gated: clicking always moves her on, because being held at a tutorial is
+   worse than missing part of one. ------------------------------------- */
+export const TOUR = [
+  { id: "note", need: "note",
+    line: "start with the walls. aim at any bare patch and click, and you can leave a note or a picture on it. it stays there for everyone, long after you have gone. that is the whole point of this place.",
+    ack:  "there it is. that one outlasts both of us." },
+  { id: "radio", need: "radio",
+    line: "on the desk under the window, right hand end, there is a little radio. switch it on. it picks up real los angeles stations, whatever is actually going out over the air this minute. click it again to shut it up.",
+    ack:  "that is a real signal. somebody is talking into a microphone across town right now." },
+  { id: "instruments", need: "instrument",
+    line: "the keys are on the desk, the telecaster is stood beside it, and the drum pads are over in the far corner. all three of them really play. the guitar is tuned to a minor pentatonic, so you genuinely cannot land on a wrong note.",
+    ack:  "there you go. the pedals on the floor change what the guitar sounds like, if you want to get into it." },
+  { id: "computer", need: "pc",
+    line: "the computer on the desk boots for real. click the screen and type help. type new and it will tell you everything that has changed in here since you last came by.",
+    ack:  "it is a proper little terminal. try new if you have not yet." },
+  { id: "window", need: "window",
+    line: "now go and look out the window. that is a place, not a picture. put your face against the glass and turn, and you will not find the end of the city.",
+    ack:  "no edges. i told you." },
+  { id: "planes", need: null,
+    line: "and that strip along the top is a real aeroplane. we sit ten miles off LAX, so when one crosses the window, one is genuinely up there. the flight number, the aircraft, the altitude, all of it true.",
+    ack:  null },
+  { id: "light", need: null,
+    line: "the blinds and the curtains both draw, and the switch on the wall dims instead of flipping. somewhere between the two ends is the version of this room i like best.",
+    ack:  null },
+  { id: "cat", need: null,
+    line: "the cat is real in the way that counts. it gets hungry, it gets thirsty, and it remembers you. there is a mouse on the floor if you fancy throwing something.",
+    ack:  null },
+  { id: "arcade", need: null,
+    line: "right. that is the room. now, the opening in the wall over there goes through to an arcade, and it is a proper one. i will come with you.",
+    ack:  null },
+];
+
 // what she says on crossing a threshold, once per room
 export const ROOM_LINES = {
   arcade: "right, the arcade. different room, different things to tell you.",
@@ -128,5 +180,6 @@ export const GUIDE_LINES = {
 // every distinct thing she can say, for the renderer to walk
 export function allSpoken() {
   return [INTRO.bedroom.spoken, INTRO.arcade.spoken, ...Object.values(ROOM_LINES),
+          ...TOUR.map(t => t.line), ...TOUR.map(t => t.ack).filter(Boolean),
           ...GUIDE_LINES.bedroom, ...GUIDE_LINES.arcade];
 }

@@ -761,6 +761,35 @@ Every line was checked against the code rather than against a summary, after
 the first draft confidently sent people to the arcade through the door with
 the red neon — which is MIX & MASTER, and leaves the site entirely.
 
+## 2026-08-18 — Trinity gets a new voice, and the tour she was written for
+
+**The blocker was never credits.** The account had 9,000 characters sitting
+unused. Her voice was Janet, a `professional` voice from ElevenLabs' library,
+and library voices need a paid plan for API access. Credits and voice tier are
+separate rules; we were passing one and failing the other, which is why "I have
+plenty of credits" and "402 payment required" were both true at once.
+
+Worth recording: her clips were rendered on 13 and 16 August, and that free
+billing period began on the 13th. So the plan did not lapse. The rule tightened
+underneath us, some time in the two days before the 18th.
+
+**She is Lily now**, a premade voice, which carries no such restriction. Her
+WHOLE script re-rendered, not just the new lines: 43 clips, 5,456 characters,
+inside the free allowance with 4,511 to spare. Re-rendering everything was the
+point. Leaving 29 old clips in the previous voice would have made her sound
+like two people, which is the exact fault the last pass removed.
+
+The voice id lives in `tools/voice/render.mjs` rather than an env var on
+purpose. A hidden override is how a later session renders half her lines in
+somebody else's voice.
+
+**And the tour she was written for is finally in.** Nine ordered steps that say
+WHERE things are, with the positions read out of the running world rather than
+guessed: the radio at the right-hand end of the desk under the window, the
+telecaster stood beside the keys, the drum pads in the far corner, the arcade
+doorway last. She skips a step you already did for yourself and acknowledges it
+instead, so doing the thing is more interesting than being told about it.
+
 ## 2026-08-17 — Trinity shows you the room, in order
 
 **She was changing voice mid-conversation.** Not random: every line has a
