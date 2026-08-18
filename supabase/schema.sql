@@ -68,11 +68,26 @@ create table if not exists private.admin (
   pass_hash text not null
 );
 
--- ▼▼▼ SET YOUR ADMIN PASSPHRASE HERE (replace CHANGE_ME) ▼▼▼
-insert into private.admin (id, pass_hash)
-values (1, extensions.crypt('CHANGE_ME', extensions.gen_salt('bf')))
-on conflict (id) do update set pass_hash = excluded.pass_hash;
--- ▲▲▲ re-run just this insert any time to change it ▲▲▲
+-- ▼▼▼ THE ADMIN PASSPHRASE ▼▼▼
+-- DO NOT PUT THE REAL ONE HERE. This repo is public, and a plaintext
+-- passphrase sat on this line from the first commit until 2026-08-17. It
+-- gated read_inbox (every private message sent to metro), admin_delete_note,
+-- set_dj and set_screen. Anyone who read the repo had all of it.
+--
+-- It has been rotated, and the live value is NOT in this file, this repo, or
+-- any commit. It lives in ~/.config/metro/CREDENTIALS.txt, outside the repo,
+-- for the same reason the ElevenLabs key does.
+--
+-- To set or change it, run this ONCE by hand in the Supabase SQL editor with
+-- the real value, and never commit that edit:
+--
+--   insert into private.admin (id, pass_hash)
+--   values (1, extensions.crypt('YOUR-PASSPHRASE-HERE', extensions.gen_salt('bf')))
+--   on conflict (id) do update set pass_hash = excluded.pass_hash;
+--
+-- Making the repo private would NOT have undone the old exposure: the value
+-- was already in clones, forks and caches. Rotation was the only fix.
+-- ▲▲▲ ▲▲▲
 
 -- ---------- rate limiting ----------
 create or replace function public.notes_rate_limit()
