@@ -753,6 +753,42 @@ Every line was checked against the code rather than against a summary, after
 the first draft confidently sent people to the arcade through the door with
 the red neon — which is MIX & MASTER, and leaves the site entirely.
 
+## 2026-08-17 — Trinity shows you the room, in order
+
+**She was changing voice mid-conversation.** Not random: every line has a
+pre-rendered mp3, and `speak()` fell through to the browser's own synth
+whenever the clip manifest hadn't landed yet. `loadClips()` was fire-and-forget
+at boot, so clicking her in the first second got the robot and clicking her
+later got the recording, and it sounded like two different people. `speak()`
+now WAITS for the manifest when a clip was asked for. The load always settles
+(an empty set on failure), so the synth stays a genuine fallback instead of a
+race, and a line superseded mid-clip no longer restarts itself in the wrong
+voice.
+
+**A burst of taps used to start a line per tap**, each one killing the last
+before a word got out, so she stuttered and tore through the script. One line
+per 420 ms now; the extra taps do nothing rather than stack.
+
+**And she walks the room in order.** She drew at random before, which meant a
+first visitor could be told about the lava lamp and then pointed at the arcade
+before touching a single thing in the room they were standing in. The arcade is
+a door OUT of the bedroom and it belongs at the end. The order is now: the walls
+(the whole point of the place), the radio, the instruments, the computer, the
+window and the real LAX traffic, the light, the cat, and only then the way
+through. Position is remembered per browser.
+
+She also skips what you already found. Post a note or switch the radio on and
+she won't walk you to it. The room reports ten different actions and she reads
+them, which is the difference between a script and someone looking at the room.
+
+**Not done: the wording.** A richer set with real directions in it ("on the desk
+under the window, right hand end") is written and ready to go, but each line is
+an mp3 keyed to a hash of its own text, and the ElevenLabs account is on a free
+plan that refuses this voice over the API (402, paid_plan_required). New wording
+would fall back to the synth and she would change voice mid-tour, which is the
+exact fault this pass removes. Restore the plan, run
+`node tools/voice/render.mjs`, and the wording improves in one edit.
+
 ## 2026-08-17 — you can see the room, and you can point at the floor
 
 Reported as "people have a hard time moving around, especially in portrait."

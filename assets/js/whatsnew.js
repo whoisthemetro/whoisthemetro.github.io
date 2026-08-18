@@ -25,6 +25,8 @@ export const WHATS_NEW = [
   {
     date: "2026-08-17",
     items: [
+      "trinity gives you the room in a sensible order now, starting with the walls and leaving the arcade until last. and if you already found the radio yourself, she won't walk you to it",
+      "she also stopped changing voice halfway through a sentence, and stopped talking over herself when you tap her twice",
       "on a phone held upright you can finally SEE. the view was pinched down to a slot; now you can take in a whole wall at once",
       "and you can just tap the floor to walk there. it turns you to face the spot on the way, so you don't have to aim the camera first",
       "you can see people again. someone standing away from the window used to be a black shape with floating eyes — now they're a whole person wherever they stand",

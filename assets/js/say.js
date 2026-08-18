@@ -237,14 +237,19 @@ let clipSet = null;                       // ids we know exist
 let audio = null;                         // the element currently playing
 const CLIP_DIR = "assets/audio/trinity/";
 
-export async function loadClips() {
-  try {
-    const res = await fetch(CLIP_DIR + "manifest.json", { cache: "force-cache" });
-    if (!res.ok) return false;
-    const m = await res.json();
-    clipSet = new Set(m.clips || []);
-    return clipSet.size > 0;
-  } catch (e) { return false; }         // no manifest is not an error, it's the synth
+let clipsPromise = null;
+export function loadClips() {
+  if (clipsPromise) return clipsPromise;
+  clipsPromise = (async () => {
+    try {
+      const res = await fetch(CLIP_DIR + "manifest.json", { cache: "force-cache" });
+      if (!res.ok) { clipSet = new Set(); return false; }
+      const m = await res.json();
+      clipSet = new Set(m.clips || []);
+      return clipSet.size > 0;
+    } catch (e) { clipSet = new Set(); return false; }   // settled and empty: the synth, deliberately
+  })();
+  return clipsPromise;
 }
 export const clipsReady = () => !!(clipSet && clipSet.size);
 
@@ -310,19 +315,40 @@ function playClip(id, volume, onDone) {
 /* Say a line. `clip` is the id from lines.js — when we have that take
    rendered it plays, and the whole clause machinery below is skipped,
    because a real recording already has its own pauses in it. */
-export function speak(text, { volume = 1, onEnd, clip } = {}) {
+let speakSeq = 0;
+export function speak(text, opts = {}) {
+  const { volume = 1, onEnd, clip } = opts;
   stopSpeaking();
   endCb = onEnd || null;
   speaking = true;
+  const seq = ++speakSeq;
+
+  /* The manifest hasn't landed yet. WAIT for it instead of falling through to
+     the browser's synth, because that fallback is exactly how she changed
+     voice mid-conversation: click her in the first second and you got the
+     robot, click her later and you got the recording, and it sounded like two
+     different people. loadClips() always settles (an empty set on failure), so
+     this resolves either way and the synth stays a real fallback rather than a
+     race. */
+  if (clip && clipSet === null) {
+    silentUntil = performance.now() + 8000;    // mid-line, just not audible yet
+    loadClips().then(() => {
+      if (seq !== speakSeq) return;            // a newer line already replaced this one
+      speaking = false;                        // so the re-entry doesn't fire onEnd early
+      speak(text, opts);
+    });
+    return guessMs(text);
+  }
 
   if (clip && clipSet && clipSet.has(clip)) {
     voicing = true;
     silentUntil = performance.now() + 120000;   // the element's own end event drives it
     playClip(clip, volume, (ok) => {
-      if (!ok && speaking) {                    // the file let us down — say it anyway
+      if (!ok && speaking && seq === speakSeq) {   // the file let us down: say it anyway
         speaking = false; voicing = false; silentUntil = 0;
         return void speak(text, { volume, onEnd: endCb });
       }
+      if (seq !== speakSeq) return;             // superseded mid-clip; the new line owns her now
       finish();
     });
     return guessMs(text);

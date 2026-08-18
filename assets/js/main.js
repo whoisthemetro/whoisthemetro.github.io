@@ -612,6 +612,32 @@ function lineBag(items) {
   };
 }
 const guideBags = { bedroom: lineBag(GUIDE_LINES.bedroom), arcade: lineBag(GUIDE_LINES.arcade) };
+
+/* THE TOUR. A first visitor used to get the random pool, which could offer
+   them the arcade before they had touched anything in the room they were
+   standing in. Now the bedroom pool is only reached once the tour is spent.
+
+   Two counters, both remembered per browser: how far down the list she has
+   got, and which steps you actually DID. Nothing is gated on doing them,
+   because being held at a tutorial is worse than missing part of one. Doing
+   one just earns a short acknowledgement the next time you ask, which is the
+   difference between a script and someone who noticed. */
+const TOUR_KEY = "metro.tour";
+let tourState = { at: 0, did: [] };
+try { tourState = { ...tourState, ...(JSON.parse(localStorage.getItem(TOUR_KEY)) || {}) }; } catch (e) {}
+const tourSave = () => { try { localStorage.setItem(TOUR_KEY, JSON.stringify(tourState)); } catch (e) {} };
+// the room tells us what you've actually gone and done, so she can skip it
+function tourDid(need) {
+  if (!need || tourState.did.includes(need)) return;
+  tourState.did.push(need);
+  tourSave();
+}
+/* Which step of the bedroom order covers a thing you might already have done.
+   She should not walk you to the radio you switched on two minutes ago; a
+   guide who does that is reading a script, not looking at the room. */
+const TOUR_NEEDS = { 0: "note", 1: "radio", 2: "instrument", 3: "instrument",
+                     7: "pc", 8: "window", 11: "window" };
+let guideAskedAt = 0;             // rate limit, so a burst of taps is one line
 let guideMet = false;             // has she introduced herself yet
 let guideGreetedRoom = null;      // and has she said anything about THIS room
 // she calls you what you called yourself on the way in
@@ -633,6 +659,13 @@ function guideNextLine() {
   } else if (guideGreetedRoom !== room) {
     guideGreetedRoom = room;
     line = spoken = ROOM_LINES[room];
+  } else if (room === "bedroom" && tourState.at < GUIDE_LINES.bedroom.length) {
+    // walk the room in order, stepping over anything you already found
+    while (tourState.at < GUIDE_LINES.bedroom.length &&
+           tourState.did.includes(TOUR_NEEDS[tourState.at])) tourState.at++;
+    if (tourState.at >= GUIDE_LINES.bedroom.length) { line = spoken = guideBags[room](); }
+    else { line = spoken = GUIDE_LINES.bedroom[tourState.at]; tourState.at++; }
+    tourSave();
   } else {
     line = spoken = guideBags[room]();
   }
@@ -1570,8 +1603,13 @@ controls.onAction((ndcX, ndcY) => {
     toast(`🍸 ${line}`);
   } else if (hit.object.userData.guide && hit.distance < 3.2) {
     aItem("guide");
-    // clicking while she's mid-sentence cuts her off — you asked for the next
-    // thing, so she stops talking about the last one
+    /* Clicking while she's mid-sentence cuts her off and moves her on: you
+       asked for the next thing. But a burst of taps used to start a line per
+       tap, each one killing the last before a word came out, so she stuttered
+       and burned through the script. One line per 420 ms; the extra taps do
+       nothing rather than stack up. */
+    if (Date.now() - guideAskedAt < 420) return;
+    guideAskedAt = Date.now();
     if (isSpeaking()) stopSpeaking();
     const l = guideNextLine();
     guide.speak(l.text, l.clip);
@@ -1658,9 +1696,11 @@ controls.onAction((ndcX, ndcY) => {
     toast("back through the door…");
     goHome();
   } else if (hit.object.userData.dm && hit.distance < 3) {
+    tourDid("pc");
     openPC();
   } else if (hit.object.userData.piano && hit.distance < 2.4 && hit.uv) {
     const key = Math.max(0, Math.min(14, Math.floor(hit.uv.x * 15)));
+    tourDid("instrument");
     pianoNote(key, pianoVoice);
     world.pressPianoKey(key);
     presence.sendNote(key, pianoVoice);
@@ -1685,6 +1725,7 @@ controls.onAction((ndcX, ndcY) => {
     readyUp(hit.object.userData.kiosk);
   } else if (hit.object.userData.edrum !== undefined && hit.distance < 2.6) {
     const pad = hit.object.userData.edrum;
+    tourDid("instrument");
     edrumHit(pad);
     // a hit that lands inside the secret fill flashes gold, not cyan —
     // the kit quietly confirming you're on the trail
@@ -1692,6 +1733,7 @@ controls.onAction((ndcX, ndcY) => {
     presence.sendAct({ kind: "edrum", pad });
     aInstrument("drums");
   } else if (hit.object.userData.guitar && hit.distance < 2.4) {
+    tourDid("instrument");
     // higher on the neck, higher the note
     const n = Math.max(0, Math.min(10, Math.round((hit.point.y - 0.25) * 12)));
     guitarPluck(n, guitarVoice);
@@ -1764,8 +1806,10 @@ controls.onAction((ndcX, ndcY) => {
   } else if (hit.object.userData.mixer && hit.distance < 2.8) {
     openMixer();
   } else if (hit.object.userData.radio && hit.distance < 2.8) {
+    tourDid("radio");
     if (inVR()) vrToggleRadio(radios.sr); else openRadio(radios.sr);
   } else if (hit.object.userData.laradio && hit.distance < 2.8) {
+    tourDid("radio");
     if (inVR()) vrToggleRadio(radios.la); else openRadio(radios.la);
   } else if (hit.object.userData.gtrFilter && hit.distance < 2.8) {
     openFilter();
@@ -1777,6 +1821,7 @@ controls.onAction((ndcX, ndcY) => {
     store.saveRoomFlag("lava", on).catch(() => {});
     toast(on ? "the wax wakes up 🌋" : "lava lamp off");
   } else if (hit.object.userData.blinds && hit.distance < 3.2) {
+    tourDid("window");
     const open = world.toggleBlinds();
     presence.sendAct({ kind: "blinds", open });
     store.saveRoomFlag("blinds", open).catch(() => {});
@@ -1788,6 +1833,7 @@ controls.onAction((ndcX, ndcY) => {
     store.saveRoomFlag("curtains", closed).catch(() => {});
     toast(closed ? "curtains drawn — it's just you and the glow now" : "curtains open");
   } else if (hit.object.userData.glass && hit.uv) {
+    tourDid("window");
     // the plane hunt: a jet on the glass is fair game
     const shot = world.shootAtGlass(hit.uv.x, hit.uv.y);
     if (shot) {
@@ -1811,7 +1857,7 @@ controls.onAction((ndcX, ndcY) => {
     openReader(hit.object.userData.note);
   } else if (hit.object.userData.postable && hit.distance < NOTE_REACH && notesWall.postableFrom(hit, controls.pos)) {
     const place = notesWall.placementFromHit(hit);
-    if (place) openComposer(place);
+    if (place) { tourDid("note"); openComposer(place); }
   } else {
     tapWalk(ndcX, ndcY);          // it hit scenery with nothing to do: go there instead
   }

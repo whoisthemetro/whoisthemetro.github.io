@@ -49,6 +49,7 @@ export const INTRO = {
   },
 };
 
+
 // what she says on crossing a threshold, once per room
 export const ROOM_LINES = {
   arcade: "right, the arcade. different room, different things to tell you.",
@@ -71,23 +72,44 @@ export const ROOM_LINES = {
    summary, after a first draft confidently sent people to the arcade
    through the door with the red neon — which is MIX & MASTER, and leaves
    the site entirely. Go and read the thing before you describe it. */
+/* ---------------------------------------------------------------------------
+   ORDER MATTERS, and the bedroom list below is now IN the order she says it.
+
+   She used to draw at random, which meant a first visitor could be told about
+   the lava lamp and then pointed at the arcade before they had touched one
+   thing in the room they were standing in. The arcade is a door OUT of the
+   bedroom and it belongs at the end. So: walls first (that is the whole point
+   of the place), then the radio, the instruments, the computer, the window and
+   the planes, then the light, then the cat, and only then the way through.
+
+   main.js walks this top to bottom for a first visit, SKIPPING anything you
+   have already done for yourself, and falls back to the shuffle bag once it
+   reaches the end.
+
+   PENDING: a richer set of these with real directions in them ("on the desk
+   under the window, right hand end") is written and ready, but every line here
+   is a pre-rendered mp3 keyed to a hash of its own text, and the ElevenLabs
+   account is on a free plan which refuses this voice over the API. New wording
+   would fall back to the browser synth and she would change voice mid-tour,
+   which is the exact fault this pass exists to remove. Restore the plan, run
+   `node tools/voice/render.mjs`, and the wording can improve in one edit. */
 export const GUIDE_LINES = {
   bedroom: [
-    "the drum pads are numbered for a reason. play them one through six, in order, and the room will take you somewhere you haven't been.",
     "the walls take notes. aim at any bare patch and leave one. it stays there, and everyone who comes after you reads it.",
+    "the radio picks up real LA stations. not a loop, not a mood. whatever is actually going out over the air right now.",
+    "the telecaster is tuned and waiting. a minor pentatonic lives on it, so you genuinely cannot play a wrong note.",
+    "the drum pads are numbered for a reason. play them one through six, in order, and the room will take you somewhere you haven't been.",
+    "the pedals on the floor do what pedals do. click one to switch it on, click it again to bypass. the light goes dim when it's out of the chain.",
+    "the keys play, and you can change the sound they make. same for the guitar, if the voice it's wearing isn't the one you want.",
+    "the little mixer sets the balance. keys, guitar, drums. if one of them is too loud, that's where you fix it.",
+    "the computer on the desk actually boots. type help and it'll tell you what it does. type new and it'll tell you what changed since you were last here.",
     "look out the window. that's a real place, not a picture. press up against the glass and turn around, the city never runs out.",
     "that strip along the top is a real aeroplane. we sit ten miles off LAX, so when one crosses the window, one is genuinely up there. the flight number, the type, the altitude, all of it true.",
     "watch the sky out there long enough and a jet goes over. you can take a shot at it. through the glass. i didn't tell you that.",
-    "the cat is real, in the sense that matters. it gets hungry, it gets thirsty, and it remembers. there's a mouse on the floor if you want to throw something.",
-    "the telecaster is tuned and waiting. a minor pentatonic lives on it, so you genuinely cannot play a wrong note.",
-    "the pedals on the floor do what pedals do. click one to switch it on, click it again to bypass. the light goes dim when it's out of the chain.",
-    "the little mixer sets the balance. keys, guitar, drums. if one of them is too loud, that's where you fix it.",
-    "the radio picks up real LA stations. not a loop, not a mood. whatever is actually going out over the air right now.",
-    "give the lava lamp a click. and know that everyone else in here sees it come on too. that lamp belongs to the room, not to you.",
     "the blinds and the curtains both move. draw them and it's just you and the glow. open them and you've got the whole city back.",
     "the light switch dims rather than flips. somewhere between the two ends is the version of this room i like best.",
-    "the computer on the desk actually boots. type help and it'll tell you what it does. type new and it'll tell you what changed since you were last here.",
-    "the keys play, and you can change the sound they make. same for the guitar, if the voice it's wearing isn't the one you want.",
+    "give the lava lamp a click. and know that everyone else in here sees it come on too. that lamp belongs to the room, not to you.",
+    "the cat is real, in the sense that matters. it gets hungry, it gets thirsty, and it remembers. there's a mouse on the floor if you want to throw something.",
     "the open doorway goes through to the arcade. i'll come with you.",
     "careful with the door under the red neon. that one isn't a room. it walks you out of here to mix and master, so finish up first.",
   ],
@@ -105,5 +127,6 @@ export const GUIDE_LINES = {
 
 // every distinct thing she can say, for the renderer to walk
 export function allSpoken() {
-  return [INTRO.bedroom.spoken, INTRO.arcade.spoken, ...Object.values(ROOM_LINES), ...GUIDE_LINES.bedroom, ...GUIDE_LINES.arcade];
+  return [INTRO.bedroom.spoken, INTRO.arcade.spoken, ...Object.values(ROOM_LINES),
+          ...GUIDE_LINES.bedroom, ...GUIDE_LINES.arcade];
 }
