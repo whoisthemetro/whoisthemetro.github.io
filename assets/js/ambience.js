@@ -1610,7 +1610,10 @@ export function fart({ wet = 0, gain = 0.85, rate = 1, index = null } = {}) {
 let muzSrc = null, muzGain = null, muzMuffle = null, muzBuf = null, muzLoading = null;
 let speakerIn = null, muzBed = null;      // the speaker itself, and the music into it
 const MUZ_URL = "assets/audio/muzak/bathroom-loop.mp3";
-const MUZ_CEILING = 0.085;      // it is background. it should never be the point.
+/* 0.032, down from 0.085 — about 8 dB quieter. It is BACKGROUND: the test is
+   that you notice the room has music, not that you notice the music. Anything
+   you can follow the tune of in here is too loud. */
+const MUZ_CEILING = 0.032;
 
 export function loadBathMusic() {
   if (muzBuf) return Promise.resolve(true);
@@ -1707,7 +1710,11 @@ async function playDJ() {
   const t = ctx.currentTime + 0.05;
   const src = ctx.createBufferSource(); src.buffer = buf;
   const g = ctx.createGain();
-  g.gain.value = 3.2;                       // over the bed, still inside the ceiling
+  /* He rides 2.4x the bed rather than 3.2x. Everything on this speaker came
+     down together, but a voice has to clear the music it's talking over — at
+     the old ratio he'd now be shouting over a whisper. This lands him about
+     where the music used to sit, which is right for an announcement. */
+  g.gain.value = 2.4;
   src.connect(g).connect(speakerIn);
   // duck the music under him and bring it back — radio does this, and it's
   // the difference between a voice and a voice fighting a song

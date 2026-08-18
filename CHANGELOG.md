@@ -126,8 +126,13 @@ a soft clip for the tired little amp behind it. Nothing in there adds anything.
 It runs through the same convolver the toilets do, because it's in the same
 tiled room and would sound wrong dry next to them.
 
-**It's quiet on purpose.** The ceiling is 0.085 — about a tenth of a flush. It's
-background, and background that makes you notice it has failed.
+**It's quiet on purpose.** The ceiling is 0.032 — about −30 dBFS, a thirtieth of
+a flush. It started at 0.085 and that was still too present: the test isn't
+whether you can hear it, it's whether you notice the room has music rather than
+noticing the music. Anything you can follow the tune of in there is too loud.
+The DJ came down with it but not as far (2.4× the bed rather than 3.2×) — a
+voice still has to clear what it's talking over, and at the old ratio he'd have
+been shouting over a whisper.
 
 **And it's positioned.** Level falls on real distance to the room, and a second
 filter closes as you leave: sound through a wall doesn't just get quieter, it
