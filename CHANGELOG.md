@@ -112,6 +112,168 @@ detour budget backs it up, because the per-stall budget is refilled by progress
 and a route that gains two centimetres between every obstacle can refill it
 forever.
 
+## 2026-08-18 — the radio is on the rack, not the desk
+
+Metro caught it: she was telling people the radio was on the right-hand end of
+the desk. It is on top of the 12U rack, which is a separate thing on casters
+standing beside the desk. Same pass had the telecaster "stood beside" the desk
+when it is on the FLOOR between the desk and that rack.
+
+How the crib went wrong is the useful part. `laRadio.group.position.set(0.15,
+0.68, -0.1)` followed by `rack.add(laRadio.group)` is a LOCAL offset inside the
+rack, not a world position. Reading the numbers without reading which group
+they were added to turned a rack into a desk. The note in lines.js now says so
+in those words, because "be careful" is not a check.
+
+Two lines re-rendered, 507 characters, because a clip is named for a hash of
+its own text. Nothing else was touched and nothing else was paid for.
+
+## 2026-08-18 — Trinity gets a new voice, and the tour she was written for
+
+**The blocker was never credits.** The account had 9,000 characters sitting
+unused. Her voice was Janet, a `professional` voice from ElevenLabs' library,
+and library voices need a paid plan for API access. Credits and voice tier are
+separate rules; we were passing one and failing the other, which is why "I have
+plenty of credits" and "402 payment required" were both true at once.
+
+Worth recording: her clips were rendered on 13 and 16 August, and that free
+billing period began on the 13th. So the plan did not lapse. The rule tightened
+underneath us, some time in the two days before the 18th.
+
+**She is Lily now**, a premade voice, which carries no such restriction. Her
+WHOLE script re-rendered, not just the new lines: 43 clips, 5,456 characters,
+inside the free allowance with 4,511 to spare. Re-rendering everything was the
+point. Leaving 29 old clips in the previous voice would have made her sound
+like two people, which is the exact fault the last pass removed.
+
+The voice id lives in `tools/voice/render.mjs` rather than an env var on
+purpose. A hidden override is how a later session renders half her lines in
+somebody else's voice.
+
+**And the tour she was written for is finally in.** Nine ordered steps that say
+WHERE things are, with the positions read out of the running world rather than
+guessed: the radio at the right-hand end of the desk under the window, the
+telecaster stood beside the keys, the drum pads in the far corner, the arcade
+doorway last. She skips a step you already did for yourself and acknowledges it
+instead, so doing the thing is more interesting than being told about it.
+
+## 2026-08-17 — Trinity shows you the room, in order
+
+**She was changing voice mid-conversation.** Not random: every line has a
+pre-rendered mp3, and `speak()` fell through to the browser's own synth
+whenever the clip manifest hadn't landed yet. `loadClips()` was fire-and-forget
+at boot, so clicking her in the first second got the robot and clicking her
+later got the recording, and it sounded like two different people. `speak()`
+now WAITS for the manifest when a clip was asked for. The load always settles
+(an empty set on failure), so the synth stays a genuine fallback instead of a
+race, and a line superseded mid-clip no longer restarts itself in the wrong
+voice.
+
+**A burst of taps used to start a line per tap**, each one killing the last
+before a word got out, so she stuttered and tore through the script. One line
+per 420 ms now; the extra taps do nothing rather than stack.
+
+**And she walks the room in order.** She drew at random before, which meant a
+first visitor could be told about the lava lamp and then pointed at the arcade
+before touching a single thing in the room they were standing in. The arcade is
+a door OUT of the bedroom and it belongs at the end. The order is now: the walls
+(the whole point of the place), the radio, the instruments, the computer, the
+window and the real LAX traffic, the light, the cat, and only then the way
+through. Position is remembered per browser.
+
+She also skips what you already found. Post a note or switch the radio on and
+she won't walk you to it. The room reports ten different actions and she reads
+them, which is the difference between a script and someone looking at the room.
+
+**Not done: the wording.** A richer set with real directions in it ("on the desk
+under the window, right hand end") is written and ready to go, but each line is
+an mp3 keyed to a hash of its own text, and the ElevenLabs account is on a free
+plan that refuses this voice over the API (402, paid_plan_required). New wording
+would fall back to the synth and she would change voice mid-tour, which is the
+exact fault this pass removes. Restore the plan, run
+`node tools/voice/render.mjs`, and the wording improves in one edit.
+
+## 2026-08-17 — you can see the room, and you can point at the floor
+
+Reported as "people have a hard time moving around, especially in portrait."
+The controls turned out to be the second problem.
+
+**The field of view was 37 degrees.** A three.js FOV is VERTICAL, so on a tall
+narrow phone the horizontal view collapses: 72° vertical at a 0.46 aspect is
+37° across, against 104° on a desktop. You could not see a door, a wall, or the
+floor in front of your feet — and no control scheme fixes not being able to see
+the room. The camera now solves its vertical FOV from a target horizontal one
+(clamped 72–100, because pure Hor+ wants 140° vertical down there). Wide screens
+land on the old 72 and are untouched; portrait opens to ~58° across with far
+more floor under you. Recomputed on resize, so turning the phone works.
+
+**Tap the floor and you walk there.** A stick is a thing you have to learn;
+pointing at the ground isn't. A tap that doesn't land on anything with a job
+becomes a destination: the ray meets the ground plane, `isWalkable` decides
+whether that spot is real, and you drive there — TURNING as you go. The turn is
+most of the value, because the hard part on a phone was never the walking, it
+was aiming the camera first. A ring lands where you tapped so it's clear it
+registered. Any joystick, key or look-drag takes control straight back, and
+walking into something gives up after half a second instead of grinding.
+
+Touch only (a desk has WASD), and the rooms that own their movement — zero-g,
+the gym's court — are left alone. Verified on an emulated iPhone: tap ahead
+walked 2.22 m and stopped on arrival, a tap to the left turned 28° toward it, a
+tap at the ceiling did nothing, and the joystick cancelled it instantly.
+
+## 2026-08-17 — other people stop being silhouettes
+
+Reported as an Android bug ("she could only see my eyes, not my body") and it
+turned out not to be Android at all. It reproduced first try in headless
+Chrome.
+
+**Why.** A figure is ~27 `MeshLambertMaterial` parts, and in this world all room
+light comes from the window. Stand anywhere the window doesn't reach and every
+one of those parts renders pure black. The face and the shirt logo are
+`MeshBasicMaterial`, so they light themselves and keep showing — a black
+silhouette with a pair of floating eyes, which is precisely what she described.
+
+**Fix.** Each avatar colour now carries an `emissive` floor of itself. It costs
+nothing against the light budget (it isn't a light), can't leak through a wall,
+and survives the toon pass, which is the same trick the bathroom tile uses on
+its corners.
+
+It took two parts. A share of the colour alone (30%) still left dark clothing
+dark, because a share of near-black is near-black and the default fit is nearly
+black — so the torso and legs stayed a silhouette while the skin came back. A
+small absolute lift on top is what makes a black tee read as a shape. The share
+is what keeps it that person's colours instead of a uniform grey.
+
+Checked in three lightings: the dim bedroom, the bedroom with the blinds open,
+and the arcade under neon. Reads in all three, washed out in none.
+
+## 2026-08-17 — the mic stops feeding back
+
+**Why it echoed.** Peer voice is decoded into the WEB AUDIO graph, not an
+`<audio>` element. The browser's `echoCancellation` constraint was switched on
+the whole time, but it can only subtract what it knows it is rendering, and on
+phones Web Audio output is generally not in that reference signal. So the
+canceller was on and blind: your voice left their speaker, their mic heard it,
+and it came back to you.
+
+**Two guards in voice.js, neither needing ML.** A GATE that refuses to transmit
+a chunk which never rose above speech level, so room tone and a distant talker
+never go out at all. And a DUCK: in open-mic mode, nothing transmits while a
+peer's voice is actually leaving your speaker. A feedback loop needs both ends
+live at once, so keeping one end quiet means it cannot start. Push-to-talk is
+exempt from the duck on purpose — you are holding a button, you mean it, and
+you can hear the result and let go. The gate fails OPEN if the analyser never
+built: a gate that cannot measure must not be the reason nobody can talk.
+
+**The UI was half the bug.** A quick TAP on the mic button locked it open,
+which on a phone is the easiest gesture to perform by accident. Hold-to-talk is
+the default now; leaving it open takes a deliberate double-tap and says out loud
+that it wants headphones. If the duck swallows five chunks in a row, the room
+says so once rather than just going quiet on you.
+
+Verified headlessly with a fake capture device: 4 chunks suppressed while a
+peer was audible, 1 sent, and transmission resumed once they went quiet.
+
 ## 2026-08-16 — the planes come back through our own door
 
 **The flight strips had stopped, and it wasn't our bug.** airplanes.live now
@@ -868,168 +1030,6 @@ the barkeep, the pool tables, the hoop's fire, the mirror, the lift.
 Every line was checked against the code rather than against a summary, after
 the first draft confidently sent people to the arcade through the door with
 the red neon — which is MIX & MASTER, and leaves the site entirely.
-
-## 2026-08-18 — the radio is on the rack, not the desk
-
-Metro caught it: she was telling people the radio was on the right-hand end of
-the desk. It is on top of the 12U rack, which is a separate thing on casters
-standing beside the desk. Same pass had the telecaster "stood beside" the desk
-when it is on the FLOOR between the desk and that rack.
-
-How the crib went wrong is the useful part. `laRadio.group.position.set(0.15,
-0.68, -0.1)` followed by `rack.add(laRadio.group)` is a LOCAL offset inside the
-rack, not a world position. Reading the numbers without reading which group
-they were added to turned a rack into a desk. The note in lines.js now says so
-in those words, because "be careful" is not a check.
-
-Two lines re-rendered, 507 characters, because a clip is named for a hash of
-its own text. Nothing else was touched and nothing else was paid for.
-
-## 2026-08-18 — Trinity gets a new voice, and the tour she was written for
-
-**The blocker was never credits.** The account had 9,000 characters sitting
-unused. Her voice was Janet, a `professional` voice from ElevenLabs' library,
-and library voices need a paid plan for API access. Credits and voice tier are
-separate rules; we were passing one and failing the other, which is why "I have
-plenty of credits" and "402 payment required" were both true at once.
-
-Worth recording: her clips were rendered on 13 and 16 August, and that free
-billing period began on the 13th. So the plan did not lapse. The rule tightened
-underneath us, some time in the two days before the 18th.
-
-**She is Lily now**, a premade voice, which carries no such restriction. Her
-WHOLE script re-rendered, not just the new lines: 43 clips, 5,456 characters,
-inside the free allowance with 4,511 to spare. Re-rendering everything was the
-point. Leaving 29 old clips in the previous voice would have made her sound
-like two people, which is the exact fault the last pass removed.
-
-The voice id lives in `tools/voice/render.mjs` rather than an env var on
-purpose. A hidden override is how a later session renders half her lines in
-somebody else's voice.
-
-**And the tour she was written for is finally in.** Nine ordered steps that say
-WHERE things are, with the positions read out of the running world rather than
-guessed: the radio at the right-hand end of the desk under the window, the
-telecaster stood beside the keys, the drum pads in the far corner, the arcade
-doorway last. She skips a step you already did for yourself and acknowledges it
-instead, so doing the thing is more interesting than being told about it.
-
-## 2026-08-17 — Trinity shows you the room, in order
-
-**She was changing voice mid-conversation.** Not random: every line has a
-pre-rendered mp3, and `speak()` fell through to the browser's own synth
-whenever the clip manifest hadn't landed yet. `loadClips()` was fire-and-forget
-at boot, so clicking her in the first second got the robot and clicking her
-later got the recording, and it sounded like two different people. `speak()`
-now WAITS for the manifest when a clip was asked for. The load always settles
-(an empty set on failure), so the synth stays a genuine fallback instead of a
-race, and a line superseded mid-clip no longer restarts itself in the wrong
-voice.
-
-**A burst of taps used to start a line per tap**, each one killing the last
-before a word got out, so she stuttered and tore through the script. One line
-per 420 ms now; the extra taps do nothing rather than stack.
-
-**And she walks the room in order.** She drew at random before, which meant a
-first visitor could be told about the lava lamp and then pointed at the arcade
-before touching a single thing in the room they were standing in. The arcade is
-a door OUT of the bedroom and it belongs at the end. The order is now: the walls
-(the whole point of the place), the radio, the instruments, the computer, the
-window and the real LAX traffic, the light, the cat, and only then the way
-through. Position is remembered per browser.
-
-She also skips what you already found. Post a note or switch the radio on and
-she won't walk you to it. The room reports ten different actions and she reads
-them, which is the difference between a script and someone looking at the room.
-
-**Not done: the wording.** A richer set with real directions in it ("on the desk
-under the window, right hand end") is written and ready to go, but each line is
-an mp3 keyed to a hash of its own text, and the ElevenLabs account is on a free
-plan that refuses this voice over the API (402, paid_plan_required). New wording
-would fall back to the synth and she would change voice mid-tour, which is the
-exact fault this pass removes. Restore the plan, run
-`node tools/voice/render.mjs`, and the wording improves in one edit.
-
-## 2026-08-17 — you can see the room, and you can point at the floor
-
-Reported as "people have a hard time moving around, especially in portrait."
-The controls turned out to be the second problem.
-
-**The field of view was 37 degrees.** A three.js FOV is VERTICAL, so on a tall
-narrow phone the horizontal view collapses: 72° vertical at a 0.46 aspect is
-37° across, against 104° on a desktop. You could not see a door, a wall, or the
-floor in front of your feet — and no control scheme fixes not being able to see
-the room. The camera now solves its vertical FOV from a target horizontal one
-(clamped 72–100, because pure Hor+ wants 140° vertical down there). Wide screens
-land on the old 72 and are untouched; portrait opens to ~58° across with far
-more floor under you. Recomputed on resize, so turning the phone works.
-
-**Tap the floor and you walk there.** A stick is a thing you have to learn;
-pointing at the ground isn't. A tap that doesn't land on anything with a job
-becomes a destination: the ray meets the ground plane, `isWalkable` decides
-whether that spot is real, and you drive there — TURNING as you go. The turn is
-most of the value, because the hard part on a phone was never the walking, it
-was aiming the camera first. A ring lands where you tapped so it's clear it
-registered. Any joystick, key or look-drag takes control straight back, and
-walking into something gives up after half a second instead of grinding.
-
-Touch only (a desk has WASD), and the rooms that own their movement — zero-g,
-the gym's court — are left alone. Verified on an emulated iPhone: tap ahead
-walked 2.22 m and stopped on arrival, a tap to the left turned 28° toward it, a
-tap at the ceiling did nothing, and the joystick cancelled it instantly.
-
-## 2026-08-17 — other people stop being silhouettes
-
-Reported as an Android bug ("she could only see my eyes, not my body") and it
-turned out not to be Android at all. It reproduced first try in headless
-Chrome.
-
-**Why.** A figure is ~27 `MeshLambertMaterial` parts, and in this world all room
-light comes from the window. Stand anywhere the window doesn't reach and every
-one of those parts renders pure black. The face and the shirt logo are
-`MeshBasicMaterial`, so they light themselves and keep showing — a black
-silhouette with a pair of floating eyes, which is precisely what she described.
-
-**Fix.** Each avatar colour now carries an `emissive` floor of itself. It costs
-nothing against the light budget (it isn't a light), can't leak through a wall,
-and survives the toon pass, which is the same trick the bathroom tile uses on
-its corners.
-
-It took two parts. A share of the colour alone (30%) still left dark clothing
-dark, because a share of near-black is near-black and the default fit is nearly
-black — so the torso and legs stayed a silhouette while the skin came back. A
-small absolute lift on top is what makes a black tee read as a shape. The share
-is what keeps it that person's colours instead of a uniform grey.
-
-Checked in three lightings: the dim bedroom, the bedroom with the blinds open,
-and the arcade under neon. Reads in all three, washed out in none.
-
-## 2026-08-17 — the mic stops feeding back
-
-**Why it echoed.** Peer voice is decoded into the WEB AUDIO graph, not an
-`<audio>` element. The browser's `echoCancellation` constraint was switched on
-the whole time, but it can only subtract what it knows it is rendering, and on
-phones Web Audio output is generally not in that reference signal. So the
-canceller was on and blind: your voice left their speaker, their mic heard it,
-and it came back to you.
-
-**Two guards in voice.js, neither needing ML.** A GATE that refuses to transmit
-a chunk which never rose above speech level, so room tone and a distant talker
-never go out at all. And a DUCK: in open-mic mode, nothing transmits while a
-peer's voice is actually leaving your speaker. A feedback loop needs both ends
-live at once, so keeping one end quiet means it cannot start. Push-to-talk is
-exempt from the duck on purpose — you are holding a button, you mean it, and
-you can hear the result and let go. The gate fails OPEN if the analyser never
-built: a gate that cannot measure must not be the reason nobody can talk.
-
-**The UI was half the bug.** A quick TAP on the mic button locked it open,
-which on a phone is the easiest gesture to perform by accident. Hold-to-talk is
-the default now; leaving it open takes a deliberate double-tap and says out loud
-that it wants headphones. If the duck swallows five chunks in a row, the room
-says so once rather than just going quiet on you.
-
-Verified headlessly with a fake capture device: 4 chunks suppressed while a
-peer was audible, 1 sent, and transmission resumed once they went quiet.
 
 ## 2026-08-12 — the furniture becomes furniture
 
