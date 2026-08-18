@@ -753,6 +753,32 @@ Every line was checked against the code rather than against a summary, after
 the first draft confidently sent people to the arcade through the door with
 the red neon — which is MIX & MASTER, and leaves the site entirely.
 
+## 2026-08-17 — other people stop being silhouettes
+
+Reported as an Android bug ("she could only see my eyes, not my body") and it
+turned out not to be Android at all. It reproduced first try in headless
+Chrome.
+
+**Why.** A figure is ~27 `MeshLambertMaterial` parts, and in this world all room
+light comes from the window. Stand anywhere the window doesn't reach and every
+one of those parts renders pure black. The face and the shirt logo are
+`MeshBasicMaterial`, so they light themselves and keep showing — a black
+silhouette with a pair of floating eyes, which is precisely what she described.
+
+**Fix.** Each avatar colour now carries an `emissive` floor of itself. It costs
+nothing against the light budget (it isn't a light), can't leak through a wall,
+and survives the toon pass, which is the same trick the bathroom tile uses on
+its corners.
+
+It took two parts. A share of the colour alone (30%) still left dark clothing
+dark, because a share of near-black is near-black and the default fit is nearly
+black — so the torso and legs stayed a silhouette while the skin came back. A
+small absolute lift on top is what makes a black tee read as a shape. The share
+is what keeps it that person's colours instead of a uniform grey.
+
+Checked in three lightings: the dim bedroom, the bedroom with the blinds open,
+and the arcade under neon. Reads in all three, washed out in none.
+
 ## 2026-08-17 — the mic stops feeding back
 
 **Why it echoed.** Peer voice is decoded into the WEB AUDIO graph, not an

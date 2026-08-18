@@ -84,10 +84,39 @@ export function buildAvatarFigure(spec = {}) {
   // one material per colour: a figure is ~20 meshes sharing four or five
   // colours, and every peer in the room builds one of these
   const mats = new Map();
+  /* Every body part is Lambert, and in this world ALL room light comes from
+     the window. Stand where the window doesn't reach and a Lambert body
+     renders pure black — which is how a peer ends up as a silhouette with
+     nothing but floating eyes, because the face and the logo are Basic and
+     light themselves. A person is the one thing in here that must be legible
+     from anywhere.
+
+     So each colour carries an EMISSIVE floor of itself. It costs no light
+     budget (it isn't a light), it can't leak through a wall, and it survives
+     the toon pass — the same trick the bathroom tile uses for its corners.
+     Low enough that real light still does the shading and the figure keeps
+     its form; high enough that a body in a dark corner still reads as that
+     person's colours. */
+  // a share of the colour, PLUS a small flat lift. the share alone leaves dark
+  // clothing dark (34% of near-black is still near-black), and a black tee in
+  // an unlit corner is the silhouette problem all over again. the flat part is
+  // what keeps the shape readable; the share is what keeps it that person's
+  // colour rather than a uniform grey.
+  const FLOOR_MUL = 0.30, FLOOR_ADD = 0.075;
+  const floorOf = (c) => {
+    const col = new THREE.Color(c);
+    col.setRGB(Math.min(1, col.r * FLOOR_MUL + FLOOR_ADD),
+               Math.min(1, col.g * FLOOR_MUL + FLOOR_ADD),
+               Math.min(1, col.b * FLOOR_MUL + FLOOR_ADD));
+    return col;
+  };
   const lam = (c) => {
     const k = String(c);
     let m = mats.get(k);
-    if (!m) { m = track(new THREE.MeshLambertMaterial({ color: c })); mats.set(k, m); }
+    if (!m) {
+      m = track(new THREE.MeshLambertMaterial({ color: c, emissive: floorOf(c) }));
+      mats.set(k, m);
+    }
     return m;
   };
 

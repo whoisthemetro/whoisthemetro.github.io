@@ -25,6 +25,7 @@ export const WHATS_NEW = [
   {
     date: "2026-08-17",
     items: [
+      "you can see people again. someone standing away from the window used to be a black shape with floating eyes — now they're a whole person wherever they stand",
       "the mic stopped echoing. if someone else's voice is coming out of your speaker, yours holds off for a moment instead of sending it back to them",
       "hold the mic button to talk. a quick tap used to leave it wide open, which is how the echo started — double-tap now if you really do want it left on",
       "and it only sends when you're actually saying something, so the room doesn't hear your fan or your dog",
