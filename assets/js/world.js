@@ -2769,8 +2769,28 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     kukoRug.position.set(0.15, 0.004, 0.85);   // open carpet mid-room, over the pile, under the grime
     kukoRug.rotation.y = 0.14;                 // a little askew, like it landed there
     add(kukoRug);
-    let kFrame = 0;
-    tickKuko = (elapsed2) => {
+    /* This is two 512x512 half-float passes, and it used to run EVERY frame
+       whether or not the rug was on screen, in the room, or even in the same
+       half of the world. At an uncapped 120Hz on a phone that is 63 million
+       fragment invocations a second for a decorative rug, and it was the
+       single largest continuous cost in here.
+
+       Two gates. It does not run when you are nowhere near it (the arcade is
+       the same cull scope, so "visible" was never the test), and it steps at
+       its own rate rather than the display's. A cellular automaton at 12Hz
+       looks exactly as alive as one at 120: nobody is counting its
+       generations, they are looking at a rug. */
+    const KUKO_HZ = IS_TOUCH ? 12 : 30;
+    const KUKO_NEAR = 9;              // metres; the rug sits in the bedroom
+    let kFrame = 0, kAcc = 0;
+    tickKuko = (elapsed2, dt2, ppos) => {
+      if (ppos) {
+        const dx = ppos.x - kukoRug.position.x, dz = ppos.z - kukoRug.position.z;
+        if (dx * dx + dz * dz > KUKO_NEAR * KUKO_NEAR) return;
+      }
+      kAcc += dt2 || 0;
+      if (kAcc < 1 / KUKO_HZ) return;
+      kAcc = 0;
       // save whatever's bound and put it back when we're done. inside a
       // WebXR session that's the HEADSET's framebuffer, and clearing it to
       // null would send the whole room to the canvas instead of the eyes
@@ -2790,6 +2810,12 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
       renderer.setRenderTarget(kB);
       renderer.render(passScene, passCam);
       renderer.setRenderTarget(prevRT);
+      /* The rug's OWN pass never got its clock. matA and matB were being
+         advanced every frame while floorUniforms sat at iTime 0, iFrame 0
+         forever, so the two expensive buffer passes fed a surface frozen at
+         the moment of creation. It rendered black and cost full price. */
+      floorUniforms.iTime.value = elapsed2;
+      floorUniforms.iFrame.value = kFrame;
       [kA, kA2] = [kA2, kA];
       kFrame++;
     };
@@ -8458,7 +8484,7 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     elapsed += dt;
     for (const m of cabinetMixers) m.update(dt);   // the pac cabinet's attract loop
     tickNeuro(elapsed, dt);
-    tickKuko(elapsed);
+    tickKuko(elapsed, dt, ppos);
     if (grimeDirty && elapsed - grimeUpAt > 0.1) {
       grimeUpAt = elapsed; grimeDirty = false; grimeTex.needsUpdate = true;
     }

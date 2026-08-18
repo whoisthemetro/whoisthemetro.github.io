@@ -95,12 +95,24 @@ const canvas = $("#scene");
 const renderer = new THREE.WebGLRenderer({
   canvas, antialias: !IS_TOUCH, powerPreference: "high-performance",
 });
-renderer.setPixelRatio(Math.min(devicePixelRatio, IS_TOUCH ? 1.5 : 2));
+/* MOBILE THERMALS. A phone running this got hot enough to notice, and the
+   cause was not one expensive thing, it was three cheap ones multiplied:
+     · the loop was UNCAPPED. setAnimationLoop runs at display refresh, so a
+       ProMotion iPhone was drawing the whole room 120 times a second.
+     · 52 lights are live at once (27 point, 23 spot) because the bedroom and
+       the arcade share one light scope. Every lit pixel loops over all of
+       them. Measured: hiding them cut frame cost 44% even on a desktop GPU,
+       and a phone pays far more per light than a desktop does.
+     · two shadow-casting lights mean two extra passes over the scene.
+   A desktop can have all of it. A phone gets a version that does not cook. */
+renderer.setPixelRatio(Math.min(devicePixelRatio, IS_TOUCH ? 1.25 : 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = IS_TOUCH ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
+// shadows are two extra scene passes for a stripe of sun on the carpet. worth
+// it on a desktop, not worth a hot phone in someone's hand.
+renderer.shadowMap.enabled = !IS_TOUCH;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 /* A three.js FOV is VERTICAL, so on a tall narrow phone the horizontal view
    collapses: 72 deg vertical at a 0.46 aspect is 37 deg across. That is a
@@ -5175,7 +5187,18 @@ if (/(\bdebug\b)/.test(location.hash + " " + location.search)) {
 const clock = new THREE.Clock();
 let t = 0;
 let grimeSaveAt = 0;     // last time we pushed the carpet snapshot to room_state
+/* The cap. 40 is high enough that walking and looking still feel smooth, and
+   it is a third of the work a 120Hz phone was doing. Never capped in a
+   headset: a dropped frame there is a lurch in the stomach, not a hiccup. */
+const FRAME_MS = IS_TOUCH ? 1000 / 40 : 0;
+let lastFrameAt = 0;
 renderer.setAnimationLoop(() => {
+  if (FRAME_MS && !xr.presenting()) {
+    const now = performance.now();
+    // the -2 stops us missing a vsync by a hair and landing on half the rate
+    if (now - lastFrameAt < FRAME_MS - 2) return;
+    lastFrameAt = now;
+  }
   const dt = Math.min(clock.getDelta(), 0.05);
   t += dt;
   if (xr.presenting()) xr.tick(dt); else controls.update(dt);

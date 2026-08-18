@@ -112,6 +112,41 @@ detour budget backs it up, because the per-stall budget is refilled by progress
 and a route that gains two centimetres between every obstacle can refill it
 forever.
 
+## 2026-08-18 — the phone stops cooking
+
+Reported as "my phone gets really hot on the website". Heat is sustained load,
+not a stutter, so the question was what runs continuously rather than what
+runs slowly. Measured before touching anything.
+
+**The loop was never capped.** `setAnimationLoop` runs at display refresh, so a
+120Hz iPhone was drawing the entire room 120 times a second. Nothing throttled
+it. On touch it now renders at half refresh (30 on a 60Hz phone, 60 on a
+ProMotion one) and never in a headset, where a dropped frame is a lurch rather
+than a hiccup.
+
+**The rug was costing three renders a frame.** The KuKo floor ping-pongs two
+512×512 half-float targets, and it ran every frame whether you were standing on
+it, in the arcade, or facing the other way. At 120Hz that is 63 million
+fragment invocations a second for a decorative rug. It is now gated by distance
+and steps at its own rate, 12Hz on touch and 30 on desktop. Nobody counts a
+cellular automaton's generations; they look at a rug.
+
+**Shadows off on touch, pixel ratio 1.5 → 1.25.** Two shadow passes for a
+stripe of sun on the carpet is a desktop luxury.
+
+Net on an emulated phone: renders per second went 90 → 50 near the rug and
+**90 → 30 anywhere else**, one pass per frame instead of three. Desktop is
+deliberately untouched: full shadows, full resolution, uncapped.
+
+Two things found while in there. The rug's own shader never got its clock —
+`matA` and `matB` were advanced every frame while `floorUniforms` sat at iTime
+0 forever, so two expensive passes fed a surface frozen at creation. Fixed. And
+the rug renders BLACK in every headless screenshot, which is not a bug: this
+ANGLE context reports `OES_texture_half_float_linear` false, and sampling a
+half-float texture with linear filtering it cannot do returns black. Real
+devices have that extension. Written into CLAUDE.md so the next session doesn't
+chase it.
+
 ## 2026-08-18 — the radio is on the rack, not the desk
 
 Metro caught it: she was telling people the radio was on the right-hand end of
