@@ -4,6 +4,43 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-08-16 — the planes come back through our own door
+
+**The flight strips had stopped, and it wasn't our bug.** airplanes.live now
+answers 403 with "contact us at… include a link to your project" — the free
+endpoint is gone. Both obvious replacements, adsb.lol and adsb.fi, serve the
+data happily and send NO `access-control-allow-origin`, so a browser on
+whoisthemetro.com cannot read either one directly. That's the whole reason
+CLAUDE.md said they weren't options.
+
+So there's a `planes` edge function now: one hop, server-side, that returns
+the airplanes.live shape whatever it actually talked to — so `planes.js` kept
+the parser it already had. It is deliberately NOT a general proxy: the
+coordinates are baked in, so the only sky this URL can ever return is the one
+over the bedroom window. Two upstreams tried in order, because the thing that
+just happened is a free feed disappearing without warning, and a 60-second
+shared cache so a crowded room costs the upstream what one person does. Every
+upstream down returns an empty list rather than an error, and the world flies
+its own ambient jets exactly as it always did.
+
+**The strip left a ghost of itself on phones.** It hid by sliding up on
+`transform` alone, which moves the text without un-rendering it — and on a
+phone that left a sliver of the last callsign stuck near the top of the
+screen. It fades and goes `visibility: hidden` now, and the content is emptied
+once it's off screen. Two independent reasons for it to be gone.
+
+**The HUD was portrait-only.** The mobile layout keyed on
+`orientation: portrait`, so turning the phone sideways dropped everything back
+to the desktop arrangement and the cat readout fell to the bottom-left, under a
+thumb. It keys on `pointer: coarse` and a width now — a phone is a phone
+whichever way you hold it. Three lanes across the top: cat hard left, headcount
+hard right (it used to be bottom-right, in the joystick's way), flight strip
+centred between them where it can't collide with either.
+
+**And the cat is off the keyboard.** Walking the keybed was 18% of everything
+it chose to do, which is charming roughly twice. The behaviour is gone rather
+than suppressed — the pick, the state, and the pacing that went with it.
+
 ## 2026-08-16 — the computer tells you what's new
 
 **Type `new` at the desk computer and it tells you what's changed, by day.**

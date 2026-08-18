@@ -30,10 +30,14 @@ function emitRemoved(id) { removedListeners.forEach(fn => { try { fn(id); } catc
 function emitMoved(m)  { movedListeners.forEach(fn => { try { fn(m); } catch (e) {} }); }
 
 let sfuUrl = null, sfuKey = null;   // for calling the `sfu` edge fn (Cloudflare SFU broker)
+// the LAX feed goes through an edge function: the free ADS-B APIs stopped
+// being CORS-open, so the browser can't reach one directly any more
+let planesUrl = null, planesKey = null;
 async function init() {
   const cfg = window.METRO_CONFIG || {};
   bc = "BroadcastChannel" in window ? new BroadcastChannel("metro-room") : null;
   if (cfg.SUPABASE_URL && cfg.SUPABASE_ANON_KEY) { sfuUrl = cfg.SUPABASE_URL + "/functions/v1/sfu"; sfuKey = cfg.SUPABASE_ANON_KEY; }
+  if (cfg.SUPABASE_URL && cfg.SUPABASE_ANON_KEY) { planesUrl = cfg.SUPABASE_URL + "/functions/v1/planes"; planesKey = cfg.SUPABASE_ANON_KEY; }
 
   if (cfg.SUPABASE_URL && cfg.SUPABASE_ANON_KEY) {
     try {
@@ -550,4 +554,8 @@ export const store = {
   onNew: fn => { newListeners.add(fn); return () => newListeners.delete(fn); },
   onRemoved: fn => { removedListeners.add(fn); return () => removedListeners.delete(fn); },
   onMoved: fn => { movedListeners.add(fn); return () => movedListeners.delete(fn); },
+  /* where the room asks about the sky, and the key to ask with. null in
+     local mode, and planes.js reads that as "no live traffic" rather than
+     an error — the world flies its own ambient jets either way. */
+  planesEndpoint: () => (planesUrl ? { url: planesUrl, key: planesKey } : null),
 };

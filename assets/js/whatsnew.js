@@ -25,8 +25,10 @@ export const WHATS_NEW = [
   {
     date: "2026-08-16",
     items: [
+      "the planes are back. the flight feed we used shut its doors, so the window goes through our own now — real jets over LAX again, with their real flight numbers",
+      "the cat stays off the keyboard. it was funny once",
+      "on a phone the cat and the headcount sit in the top corners whichever way you hold it, and the flight strip stops leaving a ghost of itself behind",
       "the bedroom stays in the bedroom now — walk through to the arcade and the rain, the radio, the city outside and the cat all stop at the wall",
-      "the cat stopped getting stuck walking the keyboard over and over. sorry about that one",
       "trinity works out which room she met you in. say hello in the arcade and she'll talk arcade, not bedroom",
     ],
   },

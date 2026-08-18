@@ -4214,12 +4214,19 @@ function showFlightStrip(info) {
     (info.alt ? ` <span class="fs-alt">${info.alt.toLocaleString()} ft</span>` : "");
   el.classList.add("show");
   clearTimeout(stripTimer);
-  stripTimer = setTimeout(() => el.classList.remove("show"), 15000);
+  // and empty it once it's off screen — belt and braces against a phone
+  // leaving the last callsign painted where the strip used to be
+  stripTimer = setTimeout(() => {
+    el.classList.remove("show");
+    stripTimer = setTimeout(() => { if (!el.classList.contains("show")) el.textContent = ""; }, 600);
+  }, 15000);
 }
 // pull any strip off the screen at once — the venue has no window on LAX
 function hideFlightStrip() {
   clearTimeout(stripTimer);
-  $("#flight-strip").classList.remove("show");
+  const el = $("#flight-strip");
+  el.classList.remove("show");
+  stripTimer = setTimeout(() => { if (!el.classList.contains("show")) el.textContent = ""; }, 600);
 }
 
 /* ---------------- private notes to Metro ---------------- */
@@ -4902,7 +4909,7 @@ addEventListener("keydown", (e) => {
   startPlanes((info) => {
     world.triggerPlane(info && info.dir);
     if (info && !inBoat && !inArena && !inClub) showFlightStrip(info);
-  }, (isLive) => world.setLivePlanes(isLive));
+  }, (isLive) => world.setLivePlanes(isLive), store.planesEndpoint());
 
   // the lights come back exactly as the room left them
   store.getRoomLight().then(s => {

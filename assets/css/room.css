@@ -465,49 +465,65 @@ textarea:focus, input:focus { border-color: var(--amber); }
   font-family: "SF Mono", Menlo, monospace; font-size: 13px;
   letter-spacing: 0.08em; color: #ffb000;
   text-shadow: 0 0 8px rgba(255, 176, 0, 0.5);
-  transition: transform 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.1);
+  transition: transform 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.1), opacity 0.35s ease;
   pointer-events: none;
+  /* Hidden for real, not just moved. It used to hide by sliding up on
+     `transform` alone, which leaves the text rendered and merely translated —
+     and on a phone that left a sliver of the last callsign stuck near the top
+     of the screen that never went away. opacity + visibility means there is
+     nothing left to leave behind, whatever the transform does. */
+  opacity: 0; visibility: hidden;
 }
-#flight-strip.show { transform: translate(-50%, 0); }
+#flight-strip.show { transform: translate(-50%, 0); opacity: 1; visibility: visible; }
 #flight-strip .fs-plane { color: #e8e4da; }
 #flight-strip .fs-flight { font-weight: 700; }
 #flight-strip .fs-type { color: #8a877e; }
 #flight-strip .fs-label { color: #54e08a; }
 #flight-strip .fs-alt { color: #8a877e; }
 
-/* ---------- a phone held upright ----------
-   A portrait phone is a tall slot with very little middle, and the HUD was
-   laid out for a landscape desktop: cat bottom-left, flight strip dead centre
-   at the top, a subtitle box across the bottom. Stack those on a 390px-wide
-   screen and there's more furniture than room.
+/* ---------- a phone, either way up ----------
+   The HUD was laid out for a landscape desktop: cat bottom-left, the online
+   count bottom-right, the flight strip dead centre at the top. On a phone the
+   bottom corners are where your thumbs are and where the joysticks live, so
+   both readouts move to the TOP corners and shrink.
 
-   So on portrait phones only — desktop and landscape keep what they have —
-   the two readouts go to opposite top corners and shrink, and Æon's subtitle
-   goes away entirely. She has a voice; the box was only ever the fallback,
-   and on the device with the least screen it's the first thing that should
-   give. Every OTHER toast still shows: those are feedback you can't hear.
-   Both elements animate in on `transform`, so the corner rules have to
-   restate the transform or they'd fly in from the old anchor. */
-@media (max-width: 700px) and (orientation: portrait) {
+   Keyed on `pointer: coarse` AND a size, not on orientation. The first cut of
+   this was portrait-only, so turning the phone sideways dropped everything
+   back to the desktop layout — the cat readout fell to the bottom-left, under
+   a thumb. A phone is a phone whichever way you hold it. Desktop is untouched
+   (pointer: fine); tablets over 900px keep the roomy layout they can afford.
+
+   Three things share the top edge, so they get three lanes: cat hard left,
+   online count hard right, flight strip centred between them. All three
+   animate on `transform`, so any rule that re-anchors one has to restate its
+   transform or it flies in from the old corner. */
+@media (max-width: 900px) and (pointer: coarse) {
   #cat-pill {
-    left: 8px; top: 8px; bottom: auto;
+    left: max(8px, env(safe-area-inset-left)); top: max(8px, env(safe-area-inset-top));
+    bottom: auto;
     font-size: 10px; padding: 4px 9px; letter-spacing: 0;
-    max-width: 40vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    max-width: 34vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
+  /* the online count comes up out of the thumb zone to the opposite corner,
+     in portrait as well as landscape */
+  #online-pill {
+    right: max(8px, env(safe-area-inset-right)); top: max(8px, env(safe-area-inset-top));
+    bottom: auto;
+    font-size: 10px; padding: 4px 9px; gap: 5px;
+  }
+  #online-pill .dot { width: 5px; height: 5px; }
+  /* the strip keeps the middle lane it has on desktop, just smaller, so it
+     can never collide with either corner however long the callsign is */
   #flight-strip {
-    left: auto; right: 8px; top: 8px;
-    transform: translate(0, -60px);
+    top: max(8px, env(safe-area-inset-top));
     font-size: 9px; padding: 4px 7px; letter-spacing: 0.03em;
-    /* 40vw + 52vw + the two 8px margins still fits the narrowest phone in
-       use, so the two readouts can never meet in the middle. the strip is
-       right-anchored, so if a long callsign does overflow it loses the
-       altitude off its right edge — the least load-bearing field it has. */
-    max-width: 52vw; white-space: nowrap; overflow: hidden;
+    max-width: 30vw; white-space: nowrap; overflow: hidden;
   }
-  #flight-strip.show { transform: translate(0, 0); }
-  /* the type is the widest part of the strip and the least load-bearing —
-     the flight number, where it's going and how high it is all survive */
+  /* the type code is the widest field and the least load-bearing — the
+     flight number, where it's going and how high it is all survive */
   #flight-strip .fs-type { display: none; }
+  /* and the aim tip drops below all three rather than under the strip alone */
+  #aim-tip { top: calc(max(8px, env(safe-area-inset-top)) + 30px); font-size: 9px; }
 }
 
 /* ---------- message in a bottle ---------- */

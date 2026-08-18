@@ -1,7 +1,6 @@
 /* ============================================================
    THE METRO — the cat
    A ginger cat lives here. It sleeps on the chair, watches LA
-   out the window, walks across the MIDI keys (you'll hear it),
    wanders, and comes over if you stand still near it. Click it
    to pet it — the pet count is shared by every visitor ever.
 
@@ -16,7 +15,8 @@ const FUR = 0xd98a3d, CHEST = 0xf0e3c8, EYE = 0x7ddc6a; // ginger tabby, cream b
 
 export class Cat {
   constructor(scene, spots, fx) {
-    // spots: { chair:{x,z,y}, keys:{x1,x2,z,y}, windowFloor:{x,z}, bounds }
+    // spots: { chair:{x,z,y}, windowFloor:{x,z}, foodBowl, waterBowl, litter,
+    //          bounds, avoid[] }   (no keys — it stays off the keyboard)
     this.spots = spots;
     this.fx = fx;            // { plink(i), purr() }
     this.grp = new THREE.Group();
@@ -225,8 +225,8 @@ export class Cat {
     const r = Math.random();
     if (r < 0.30) return this._goto(s.chair.x, s.chair.z, "sleep", s.chair.y);
     if (r < 0.50) return this._goto(s.windowFloor.x, s.windowFloor.z, "window", 0);
-    // a MIDI song owns the keybed — the cat keeps off while one's playing
-    if (r < 0.68 && !this.fx.songPlaying?.()) return this._goto(s.keys.x1, s.keys.z, "keys", s.keys.y);
+    // it does NOT get on the keyboard. that used to be 18% of everything it
+    // chose to do, and a cat walking the keybed is charming exactly twice.
     // wander somewhere on the carpet — somewhere that isn't inside the
     // furniture. a few re-rolls is plenty; the room is mostly floor.
     const b = s.bounds;
@@ -552,14 +552,12 @@ export class Cat {
         this.baseY = this.target.thenY || 0;
         this.state = this.target.thenState;
         this.timer = this.state === "sleep" ? rand(50, 140)
-                   : this.state === "keys" ? rand(6, 10)
                    : this.state === "eat" ? rand(5, 8)
                    : this.state === "drink" ? rand(4, 6)
                    : this.state === "litterbox" ? rand(5, 7)
                    : this.state === "pounce" ? rand(0.35, 0.6)
                    : rand(15, 45);
-        if (this.state === "keys") this.target = { x: this.spots.keys.x2, z: this.spots.keys.z };
-        else this.target = null;
+        this.target = null;
         if (this.state === "window") this.yaw = Math.PI;  // face the glass
         this.actionT = 0;
       } else {
@@ -582,25 +580,6 @@ export class Cat {
           return;
         }
         this.baseY += ((this.target.thenY && dist < 0.5 ? this.target.thenY : 0) - this.baseY) * dt * 5;
-      }
-    } else if (this.state === "keys") {
-      // a song just started? hop off and find something else to do —
-      // the keys are taken
-      if (this.fx.songPlaying?.()) { this.baseY = 0; this.state = "walk"; this._pick(playerPose); return; }
-      // pace across the keybed, plinking as it steps
-      const k = this.spots.keys;
-      const dx = this.target.x - this.pos.x;
-      if (Math.abs(dx) < 0.04) {
-        this.target = { x: this.target.x === k.x2 ? k.x1 : k.x2, z: k.z };
-        if (this.timer <= 0) { this.state = "walk"; this._pick(playerPose); }
-      } else {
-        this.pos.x += Math.sign(dx) * 0.3 * dt;
-        this.yaw = Math.sign(dx) > 0 ? Math.PI / 2 : -Math.PI / 2;
-        const step = Math.floor(this.pos.x * 14);
-        if (step !== this.lastPlinkX) {
-          this.lastPlinkX = step;
-          this.fx.plink?.(Math.abs(step) % 10);
-        }
       }
     } else if (this.timer <= 0) {
       // bored — unless someone is standing quietly nearby, then go say hi
@@ -642,7 +621,7 @@ export class Cat {
 
   _apply(t, dt = 0) {
     const sleeping = this.state === "sleep";
-    const walking = this.state === "walk" || this.state === "keys" || this.state === "carry";
+    const walking = this.state === "walk" || this.state === "carry";
     const headDown = this.state === "eat" || this.state === "drink" || this.state === "litterbox"
       || this.state === "pounce" || this.state === "dropToy";
 

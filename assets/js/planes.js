@@ -1,26 +1,37 @@
 /* ============================================================
    THE METRO — real traffic on the LAX approach
-   Polls airplanes.live (free, no key, CORS-open) for aircraft
-   within ~10 nm of the house every 5 minutes, estimates when
-   each one crosses overhead from its position and ground speed,
-   and fires the window flyover at that moment — with the actual
-   flight number, aircraft type and altitude for the flight strip.
+   Polls for aircraft within ~10 nm of the house every 5 minutes,
+   estimates when each one crosses overhead from its position and
+   ground speed, and fires the window flyover at that moment — with
+   the actual flight number, aircraft type and altitude for the strip.
+
+   It goes through our own `planes` edge function rather than straight
+   at an ADS-B API. airplanes.live went 403 in Aug 2026 ("contact us
+   for access"), and the free replacements — adsb.lol, adsb.fi — serve
+   the data but send no access-control-allow-origin, so a browser can't
+   read them. The function is the one hop that fixes that, and it holds
+   the fallback list so a feed dying again is a server-side edit.
 
    When a jet crosses the glass, one is really up there.
    Falls back to occasional ambient planes if the API is down.
    ============================================================ */
 
-const URL = "https://api.airplanes.live/v2/point/33.9164/-118.3526/10";
 const HOME_LON = -118.3526;
 const POLL_MS = 5 * 60 * 1000;
 
 let live = false;
 let timers = [];
 
-export function startPlanes(onFlyover, onLiveChange) {
+export function startPlanes(onFlyover, onLiveChange, endpoint = null) {
+  // no endpoint (local mode, or no config) means no live traffic. saying so
+  // is all that's needed — the world flies its own ambient planes whenever
+  // this reports false, exactly as it does when the feed is down.
+  if (!endpoint) { onLiveChange?.(false); return; }
   async function poll() {
     try {
-      const res = await fetch(URL);
+      const res = await fetch(endpoint.url, {
+        headers: { apikey: endpoint.key, authorization: `Bearer ${endpoint.key}` },
+      });
       if (!res.ok) throw new Error(res.status);
       const data = await res.json();
       for (const t of timers) clearTimeout(t);
