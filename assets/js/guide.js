@@ -50,12 +50,14 @@ import { makeFace } from "./face.js";
 const AURA = 0x1e6cff;
 const CORE = 0x35a6ff;
 const WALK = 0.42;             // m/s amble; slower than the barkeep, she's in no hurry
-const CHASE = 1.35;            // m/s when she's catching you up — a shade under walking pace
+const CHASE = 1.35;            // m/s crossing to a new post — a shade under walking pace
 const NOTICE = 2.6;            // how close before she looks up
 const ROAM = 0.55;             // how far from her post she'll drift
-const KEEP = 2.0;              // how close she wants to be before she settles again
 const STUCK = 1.6;             // seconds of getting nowhere before she gives up walking
 const BLINK = 9;               // beyond this she doesn't even try to walk it
+const YIELD = 1.15;            // come inside this and she gives you the floor
+const GIVE = 1.9;              // m/s she backs off at — faster than you close on her
+const ARRIVED = 0.35;          // near enough to her post to call it standing there
 
 export class Guide {
   constructor(scene, home, fx = {}) {
@@ -114,25 +116,42 @@ export class Guide {
     return d;                    // wedged — the stuck clock deals with it
   }
 
-  /* when walking won't do it — she's wedged behind furniture, or you took the
-     lift and you're now 40 m away — she just appears near you. she's a ghost;
-     a blink costs nothing and beats watching her grind into a wall forever.
-     lands beside you rather than on top of you, and never inside geometry. */
-  _blinkNear(px, pz) {
+  /* when walking won't do it — she's wedged behind furniture, or her post is
+     suddenly 40 m away because you took the lift — she just appears there.
+     she's a ghost; a blink costs nothing and beats watching her grind into a
+     wall forever. the exact spot first, then a widening ring, so she never
+     lands inside geometry.
+
+     it does NOT move her post any more. the post is the thing she's trying to
+     REACH, and rewriting it here is exactly how she used to end up living
+     wherever she happened to give up. */
+  _blinkTo(tx, tz) {
     const ok = this.fx.walkable || (() => true);
-    for (const r of [1.7, 2.2, 1.2]) {
+    const land = (x, z) => {
+      this.pos.x = x; this.pos.z = z;
+      this.stuckT = 0; this.lastD = Infinity; this.popT = 0.5;
+      return true;
+    };
+    if (ok(tx, tz)) return land(tx, tz);
+    for (const r of [0.6, 1.1, 1.7]) {
       for (let i = 0; i < 8; i++) {
         const a = (i / 8) * Math.PI * 2 + this.bob;
-        const x = px + Math.cos(a) * r, z = pz + Math.sin(a) * r;
-        if (ok(x, z)) {
-          this.pos.x = x; this.pos.z = z;
-          this.home.x = x; this.home.z = z;
-          this.stuckT = 0; this.lastD = Infinity; this.popT = 0.5;
-          return true;
-        }
+        const x = tx + Math.cos(a) * r, z = tz + Math.sin(a) * r;
+        if (ok(x, z)) return land(x, z);
       }
     }
     return false;
+  }
+
+  /* Move her post. This is the ONLY reason she ever travels — the room calls
+     it when you cross into a space she has a spot in, and she goes and stands
+     in that spot. She does not shadow you around a room; see the tick. */
+  relocate(x, z, yaw) {
+    if (Math.hypot(x - this.home.x, z - this.home.z) < 0.05) return;
+    this.home.x = x; this.home.z = z;
+    if (typeof yaw === "number") this.home.yaw = yaw;
+    this.stuckT = 0; this.lastD = Infinity;
+    this.target = null;
   }
 
   _build() {
@@ -475,37 +494,62 @@ export class Guide {
     const dist = playerPose ? Math.hypot(playerPose.x - this.pos.x, playerPose.z - this.pos.z) : Infinity;
     const near = dist < NOTICE;
 
-    /* She follows. The whole point of her is that she's there when you have a
-       question, and a guide bolted to one tile of the bedroom isn't — you walk
-       into the arcade and she's still by the window. So past KEEP metres she
-       gives up her post and comes after you, and where she stops BECOMES the
-       new post (home moves with her; the idle amble happens wherever you left
-       her, not back where she started). */
-    if (playerPose && dist > KEEP) {
-      this.state = "follow";
+    /* SHE DOES NOT FOLLOW YOU. She used to: past two metres she'd give up her
+       post and come after you, and wherever she stopped became the new post.
+       That solved the real problem — a guide bolted to one tile of the bedroom
+       is no use the moment you walk into the arcade — and created a worse one.
+       She was on your heels everywhere, which means she was in the way
+       everywhere: between you and the wall you were reading, between you and
+       the cabinet you were playing.
+
+       So the fix keeps the half that mattered and drops the half that didn't.
+       She has a POST per room, and the room tells her which one (relocate) when
+       you cross over. She walks to that post and she stands there. Inside a
+       room she never moves toward you at all — you come to her, which is how
+       it works with a person standing in a doorway you want to ask something.
+
+       Three things she still does, in this order, because each outranks the
+       one under it. */
+    const hd = Math.hypot(this.home.x - this.pos.x, this.home.z - this.pos.z);
+
+    if (playerPose && dist < YIELD) {
+      /* One: personal space. Walk into her and SHE is the one who moves —
+         straight away from you, through the same axis-slide as everything
+         else, so she gives ground along a wall instead of into it. This is
+         what "in the way" actually meant, and it's the only motion of hers
+         you can cause. She wanders back to her post the moment you step off
+         her, because the post never moved. */
+      this.state = "yield";
       this.target = null;
-      if (dist > BLINK) {
-        this._blinkNear(playerPose.x, playerPose.z);   // you took the lift
+      this.stuckT = 0; this.lastD = Infinity;
+      const ax = (this.pos.x - playerPose.x) / Math.max(dist, 1e-3);
+      const az = (this.pos.z - playerPose.z) / Math.max(dist, 1e-3);
+      this._step(dt, this.pos.x + ax, this.pos.z + az, GIVE);
+      if (!this.greeted) { this.greeted = true; this.nodT = 0.5; this.fx.greet?.(); }
+    } else if (hd > ARRIVED) {
+      /* Two: she's not where she's meant to be — you changed rooms, or you
+         just finished shoving her across the floor. She goes to the POST, not
+         to you. Same doorway steering as before: aiming at a spot on the far
+         side of a wall only ever finds wall, and fx.waypoint knows the room's
+         shape where this file doesn't. */
+      this.state = "travel";
+      this.target = null;
+      if (hd > BLINK) {
+        this._blinkTo(this.home.x, this.home.z);       // you took the lift
       } else {
-        // if you're through a doorway she steers for the doorway first, not
-        // for you — walking at you from the wrong side of a wall just finds
-        // wall. fx.waypoint knows the room's shape; this file doesn't.
-        const wp = this.fx.waypoint?.(this.pos.x, this.pos.z, playerPose.x, playerPose.z);
-        const tx = wp ? wp.x : playerPose.x, tz = wp ? wp.z : playerPose.z;
+        const wp = this.fx.waypoint?.(this.pos.x, this.pos.z, this.home.x, this.home.z);
+        const tx = wp ? wp.x : this.home.x, tz = wp ? wp.z : this.home.z;
         this._step(dt, tx, tz, CHASE);
-        // did that actually get her anywhere? measured against whatever she's
-        // currently AIMED at — against you it would read as stuck every time
-        // she walks to a doorway that happens to be away from you
+        // did that get her anywhere? measured against whatever she's currently
+        // AIMED at — against the post it would read as stuck every time she
+        // walks to a doorway that happens to be away from it
         const now = Math.hypot(tx - this.pos.x, tz - this.pos.z);
         this.stuckT = (now < this.lastD - 0.004) ? 0 : this.stuckT + dt;
         this.lastD = now;
-        if (this.stuckT > STUCK) this._blinkNear(playerPose.x, playerPose.z);
+        if (this.stuckT > STUCK) this._blinkTo(this.home.x, this.home.z);
       }
-      this.home.x = this.pos.x; this.home.z = this.pos.z;
-      // NOT cleared here on purpose: she's still with you, so catching up
-      // shouldn't re-fire the greeting chime every time you cross a room
     } else if (near) {
-      this.stuckT = 0; this.lastD = dist;
+      this.stuckT = 0; this.lastD = Infinity;
       if (this.state !== "attend") { this.state = "attend"; this.target = null; }
       if (!this.greeted) {
         this.greeted = true;
@@ -514,7 +558,7 @@ export class Guide {
       }
     } else {
       this.greeted = false;
-      if (this.state === "attend" || this.state === "follow") { this.state = "idle"; this.timer = rand(0.4, 1.2); }
+      if (this.state === "attend" || this.state === "yield" || this.state === "travel") { this.state = "idle"; this.timer = rand(0.4, 1.2); }
       if (this.state === "walk" && this.target) {
         const d = this._step(dt, this.target.x, this.target.z, WALK);
         if (d < 0.05 || this.timer <= 0) { this.state = "idle"; this.timer = rand(0.6, 1.4); this.target = null; }
@@ -526,7 +570,8 @@ export class Guide {
     // facing: a thing she was told to look at wins, then you, then her post
     let want = this.home.yaw;
     if (this.gaze) want = Math.atan2(this.gaze.x - this.pos.x, this.gaze.z - this.pos.z);
-    else if (near || this.state === "follow") want = Math.atan2(playerPose.x - this.pos.x, playerPose.z - this.pos.z);
+    else if (playerPose && (near || this.state === "yield")) want = Math.atan2(playerPose.x - this.pos.x, playerPose.z - this.pos.z);
+    else if (this.state === "travel") want = Math.atan2(this.home.x - this.pos.x, this.home.z - this.pos.z);
     else if (this.state === "walk" && this.target) want = Math.atan2(this.target.x - this.pos.x, this.target.z - this.pos.z);
     this.yaw = this._turn(this.yaw, want, dt * 5);
 

@@ -4,6 +4,55 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-08-18 — Trinity keeps a post instead of keeping up
+
+She used to follow. Past two metres she'd abandon her spot and come after you,
+and wherever she stopped became the new spot. That solved something real — a
+guide bolted to one tile of the bedroom is no use the moment you walk into the
+arcade — and created something worse: she was on your heels everywhere, which
+means she was in the way everywhere. Between you and the wall you were reading.
+Between you and the cabinet you were playing.
+
+The fix keeps the half that mattered. **She has a post per room**
+(`GUIDE_POSTS` in main.js), the room tells her which one when you cross over
+(`guide.relocate`), and she walks there and stands there. Inside a room she
+never moves toward you at all. You go to her, which is how it works with a
+person standing where you can see them.
+
+Three rules in the tick, in priority order, because each outranks the one
+under it:
+
+1. **Personal space.** Come inside 1.15 m and she gives ground — straight away
+   from you at 1.9 m/s, faster than you close, through the same axis-slide as
+   everything else so she backs along a wall instead of into it. This is what
+   "in the way" actually meant, and it's now the only motion of hers you can
+   cause. She wanders back afterwards because the post never moved.
+2. **Travel.** She's not on her post, so she goes to it — the post, not you.
+   Same doorway steering as before (`fx.waypoint`), because aiming at a spot
+   on the far side of a wall only ever finds wall.
+3. **Attend / amble.** Unchanged.
+
+`_blinkNear(player)` became **`_blinkTo(post)`**, and the important part is
+what it no longer does: it used to overwrite `home` with wherever she landed,
+which is exactly how she ended up living wherever she happened to give up.
+The post is the thing she is trying to REACH; nothing about failing to reach
+it should redefine it.
+
+**The room switch is hysteretic** on the same `arcadeZoneLevel` ramp the sound
+uses — over 0.62 is the arcade, under 0.38 the bedroom, and in between she
+keeps whichever she had. A bare `>= 0.5` would have her pacing back and forth
+through the doorway while you stood in it.
+
+**Where the arcade post is, and how it was picked.** The first spot chosen by
+eye put her floating directly over the smoking table, close enough that her
+click box shadowed the ashtray. So it was picked by sweep instead
+(`/tmp/metro-smoke/guidespot.js`): every walkable tile fully inside the arcade,
+excluding the walking lane in from the bedroom, needing eight-of-eight
+walkable neighbours at 0.7 m and the largest clear radius to any blocker or
+clickable in the room. `(-6.25, 0.75)` won with 2.03 m of clear air, three
+metres in from the opening and a metre off its centreline — you see her on the
+way in without her standing in the way of it.
+
 ## 2026-08-18 — the phone gets a slow walk, and taps go round the furniture
 
 **A linear stick has no slow walk in it.** The room is 3.1 m/s wide open and

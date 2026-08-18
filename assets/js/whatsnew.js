@@ -25,6 +25,10 @@ export const WHATS_NEW = [
   {
     date: "2026-08-18",
     items: [
+      "trinity stopped shadowing you everywhere. she waits in the room you're in — by the window in the bedroom, just inside the door in the arcade — and if you walk into her she steps out of your way",
+      "the planes are back. the flight feed we used shut its doors, so the window goes through our own now — real jets over LAX again, with their real flight numbers",
+      "the cat stays off the keyboard. it was funny once",
+      "on a phone the cat and the headcount sit in the top corners whichever way you hold it, and the flight strip stops leaving a ghost of itself behind",
       "on a phone the walk stick has a slow speed in it now. you can ease up to the wall and stop instead of marching past it, and resting your thumb on the stick no longer drifts you across the room",
       "pressing the stick and holding still works too — it used to need a wiggle before you'd move at all",
       "and when you tap the floor to walk somewhere, you go AROUND the furniture in the way instead of stopping dead at it",
@@ -48,9 +52,6 @@ export const WHATS_NEW = [
   {
     date: "2026-08-16",
     items: [
-      "the planes are back. the flight feed we used shut its doors, so the window goes through our own now — real jets over LAX again, with their real flight numbers",
-      "the cat stays off the keyboard. it was funny once",
-      "on a phone the cat and the headcount sit in the top corners whichever way you hold it, and the flight strip stops leaving a ghost of itself behind",
       "the bedroom stays in the bedroom now — walk through to the arcade and the rain, the radio, the city outside and the cat all stop at the wall",
       "trinity works out which room she met you in. say hello in the arcade and she'll talk arcade, not bedroom",
     ],

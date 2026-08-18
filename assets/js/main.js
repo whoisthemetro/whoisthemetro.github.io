@@ -592,6 +592,21 @@ const guide = new Guide(world.scene, { x: 0.2, z: 0.9, yaw: 0.80, name: "Trinity
   say: (line, clip) => speak(line, { clip }),
 });
 
+/* Where she stands, per room. Both spots were chosen by walking to them and
+   looking, not by arithmetic: somewhere you can SEE her from the way in, and
+   somewhere that isn't in front of anything you'd want to use. The arcade one
+   is three metres inside the opening and well off its centreline, so she's
+   the first thing you see through the door without standing in the way of it.
+   It was picked by sweeping the arcade floor for a walkable tile with 1.7 m of
+   clear air around every clickable thing and every blocker (/tmp/metro-smoke/
+   guidespot.js) — the first spot chosen by eye put her floating directly over
+   the smoking table, close enough that her click box shadowed the ashtray. */
+const GUIDE_POSTS = {
+  bedroom: { x: 0.2, z: 0.9, yaw: 0.80 },
+  arcade: { x: -6.25, z: 0.75, yaw: 1.93 },
+};
+let guideRoom = "bedroom";
+
 /* What she says now lives in lines.js, because the offline renderer in
    tools/voice/ has to read exactly the same list — if the two ever drifted
    the room would ask for audio that was never made. The facts those lines
@@ -5314,6 +5329,16 @@ renderer.setAnimationLoop(() => {
   // the guide belongs to the bedroom only — and crossing any portal has to
   // shut her up, same rule as every other sound in the room
   const guideHome = !inBoat && !inArena && !inClub && !inGym && !inStudio;
+  /* She has a POST in each of the two rooms she knows, and crossing between
+     them is the ONLY thing that moves her — she doesn't shadow you around
+     inside one. Hysteresis on the same zone ramp the sound uses, because a
+     single number either side of 0.5 would have her walking back and forth
+     through the doorway while you stand in it. */
+  if (guideHome) {
+    const gz = world.arcadeZoneLevel(controls.pos.x, controls.pos.z);
+    const room = gz > 0.62 ? "arcade" : gz < 0.38 ? "bedroom" : guideRoom;
+    if (room !== guideRoom) { guideRoom = room; const P = GUIDE_POSTS[room]; guide.relocate(P.x, P.z, P.yaw); }
+  }
   guide.tick(dt, t, guideHome ? controls.pose() : null);
   if (!guideHome && isSpeaking()) stopSpeaking();
   /* the bathroom's ceiling speaker. It fades on real distance to the room and

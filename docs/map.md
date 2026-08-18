@@ -106,8 +106,12 @@ one of them should read this:
    the other.
 5. **The toon pass** runs over everything at the end of `buildWorld()`, both
    rooms included.
-6. **Trinity** follows you through the doorway and keeps a separate arcade
-   line pool in `lines.js`. New arcade features probably want a line.
+6. **Trinity** has a POST in each room (`GUIDE_POSTS` in main.js) and crosses
+   the doorway to it when you do — she does not follow you around inside a
+   room. Move arcade furniture and you may have moved it on top of her; the
+   arcade post was chosen by sweeping the floor for clear air around every
+   clickable (`/tmp/metro-smoke/guidespot.js`). She keeps a separate arcade
+   line pool in `lines.js` too — new arcade features probably want a line.
 7. **The bartender** lives in the arcade but is ticked whenever you're not in
    boat/arena/club/gym — so he's running while you're in the bedroom.
 8. **`inArcade()`** (`arcadeZoneLevel >= 0.5`) gates the bedroom's instrument
