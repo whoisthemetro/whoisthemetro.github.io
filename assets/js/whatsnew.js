@@ -23,6 +23,14 @@
 
 export const WHATS_NEW = [
   {
+    date: "2026-08-17",
+    items: [
+      "the mic stopped echoing. if someone else's voice is coming out of your speaker, yours holds off for a moment instead of sending it back to them",
+      "hold the mic button to talk. a quick tap used to leave it wide open, which is how the echo started — double-tap now if you really do want it left on",
+      "and it only sends when you're actually saying something, so the room doesn't hear your fan or your dog",
+    ],
+  },
+  {
     date: "2026-08-16",
     items: [
       "the planes are back. the flight feed we used shut its doors, so the window goes through our own now — real jets over LAX again, with their real flight numbers",

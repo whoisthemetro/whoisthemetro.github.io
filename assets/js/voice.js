@@ -91,6 +91,41 @@ function blobToB64(blob) {
   });
 }
 
+/* ---- feedback control ---------------------------------------------------
+   Peer voice is decoded into the WEB AUDIO graph (makePlayer -> master), not
+   an <audio> element. The browser's `echoCancellation` can only subtract what
+   it knows it is rendering, and on phones Web Audio output is generally NOT
+   in that reference signal. So the constraint is switched on and blind: your
+   voice leaves their speaker, their mic hears it, and it arrives back at you.
+
+   Two guards, no ML needed:
+     GATE      don't transmit a chunk that never rose above speech level, so
+               room tone and a distant speaker never go out at all.
+     DUCK      in open-mic mode, don't transmit while a peer's voice is
+               actually coming out of your speaker. The loop needs both ends
+               live at once; keeping one end quiet means it cannot start.
+   PTT is exempt from DUCK on purpose: you are holding a button down, you
+   mean it, and you can hear the result and let go.                        */
+const GATE_ON = 0.055;      // mic RMS that counts as somebody speaking
+const GATE_OFF = 0.030;     // ...and where it lets go (hysteresis, no chatter)
+const DUCK_AT = 0.045;      // a peer this loud is audibly in the room with you
+let chunkPeak = 0, gateOpen = false, duckedChunk = false, suppressed = 0;
+
+function rmsOf(ana, buf) {
+  ana.getByteTimeDomainData(buf);
+  let sum = 0;
+  for (let i = 0; i < buf.length; i++) { const v = (buf[i] - 128) / 128; sum += v * v; }
+  return Math.sqrt(sum / buf.length);
+}
+// is anyone else's voice leaving the speaker right this moment?
+function remoteLoud() {
+  let peak = 0;
+  for (const pl of players.values()) {
+    try { peak = Math.max(peak, rmsOf(pl.ana, pl.buf)); } catch (e) {}
+  }
+  return peak;
+}
+
 function recordLoop() {
   if (mode === "off" || !micStream) return;
   const mime = pickMime();
@@ -102,17 +137,34 @@ function recordLoop() {
   const parts = [];
   rec.ondataavailable = (e) => { if (e.data && e.data.size) parts.push(e.data); };
   rec.onstop = async () => {
-    if (parts.length && mode !== "off") {
+    // fail OPEN: if the analyser never got built we cannot measure anything,
+    // and a gate that can't measure must not be the reason nobody can talk
+    const canMeasure = !!selfAna;
+    const speech = !canMeasure || chunkPeak > (gateOpen ? GATE_OFF : GATE_ON);
+    gateOpen = speech;
+    const feedback = mode === "open" && duckedChunk;   // see "feedback control"
+    if (parts.length && mode !== "off" && speech && !feedback) {
       const blob = new Blob(parts, { type: rec.mimeType });
       if (blob.size > 200 && blob.size < 48000 && sendFn) {
         const data = await blobToB64(blob);
         try { sendFn({ uid: myUid, mime: rec.mimeType, data }); } catch (e) {}
       }
-    }
+    } else if (feedback) { suppressed++; }
     recordLoop();          // straight into the next chunk
   };
   rec.start();
-  setTimeout(() => { try { if (rec.state !== "inactive") rec.stop(); } catch (e) {} }, 600);
+  // watch the mic and the room across this chunk, not just at its edges
+  chunkPeak = 0; duckedChunk = false;
+  const watch = setInterval(() => {
+    try {
+      if (selfAna) chunkPeak = Math.max(chunkPeak, rmsOf(selfAna, selfBuf));
+      if (remoteLoud() > DUCK_AT) duckedChunk = true;
+    } catch (e) {}
+  }, 50);
+  setTimeout(() => {
+    clearInterval(watch);
+    try { if (rec.state !== "inactive") rec.stop(); } catch (e) {}
+  }, 600);
 }
 
 // go live: ONE recorder, started with a timeslice so it emits a chunk every
@@ -315,6 +367,9 @@ export const voice = {
   supported: () => !!(navigator.mediaDevices && window.MediaRecorder && pickMime()),
   mode: () => mode,
   isOn: () => mode !== "off",
+  // how many chunks the anti-feedback duck has swallowed. main.js watches this
+  // to tell you your speaker is looping back into your mic.
+  suppressedCount: () => suppressed,
   setArenaFx(on) { arenaFx = !!on; },
   /* main.js knows where everyone is standing; it tells us, per uid, per frame.
      `send` is the node ambience hands back for its tiled-room convolver — we

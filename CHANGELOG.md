@@ -753,6 +753,33 @@ Every line was checked against the code rather than against a summary, after
 the first draft confidently sent people to the arcade through the door with
 the red neon — which is MIX & MASTER, and leaves the site entirely.
 
+## 2026-08-17 — the mic stops feeding back
+
+**Why it echoed.** Peer voice is decoded into the WEB AUDIO graph, not an
+`<audio>` element. The browser's `echoCancellation` constraint was switched on
+the whole time, but it can only subtract what it knows it is rendering, and on
+phones Web Audio output is generally not in that reference signal. So the
+canceller was on and blind: your voice left their speaker, their mic heard it,
+and it came back to you.
+
+**Two guards in voice.js, neither needing ML.** A GATE that refuses to transmit
+a chunk which never rose above speech level, so room tone and a distant talker
+never go out at all. And a DUCK: in open-mic mode, nothing transmits while a
+peer's voice is actually leaving your speaker. A feedback loop needs both ends
+live at once, so keeping one end quiet means it cannot start. Push-to-talk is
+exempt from the duck on purpose — you are holding a button, you mean it, and
+you can hear the result and let go. The gate fails OPEN if the analyser never
+built: a gate that cannot measure must not be the reason nobody can talk.
+
+**The UI was half the bug.** A quick TAP on the mic button locked it open,
+which on a phone is the easiest gesture to perform by accident. Hold-to-talk is
+the default now; leaving it open takes a deliberate double-tap and says out loud
+that it wants headphones. If the duck swallows five chunks in a row, the room
+says so once rather than just going quiet on you.
+
+Verified headlessly with a fake capture device: 4 chunks suppressed while a
+peer was audible, 1 sent, and transmission resumed once they went quiet.
+
 ## 2026-08-12 — the furniture becomes furniture
 
 **You can't walk through the pool tables or the bar any more.** The

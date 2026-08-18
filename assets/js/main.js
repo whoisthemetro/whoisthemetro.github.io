@@ -327,7 +327,12 @@ function updateMicUI() {
   micBtn.classList.toggle("live", voice.mode() === "open");
   micBtn.classList.toggle("ptt", voice.mode() === "ptt");
 }
-let micDownAt = 0;
+/* A quick TAP used to lock the mic open, which on a phone is the easiest
+   gesture to perform by accident — and an open mic next to a speaker playing
+   someone else's voice is exactly how you end up hearing yourself. Hold to
+   talk is the default now; leaving it open takes a deliberate double-tap and
+   says out loud what it costs. */
+let micDownAt = 0, micLastTap = 0;
 micBtn.addEventListener("pointerdown", async (e) => {
   e.preventDefault();
   if (inClub) return toast("the venue is chat-only — press T or 💬 to talk");
@@ -339,16 +344,34 @@ micBtn.addEventListener("pointerdown", async (e) => {
 });
 micBtn.addEventListener("pointerup", (e) => {
   e.preventDefault();
-  const tap = Date.now() - micDownAt < 300;
-  if (voice.mode() === "ptt") {
-    if (tap) { voice.leaveOpen(); toast("mic open — tap again to close it"); }
-    else voice.stopTalk();
-  } else if (voice.mode() === "open" && tap) {
-    voice.stopTalk();
-    toast("mic closed");
+  const now = Date.now();
+  const tap = now - micDownAt < 300;
+  if (voice.mode() === "open") {
+    if (tap) { voice.stopTalk(); toast("mic closed"); }
+  } else if (voice.mode() === "ptt") {
+    if (!tap) voice.stopTalk();                       // held, then let go: done talking
+    else {
+      const dbl = now - micLastTap < 450;
+      micLastTap = now;
+      if (dbl) { voice.leaveOpen(); toast("mic locked open — wear headphones or it will echo"); }
+      else { voice.stopTalk(); toast("hold to talk · double-tap to lock it open"); }
+    }
   }
   updateMicUI();
 });
+/* the duck in voice.js silently swallows chunks when your speaker is looping
+   back into your mic. that's the right fix, but silence is a bad way to learn
+   it: if it keeps happening, say so once and offer the way out. */
+let micSuppSeen = 0, micEchoWarned = false;
+setInterval(() => {
+  if (!voice.isOn()) { micSuppSeen = voice.suppressedCount(); return; }
+  const n = voice.suppressedCount();
+  if (voice.mode() === "open" && n - micSuppSeen >= 5 && !micEchoWarned) {
+    micEchoWarned = true;
+    toast("your speaker is feeding back into your mic — headphones, or hold to talk");
+  }
+  micSuppSeen = n;
+}, 2500);
 micBtn.addEventListener("pointercancel", () => {
   if (voice.mode() === "ptt") voice.stopTalk();
   updateMicUI();
