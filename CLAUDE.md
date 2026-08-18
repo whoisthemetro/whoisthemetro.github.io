@@ -162,6 +162,23 @@ So the rule for a chat that gets a rejected push: **`git pull --rebase origin ma
 resolve, re-run the check, push again.** Never force-push main — the other chat's
 work is up there.
 
+**The hook does not protect the OTHER chat's uncommitted files, and that is the
+failure that actually happens.** A rejected push is loud. This one is silent:
+you `git add .` (or `git commit -a`) for your own job and sweep up a file the
+other chat has half-finished on disk, then ship it under your commit message. It
+happened on 2026-08-18 — a Trinity voice job committed and pushed a mid-
+experiment `controls.js` from a movement job, deploying the worst-measured
+tuning of a change nobody had finished. Nothing was lost, but the live site ran
+someone's scratch work and the commit message said nothing about it.
+
+So: **stage by path, never by wildcard.** `git add <the files this job touched>`.
+Before committing, `git status --short` and account for every line — anything you
+don't recognise belongs to the other chat, and it is not yours to commit. Note
+that `git status` in your session's opening context is a SNAPSHOT: it goes stale
+the moment the other chat saves, so re-run it rather than trusting it. And if you
+find your own work already committed by someone else, don't revert their commit —
+land your finished version on top and say so in the message.
+
 ## Supabase / secrets
 
 - `supabase/*.sql` are idempotent, paste-into-SQL-Editor migrations. `supabase/EVERYTHING.local.sql` (gitignored) is the concatenation of all pending migrations **including the real Discord webhook** — regenerate it with `cat cat.sql inbox.sql arcade.sql site.sql discord.local.sql > EVERYTHING.local.sql` after editing any part. Never commit `*.local.sql`; the repo is public.
