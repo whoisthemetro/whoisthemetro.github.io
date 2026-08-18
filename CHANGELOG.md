@@ -244,6 +244,14 @@ you're standing in.)
 
 ## 2026-08-15 — the toilets work, and the room sounds like tile
 
+**And they're a lot quieter.** They were playing at −1.4 dBFS — essentially
+peaking, which is why a flush startled you rather than amused you. −14 dBFS
+now, a 12.6 dB cut, still 16 dB clear of the music bed because a flush should
+be an event and the music shouldn't. The level is ONE constant in ambience.js
+now (`FART_LEVEL`) with the call sites passing a relative 0..1 for how far off
+you are and whose it is — it had been 0.85 written out across three call sites,
+which is exactly how a level drifts apart: one gets tuned and the others don't.
+
 **27 one-shots, and you'll hear all of them before you hear one twice.** The
 toilets are click targets now — a fat invisible volume around each, because a
 bowl is a stack of small cylinders and clicking one of those at walking pace is

@@ -1576,14 +1576,22 @@ function nextFart() {
 
 /* No attack ramp on purpose — the transient IS the joke, and playSample's
    fade would round it off. `wet` is how much goes to the tiled room. */
-export function fart({ wet = 0, gain = 0.85, rate = 1, index = null } = {}) {
+/* ONE knob for how loud the toilets are, the same way MUZ_CEILING is the one
+   knob for the speaker. `gain` at the call sites is now RELATIVE — 1 means
+   "you're standing next to it", less means you're further off or it's
+   somebody else's — and this is the level that scales the lot. It lived at
+   0.85 spread across three call sites, which is exactly how a level drifts
+   apart: one gets tuned, the others don't. */
+const FART_LEVEL = 0.20;
+
+export function fart({ wet = 0, gain = 1, rate = 1, index = null } = {}) {
   if (!ctx || !fartBufs || !fartBufs.length) return -1;
   const i = index != null && fartBufs[index] ? index : nextFart();
   if (i < 0) return -1;
   const src = ctx.createBufferSource();
   src.buffer = fartBufs[i];
   src.playbackRate.value = rate;
-  const g = ctx.createGain(); g.gain.value = gain;
+  const g = ctx.createGain(); g.gain.value = gain * FART_LEVEL;
   src.connect(g).connect(master);
   if (wet > 0) {
     const w = ctx.createGain(); w.gain.value = wet;

@@ -21,7 +21,7 @@ import { Cat } from "./cat.js";
 import { Bartender } from "./bartender.js";
 import { Guide } from "./guide.js";
 import { speak, stopSpeaking, isSpeaking, isVoicing, voiceAvailable, voiceInfo, preferVoices, loadClips, clipsReady, voiceLevel, useAudioGraph } from "./say.js";
-import { GUIDE_LINES, INTRO, ROOM_LINES, clipId } from "./lines.js";
+import { GUIDE_LINES, INTRO, ROOM_LINES, TOUR, clipId } from "./lines.js";
 import { whatsNew, dayLabel } from "./whatsnew.js";
 
 /* What Trinity should sound like, best first. Every visitor's device owns
@@ -632,11 +632,8 @@ function tourDid(need) {
   tourState.did.push(need);
   tourSave();
 }
-/* Which step of the bedroom order covers a thing you might already have done.
-   She should not walk you to the radio you switched on two minutes ago; a
-   guide who does that is reading a script, not looking at the room. */
-const TOUR_NEEDS = { 0: "note", 1: "radio", 2: "instrument", 3: "instrument",
-                     7: "pc", 8: "window", 11: "window" };
+let tourAcked = [];
+try { tourAcked = (JSON.parse(localStorage.getItem(TOUR_KEY)) || {}).acked || []; } catch (e) {}
 let guideAskedAt = 0;             // rate limit, so a burst of taps is one line
 let guideMet = false;             // has she introduced herself yet
 let guideGreetedRoom = null;      // and has she said anything about THIS room
@@ -659,13 +656,22 @@ function guideNextLine() {
   } else if (guideGreetedRoom !== room) {
     guideGreetedRoom = room;
     line = spoken = ROOM_LINES[room];
-  } else if (room === "bedroom" && tourState.at < GUIDE_LINES.bedroom.length) {
-    // walk the room in order, stepping over anything you already found
-    while (tourState.at < GUIDE_LINES.bedroom.length &&
-           tourState.did.includes(TOUR_NEEDS[tourState.at])) tourState.at++;
-    if (tourState.at >= GUIDE_LINES.bedroom.length) { line = spoken = guideBags[room](); }
-    else { line = spoken = GUIDE_LINES.bedroom[tourState.at]; tourState.at++; }
-    tourSave();
+  } else if (room === "bedroom" && tourState.at < TOUR.length) {
+    // did you go and do the last thing she asked? say so before moving on
+    const prev = TOUR[tourState.at - 1];
+    if (prev && prev.ack && prev.need &&
+        tourState.did.includes(prev.need) && !tourAcked.includes(prev.id)) {
+      tourAcked.push(prev.id);
+      tourState.acked = tourAcked; tourSave();
+      line = spoken = prev.ack;
+    } else {
+      // and skip anything you already found for yourself
+      while (tourState.at < TOUR.length && TOUR[tourState.at].need &&
+             tourState.did.includes(TOUR[tourState.at].need)) tourState.at++;
+      if (tourState.at >= TOUR.length) line = spoken = guideBags[room]();
+      else { line = spoken = TOUR[tourState.at].line; tourState.at++; }
+      tourState.acked = tourAcked; tourSave();
+    }
   } else {
     line = spoken = guideBags[room]();
   }
@@ -957,7 +963,7 @@ function pullTheChain(remote = false) {
   // in the tiled room it's all reverb; heard from the arcade through the open
   // door it's mostly reverb and quieter, which is what a wall does
   const here = world.bath && world.bath.inside(controls.pos.x, controls.pos.z);
-  const i = fart({ wet: here ? 0.55 : 0.75, gain: here ? 0.85 : 0.4 });
+  const i = fart({ wet: here ? 0.55 : 0.75, gain: here ? 1 : 0.45 });
   if (!remote && i >= 0) presence.sendAct({ kind: "toilet", i });
 }
 
@@ -4861,7 +4867,7 @@ addEventListener("keydown", (e) => {
     } else if (p.kind === "toilet") {
       if (fartsReady()) {
         const here = world.bath && world.bath.inside(controls.pos.x, controls.pos.z);
-        fart({ index: p.i, wet: here ? 0.55 : 0.75, gain: here ? 0.7 : 0.3 });
+        fart({ index: p.i, wet: here ? 0.55 : 0.75, gain: here ? 0.8 : 0.35 });
       }
     } else if (p.kind === "pet") {
       if (!inBoat && !inArena && !inClub && !inGym) cat.remoteHearts();
