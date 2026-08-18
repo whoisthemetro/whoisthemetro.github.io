@@ -4,6 +4,65 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-08-18 — the phone gets a slow walk, and taps go round the furniture
+
+**A linear stick has no slow walk in it.** The room is 3.1 m/s wide open and
+the move stick handed that straight through, so every deflection past a nudge
+was a march — there was no way to ease up to the notes wall and stop, and no
+way to line yourself up on the podium. Worse, there was no deadzone: a thumb
+resting on the pad without asking for anything still crept you across the
+room. The stick now cuts a deadzone (0.14), rescales what's left back to a
+full 0..1 — miss that step and the deadzone quietly steals your top speed —
+and bends the response `^1.6`. Half a throw is now 0.77 m/s, an amble; the
+rim is still the full 3.1. Shaping is applied to the MAGNITUDE and never the
+components, because bending x and y separately swings the heading off your
+thumb — a diagonal press would no longer walk you diagonally.
+
+**Press-and-hold was a dead stick.** The deflection was only ever read in
+`pointermove`, so a thumb that landed off-centre and held still — which is
+exactly what you do when you just want to walk forward — sent no event and
+you stood there pushing nothing. Down and move now share one reader.
+
+**Two things had to stay raw.** The nub is drawn from the thumb, not the
+curve: a nub that lagged your finger inside the deadzone would feel like the
+stick was sticking. And the gym's boost fires on `joy.mag`, the raw throw,
+because it means "shoved to the rim" — reading the shaped value would have
+silently moved that threshold to 0.95 without anyone touching the number.
+
+**Tap-to-walk stopped dead at the first thing in the way.** Point past the
+armchair and you got 0.45 s of walking into it, then nothing — which reads as
+the tap having failed, not as the room having furniture. Two fixes. The stall
+detector was asking "did `x + z` change", which is wrong twice: sliding along
+a 45° wall moves you a metre and reads as frozen, and any sidestep reads as
+progress. It now tracks the closest we have ever been, the only thing that
+means arriving. And when we genuinely stall, we probe 1.6 m out to each side,
+take the opening that lands nearer the spot, crab that way for 0.7 s, then aim
+at the target again and see if the corner is behind us.
+
+**Measured, not guessed.** 240 genuinely blocked routes in the bedroom and
+arcade, then re-validated on a different sample (other grid offsets, 2.5 / 5 /
+7 m trips) so the tuning wasn't just fitted to the set it was tuned against:
+**73/69/72% → 86/82/77%**. Split by difficulty, routes solvable by a single
+sidestep now complete 82% of the time; routes that genuinely need a path
+around a wall sit at 32% and always will — this is a local sidestep, not a
+planner, and it is not pretending otherwise.
+
+The probe distance was the whole ball game and 0.9 m was not enough to see
+past the furniture: 0.9 → 68%, 1.3 → 76%, **1.6 → 80%**, 1.9 → 74%. A longer
+detour (1.0 s) and a bigger budget bought zero extra arrivals and 1.1 s more
+wandering, so both stayed where they were.
+
+**Giving up has a budget now, and it's the walk itself.** A flat cap is the
+wrong shape — an eternity for a spot two metres away, mean to one across the
+arcade — so it's `2 × distance / speed + 1.5 s`. That also catches the failure
+no stall timer can see: grinding along a wall at a shallow angle, gaining two
+centimetres a step, technically progressing, going nowhere. Worst-case trips
+went 12.0 s → 3.1/4.7/6.0 s by distance, and a tap that can't be reached now
+costs about a second before it hands you back the wheel. A second, non-refilling
+detour budget backs it up, because the per-stall budget is refilled by progress
+and a route that gains two centimetres between every obstacle can refill it
+forever.
+
 ## 2026-08-16 — the planes come back through our own door
 
 **The flight strips had stopped, and it wasn't our bug.** airplanes.live now

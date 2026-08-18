@@ -27,8 +27,8 @@ const GYM_STAM_REGEN = 4.2;   // seconds to refill from empty
 // steals your top speed), then bend the response so the bottom of the throw
 // buys the bottom of the speed. Shape the MAGNITUDE, never the direction —
 // bending the components separately swings the heading off your thumb.
-const DETOUR_ARC = 0.95;     // ~66° off the bearing — enough to clear furniture
-const DETOUR_PROBE = 0.9;   // how far ahead we ask "is there floor this way?"
+const DETOUR_ARC = 1.15;     // ~66° off the bearing — enough to clear furniture
+const DETOUR_PROBE = 1.6;   // how far ahead we ask "is there floor this way?"
 const STICK_DZ = 0.14;
 const STICK_CURVE = 1.6;
 function shapeStick(x, y) {
@@ -144,10 +144,22 @@ export class Controls {
     this.goto = { x, z };
     this._gotoStuck = 0;
     this._gotoBest = Infinity;   // closest we've been; the only honest progress metric
-    this._gotoT = 0;             // total time on this trip (the hard give-up)
+    this._gotoT = 0;             // time on this trip
+    /* HOW LONG IS TOO LONG. A flat cap is the wrong shape: it's an eternity for
+       a spot two metres away and mean to one across the arcade. So the budget
+       is the walk itself plus slack — if getting there is taking twice as long
+       as walking there, we aren't walking there. This also catches the case no
+       stall timer can see: grinding along a wall at a shallow angle, gaining
+       two centimetres a step, technically progressing, going nowhere. */
+    const d0 = Math.hypot(x - this.pos.x, z - this.pos.z);
+    this._gotoBudget = (2 * d0) / SPEED + 1.5;
     this._detour = 0;            // seconds left crabbing around an obstacle
     this._detourSide = 0;        // which way we committed (-1 left, +1 right)
-    this._detours = 0;           // corners taken; a budget, so we can't loop forever
+    this._detours = 0;           // corners taken since we last gained ground
+    this._detourAll = 0;         // corners taken all trip — the budget above is
+                                 // refilled by progress, and a route that gains
+                                 // two centimetres between every obstacle can
+                                 // refill it forever. this one never refills.
   }
   // gym jump — called from main.js's keydown (fires reliably, pointer-lock or
   // not) and from the mobile JUMP button. only leaves the floor when grounded.
@@ -368,7 +380,7 @@ export class Controls {
         const gx = this.goto.x - this.pos.x, gz = this.goto.z - this.pos.z;
         const gd = Math.hypot(gx, gz);
         if (gd < 0.28) this.goto = null;                 // arrived
-        else if ((this._gotoT += dt) > 12) this.goto = null;   // whatever this is, it isn't working
+        else if ((this._gotoT += dt) > this._gotoBudget) this.goto = null;   // this isn't working
         else {
           /* AM I GETTING THERE? The old answer was "did x+z change", which is
              wrong twice: sliding along a 45° wall moves you a metre and reads
@@ -414,8 +426,8 @@ export class Controls {
             else if (dL !== null && dR !== null) side = dL <= dR ? -1 : 1;
             else if (dL !== null) side = -1;
             else if (dR !== null) side = 1;
-            if (side && this._detours < 3) {
-              this._detours++;
+            if (side && this._detours < 3 && this._detourAll < 8) {
+              this._detours++; this._detourAll++;
               this._detourSide = side;
               this._detour = 0.7;
               this._gotoStuck = 0;
