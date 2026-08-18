@@ -102,7 +102,23 @@ renderer.toneMappingExposure = 1.05;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = IS_TOUCH ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
 
-const camera = new THREE.PerspectiveCamera(72, innerWidth / innerHeight, 0.05, 120);
+/* A three.js FOV is VERTICAL, so on a tall narrow phone the horizontal view
+   collapses: 72 deg vertical at a 0.46 aspect is 37 deg across. That is a
+   paper-towel tube. You cannot see the door, the walls, or where the floor
+   goes, and no control scheme fixes not being able to see the room.
+
+   So the vertical FOV is solved from a target HORIZONTAL one instead (the
+   "Hor+" trick). Pure Hor+ overshoots wildly in portrait — holding 104 deg
+   across would want 140 deg vertical — so it clamps. The floor is the old
+   72, which is what every wide screen still lands on, so desktop and phone
+   landscape are untouched; only the narrow case moves, and it moves a lot:
+   37 deg across becomes ~57, with far more floor visible under your feet. */
+const FOV_MIN = 72, FOV_MAX = 100, FOV_H_TARGET = 95;
+function fovFor(aspect) {
+  const want = 2 * Math.atan(Math.tan(FOV_H_TARGET * Math.PI / 360) / aspect) * 180 / Math.PI;
+  return Math.max(FOV_MIN, Math.min(FOV_MAX, want));
+}
+const camera = new THREE.PerspectiveCamera(fovFor(innerWidth / innerHeight), innerWidth / innerHeight, 0.05, 120);
 // 3 and 4, not 1 and 2: three.js hands layers 1/2 to the left and right
 // eye inside a WebXR session, so a room parked on those would render to
 // one eye only once you ride the lift there in VR
@@ -1048,6 +1064,7 @@ world.setWeather(weather.current);
 
 addEventListener("resize", () => {
   camera.aspect = innerWidth / innerHeight;
+  camera.fov = fovFor(camera.aspect);       // turning the phone changes the shape of the view
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
   screen.resize();                         // keep the CSS3D big-screen layer sized to the window
@@ -1486,6 +1503,26 @@ if (IS_TOUCH) {
 }
 
 let lastPetAt = 0;
+/* TAP TO WALK — the floor is the biggest button in the room.
+   A tap that doesn't land on anything with a job becomes a destination. The
+   ray meets the ground plane, isWalkable decides whether that spot is real,
+   and controls drives there while turning to face it. Touch only: a desk has
+   WASD and doesn't need it. Rooms that own their own movement (zero-g, the
+   gym's court) are left alone. */
+const _floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+const _floorRay = new THREE.Raycaster();
+const _floorPt = new THREE.Vector3();
+function tapWalk(ndcX, ndcY) {
+  if (!IS_TOUCH || inArena || inGym || modalOpen) return false;
+  _floorRay.setFromCamera({ x: ndcX, y: ndcY }, camera);
+  if (!_floorRay.ray.intersectPlane(_floorPlane, _floorPt)) return false;
+  if (!world.isWalkable(_floorPt.x, _floorPt.z)) return false;
+  const d = Math.hypot(_floorPt.x - controls.pos.x, _floorPt.z - controls.pos.z);
+  if (d < 0.4 || d > 16) return false;          // a tap at your feet is a misfire, not a walk
+  controls.walkTo(_floorPt.x, _floorPt.z);
+  world.pingFloor(_floorPt.x, _floorPt.z);      // show the tap landed
+  return true;
+}
 controls.onAction((ndcX, ndcY) => {
   if (controls.pooling || controls.aiming) return;   // at the table/board the mouse aims; clicks charge
   if (hoopGame.wantsPointer()) return;               // on the court a press is a shot, not an interaction
@@ -1523,7 +1560,7 @@ controls.onAction((ndcX, ndcY) => {
        hit.object.userData.kiosk || hit.object.userData.launchHandle);
     if (!useful) { tryPunch(); return; }
   }
-  if (!hit) return;
+  if (!hit) { tapWalk(ndcX, ndcY); return; }
   if (hit.object.userData.podium && hit.distance < 3.6) {
     aItem("podium");
     openPicker("podium");
@@ -1775,6 +1812,8 @@ controls.onAction((ndcX, ndcY) => {
   } else if (hit.object.userData.postable && hit.distance < NOTE_REACH && notesWall.postableFrom(hit, controls.pos)) {
     const place = notesWall.placementFromHit(hit);
     if (place) openComposer(place);
+  } else {
+    tapWalk(ndcX, ndcY);          // it hit scenery with nothing to do: go there instead
   }
 });
 

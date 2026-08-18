@@ -753,6 +753,34 @@ Every line was checked against the code rather than against a summary, after
 the first draft confidently sent people to the arcade through the door with
 the red neon — which is MIX & MASTER, and leaves the site entirely.
 
+## 2026-08-17 — you can see the room, and you can point at the floor
+
+Reported as "people have a hard time moving around, especially in portrait."
+The controls turned out to be the second problem.
+
+**The field of view was 37 degrees.** A three.js FOV is VERTICAL, so on a tall
+narrow phone the horizontal view collapses: 72° vertical at a 0.46 aspect is
+37° across, against 104° on a desktop. You could not see a door, a wall, or the
+floor in front of your feet — and no control scheme fixes not being able to see
+the room. The camera now solves its vertical FOV from a target horizontal one
+(clamped 72–100, because pure Hor+ wants 140° vertical down there). Wide screens
+land on the old 72 and are untouched; portrait opens to ~58° across with far
+more floor under you. Recomputed on resize, so turning the phone works.
+
+**Tap the floor and you walk there.** A stick is a thing you have to learn;
+pointing at the ground isn't. A tap that doesn't land on anything with a job
+becomes a destination: the ray meets the ground plane, `isWalkable` decides
+whether that spot is real, and you drive there — TURNING as you go. The turn is
+most of the value, because the hard part on a phone was never the walking, it
+was aiming the camera first. A ring lands where you tapped so it's clear it
+registered. Any joystick, key or look-drag takes control straight back, and
+walking into something gives up after half a second instead of grinding.
+
+Touch only (a desk has WASD), and the rooms that own their movement — zero-g,
+the gym's court — are left alone. Verified on an emulated iPhone: tap ahead
+walked 2.22 m and stopped on arrival, a tap to the left turned 28° toward it, a
+tap at the ceiling did nothing, and the joystick cancelled it instantly.
+
 ## 2026-08-17 — other people stop being silhouettes
 
 Reported as an Android bug ("she could only see my eyes, not my body") and it

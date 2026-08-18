@@ -70,6 +70,7 @@ export class Controls {
     this.pos = { x: 0, z: 2.6 };
     this.keys = new Set();
     this.joy = { x: 0, y: 0, active: false, pid: null };
+    this.goto = null;         // tap-to-walk destination, {x,z}, cleared on any real input
     // right look-stick (mobile, gym only): deflection drives the camera, a quick
     // tap fires onLookTap (grab). pressure-touch isn't a thing on modern phones.
     this.lookJoy = { x: 0, y: 0, active: false, pid: null };
@@ -115,6 +116,8 @@ export class Controls {
   enterAim() { this.aiming = true; this.aimDX = 0; this.aimDY = 0; this.aimCharge = false; this.keys.clear(); }
   exitAim() { this.aiming = false; this.aimCharge = false; this._applyCamera(); }
 
+  // main.js hands us a floor spot from a tap; update() drives there and turns
+  walkTo(x, z) { this.goto = { x, z }; this._gotoStuck = 0; this._gotoLast = null; }
   // gym jump — called from main.js's keydown (fires reliably, pointer-lock or
   // not) and from the mobile JUMP button. only leaves the floor when grounded.
   gymJump() { if (this.gym && this.grounded) { this.vy = GYM_JUMP_V; this.grounded = false; this.onJump?.(); } }
@@ -274,6 +277,7 @@ export class Controls {
       if (this.pooling) { this.poolRotate -= dx * 0.006; return; }   // drag to aim
       if (this.aiming) { this.aimDX -= dx * 0.005; this.aimDY -= dy * 0.005; return; }
       if (this.lookStickOn) return;   // in the gym the right stick owns looking
+      if (look.moved > 24) this.goto = null;   // you took the wheel back
       this.yaw -= dx * 0.005;
       this.pitch = clamp(this.pitch - dy * 0.005, -1.25, 1.25);
     });
@@ -304,6 +308,34 @@ export class Controls {
     if (this.keys.has("KeyD") || this.keys.has("ArrowRight")) strafe += 1;
     fwd += -this.joy.y;
     strafe += this.joy.x;
+
+    /* TAP TO WALK. A stick is a thing you have to learn; pointing at the floor
+       isn't. main.js hands us a spot when a tap lands on walkable ground and
+       nothing interactive, and we drive there ourselves — TURNING as we go, so
+       the tap does the looking too. That turn is most of the value: the hard
+       part on a phone was never the walking, it was aiming the camera first.
+       Any real input takes it straight back; you are never a passenger. */
+    if (this.goto) {
+      if (Math.abs(fwd) > 0.01 || Math.abs(strafe) > 0.01) this.goto = null;
+      else {
+        const gx = this.goto.x - this.pos.x, gz = this.goto.z - this.pos.z;
+        const gd = Math.hypot(gx, gz);
+        if (gd < 0.28) this.goto = null;                 // arrived
+        else {
+          // ease the view onto the bearing, then just walk forward
+          let dyaw = Math.atan2(-gx, -gz) - this.yaw;
+          while (dyaw > Math.PI) dyaw -= 2 * Math.PI;
+          while (dyaw < -Math.PI) dyaw += 2 * Math.PI;
+          this.yaw += dyaw * Math.min(1, dt * 6);
+          fwd = 1;
+          const before = this.pos.x + this.pos.z;
+          this._gotoStuck = Math.abs(before - (this._gotoLast ?? before)) < 1e-5
+            ? (this._gotoStuck || 0) + dt : 0;
+          this._gotoLast = before;
+          if (this._gotoStuck > 0.45) this.goto = null;  // walked into something; give up
+        }
+      }
+    }
 
     const len = Math.hypot(fwd, strafe);
     if (len > 0.01) {

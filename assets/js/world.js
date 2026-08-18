@@ -8188,6 +8188,35 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     }
   }
 
+  /* --- the tap-to-walk ping: a ring that lands where you pointed ---------
+     Tapping the floor with nothing happening looks broken even when the walk
+     has started, because the first step is slow and the camera turn hides it.
+     One ring, drawn once, moved to wherever the last tap was and expanding as
+     it fades. It is the receipt for a tap. --- */
+  const pingRing = new THREE.Mesh(new THREE.RingGeometry(0.16, 0.30, 28),
+    new THREE.MeshBasicMaterial({
+      color: 0xffd23c, transparent: true, opacity: 0, side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false,
+    }));
+  pingRing.rotation.x = -Math.PI / 2;
+  pingRing.visible = false;
+  pingRing.renderOrder = 997;
+  add(pingRing);
+  let pingT = 0;
+  function pingFloor(x, z) {
+    pingRing.position.set(x, 0.04, z);
+    pingRing.visible = true;
+    pingT = 1;
+  }
+  function tickPing(dt) {
+    if (!pingRing.visible) return;
+    pingT -= dt * 1.7;
+    if (pingT <= 0) { pingRing.visible = false; return; }
+    const grow = 1 + (1 - pingT) * 1.6;
+    pingRing.scale.set(grow, grow, grow);
+    pingRing.material.opacity = pingT * 0.85;
+  }
+
   /* --- dust --- */
   const DUST = 240;
   const dustPos = new Float32Array(DUST * 3);
@@ -8537,6 +8566,7 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     }
     dustGeo.attributes.position.needsUpdate = true;
     tickArcadeAir(dt, elapsed);
+    tickPing(dt);
     tickMarquee(dt, elapsed, ppos);
     hoops._tick(dt, elapsed, ppos);
     const bp = bDustGeo.attributes.position.array;
@@ -10156,7 +10186,7 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     closetHits: [leftLeaf, rightLeaf], toggleCloset, setCloset,
     closetOpen: () => closet.open,
     arcadeHits,
-    smokeHits, puffSmoke,
+    smokeHits, puffSmoke, pingFloor,
     // the bathroom's mirror-only body — main.js hangs your figure in it
     bath: bathSelf,
     // the avatar podium in the arcade's far corner. `mount` is where main.js

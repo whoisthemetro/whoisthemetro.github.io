@@ -25,6 +25,8 @@ export const WHATS_NEW = [
   {
     date: "2026-08-17",
     items: [
+      "on a phone held upright you can finally SEE. the view was pinched down to a slot; now you can take in a whole wall at once",
+      "and you can just tap the floor to walk there. it turns you to face the spot on the way, so you don't have to aim the camera first",
       "you can see people again. someone standing away from the window used to be a black shape with floating eyes — now they're a whole person wherever they stand",
       "the mic stopped echoing. if someone else's voice is coming out of your speaker, yours holds off for a moment instead of sending it back to them",
       "hold the mic button to talk. a quick tap used to leave it wide open, which is how the echo started — double-tap now if you really do want it left on",
