@@ -115,7 +115,10 @@ $$;
 -- here. it rides room_state, so it persists and broadcasts over realtime for free.
 alter table public.room_state add column if not exists flags jsonb not null default '{}'::jsonb;
 
-create or replace function public.set_room_flag(p_key text, p_val jsonb)
+-- the 2-arg form is dropped, not left beside the new one: an overload that
+-- skips the passphrase is not a gate, it's a second door
+drop function if exists public.set_room_flag(text, jsonb);
+create or replace function public.set_room_flag(p_key text, p_val jsonb, pass text default null)
 returns void
 language plpgsql
 security definer
@@ -124,9 +127,21 @@ as $$
 declare
   v_ip text;
   v_recent int;
+  v_ok boolean;
 begin
   if p_key not in ('blinds', 'curtains', 'closet', 'lava', 'radio_sr', 'radio_la', 'grime', 'layout', 'studio', 'graffiti') then
     raise exception 'unknown room flag: %', p_key;
+  end if;
+
+  -- the blinds and the lava lamp belong to everyone. the furniture does not:
+  -- `layout` rearranges the room for every visitor, and #admin is just a URL
+  -- anyone can type, so the check has to live here rather than in the client.
+  if p_key = 'layout' then
+    select (a.pass_hash = extensions.crypt(coalesce(pass, ''), a.pass_hash))
+      into v_ok from private.admin a where a.id = 1;
+    if not coalesce(v_ok, false) then
+      raise exception 'layout needs the admin passphrase';
+    end if;
   end if;
   begin
     v_ip := coalesce(current_setting('request.headers', true)::json ->> 'x-real-ip', 'unknown');

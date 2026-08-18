@@ -383,9 +383,11 @@ async function getRoomFlags() {
   }
   try { return JSON.parse(localStorage.getItem("metro.roomflags") || "{}"); } catch (e) { return {}; }
 }
-async function saveRoomFlag(key, val) {
+// `pass` is only read for the privileged keys (today: layout). Everything else
+// ignores it, so every other caller stays a two-argument call.
+async function saveRoomFlag(key, val, pass) {
   if (mode === "supabase") {
-    const { error } = await sb.rpc("set_room_flag", { p_key: key, p_val: val });
+    const { error } = await sb.rpc("set_room_flag", { p_key: key, p_val: val, pass: pass ?? null });
     if (error) throw error;               // RPC missing (pre-migration) → caller .catch()es
     return;
   }

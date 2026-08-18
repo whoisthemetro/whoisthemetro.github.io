@@ -3002,7 +3002,17 @@ function setLayoutMode(on) {
   if (on) {
     toast("layout mode — click a prop · arrows move · Q/E spin · +/- resize · PgUp/PgDn raise · R home · L saves");
   } else {
-    store.saveRoomFlag("layout", world.layoutSnapshot()).catch(() => {});
+    /* the furniture moves for EVERYONE, so the database asks for the passphrase
+       and #admin on its own is not enough. a wrong one gets forgotten so the
+       next save re-prompts rather than silently failing forever. */
+    store.saveRoomFlag("layout", world.layoutSnapshot(), adminPass()).then(
+      () => toast("layout saved for everyone"),
+      (e) => {
+        if (String(e && e.message).includes("passphrase")) {
+          sessionStorage.removeItem("metro.adminpass");
+          toast("wrong passphrase — layout not saved");
+        } else toast("layout not saved");
+      });
     toast("layout saved — the room stays this way for everyone");
   }
 }
