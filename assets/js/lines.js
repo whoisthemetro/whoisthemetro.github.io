@@ -61,12 +61,19 @@ export const INTRO = {
    Each step names WHERE the thing is, because "there is a radio" is useless
    in a room you have never stood in. The positions were read out of the
    running world, not guessed:
-     the desk + window   z -3.0 to -3.3, straight ahead of the spawn
-     the LA radio        x  2.27  the right-hand end of that desk
-     the keys            x  0.2   on the desk
-     the telecaster      x  1.59  stood beside it
-     the drum pads       x -2.15  the far corner, other side
+     the desk            x  0.2   under the window, keys ON its top (y 0.75)
+     the monitor         x  0.2   also on the desk (y 1.05)
+     the 12U rack        x  2.1   a SEPARATE thing on casters, beside the desk
+     the LA radio        x  2.25  on TOP of that rack, next to the apollo
+     the telecaster      x  1.58  on the FLOOR (y 0.21), desk on one side,
+                                  rack on the other
+     the drum pads       x -2.15  the far corner, other side of the room
      the arcade doorway  x -2.25  the left-hand wall
+
+   That crib got the radio and the guitar wrong once and she said it out loud
+   to people. The fix is not "be careful", it is: open world.js and read the
+   position.set, and note which GROUP it is added to, because a local offset
+   inside `rack` is not a world coordinate.
 
    `need` is the thing you have to actually DO. main.js reports it, and she
    skips a step you already did and acknowledges it instead. Nothing is
@@ -77,10 +84,10 @@ export const TOUR = [
     line: "start with the walls. aim at any bare patch and click, and you can leave a note or a picture on it. it stays there for everyone, long after you have gone. that is the whole point of this place.",
     ack:  "there it is. that one outlasts both of us." },
   { id: "radio", need: "radio",
-    line: "on the desk under the window, right hand end, there is a little radio. switch it on. it picks up real los angeles stations, whatever is actually going out over the air this minute. click it again to shut it up.",
+    line: "there is a rack on wheels stood beside the desk, and a little radio sitting on top of it next to the apollo. switch it on. it picks up real los angeles stations, whatever is actually going out over the air this minute. click it again to shut it up.",
     ack:  "that is a real signal. somebody is talking into a microphone across town right now." },
   { id: "instruments", need: "instrument",
-    line: "the keys are on the desk, the telecaster is stood beside it, and the drum pads are over in the far corner. all three of them really play. the guitar is tuned to a minor pentatonic, so you genuinely cannot land on a wrong note.",
+    line: "the keys are on the desk, the telecaster is stood on the floor between the desk and the rack, and the drum pads are over in the far corner. all three of them really play. the guitar is tuned to a minor pentatonic, so you genuinely cannot land on a wrong note.",
     ack:  "there you go. the pedals on the floor change what the guitar sounds like, if you want to get into it." },
   { id: "computer", need: "pc",
     line: "the computer on the desk boots for real. click the screen and type help. type new and it will tell you everything that has changed in here since you last came by.",

@@ -820,6 +820,22 @@ Every line was checked against the code rather than against a summary, after
 the first draft confidently sent people to the arcade through the door with
 the red neon — which is MIX & MASTER, and leaves the site entirely.
 
+## 2026-08-18 — the radio is on the rack, not the desk
+
+Metro caught it: she was telling people the radio was on the right-hand end of
+the desk. It is on top of the 12U rack, which is a separate thing on casters
+standing beside the desk. Same pass had the telecaster "stood beside" the desk
+when it is on the FLOOR between the desk and that rack.
+
+How the crib went wrong is the useful part. `laRadio.group.position.set(0.15,
+0.68, -0.1)` followed by `rack.add(laRadio.group)` is a LOCAL offset inside the
+rack, not a world position. Reading the numbers without reading which group
+they were added to turned a rack into a desk. The note in lines.js now says so
+in those words, because "be careful" is not a check.
+
+Two lines re-rendered, 507 characters, because a clip is named for a hash of
+its own text. Nothing else was touched and nothing else was paid for.
+
 ## 2026-08-18 — Trinity gets a new voice, and the tour she was written for
 
 **The blocker was never credits.** The account had 9,000 characters sitting
