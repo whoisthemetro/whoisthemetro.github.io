@@ -4,6 +4,41 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-08-19 — her voice or nothing
+
+- **The browser synth can no longer speak for Trinity.** Every line she has
+  is rendered in her own voice (Lily), but a recording that failed to play
+  fell through to `speechSynthesis` — so on a phone you could meet two
+  different Trinitys in one conversation. Now a line that arrives with a clip
+  id never reaches the synth at all: if the take can't be played she MIMES it
+  instead, right rhythm, right duration, subtitles intact. Silence is a
+  smaller lie than a stranger's voice.
+- **Why it fired on phones and not desktops.** Her clips played through an
+  `<audio>` element, and iOS only lets an element START inside a user
+  gesture. By the time we'd awaited the manifest or a fetch, the tap that
+  triggered the line was long gone, `play()` rejected, and the old code read
+  that as "the file let us down". Clips now decode to buffers and play
+  through the room's own graph — a `BufferSource` has no gesture rule once
+  the context is running, which the [enter] tap already guaranteed.
+- Buffered playback pays a bonus: the analyser sits on a real source, so her
+  mouth and glow ride the actual syllables on every path, not just some.
+- Decoded buffers are LRU-capped at 8 (decoded PCM is heavy and there are 43
+  clips); the fetched bytes are shared, so two taps on the same line are one
+  request. Both INTRO takes are warmed once the manifest lands, so the hello
+  doesn't wait on the network on a cold cache.
+- One retry 300 ms after a failed fetch, then the element as a second try,
+  then mime. The retry is there because the real failure is a phone's network
+  blinking, not a missing file.
+- A line edited without re-rendering now warns in the console and mimes,
+  rather than quietly getting said in the wrong voice.
+- Her subtitle card now shows whenever the takes didn't load, instead of
+  asking whether the device owns a synth — that question stopped mattering.
+- Tests: `node tools/voice/voicelock.mjs` (no deps, stubbed browser) covers
+  the four paths and is in the repo, and
+  `/tmp/metro-smoke/trinityvoice.js` taps her in a phone-shaped headless
+  Chrome with clip fetches broken and asserts `speechSynthesis.speak` is
+  never called.
+
 ## 2026-08-18 — Trinity keeps a post instead of keeping up
 
 She used to follow. Past two metres she'd abandon her spot and come after you,

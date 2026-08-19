@@ -23,6 +23,12 @@
 
 export const WHATS_NEW = [
   {
+    date: "2026-08-19",
+    items: [
+      "trinity always sounds like trinity now. on a phone she'd sometimes answer in a flat robot voice instead of her own — that can't happen anymore. if her voice can't reach you she says nothing and you read her instead",
+    ],
+  },
+  {
     date: "2026-08-18",
     items: [
       "trinity stopped shadowing you everywhere. she waits in the room you're in — by the window in the bedroom, just inside the door in the arcade — and if you walk into her she steps out of your way",

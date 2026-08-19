@@ -20,7 +20,7 @@ import { startPlanes } from "./planes.js";
 import { Cat } from "./cat.js";
 import { Bartender } from "./bartender.js";
 import { Guide } from "./guide.js";
-import { speak, stopSpeaking, isSpeaking, isVoicing, voiceAvailable, voiceInfo, preferVoices, loadClips, clipsReady, voiceLevel, useAudioGraph } from "./say.js";
+import { speak, stopSpeaking, isSpeaking, isVoicing, voiceAvailable, voiceInfo, preferVoices, loadClips, clipsReady, voiceLevel, useAudioGraph, preloadClips } from "./say.js";
 import { GUIDE_LINES, INTRO, ROOM_LINES, TOUR, clipId } from "./lines.js";
 import { whatsNew, dayLabel } from "./whatsnew.js";
 
@@ -31,10 +31,17 @@ import { whatsNew, dayLabel } from "./whatsnew.js";
    women, because she is one. */
 preferVoices(["Ava", "Allison", "Samantha", "Susan", "Zoe", "Serena", "Nicky",
               "Joelle", "Noelle", "Karen", "Martha", "Tessa", "Moira", "Kathy", "Female"]);
-/* And if her lines have been rendered to audio, those beat every one of the
-   voices above. Best-effort and fire-and-forget: no manifest simply means
-   nothing has been rendered yet and she stays on the browser synth. */
-loadClips();
+/* The list above is a LAST resort and nothing in the room should ever reach
+   it: every line she has is rendered to audio in her own voice, and say.js
+   will mime a line before it lets the browser synth speak for her. The
+   preference order only still exists for a caller that hands over a line
+   with no clip id, which today is nobody. */
+loadClips().then(() => {
+  // warm the hello on both sides of the doorway — it's the one line that gets
+  // heard on a cold cache, and waiting on the network is how she used to
+  // arrive late to her own introduction
+  preloadClips([clipId(INTRO.bedroom.spoken), clipId(INTRO.arcade.spoken)]);
+});
 useAudioGraph(audioGraph);   // her recordings ride the room's master bus
 import { DEFAULT_SPEC, buildAvatarFigure } from "./avatar-builder.js";
 import { TAG_COLORS } from "./graffiti.js";
@@ -590,8 +597,11 @@ const guide = new Guide(world.scene, { x: 0.2, z: 0.9, yaw: 0.80, name: "Trinity
   voicing: isVoicing,       // she's actually sounding
   level: voiceLevel,        // and THIS loud, right now — drives the mouth and the glow
   // no voice at all on this device? then and only then does she need the
-  // card, because otherwise she'd be miming at you in silence
-  silent: () => !clipsReady() && !voiceAvailable(),
+  // card, because otherwise she'd be miming at you in silence. her
+  // recordings are the ONLY voice she has now, so whether the browser owns a
+  // synth stopped being part of this question — if the takes didn't load,
+  // she's mute and the card is the line.
+  silent: () => !clipsReady(),
   // one door for everything she says: subtitle it, speak it, and hand back
   // how long it'll take so her mouth runs exactly that long
   // NOT wrapped in bedroomSound — that wrapper swallows the return value and
@@ -5206,7 +5216,7 @@ window.METRO_DEBUG = { renderer, camera, world, controls, xr, disc, hoop: hoopGa
     // what the crosshair is actually on — the smoke harness can't pointer-lock,
     // so this is how a test sees what a click would have hit
     castAt: (x = 0, y = 0) => { const h = castAt(x, y); return h ? { ud: Object.keys(h.object.userData), d: +h.distance.toFixed(2) } : null; },
-    say: { speak, stopSpeaking, isSpeaking, isVoicing, voiceAvailable, voiceInfo, clipsReady },
+    say: { speak, stopSpeaking, isSpeaking, isVoicing, voiceAvailable, voiceInfo, clipsReady, level: voiceLevel, preload: preloadClips },
     // room scoping can't be seen in a screenshot — this is how a test hears it
     audio: audioDebug, radioAudible: () => radios.la.audible(), room: () => aRoomNow(), jump: adminJump, openPicker, analytics: analyticsBuffer, notesWall,
   scrubWall,

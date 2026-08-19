@@ -2,11 +2,18 @@
    THE METRO — the voice
 
    The guide talks out loud. This is the whole speech layer and it is
-   deliberately one small door: speak() in, isSpeaking() out. Right now
-   it's the browser's own speechSynthesis — free, no key, no bill, no
-   network — but the room may someday want a real voice (pre-rendered
-   lines, or something live). When that day comes, only the body of
-   speak() changes; nothing that calls it has to know.
+   deliberately one small door: speak() in, isSpeaking() out.
+
+   She has ONE voice: the takes in assets/audio/trinity/, rendered once by
+   tools/voice/render.mjs. Every line she owns is in there, so a line that
+   arrives with a clip id NEVER reaches the browser synth — if the recording
+   can't be played she mimes it in silence instead. That rule is the point
+   of this file, not a detail of it: the fallback used to fire on phones
+   (see playing-a-take below) and people met two different Trinitys in one
+   conversation. Silence is a smaller lie than a stranger's voice.
+
+   The speechSynthesis machinery below is still here and still works, but
+   only for a caller that hands over a line with no clip — today, nobody.
 
    Two browser truths this works around:
    - voices load ASYNC. ask for the list too early and you get [], so
@@ -280,24 +287,101 @@ export function voiceLevel() {
   return level;
 }
 
-function playClip(id, volume, onDone) {
-  const a = new Audio(CLIP_DIR + id + ".mp3");
+/* ---- playing a take --------------------------------------------------
+   WEB AUDIO FIRST, and that ordering is the whole mobile fix.
+
+   This used to be an <audio> element, which is fine on a desktop and a trap
+   on a phone. iOS only lets an element START inside a user gesture, and by
+   the time we've waited on the manifest or a fetch the gesture is long gone
+   — play() rejects. The old code read that as "the file let us down" and
+   said the line on the browser synth instead, which is exactly why tapping
+   her on a phone sometimes got a robot instead of her.
+
+   A decoded buffer has no such rule: once the room's context is running
+   (the [enter] tap did that) a BufferSource plays whenever we ask it to,
+   from a promise, from a timer, from anywhere. The element stays behind it
+   as a second try for a browser with no context up yet. Neither of them is
+   allowed to reach the synth — see speak(). */
+const bufs = new Map();       // id -> decoded AudioBuffer, least-recent first
+const BUF_CAP = 8;            // decoded PCM is heavy; don't hoard all 43 of them
+const bytes = new Map();      // id -> Promise<ArrayBuffer>, so two taps share one fetch
+let srcNode = null;           // the BufferSource currently sounding
+
+const clipUrl = (id) => CLIP_DIR + id + ".mp3";
+
+function fetchClip(id) {
+  if (!bytes.has(id)) {
+    bytes.set(id, fetch(clipUrl(id), { cache: "force-cache" })
+      .then(r => (r.ok ? r.arrayBuffer() : Promise.reject(new Error("http " + r.status))))
+      .catch(e => { bytes.delete(id); throw e; }));   // a failed fetch must not cache
+  }
+  return bytes.get(id);
+}
+
+async function decodeClip(id, ctx) {
+  const hit = bufs.get(id);
+  if (hit) { bufs.delete(id); bufs.set(id, hit); return hit; }   // touch: keep it warm
+  const raw = await fetchClip(id);
+  // slice(0): decodeAudioData DETACHES the buffer it's handed, so the cached
+  // bytes have to be copied or a second decode of the same clip gets nothing
+  const buf = await new Promise((res, rej) => {
+    const r = ctx.decodeAudioData(raw.slice(0), res, rej);
+    if (r && r.then) r.then(res, rej);       // safari's promise form
+  });
+  bufs.set(id, buf);
+  while (bufs.size > BUF_CAP) bufs.delete(bufs.keys().next().value);
+  return buf;
+}
+
+/* Warm a clip before anyone asks for it, so her first line doesn't wait on
+   the network — the hello is the one people hear on a cold cache. */
+export function preloadClips(ids) {
+  // the catch is not decoration: a warm-up nobody awaited still counts as an
+  // unhandled rejection if the network is out, and that prints a scary error
+  // for a fetch whose whole point was to be optional
+  for (const id of ids || []) { if (id) { try { fetchClip(id).catch(() => {}); } catch (e) {} } }
+}
+
+function meter(ctx) {
+  analyser = ctx.createAnalyser();
+  analyser.fftSize = 512;
+  analyser.smoothingTimeConstant = 0.4;
+  levelBuf = new Uint8Array(analyser.fftSize);
+  return analyser;
+}
+
+// returns true once it's actually SOUNDING; throws or returns false and the
+// caller tries the next way in
+async function playBuffered(id, volume, seq, onDone) {
+  const { ctx, master } = graph ? graph() : {};
+  if (!ctx || !master) return false;
+  if (ctx.state === "suspended") { try { await ctx.resume(); } catch (e) {} }
+  const buf = await decodeClip(id, ctx);
+  if (seq !== speakSeq) return true;        // a newer line owns her; drop this one quietly
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  const g = ctx.createGain();
+  g.gain.value = volume;
+  src.connect(g);
+  g.connect(meter(ctx));
+  analyser.connect(master);
+  srcNode = src;
+  src.onended = () => { if (src !== srcNode) return; srcNode = null; onDone(true); };
+  src.start();
+  return true;
+}
+
+// the old way, kept for a browser whose audio context isn't up yet
+function playElement(id, volume, onDone) {
+  const a = new Audio(clipUrl(id));
   a.volume = volume;
   a.crossOrigin = "anonymous";
   audio = a;
-  // route through the room's graph so she's analysable AND compressed with
-  // everything else. if the context isn't up yet the element still plays on
-  // its own, we just don't get a level — never a reason to lose the line.
   try {
     const { ctx, master } = graph ? graph() : {};
     if (ctx && master) {
       if (ctx.state === "suspended") ctx.resume().catch(() => {});
-      const src = ctx.createMediaElementSource(a);
-      analyser = ctx.createAnalyser();
-      analyser.fftSize = 512;
-      analyser.smoothingTimeConstant = 0.4;
-      levelBuf = new Uint8Array(analyser.fftSize);
-      src.connect(analyser);
+      ctx.createMediaElementSource(a).connect(meter(ctx));
       analyser.connect(master);
     }
   } catch (e) { analyser = null; }
@@ -307,9 +391,51 @@ function playClip(id, volume, onDone) {
     onDone(ok);
   };
   a.onended = () => done(true);
-  a.onerror = () => done(false);        // a clip that won't play is a synth line
+  a.onerror = () => done(false);
   a.play().catch(() => done(false));
-  return a;
+}
+
+/* Buffer, then buffer again, then the element. The retry is there because
+   the failure this is guarding against is usually a phone's network blinking
+   rather than a clip that doesn't exist, and a second ask 300 ms later
+   almost always lands. */
+function playClip(id, volume, seq, onDone) {
+  const viaElement = () => { if (seq === speakSeq) playElement(id, volume, onDone); };
+  const tryBuf = (retry) =>
+    playBuffered(id, volume, seq, onDone)
+      .then(ok => { if (!ok) viaElement(); })
+      .catch(() => {
+        if (retry) setTimeout(() => { if (seq === speakSeq) tryBuf(false); }, 300);
+        else viaElement();
+      });
+  tryBuf(true);
+}
+
+/* Mime a line: no sound, but the mouth opens and closes on the rhythm the
+   voice would have had and the card holds the words for as long as it would
+   have taken to say them. This is what she does when a recording can't be
+   played — see speak(). */
+function mimeLine(text, seq) {
+  const parts = clauses(text);
+  let total = 0;
+  const plan = parts.map((c, i) => {
+    const v = voiceFor(c, i, parts.length);
+    total += guessMs(c.text) / v.rate + c.pause;
+    return { ...c, rate: v.rate };
+  });
+  silentUntil = performance.now() + total;
+  let at = 0;
+  const live = () => speaking && seq === speakSeq;
+  for (const c of plan) {
+    const dur = guessMs(c.text) / c.rate;
+    setTimeout(() => { if (live()) voicing = true; }, at);
+    setTimeout(() => { if (live()) voicing = false; }, at + dur);
+    at += dur + c.pause;
+  }
+  // isSpeaking() would retire it off silentUntil anyway, but only if somebody
+  // asks — this makes onEnd fire for a caller that just waits
+  setTimeout(() => { if (live()) finish(); }, total + 30);
+  return total;
 }
 
 /* Say a line. `clip` is the id from lines.js — when we have that take
@@ -340,15 +466,28 @@ export function speak(text, opts = {}) {
     return guessMs(text);
   }
 
-  if (clip && clipSet && clipSet.has(clip)) {
+  /* HER VOICE OR NOTHING.
+
+     Every line she has is rendered (lines.js is the list, tools/voice/ makes
+     the mp3s), so the browser synth has no business finishing her sentences.
+     It used to: a clip that wouldn't play fell through to speechSynthesis,
+     and on a phone that happened often enough that people met two different
+     Trinitys in one conversation. So the rule is now absolute — once a line
+     comes with a clip id, the synth is off the table. If the recording can't
+     be played she MIMES it: right rhythm, right duration, subtitles intact,
+     and no stranger doing her voice. */
+  if (clip) {
+    if (!clipSet.has(clip)) {
+      // a line was edited without re-rendering. say nothing rather than say
+      // it in the wrong voice; `node tools/voice/render.mjs` fixes it.
+      console.warn("[say] no rendered take for", clip, "—", String(text).slice(0, 48));
+      return mimeLine(text, seq);
+    }
     voicing = true;
-    silentUntil = performance.now() + 120000;   // the element's own end event drives it
-    playClip(clip, volume, (ok) => {
-      if (!ok && speaking && seq === speakSeq) {   // the file let us down: say it anyway
-        speaking = false; voicing = false; silentUntil = 0;
-        return void speak(text, { volume, onEnd: endCb });
-      }
+    silentUntil = performance.now() + 120000;   // the clip's own end event drives it
+    playClip(clip, volume, seq, (ok) => {
       if (seq !== speakSeq) return;             // superseded mid-clip; the new line owns her now
+      if (!ok && speaking) { voicing = false; return void mimeLine(text, seq); }
       finish();
     });
     return guessMs(text);
@@ -362,19 +501,8 @@ export function speak(text, opts = {}) {
     return { ...c, rate: v.rate, pitch: v.pitch, volume };
   });
 
-  if (!SYNTH || !window.SpeechSynthesisUtterance) {
-    // no synth — still mime it WITH the rhythm, so the mouth opens and closes
-    // in the same shape the voice would have had. subtitles keep the timing.
-    silentUntil = performance.now() + total;
-    let at = 0;
-    for (const c of plan) {
-      const dur = guessMs(c.text) / c.rate;
-      setTimeout(() => { if (speaking) voicing = true; }, at);
-      setTimeout(() => { if (speaking) voicing = false; }, at + dur);
-      at += dur + c.pause;
-    }
-    return total;
-  }
+  // no synth — mime it instead, same as a line whose recording won't play
+  if (!SYNTH || !window.SpeechSynthesisUtterance) return mimeLine(text, seq);
 
   try {
     if (!picked) picked = pickVoice();
@@ -392,6 +520,7 @@ export function stopSpeaking() {
   queue = [];
   clearGap();
   curUtter = null;                 // so a late onend can't restart the chain
+  if (srcNode) { const n = srcNode; srcNode = null; try { n.onended = null; n.stop(); } catch (e) {} }
   if (audio) { const a = audio; audio = null; try { a.pause(); a.src = ""; } catch (e) {} }
   analyser = null; level = 0;
   if (SYNTH) { try { SYNTH.cancel(); } catch (e) {} }
