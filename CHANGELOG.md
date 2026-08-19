@@ -4,6 +4,29 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-08-19 — the babylon bedroom is retired
+
+`/wip/` is gone, and with it the 40 MB it was the only thing holding up.
+
+- The bedroom rebuilt in Babylon.js was a complete, playable snapshot of a
+  paused experiment. The three.js room has long since passed it, and it was
+  costing 40 MB of GLBs, a 281 KB module and a live public page to keep a
+  thing nobody was going back to.
+- Removed: `wip/index.html`, `assets/js/babylon-bedroom.js`, and the 29 GLBs
+  only it loaded. `assets/models/` goes **42 MB -> 2 MB** and holds exactly
+  the seven the room actually loads. Also dropped the README paragraph and
+  the now-pointless `Disallow: /wip/` in robots.txt.
+- **The whole working page is on the `archive/babylon-wip` branch** (pushed),
+  so it can be restored intact — that branch is a better record than
+  `babylon-migration`, which has the module and 27 models but never had the
+  page. Nothing is lost.
+- Verified the way the last attempt should have been: **every HTML entry
+  point loaded in a browser with the network watched.** All eight are clean.
+  The single failure anywhere is a third-party Dropbox telemetry call on
+  `/submit/`, which fails identically on the live site and predates this.
+- Still not a speed win, and still worth saying: the main site never fetched
+  any of it. This is a smaller repo, not a faster room.
+
 ## THE GARDEN — a listening path for the sound design
 
 `music` at the desk computer stopped being a stub. It's a door now: it walks

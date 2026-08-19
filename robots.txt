@@ -1,5 +1,4 @@
 User-agent: *
-Disallow: /wip/
 Disallow: /mixandmaster/archive/
 
 Sitemap: https://whoisthemetro.com/sitemap.xml
