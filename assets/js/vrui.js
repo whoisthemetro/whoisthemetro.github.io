@@ -220,7 +220,7 @@ export function createVRUI({ scene, camera }) {
 
   /* ---------- open / close ---------- */
   function open({ title = "", rows = [], onClose = null, side = 0,
-                  width = DEFAULT_W, beside = null }) {
+                  width = DEFAULT_W, beside = null, minBottom = null }) {
     close();   // one window at a time — opening another replaces it
 
     const W = Math.round(width);
@@ -288,8 +288,25 @@ export function createVRUI({ scene, camera }) {
         headPos.y - 0.06,
         headPos.z + headFwd.z * dist + rightZ * side);
     }
+    /* keep the card's bottom edge off whatever it's hanging over. METRO OS
+       opens where you're standing at the desk, and a card centred on your
+       eyeline hangs its lower half across the monitor — it read as bleeding
+       into the desk. the caller passes the real top of the thing (measured,
+       so it survives the layout editor moving the desk) and the card floats
+       above it. never pushed DOWN, only up. */
+    if (minBottom != null) {
+      const bottom = mesh.position.y - panelH / 2;
+      if (bottom < minBottom) mesh.position.y += minBottom - bottom;
+    }
     mesh.lookAt(headPos.x, mesh.position.y, headPos.z);
     scene.add(mesh);
+    /* bake the transform NOW rather than waiting for the next render. a fresh
+       mesh carries an identity matrixWorld until the renderer walks the scene,
+       and the aim-tip interval raycasts on its own 150 ms clock — so a window
+       opened just after a frame was briefly un-hittable and reported no hover.
+       it also makes the headless harness deterministic, which is how it was
+       found: the same aim hit or missed depending on frame timing. */
+    mesh.updateMatrixWorld(true);
 
     win = { mesh, tex, cvs, g, W, widgets, paint, title, onClose, closeWg,
             anchor: headPos.clone(), hover: null, pressed: null };

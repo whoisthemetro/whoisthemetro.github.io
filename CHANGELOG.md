@@ -4,6 +4,38 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-08-19 — people stop looking like stickers
+
+**The fix for the silhouette bug worked and looked awful.** Every avatar colour
+was carrying an `emissive` floor of itself, which is what made a body in an
+unlit corner readable — and also what made it look pasted on. The reason is
+worth writing down: emissive is CONSTANT ACROSS THE SURFACE. Carry enough of it
+to read in the dark and the chest, the shoulders and the underside of the chin
+all sit at the same value. Nothing on the body has a gradient, so nothing on it
+reads as light falling on an object. It wasn't too bright. It was FLAT.
+
+Two terms replace it, and the point of both is that they VARY over the body:
+
+- a **hemisphere fill**, a fake sky-above / floor-below bounce keyed on the
+  world normal, so the tops of the shoulders and arms catch more of it than the
+  undersides. That gradient is the whole job. It multiplies the surface colour,
+  so it stays that person's colours.
+- a **rim**, a fresnel edge that only appears where the body turns away from
+  you. This one deliberately does NOT multiply the colour — a share of
+  near-black is near-black, so the fill alone would leave a black tee invisible
+  all over again. The rim traces the outline instead, which is all it takes to
+  read a person against a dark room without lighting them up.
+
+Both are injected into the Lambert shader rather than added as lights, so
+there's still nothing to leak through a wall and nothing in the light budget.
+All of it shares ONE compiled program — eight avatars in eight different colour
+combinations added zero programs to the renderer, which is what the fixed cache
+key is for.
+
+Checked in the corner of the bedroom the window can't reach, the west end of
+the arcade between the lamp pools, and under a lamp: shaded in all three,
+flat in none.
+
 ## 2026-08-19 — Trinity, quieter in a headset
 
 - She sat at the same gain everywhere, and a Quest is not a room: on speakers
@@ -44,6 +76,18 @@ Follow-up to the same day's window work, from wearing it.
   silhouette.
 - Watch for this if you touch `vrui.js`: `W` is no longer a module constant.
   Hit-testing (`widgetAt`) and the `_widgets()` test hook both read `win.W`.
+- **`minBottom:` keeps a card's lower edge off what it hangs over.** METRO OS
+  opens where you stand at the desk, and a card centred on your eyeline hung
+  its lower half across the monitor — it read as bleeding into the desk. The
+  caller passes the real top of the thing (`Box3` over `world.dmTargets`, so
+  it survives the layout editor moving the desk) and the card floats above it;
+  never pushed down, only up. Card bottom went 1.14 m -> 1.39 m.
+- **`open()` bakes the mesh's world matrix instead of waiting for a render.** A
+  fresh mesh carries an identity `matrixWorld` until the renderer walks the
+  scene, and the aim-tip interval raycasts on its own 150 ms clock — so a
+  window opened just after a frame was briefly un-hittable and reported no
+  hover. Found because the headless click test hit or missed the same button
+  depending on frame timing (3 of 7 runs failed); it is 4/4 with the bake.
 
 ## 2026-08-19 — windows in VR, and the wall art stops chasing your head
 

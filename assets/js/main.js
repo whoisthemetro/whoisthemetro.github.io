@@ -650,6 +650,7 @@ const guide = new Guide(world.scene, { x: 0.2, z: 0.9, yaw: 0.80, name: "Trinity
   say: (line, clip) => speak(line, { clip, volume: inVR() ? VR_VOICE : 1 }),
 });
 
+
 /* Where she stands, per room. Both spots were chosen by walking to them and
    looking, not by arithmetic: somewhere you can SEE her from the way in, and
    somewhere that isn't in front of anything you'd want to use. The arcade one
@@ -5003,8 +5004,15 @@ function openVRPC() {
   termPromptEl.textContent = `${termUser()}@metro:~$`;
   if (!termBooted) { termBooted = true; termBanner(); }
   const cmd = (name) => ({ label: name, tip: TERM_COMMANDS[name].blurb, cb: () => runTerm(name) });
+  /* the card must float ABOVE the desk, not across it. measure the monitor
+     rather than hardcoding a height — the layout editor can move the desk,
+     and a magic number would quietly stop being true the day it does. */
+  const deskBox = new THREE.Box3();
+  for (const m of world.dmTargets) deskBox.expandByObject(m);
+  const deskTop = deskBox.isEmpty() ? 1.3 : deskBox.max.y + 0.14;
   vrPCWin = vrui.open({
     title: "METRO OS",
+    minBottom: deskTop,
     rows: [
       { lines: () => termVRLines, max: 18 },
       { label: "commands" },
