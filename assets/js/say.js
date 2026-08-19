@@ -306,6 +306,8 @@ const bufs = new Map();       // id -> decoded AudioBuffer, least-recent first
 const BUF_CAP = 8;            // decoded PCM is heavy; don't hoard all 43 of them
 const bytes = new Map();      // id -> Promise<ArrayBuffer>, so two taps share one fetch
 let srcNode = null;           // the BufferSource currently sounding
+let why = "";                 // why the last line didn't sound, for diag()
+let mimed = false;            // the CURRENT line is being mimed — nobody can hear her
 
 const clipUrl = (id) => CLIP_DIR + id + ".mp3";
 
@@ -342,6 +344,37 @@ export function preloadClips(ids) {
   for (const id of ids || []) { if (id) { try { fetchClip(id).catch(() => {}); } catch (e) {} } }
 }
 
+/* Wake the context up before playing into it.
+
+   `suspended` is not the only way an AudioContext stops. iOS has a THIRD
+   state, `interrupted` — a phone call, another app taking audio, the screen
+   locking — and a context sitting in it accepts everything you play and
+   makes no sound at all, with no error to catch. Checking only for
+   `suspended` (which is what this did) means that state never recovers, so
+   she plays one line, gets interrupted, and is mute from then on with the
+   code convinced it worked. Anything that isn't `running` gets a resume. */
+async function wake(ctx) {
+  if (!ctx || ctx.state === "running") return true;
+  try { await ctx.resume(); } catch (e) {}
+  return ctx.state === "running";
+}
+
+/* The chain behind the current line, kept in a variable ON PURPOSE.
+
+   A WebAudio node with no live reference to it is a node the browser is
+   allowed to collect, and a collected node in the middle of a chain is
+   silence you can't debug. Keeping the whole thing here also means we can
+   take it back down: without this, every line left its analyser wired into
+   the master bus forever, so a long visit slowly built a stack of dead nodes
+   summing into the room's output. */
+let chain = null;
+
+function dropChain() {
+  if (!chain) return;
+  for (const n of chain) { try { n.disconnect(); } catch (e) {} }
+  chain = null;
+}
+
 function meter(ctx) {
   analyser = ctx.createAnalyser();
   analyser.fftSize = 512;
@@ -355,19 +388,23 @@ function meter(ctx) {
 async function playBuffered(id, volume, seq, onDone) {
   const { ctx, master } = graph ? graph() : {};
   if (!ctx || !master) return false;
-  if (ctx.state === "suspended") { try { await ctx.resume(); } catch (e) {} }
+  await wake(ctx);
   const buf = await decodeClip(id, ctx);
   if (seq !== speakSeq) return true;        // a newer line owns her; drop this one quietly
+  // the decode took time, and the context can have gone away underneath it
+  if (!(await wake(ctx))) { why = "context " + ctx.state; return false; }
+  dropChain();
   const src = ctx.createBufferSource();
   src.buffer = buf;
   const g = ctx.createGain();
   g.gain.value = volume;
-  src.connect(g);
-  g.connect(meter(ctx));
-  analyser.connect(master);
+  const an = meter(ctx);
+  src.connect(g); g.connect(an); an.connect(master);
+  chain = [src, g, an];                     // held so nothing here can be collected
   srcNode = src;
   src.onended = () => { if (src !== srcNode) return; srcNode = null; onDone(true); };
   src.start();
+  why = "";
   return true;
 }
 
@@ -380,9 +417,17 @@ function playElement(id, volume, onDone) {
   try {
     const { ctx, master } = graph ? graph() : {};
     if (ctx && master) {
-      if (ctx.state === "suspended") ctx.resume().catch(() => {});
-      ctx.createMediaElementSource(a).connect(meter(ctx));
-      analyser.connect(master);
+      wake(ctx);
+      /* Routing an element into the graph is a ONE-WAY DOOR on iOS: from the
+         moment createMediaElementSource() touches it, that element's audio
+         goes nowhere except through these nodes. So the nodes have to be
+         held — a collected MediaElementSourceNode is an element that plays
+         to nobody, forever, with everything still reporting success. */
+      dropChain();
+      const msrc = ctx.createMediaElementSource(a);
+      const an = meter(ctx);
+      msrc.connect(an); an.connect(master);
+      chain = [msrc, an];
     }
   } catch (e) { analyser = null; }
   const done = (ok) => {
@@ -416,6 +461,7 @@ function playClip(id, volume, seq, onDone) {
    have taken to say them. This is what she does when a recording can't be
    played — see speak(). */
 function mimeLine(text, seq) {
+  mimed = true;               // so the room can put her words on the card instead
   const parts = clauses(text);
   let total = 0;
   const plan = parts.map((c, i) => {
@@ -447,6 +493,7 @@ export function speak(text, opts = {}) {
   stopSpeaking();
   endCb = onEnd || null;
   speaking = true;
+  mimed = false;
   const seq = ++speakSeq;
 
   /* The manifest hasn't landed yet. WAIT for it instead of falling through to
@@ -480,6 +527,7 @@ export function speak(text, opts = {}) {
     if (!clipSet.has(clip)) {
       // a line was edited without re-rendering. say nothing rather than say
       // it in the wrong voice; `node tools/voice/render.mjs` fixes it.
+      why = "no take for " + clip;
       console.warn("[say] no rendered take for", clip, "—", String(text).slice(0, 48));
       return mimeLine(text, seq);
     }
@@ -487,7 +535,12 @@ export function speak(text, opts = {}) {
     silentUntil = performance.now() + 120000;   // the clip's own end event drives it
     playClip(clip, volume, seq, (ok) => {
       if (seq !== speakSeq) return;             // superseded mid-clip; the new line owns her now
-      if (!ok && speaking) { voicing = false; return void mimeLine(text, seq); }
+      if (!ok && speaking) {
+        why = why || "clip would not play";
+        console.warn("[say] could not play", clip, "—", why, "— miming instead");
+        voicing = false;
+        return void mimeLine(text, seq);
+      }
       finish();
     });
     return guessMs(text);
@@ -521,6 +574,7 @@ export function stopSpeaking() {
   clearGap();
   curUtter = null;                 // so a late onend can't restart the chain
   if (srcNode) { const n = srcNode; srcNode = null; try { n.onended = null; n.stop(); } catch (e) {} }
+  dropChain();
   if (audio) { const a = audio; audio = null; try { a.pause(); a.src = ""; } catch (e) {} }
   analyser = null; level = 0;
   if (SYNTH) { try { SYNTH.cancel(); } catch (e) {} }
@@ -544,6 +598,24 @@ export function isSpeaking() {
   if (silentUntil && performance.now() > silentUntil) { finish(); return false; }
   if (!SYNTH || !window.SpeechSynthesisUtterance) return silentUntil > performance.now();
   return true;
+}
+
+/* Is THIS line one nobody can hear? The room reads this to put her words on
+   the card — a mimed line with no card is indistinguishable from her being
+   broken, which is exactly how it was reported. Silence is only an
+   acceptable failure if you can still read her. */
+export const wasMimed = () => mimed;
+
+/* Everything a phone won't tell us from here. METRO_DEBUG.say.diag() */
+export function voiceDiag() {
+  const { ctx } = graph ? graph() : {};
+  return {
+    clips: clipSet ? clipSet.size : null,
+    ctx: ctx ? ctx.state : "none",
+    speaking, voicing, mimed, why,
+    cached: bufs.size, fetched: bytes.size,
+    playing: srcNode ? "buffer" : audio ? "element" : "nothing",
+  };
 }
 
 // is there a real voice behind this, or are we miming? (for a "turn on

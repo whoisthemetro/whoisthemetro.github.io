@@ -4,6 +4,41 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-08-19 — she goes quiet, the room notices
+
+Follow-up the same day: with the synth locked out, she played one line and
+then went silent for the rest of the visit on a phone. Three separate faults,
+and the first one is the one that was actually killing her.
+
+- **An AudioContext can stop without telling anyone, and iOS has a state the
+  others don't: `interrupted`** — a phone call, another app taking the audio
+  session, the screen locking. Nothing in the room ever checked. `resume()`
+  is only allowed from a user gesture, so a context that stopped stayed
+  stopped for the whole visit, accepting everything played into it and making
+  no sound, reporting success the entire time. `wakeAudio()` (ambience.js) is
+  now hung off any pointerdown/touchend: whatever you touch next brings the
+  room back. say.js's own `wake()` checks for anything that isn't `running`
+  rather than only `suspended`, and re-checks after the decode, since the
+  context can go away underneath an await.
+- **WebAudio nodes nobody holds a reference to can be collected**, and a
+  collected node mid-chain is silence with no error. The source/gain/analyser
+  chain is now kept in a variable and torn down explicitly — which also fixes
+  a leak the first pass introduced, where every line left its analyser wired
+  into the master bus forever. The element path matters more here than the
+  buffer path: `createMediaElementSource()` is a one-way door on iOS, so a
+  collected node there is an element that plays to nobody, permanently.
+- **A mimed line with no card is indistinguishable from a broken guide.**
+  `fx.silent()` asked a per-DEVICE question ("did any clips load?"), so a
+  phone that loaded her takes fine but failed to play ONE got no card — she
+  stood there moving her mouth in silence. It's asked per LINE now
+  (`wasMimed()`), and her words appear for exactly the lines that didn't
+  sound. Silence is only an acceptable failure if you can still read her.
+- `METRO_DEBUG.say.diag()` reports clip count, context state, what's playing
+  and why the last line didn't, and a line that fails to play now says so in
+  the console instead of vanishing.
+- `tools/voice/voicelock.mjs` grew the two cases: an interrupted context is
+  woken rather than ignored, and a mimed line asks for the card.
+
 ## 2026-08-19 — her voice or nothing
 
 - **The browser synth can no longer speak for Trinity.** Every line she has

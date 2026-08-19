@@ -9,7 +9,7 @@ import { NotesWall } from "./notes3d.js";
 import { Ghosts } from "./ghosts.js";
 import { store } from "./store.js";
 import { presence } from "./presence.js";
-import { startAmbience, citySound, pianoNote, semitoneToKey, audioNow, purr, setRain, setWater, setRoomTone, setClubTone, setClubBed, kettleBoil, setThruster, boostSound, discSound, goalHorn, meow, hiss, careSound, drumHit, setArcadeZone, punchSound, shieldClang, stunBuzz, edrumHit, guitarPluck, guitarNote, shotSound, smokeSound, setFx, setDelayTempo, setBusLevel, setGuitarFilter, startVacuum, stopVacuum, beep, fireSound, audioDebug, loadFarts, fartsReady, fart, bathroomSend, loadBathMusic, startBathMusic, setBathMusic, bathMusicOn, loadDJ } from "./ambience.js";
+import { startAmbience, citySound, pianoNote, semitoneToKey, audioNow, purr, setRain, setWater, setRoomTone, setClubTone, setClubBed, kettleBoil, setThruster, boostSound, discSound, goalHorn, meow, hiss, careSound, drumHit, setArcadeZone, punchSound, shieldClang, stunBuzz, edrumHit, guitarPluck, guitarNote, shotSound, smokeSound, setFx, setDelayTempo, setBusLevel, setGuitarFilter, startVacuum, stopVacuum, beep, fireSound, audioDebug, loadFarts, fartsReady, fart, bathroomSend, loadBathMusic, startBathMusic, setBathMusic, bathMusicOn, loadDJ, wakeAudio } from "./ambience.js";
 import { SONGS, playSong, stopSong, currentSongId } from "./songs.js";
 import { progress } from "./progress.js";
 import { voice } from "./voice.js";
@@ -20,7 +20,7 @@ import { startPlanes } from "./planes.js";
 import { Cat } from "./cat.js";
 import { Bartender } from "./bartender.js";
 import { Guide } from "./guide.js";
-import { speak, stopSpeaking, isSpeaking, isVoicing, voiceAvailable, voiceInfo, preferVoices, loadClips, clipsReady, voiceLevel, useAudioGraph, preloadClips } from "./say.js";
+import { speak, stopSpeaking, isSpeaking, isVoicing, voiceAvailable, voiceInfo, preferVoices, loadClips, clipsReady, voiceLevel, useAudioGraph, preloadClips, wasMimed, voiceDiag } from "./say.js";
 import { GUIDE_LINES, INTRO, ROOM_LINES, TOUR, clipId } from "./lines.js";
 import { whatsNew, dayLabel } from "./whatsnew.js";
 
@@ -596,12 +596,16 @@ const guide = new Guide(world.scene, { x: 0.2, z: 0.9, yaw: 0.80, name: "Trinity
   speaking: isSpeaking,     // a line is in the air
   voicing: isVoicing,       // she's actually sounding
   level: voiceLevel,        // and THIS loud, right now — drives the mouth and the glow
-  // no voice at all on this device? then and only then does she need the
-  // card, because otherwise she'd be miming at you in silence. her
-  // recordings are the ONLY voice she has now, so whether the browser owns a
-  // synth stopped being part of this question — if the takes didn't load,
-  // she's mute and the card is the line.
-  silent: () => !clipsReady(),
+  /* When does she need the card? Whenever you can't HEAR this line.
+
+     That used to be answered once, for the whole device — no clips, no card.
+     Too coarse: a phone that loads her takes fine can still fail to play one
+     (a context iOS interrupted, a fetch that died), and she mimes it. A
+     mimed line with no card is a guide standing there moving her mouth at
+     you in total silence, which reads as broken rather than as degraded —
+     it's what "she just stopped talking" turned out to be. So it's asked per
+     LINE now, and the words appear for exactly the ones that didn't sound. */
+  silent: () => !clipsReady() || wasMimed(),
   // one door for everything she says: subtitle it, speak it, and hand back
   // how long it'll take so her mouth runs exactly that long
   // NOT wrapped in bedroomSound — that wrapper swallows the return value and
@@ -943,6 +947,14 @@ function tagHitAt(e) {
   const y = -((e.clientY - r.top) / r.height) * 2 + 1;
   return castAt(x, y);
 }
+/* Any touch anywhere wakes the sound back up. A browser can stop the audio
+   context behind our backs — iOS does it for a phone call, another app, or
+   the screen locking — and resume() is only allowed from a gesture, so the
+   next thing you tap is the only chance we get. Costs nothing when the
+   context is already running, which is almost always. */
+window.addEventListener("pointerdown", wakeAudio, { capture: true, passive: true });
+window.addEventListener("touchend", wakeAudio, { capture: true, passive: true });
+
 renderer.domElement.addEventListener("pointerdown", (e) => {
   if (!tagMode) return;
   /* right-click lifts ONE stroke of yours off the wall. Undo is last-first,
@@ -5216,7 +5228,7 @@ window.METRO_DEBUG = { renderer, camera, world, controls, xr, disc, hoop: hoopGa
     // what the crosshair is actually on — the smoke harness can't pointer-lock,
     // so this is how a test sees what a click would have hit
     castAt: (x = 0, y = 0) => { const h = castAt(x, y); return h ? { ud: Object.keys(h.object.userData), d: +h.distance.toFixed(2) } : null; },
-    say: { speak, stopSpeaking, isSpeaking, isVoicing, voiceAvailable, voiceInfo, clipsReady, level: voiceLevel, preload: preloadClips },
+    say: { speak, stopSpeaking, isSpeaking, isVoicing, voiceAvailable, voiceInfo, clipsReady, level: voiceLevel, preload: preloadClips, mimed: wasMimed, diag: voiceDiag },
     // room scoping can't be seen in a screenshot — this is how a test hears it
     audio: audioDebug, radioAudible: () => radios.la.audible(), room: () => aRoomNow(), jump: adminJump, openPicker, analytics: analyticsBuffer, notesWall,
   scrubWall,

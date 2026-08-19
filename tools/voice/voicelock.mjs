@@ -29,8 +29,10 @@ let audioCalls = 0;
 globalThis.Audio = class { constructor(src) { this.src = src; audioCalls++; setTimeout(() => this.onerror && this.onerror(), 5); } play() { return Promise.reject(new Error("NotAllowedError")); } pause() {} };
 
 let started = [];
+let resumes = 0;
 const fakeCtx = {
-  state: "running", resume: async () => {},
+  state: "running",
+  resume: async () => { resumes++; fakeCtx.state = "running"; },
   createBufferSource: () => ({ connect() {}, start() { started.push(1); setTimeout(() => this.onended && this.onended(), 5); }, stop() {} }),
   createGain: () => ({ gain: {}, connect() {} }),
   createAnalyser: () => ({ fftSize: 512, connect() {}, getByteTimeDomainData() {} }),
@@ -39,7 +41,7 @@ const fakeCtx = {
 };
 
 let FETCH_MODE = "ok";
-const MANIFEST = { clips: ["aaaa1111", "bbbb2222"] };
+const MANIFEST = { clips: ["aaaa1111", "bbbb2222", "dddd4444"] };
 globalThis.fetch = async (url) => {
   if (url.endsWith("manifest.json")) return { ok: true, json: async () => MANIFEST };
   if (FETCH_MODE === "fail") return { ok: false, status: 503 };
@@ -76,7 +78,25 @@ say.speak("unrendered line.", { clip: "cccc3333" });
 await wait(200);
 check("unrendered clip mimes, does not synth", synthCalls.length === 0, `synth=${synthCalls.length}`);
 
-// 4. a caller with no clip at all still gets the synth (unchanged)
+// 4. iOS interrupted the context (a call, another app, the screen locking).
+// this is NOT "suspended", and only checking for that is how she went mute
+// for the rest of a visit after one interruption.
+say.stopSpeaking(); started = []; synthCalls.length = 0; resumes = 0;
+fakeCtx.state = "interrupted";
+say.speak("after the interruption.", { clip: "aaaa1111" });
+await wait(200);
+check("an interrupted context is woken, not ignored", resumes > 0 && started.length === 1,
+      `resumes=${resumes} started=${started.length}`);
+check("and she is not mimed after it", say.wasMimed() === false);
+
+// 5. a mimed line tells the room it needs the card
+say.stopSpeaking(); FETCH_MODE = "fail";
+say.speak("nobody will hear this.", { clip: "dddd4444" });   // uncached, so the dead fetch bites
+await wait(1500);
+check("a mimed line asks for the card", say.wasMimed() === true, JSON.stringify(say.voiceDiag()));
+FETCH_MODE = "ok";
+
+// 6. a caller with no clip at all still gets the synth (unchanged)
 say.stopSpeaking(); synthCalls.length = 0;
 say.speak("no clip for this one.");
 await wait(60);

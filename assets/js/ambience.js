@@ -444,6 +444,21 @@ export function audioNow() { return ctx ? ctx.currentTime : 0; }
 // the graph endpoints, for modules that build their own chains (voice)
 export function audioGraph() { return { ctx, master }; }
 
+/* Nudge the context back to life.
+
+   A browser is allowed to stop an AudioContext without telling anyone, and
+   iOS has a state the others don't: `interrupted` — a phone call, another
+   app taking the audio session, the screen locking. Nothing in here noticed,
+   so the room simply went quiet for the rest of the visit and every play()
+   after that reported success into a dead graph. resume() only works off a
+   user gesture, which is why main.js hangs this on the next tap: whatever
+   you touch next brings the sound back. Cheap, silent when nothing's wrong,
+   and it covers the whole room rather than just whoever asked. */
+export function wakeAudio() {
+  if (!ctx || ctx.state === "running") return;
+  try { ctx.resume().catch(() => {}); } catch (e) {}
+}
+
 // i is a white-key index (0..14 → C_MAJOR) for free-play, or a raw
 // chromatic semitone (0..24 from C4) when chromatic=true — the songs use
 // the latter so they can reach accidentals the keybed can't free-play.

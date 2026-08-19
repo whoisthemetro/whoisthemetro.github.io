@@ -25,7 +25,9 @@ export const WHATS_NEW = [
   {
     date: "2026-08-19",
     items: [
-      "trinity always sounds like trinity now. on a phone she'd sometimes answer in a flat robot voice instead of her own — that can't happen anymore. if her voice can't reach you she says nothing and you read her instead",
+      "trinity always sounds like trinity now. on a phone she'd sometimes answer in a flat robot voice instead of her own — that can't happen anymore",
+      "and if she can't be heard at all, she holds the words up on a card beside her instead of mouthing at you in silence",
+      "the room gets its sound back on its own. take a call, lock your phone, switch apps — everything used to stay dead until you reloaded. now the next thing you touch turns it back on",
     ],
   },
   {
