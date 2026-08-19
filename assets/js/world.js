@@ -29,6 +29,8 @@ import { SHADER_ART, KUKO_A, KUKO_B, KUKO_IMAGE } from "./shaderart.js";
 import { makeShaderBake } from "./shaderbake.js";
 import { createGraffiti } from "./graffiti.js";
 import { buildRoom as buildStudioRoom } from "./studio/room.js";
+import { buildGarden } from "./garden/room.js";
+import { GARDEN_TRACKS } from "./garden-catalog.js";
 
 export const ROOM = {
   X: 2.6, ZF: -3.3, ZB: 3.3, H: 2.7,
@@ -8261,7 +8263,7 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
      SITS (bounding-box centre, not group origin — boatGroup's own origin is
      0,0,0 while everything in it lives out at x=40), and main.js flips the
      buckets when you change rooms, the same moment it culls the lights. --- */
-  const cullRooms = { desi: [], crew: [], venue: [], gym: [], studio: [] };
+  const cullRooms = { desi: [], crew: [], venue: [], gym: [], studio: [], garden: [] };
   function bucketRoomGeometry() {
     scene.updateMatrixWorld(true);
     const bb = new THREE.Box3(), c = new THREE.Vector3();
@@ -8272,6 +8274,10 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
       bb.getCenter(c);
       let r = null;
       if (c.y > 40) r = "crew";
+      // the garden sits WAY out past the gym, so its test has to come first —
+      // z>40 would otherwise file the whole path under the gym and it would
+      // only ever be visible from a basketball court
+      else if (c.z > 120) r = "garden";
       else if (c.z > 40) r = "gym";
       else if (c.z < -40) r = "studio";
       else if (c.x > 20) r = "desi";
@@ -10129,9 +10135,25 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     };
   })();
 
+  /* --- THE GARDEN: the listening path, far out past the gym ---------------
+     Metro's sound design, planted in two beds either side of a gravel path.
+     Its geometry lives in garden/room.js the way the studio's does — it is
+     entirely self-contained (no shared wall, no shared light, no shared
+     floorplan with anything) and it GROWS with the catalog, so keeping it out
+     here means adding the fortieth track doesn't touch the file every other
+     job has to edit.
+
+     Built BEFORE the toon pass on purpose: the soil and the posts should
+     cel-shade like the rest of the world. The reeds are MeshBasic and the
+     pass skips them, which is what keeps their gradient. --- */
+  const GARDEN = { x: 0, z: 160 };
+  const garden = buildGarden({ parent: scene, offset: GARDEN, tracks: GARDEN_TRACKS });
+
   // where feet may go: bedroom + closet passage + arcade room
   // (cabinet walls get ~1.1 m clearance so you can stand at any machine)
   const WALK_RECTS = [
+    // the garden path — the gravel only; the beds are not for walking in
+    ...garden.walkRects,
     // the gym court — open floor inside the bleachers/poles (you can't walk
     // through them): stops short of the sideline bleachers (±7.5) and the
     // baseline hoop standards (±13.6)
@@ -10273,6 +10295,9 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     arcadeDoor: { x: -2.25, z: CZ },
     movables, applyLayout, resetMovable, layoutSnapshot,
     studio, STUDIO,
+    // THE GARDEN — the listening path. main.js drives it: garden.tick(dt, state)
+    // from the player each frame, garden.hits in castAt.
+    garden, GARDEN,
     setCityListener: fn => { onCity = fn; },
     setWeather,
     getWeather: () => wx,

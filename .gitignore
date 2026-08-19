@@ -15,3 +15,9 @@ supabase/.temp/
 # of them have had admin passwords in them. A global ignore already catches it;
 # this keeps that true for a fresh clone on another machine.
 .claude/settings.local.json
+
+# THE GARDEN — the audio itself lives on R2, never in git. git keeps every
+# version of every file forever, and audio is the thing you re-master.
+# tools/garden/encode.mjs writes these; assets/js/garden-catalog.js (which IS
+# committed) is the index the room builds from.
+assets/audio/garden/

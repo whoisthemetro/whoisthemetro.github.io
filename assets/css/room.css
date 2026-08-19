@@ -1022,6 +1022,8 @@ body.in-club #flight-strip { display: none; }
 
 /* the studio is a separate room: the cat and LAX stay home */
 body.in-studio #cat-pill, body.in-studio #flight-strip { display: none; }
+/* the garden is a listening room — nothing in the corners of it but the path */
+body.in-garden #cat-pill, body.in-garden #flight-strip { display: none; }
 
 
 /* --- writing on the bathroom walls --- */

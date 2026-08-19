@@ -54,6 +54,7 @@ for python-heredoc edits, so **leave them intact.**
 | **THE CLUB / VENUE** | 7569–7900 | `main.js` 2723–3160, `screen.js`, `stream.js` |
 | **THE GYM** (full court) | 8571–8970 | `gymball.js`, `main.js` 3455–3820 |
 | **THE STUDIO** | 9002 (mount point only) | `studio/*.js`, `docs/studio.md`, `main.js` 2210–2570 |
+| **THE GARDEN** — the listening path (Metro's sound design) | mount point only, just before `WALK_RECTS` | `garden/room.js` (the beds), `garden/player.js` (streaming audio), `garden-catalog.js` (generated), `tools/garden/` (encode + R2), `main.js` (the garden block + `music` in `TERM_COMMANDS`) |
 | Room culling, walkability, collision | `bucketRoomGeometry` @7101, `WALK_RECTS` @8939, `NO_WALK` @1451, `isWalkable` @8964 | `controls.js` (`_slide`), `xr.js` |
 | Ambient life — dust, arcade air, carpet grime, vacuum | 7138–7400 | — |
 | The cel-shading pass | 8972 | read the material trap in CLAUDE.md first |
@@ -79,6 +80,7 @@ for python-heredoc edits, so **leave them intact.**
 | …re-rendering her voice | `tools/voice/render.mjs` — just run it, it finds its key in `~/.config/metro/voice.env` |
 | Notes on the wall | `notes3d.js`, `store.js` |
 | METRO OS (the desk computer) + the visitor changelog | `whatsnew.js` (the copy), `main.js` `TERM_COMMANDS`, `#pc` in index.html |
+| Getting a track into the garden (encode, loudness, waveform, R2) | `tools/garden/encode.mjs`, `tools/garden/README.md` |
 | Avatars / other people | `avatar-builder.js` (the figure + hair), `ghosts.js`, `picker.js` (the chooser), `main.js` ~670–860 (podium figure, drag-to-spin, `openPicker`) |
 | **THE PODIUM** — the avatar creator in the arcade's far corner | `POD` block just before the MARQUEE anchor | `main.js` ~700–930 |
 | Presence + netcode | `presence.js` |

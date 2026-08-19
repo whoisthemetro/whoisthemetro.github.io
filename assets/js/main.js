@@ -24,6 +24,7 @@ import { Guide } from "./guide.js";
 import { speak, stopSpeaking, isSpeaking, isVoicing, voiceAvailable, voiceInfo, preferVoices, loadClips, clipsReady, voiceLevel, useAudioGraph, preloadClips, wasMimed, voiceDiag } from "./say.js";
 import { GUIDE_LINES, INTRO, ROOM_LINES, TOUR, clipId } from "./lines.js";
 import { whatsNew, dayLabel } from "./whatsnew.js";
+import { makeGardenPlayer } from "./garden/player.js";
 
 /* What Trinity should sound like, best first. Every visitor's device owns
    its own voice list, so this is a wish rather than a setting: on a mac with
@@ -161,7 +162,7 @@ const world = buildWorld(renderer);
    Toggling visibility recompiles materials on a room change — a brief hitch
    hidden by the fade-to-black; bedroom<->arcade is one "home" group, so the
    main space never re-compiles as you walk it. */
-const cullLights = { home: [], desi: [], crew: [], venue: [], gym: [] };
+const cullLights = { home: [], desi: [], crew: [], venue: [], gym: [], garden: [] };
 (function bucketRoomLights() {
   world.scene.updateMatrixWorld(true);
   const wp = new THREE.Vector3();
@@ -215,6 +216,7 @@ function aWorldReady() {
 }
 // which space the player is in — flags for the far rooms, x for bedroom vs arcade
 function aRoomNow() {
+  if (inGarden) return "garden";
   if (inStudio) return "studio";
   if (inBoat) return "desi";
   if (inArena) return "crew";
@@ -228,6 +230,7 @@ function aRoomNow() {
 // build/animate avatars for people actually in the room with us.
 function roomScopeOfPos(x, y, z) {
   if ((y || 0) > 40) return "crew";
+  if (z > 120) return "garden";              // the garden path, way out past the gym
   if (z > 40) return "gym";                  // the gym sits far out in +z
   if (z < -40) return "studio";              // and the studio far out in -z
   if (x > 20) return "desi";
@@ -235,6 +238,7 @@ function roomScopeOfPos(x, y, z) {
   return "home";
 }
 function myScope() {
+  if (inGarden) return "garden";
   if (inStudio) return "studio";
   if (inBoat) return "desi";
   if (inArena) return "crew";
@@ -543,8 +547,8 @@ function applyGuitarFilter() { setGuitarFilter(gtrFilterLevel); world.setGuitarP
    basketball hoop use, because they LIVE in the arcade and must be audible
    there. `bedroomOnly` is the bedroom itself: past the doorway it goes quiet.
    Anything that belongs to the bedroom's own furniture wants the second one. */
-const bedroomSound = (fn) => (...a) => { if (!inBoat && !inArena && !inClub && !inGym && !inStudio) fn(...a); };
-const bedroomHere = () => !inBoat && !inArena && !inClub && !inGym && !inStudio && !inArcade();
+const bedroomSound = (fn) => (...a) => { if (!inBoat && !inArena && !inClub && !inGym && !inStudio && !inGarden) fn(...a); };
+const bedroomHere = () => !inBoat && !inArena && !inClub && !inGym && !inStudio && !inGarden && !inArcade();
 // which side of the arcade wall the continuous beds think you're on, and
 // what we last actually told the audio (so a room return can be corrected)
 let inArcadeBed = false, bedApplied = null, bedWasAway = false;
@@ -1332,7 +1336,7 @@ function castAt(ndcX, ndcY) {
     raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera);
   }
   // doors are included as blockers so notes can't be pinned onto them
-  const targets = [cat.hitMesh, toyHit, bartender.hitMesh, guide.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, ...world.elevHits, ...world.elevCallHits, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.guitarVoiceHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, world.pool.hit, world.pool.resetHit, world.pool.joinHit, world.pool2.hit, world.pool2.resetHit, world.pool2.joinHit, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.radioHits, ...world.laRadioHits, ...world.filterPedalHit, ...world.vacuumHits, ...world.studio.screens, ...world.studio.doorHits, ...notesWall.raycastTargets(), screenMesh, world.gym.joinHit, world.gym.exitHit, ...world.gym.readyHits, ...world.podium.hits, ...(world.bath ? world.bath.hits : []), ...(world.bath ? world.bath.tags.meshes() : []), ...world.blockers];
+  const targets = [cat.hitMesh, toyHit, bartender.hitMesh, guide.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, ...world.elevHits, ...world.elevCallHits, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.guitarVoiceHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, world.pool.hit, world.pool.resetHit, world.pool.joinHit, world.pool2.hit, world.pool2.resetHit, world.pool2.joinHit, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.radioHits, ...world.laRadioHits, ...world.filterPedalHit, ...world.vacuumHits, ...world.studio.screens, ...world.studio.doorHits, ...notesWall.raycastTargets(), screenMesh, world.gym.joinHit, world.gym.exitHit, ...world.gym.readyHits, ...world.podium.hits, ...world.garden.hits, ...(world.bath ? world.bath.hits : []), ...(world.bath ? world.bath.tags.meshes() : []), ...world.blockers];
   const hits = raycaster.intersectObjects(targets, false);
   return hits[0] || null;
 }
@@ -1864,6 +1868,10 @@ controls.onAction((ndcX, ndcY) => {
     leaveBoat();
   } else if (hit.object.userData.clubExit && hit.distance < 2.6) {
     leaveClub();
+  } else if (hit.object.userData.gardenTrack && hit.distance < 5.5) {
+    playPlant(hit.object.userData.gardenTrack);
+  } else if (hit.object.userData.gardenExit && hit.distance < 4.5) {
+    leaveGarden();
   } else if (hit.object.userData.screenTap && inClub && hit.distance < 12) {
     const m = screen.toggleMuted();        // click the wall to mute/unmute the venue's sound
     if (screen.has()) toast(m ? "🔇 screen muted" : "🔊 screen sound on");
@@ -2135,6 +2143,15 @@ setInterval(() => {
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.clubExit && hit.distance < 2.6) {
     aimTip.textContent = `${TAP} — out into the night, back home`;
+    aimTip.classList.add("show");
+  } else if (hit && hit.object.userData.gardenTrack && hit.distance < 5.5) {
+    const p = world.garden.plantById.get(hit.object.userData.gardenTrack);
+    const t = p && p.track;
+    const on = gardenPlayer.playing() === hit.object.userData.gardenTrack;
+    aimTip.textContent = !t ? "" : on ? `${TAP} — stop "${t.title}"` : `${TAP} — play "${t.title}"`;
+    aimTip.classList.add("show");
+  } else if (hit && hit.object.userData.gardenExit && hit.distance < 4.5) {
+    aimTip.textContent = `${TAP} — back to the room`;
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.screenTap && inClub && hit.distance < 12) {
     aimTip.textContent = !screen.has() ? "the big screen is dark"
@@ -3194,6 +3211,7 @@ function adminJump(target) {
 function goHome() { fadeTo(setupHome); }
 function setupHome() {
   if (inStudio) leaveStudio();
+  if (inGarden) teardownGarden();
   controls.pos.x = world.spawn.x;
   controls.pos.z = world.spawn.z;
   controls.yaw = world.spawn.yaw;
@@ -4431,7 +4449,7 @@ function stripBlocked() {
   // the LAX window is the bedroom's — no flight strips in the far rooms
   // (boat / arena / venue / gym), behind a game, or over a modal
   return controls.pooling || controls.aiming || modalOpen ||
-    inBoat || inArena || inClub || inGym || inStudio ||
+    inBoat || inArena || inClub || inGym || inStudio || inGarden ||
     (typeof arcadeIsOpen === "function" && arcadeIsOpen());
 }
 function showFlightStrip(info) {
@@ -4537,6 +4555,80 @@ function closeDM() {
 }
 $("#dm-close").addEventListener("click", closeDM);
 
+/* ---------------- THE GARDEN: the listening path ----------------
+   Metro's sound design, planted in beds either side of a gravel path. You get
+   there by typing `music` at the desk computer, and you leave through the gate
+   at the far end — the walk between the two IS the browsing.
+
+   A plant is a SWITCH, not a play button: clicking the one that's already
+   going stops it, so there's never a stop control to go and find. And only one
+   plays at a time, which is the whole reason this is a garden and not a mixer.
+
+   The audio is streamed and positioned at its own plant (garden/player.js);
+   everything visual is driven off one state object handed to garden.tick(). */
+let inGarden = false;
+let gardenState = { id: null, progress: 0, level: 0 };
+const gardenPlayer = makeGardenPlayer({
+  onError: (title) => toast(`\u201c${title}\u201d wouldn\u2019t load \u2014 it may not be up yet`),
+});
+
+/* The garden is CLOSED until its audio is reachable. The encoded tracks are
+   gitignored (they live on R2), so a deploy that lands before the bucket is
+   wired up would put a visitor on a path of plants that all fail to play. The
+   catalog's GARDEN_BASE being set is the switch that opens it; locally the
+   files are right there in assets/audio/garden/, so a dev machine is always
+   open. */
+const gardenOpen = () => gardenPlayer.configured() ||
+  /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+
+function playPlant(id) {
+  const p = world.garden.plantById.get(id);
+  if (!p) return;
+  aItem("garden");
+  const was = gardenPlayer.playing();
+  gardenPlayer.play(id, p.world());
+  if (was !== id) toast(`\u266b ${p.track.title}`);
+}
+
+// the door: from the terminal, so the fade has to take the overlay with it
+function enterGarden() {
+  if (inGarden) return;
+  hide(pcOverlay);
+  modalOpen = false;
+  setTimeout(() => fadeTo(setupGarden), 260);
+}
+function setupGarden() {
+  inGarden = true;
+  const sp = world.garden.spawn;
+  controls.pos.x = sp.x; controls.pos.z = sp.z; controls.yaw = sp.yaw; controls.pitch = 0;
+  setRoomTone(false);               // the bedroom hum does not follow you out here
+  setRain(0);
+  hideFlightStrip();
+  refreshNoteVisibility();
+  document.body.classList.add("in-garden");   // the cat HUD stays home
+  store.logEvent("boat");            // counts as a portal trip
+  progress.bump("trips");
+  toast("\ud83c\udf3f the garden \u2014 every plant is a track. click one.");
+  hide(paused);
+  if (entered) safeLock();
+}
+function teardownGarden() {
+  inGarden = false;
+  gardenPlayer.leave();              // stop playing AND stop downloading
+  gardenState = { id: null, progress: 0, level: 0 };
+  document.body.classList.remove("in-garden");
+}
+function leaveGarden() {
+  fadeTo(() => {
+    teardownGarden();
+    // out at the desk you typed `music` at, facing it
+    controls.pos.x = 0.55; controls.pos.z = -1.35; controls.yaw = 0;
+    setRoomTone(true);
+    refreshNoteVisibility();
+    if (entered) safeLock();
+  });
+}
+
 /* ---------------- the computer: rooms · messages · music ---------------- */
 const pcOverlay = $("#pc");
 // how hard the self-playing songs hit, relative to your own manual play
@@ -4561,7 +4653,7 @@ function applySong(id) {
   if (!id) { stopSong(); return; }   // stop calls ended → setDelayTempo(null) + UI
   // the song keeps rolling while you're in another room — you just don't
   // hear the bedroom instruments from there (the arcade counts as away too)
-  const here = () => !inBoat && !inArena && !inClub && !inGym && !inStudio && !inArcade();
+  const here = () => !inBoat && !inArena && !inClub && !inGym && !inStudio && !inGarden && !inArcade();
   playSong(id, {
     now: audioNow,
     // each track to its own instrument — piano is chromatic (raw semitone,
@@ -4661,9 +4753,30 @@ const TERM_COMMANDS = {
   msg: { blurb: "send metro a message / file", run() {
     hide(pcOverlay); openDM(true);   // straight to the composer, no passcode ever
   } },
-  music: { blurb: "the sound system", run() {
-    termPrint("the old jukebox has been unplugged.", "dim");
-    termPrint("a new sound system is being wired in — check back soon.");
+  /* `music` is a DOOR, not a menu. It walks you out to the garden, the same
+     way the fill on the e-kit walks you into the studio — because a list of
+     forty tracks in a terminal is a list of forty tracks, and the whole point
+     of the beds is that you can see the shape of a piece before you play it. */
+  music: { blurb: "walk out to the garden", run() {
+    const n = world.garden.plants.length;
+    if (!gardenOpen()) {
+      termPrint("the beds are dug. nothing's grown in them yet.", "dim");
+      termPrint("metro's still planting \u2014 check back.");
+      return;
+    }
+    if (!n) {
+      termPrint("nothing planted yet.", "dim");
+      termPrint("the beds are turned over and waiting.");
+      return;
+    }
+    const mins = Math.round(world.garden.plants.reduce((a, p) => a + p.track.dur, 0) / 60);
+    termPrint("the garden", "bright");
+    termPrint("\u2500".repeat(34), "dim");
+    termPrint(`${n} ${n === 1 ? "plant" : "plants"} \u00b7 ${mins} min of sound design`);
+    termPrint("every one is a track. the tall ones are loud.", "dim");
+    termPrint("");
+    termPrint("walking you out there now\u2026", "bright");
+    enterGarden();
   } },
   cat: { blurb: "how the cat's doing", run() {
     const d = store.decayCat(catState);
@@ -5236,6 +5349,11 @@ xrRef = xr;   // helpers above can reach it now that it exists
 
 window.METRO_DEBUG = { renderer, camera, world, controls, xr, disc, hoop: hoopGame, lightPool,
   vrArcadePanel: { open: openVrArcadePanel, close: closeVrArcadePanel },
+  // a hand on the garden, same habit as the rest of the room — the smoke
+  // harness can't type at the terminal, so the door is reachable directly
+  garden: { enter: enterGarden, leave: leaveGarden, play: playPlant,
+            stop: () => gardenPlayer.stop(), playing: () => gardenPlayer.playing(),
+            state: () => gardenState, inside: () => inGarden },
   // a hand on the sequencer, same habit as the rest of the room
   studio: { state: sState, act: sAct, rec: sRec, hit: sHitPanel, apply: applyStudioHit,
             steps: sStepCount, playhead: sPlayhead, mi: () => SA.miStatus(),
@@ -5359,7 +5477,7 @@ renderer.setAnimationLoop(() => {
      otherwise start the bedroom humming while you stood at the cabinets, with
      no crossing left to fire. */
   {
-    const away = inBoat || inArena || inClub || inGym || inStudio;
+    const away = inBoat || inArena || inClub || inGym || inStudio || inGarden;
     const z = world.arcadeZoneLevel(controls.pos.x, controls.pos.z);
     if (!away) inArcadeBed = z > 0.6 ? true : z < 0.4 ? false : inArcadeBed;
     const want = !inArcadeBed;                    // beds on = you're in the bedroom
@@ -5385,7 +5503,7 @@ renderer.setAnimationLoop(() => {
   // the carpet grimes with traffic, and the vacuum lifts it — bedroom only.
   // while you're vacuuming you DON'T track your own dirt (otherwise you'd
   // leave a fresh trail behind you and the job would never finish)
-  if (!inBoat && !inArena && !inClub && !inGym) {
+  if (!inBoat && !inArena && !inClub && !inGym && !inGarden) {
     if (!vacuuming) world.floorTraffic(controls.pos.x, controls.pos.z, dt, 1);
     world.floorTraffic(cat.pos.x, cat.pos.z, dt, 0.6);
     if (vacuuming) {
@@ -5427,10 +5545,10 @@ renderer.setAnimationLoop(() => {
   cat.tick(dt, t, controls.pose());
   toyTick(dt, t);
   // the bartender reacts to you only when you're in the bedroom/arcade with him
-  bartender.tick(dt, t, (!inBoat && !inArena && !inClub && !inGym) ? controls.pose() : null);
+  bartender.tick(dt, t, (!inBoat && !inArena && !inClub && !inGym && !inGarden) ? controls.pose() : null);
   // the guide belongs to the bedroom only — and crossing any portal has to
   // shut her up, same rule as every other sound in the room
-  const guideHome = !inBoat && !inArena && !inClub && !inGym && !inStudio;
+  const guideHome = !inBoat && !inArena && !inClub && !inGym && !inStudio && !inGarden;
   /* She has a POST in each of the two rooms she knows, and crossing between
      them is the ONLY thing that moves her — she doesn't shadow you around
      inside one. Hysteresis on the same zone ramp the sound uses, because a
@@ -5455,7 +5573,7 @@ renderer.setAnimationLoop(() => {
       loadDJ();                       // his manifest, so he can speak at the wrap
     }
     if (bathMusicOn()) {
-      const away = inBoat || inArena || inClub || inGym || inStudio;
+      const away = inBoat || inArena || inClub || inGym || inStudio || inGarden;
       // inside: full. through the door: gone by about 7 m. dull as soon as
       // you're the wrong side of the wall.
       const lvl = away ? 0 : Math.max(0, 1 - bd / 7) ** 1.6;
@@ -5484,6 +5602,14 @@ renderer.setAnimationLoop(() => {
         controls.vel.x *= k; controls.vel.y *= k; controls.vel.z *= k;
       }
     }
+  }
+  if (inGarden) {
+    // the player drives the room: one state object carries which track is
+    // going, how far through it is (the lit half of the plant) and its live
+    // level (what the plant breathes with). the listener has to be pushed at
+    // the camera every frame or positional audio plays from the origin.
+    gardenState = gardenPlayer.tick(camera);
+    world.garden.tick(dt, gardenState);
   }
   if (inStudio) {
     world.studio.update(dt, sPlayhead(), sPlayhead("synth"));

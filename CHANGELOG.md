@@ -4,6 +4,72 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## THE GARDEN — a listening path for the sound design
+
+`music` at the desk computer stopped being a stub. It's a door now: it walks
+you out to a gravel path with a raised soil bed either side, and every track in
+the catalog grows out of one of those beds as a row of reeds whose heights ARE
+that track's waveform. Click a plant to play it, click it again to stop.
+
+Why a room and not a jukebox: a list of tracks is a scrollbar, and it gets
+worse the more music you make. A path gets longer. The beds size themselves off
+the catalog, so planting the fortieth track is a metre and a half more path and
+no UI decision. And the venue keeps its own job — hosting a night, with
+`set_dj` and the booth and the big screen — instead of being repurposed into a
+worse browser. The catalog is plain data, so the decks can pull from it later.
+
+- **`assets/js/garden/room.js`** — the beds. 256 peak buckets per track come
+  down to 64 reeds, merged into ONE BufferGeometry per plant (every
+  material-group is a draw call; 64 reeds have to arrive as one buffer). The
+  row is also the playhead: reeds behind the position go warm, ahead stay dim,
+  rewritten a slice at a time when the head crosses a reed — 64 writes a track,
+  not per frame. So you can read how far into a piece someone is from the other
+  end of the path. The whole room is 42 draw calls.
+- **`assets/js/garden/player.js`** — streaming, NOT `decodeAudioData`. A
+  ten-minute track decoded to an AudioBuffer is 230 MB of float32 and makes no
+  sound until the whole file has downloaded; an `<audio>` element range-requests
+  and starts in about a second. One element reused for the whole garden (a
+  MediaElementAudioSource is welded to its element for life). Each track is
+  panned at its own plant, so walking the path is the crossfade — which meant
+  pointing the AudioListener at the camera every frame, since nothing else in
+  this world has ever used positional audio.
+- **`tools/garden/encode.mjs`** — masters in, web audio out: two-pass EBU R128
+  to −16 LUFS (`linear=true`, a gain change not a compressor), AAC 128k with
+  `+faststart`, 256 peak buckets, catalog entry. `--demo` plants eight
+  placeholder pieces of deliberately different shapes so the room could be
+  built and walked before a real track existed.
+- The audio is **gitignored and lives on Cloudflare R2** (10 GB free, zero
+  egress). Not in the repo: git keeps every version of every file forever, and
+  audio is the thing you re-master — removing it later means rewriting history
+  and force-pushing `main`, which this repo forbids. Not Supabase Storage
+  either: 5 GB/month egress is about 600 plays of a 10 MB track, total.
+  `tools/garden/README.md` has the bucket + CORS setup.
+- The garden is **gated shut until `GARDEN_BASE` is set** (localhost always
+  open). A deploy landing before the bucket is wired up would otherwise put
+  visitors on a path of plants that all fail to play. The `whatsnew.js` line
+  goes in with that switch-on, not with this commit — until then there is
+  nothing for a visitor to notice.
+
+Five things the room taught us, all now in CLAUDE.md's three.js section:
+
+- **The toon pass does not carry `vertexColors`.** It rebuilds every
+  Lambert/Standard material from a fixed field list, and `vertexColors` isn't
+  in it — so a base-to-tip gradient baked into a Lambert's colour attribute
+  silently becomes a flat colour. The reeds are MeshBasic, which the pass skips.
+- **A sky dome must write depth.** The bedroom and arcade are scope `home` and
+  are never culled by anything, so they are always in the scene. A dome with
+  `depthWrite: false` doesn't occlude, and the house rendered straight through
+  the sky and sat on the garden's horizon 160 m away as a black silhouette.
+- **`sizeAttenuation` on a Points cloud that can approach the camera.**
+  World-sized points blow up: a firefly drifting past the camera filled a third
+  of the screen with a cream square. Stars and motes want a fixed pixel size.
+- **A new position-based room needs its cull test FIRST.** `bucketRoomGeometry`
+  and `roomScopeOfPos` both classify by `z > 40 → gym`; the garden at z=160 was
+  filed under the gym until its own `z > 120` test went in ahead of it.
+- **Frequency-domain analyser bytes are a dB scale.** Taking their "RMS" for a
+  level meter pegs at 1.0 on anything louder than a whisper, so the plant sat
+  at full brightness and never breathed. `getByteTimeDomainData`, centred at
+  128, is the actual amplitude.
 ## 2026-08-19 — 40 MB of models nothing was loading
 
 Housekeeping, asked for directly. Worth being clear about what it does and
