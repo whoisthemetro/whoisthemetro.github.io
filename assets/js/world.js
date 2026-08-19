@@ -2806,6 +2806,12 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
       // null would send the whole room to the canvas instead of the eyes
       // (a black headset). the mirror does the same dance.
       const prevRT = renderer.getRenderTarget();
+      // and switch xr off for the pass: while a headset presents,
+      // renderer.render() swaps the camera you pass for the EYES, so the
+      // rug's buffers were being drawn from the visitor's head pose
+      // (same bug the acoustic-slab bake had — see shaderbake.js)
+      const xrWas = renderer.xr.enabled;
+      renderer.xr.enabled = false;
       // Buffer A: read last frame, write the next
       matA.uniforms.iChannel0.value = kA.texture;
       matA.uniforms.iFrame.value = kFrame;
@@ -2820,6 +2826,7 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
       renderer.setRenderTarget(kB);
       renderer.render(passScene, passCam);
       renderer.setRenderTarget(prevRT);
+      renderer.xr.enabled = xrWas;
       /* The rug's OWN pass never got its clock. matA and matB were being
          advanced every frame while floorUniforms sat at iTime 0, iFrame 0
          forever, so the two expensive buffer passes fed a surface frozen at

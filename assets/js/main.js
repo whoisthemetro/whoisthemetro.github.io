@@ -45,9 +45,10 @@ loadClips().then(() => {
   preloadClips([clipId(INTRO.bedroom.spoken), clipId(INTRO.arcade.spoken)]);
 });
 useAudioGraph(audioGraph);   // her recordings ride the room's master bus
-import { DEFAULT_SPEC, buildAvatarFigure } from "./avatar-builder.js";
+import { DEFAULT_SPEC, OPTIONS, buildAvatarFigure } from "./avatar-builder.js";
 import { TAG_COLORS } from "./graffiti.js";
 import { openOutfitPicker } from "./picker.js";
+import { createVRUI } from "./vrui.js";
 import { initAnalytics, track, analyticsBuffer } from "./analytics.js";
 import { openArcade, closeArcade, arcadeIsOpen, arcadeWantsEsc, handleGameMessage, setScoreHook, vrFrame as arcadeVrFrame, vrKey as arcadeVrKey } from "./arcade.js";
 import { initPool } from "./pool.js";
@@ -1073,8 +1074,60 @@ setMirrorSelf(outfitSpec);
 
 let pickerOpen = false;
 let pickerReturn = null;
+/* the creator in a headset: the figure on the podium is still the live
+   preview (it's world geometry — headsets see it fine); only the panel was
+   DOM. this is the same rows on an in-world window, slid to the LEFT of
+   your gaze so the figure stays in view. no camera fly-out: you're a body
+   in a room here, and you clicked the podium, so you're already looking at
+   it. turn buttons stand in for the drag. */
+function openVRPicker() {
+  const work = { ...outfitSpec };
+  const preview = () => { setPodiumBlocks(work); setMirrorSelf(work); };
+  podIdle = false;
+  podSpin = 0; world.podium.spin(0);       // face out, same as the flat screen
+  const chips = (key, opts) => ({ buttons: opts.map((o) => ({
+    label: o, on: () => work[key] === o, cb: () => { work[key] = o; preview(); } })) });
+  const swat = (key, cols) => ({ swatches: cols.map((c) => ({
+    c, on: () => work[key] === c, cb: () => { work[key] = c; preview(); } })) });
+  vrui.open({
+    title: "YOUR LOOK",
+    // far enough left that the card's right edge clears the centre of your
+    // view — the figure on the podium is the preview, so it must stay visible
+    side: -0.66,
+    rows: [
+      { label: "build" }, chips("build", OPTIONS.build),
+      { label: "skin" }, swat("skin", OPTIONS.skinTones),
+      { label: "hair" }, chips("hair", OPTIONS.hair),
+      { label: "hair colour" }, swat("hairColor", OPTIONS.hairColors),
+      { label: "beard" }, chips("beard", OPTIONS.beard),
+      { label: "shirt" }, swat("topColor", OPTIONS.swatches),
+      { label: "trousers" }, swat("bottomColor", OPTIONS.swatches),
+      { label: "shoes" }, chips("shoe", OPTIONS.shoe),
+      { label: "shoe colour" }, swat("shoeColor", OPTIONS.shoeColors),
+      { label: "face glow" }, swat("faceColor", OPTIONS.faceColors),
+      { gap: 8 },
+      { buttons: [
+        { label: "⟲ turn", tip: "turn the figure", cb: () => { podSpin -= Math.PI / 4; world.podium.spin(podSpin); } },
+        { label: "turn ⟳", tip: "turn the figure", cb: () => { podSpin += Math.PI / 4; world.podium.spin(podSpin); } },
+        { label: "✓ save look", accent: true, tip: "save it — this is you now", cb: () => {
+          outfitSpec = { ...work };
+          saveOutfit(outfitSpec);
+          presence.updateMeta({ outfit: outfitSpec });
+          xrRef.note("look saved");
+          vrui.close();
+        } },
+      ] },
+    ],
+    // close (✕, walking off, or right after save): the podium goes back to
+    // showing the SAVED look and its slow showcase turn
+    onClose: () => {
+      podIdle = true;
+      setPodiumBlocks(outfitSpec); setMirrorSelf(outfitSpec);
+    },
+  });
+}
 function openPicker() {
-  if (vrBlocked("changing your look needs a flat screen")) return;
+  if (inVR()) { openVRPicker(); return; }
   if (pickerOpen) return;
   pickerOpen = true; modalOpen = true; controls.unlock();
   pickerReturn = { x: controls.pos.x, z: controls.pos.z, yaw: controls.yaw, pitch: controls.pitch };
@@ -1337,9 +1390,26 @@ function castAt(ndcX, ndcY) {
   }
   // doors are included as blockers so notes can't be pinned onto them
   const targets = [cat.hitMesh, toyHit, bartender.hitMesh, guide.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, ...world.elevHits, ...world.elevCallHits, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.guitarVoiceHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, world.pool.hit, world.pool.resetHit, world.pool.joinHit, world.pool2.hit, world.pool2.resetHit, world.pool2.joinHit, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.radioHits, ...world.laRadioHits, ...world.filterPedalHit, ...world.vacuumHits, ...world.studio.screens, ...world.studio.doorHits, ...notesWall.raycastTargets(), screenMesh, world.gym.joinHit, world.gym.exitHit, ...world.gym.readyHits, ...world.podium.hits, ...world.garden.hits, ...(world.bath ? world.bath.hits : []), ...(world.bath ? world.bath.tags.meshes() : []), ...world.blockers];
+  /* an open in-world window is CAST FIRST and wins outright if it's hit at
+     all. it draws with depthTest off — it reads over the room the way a DOM
+     overlay does — so sorting it by distance would let anything standing
+     nearer (Trinity, a chair) steal clicks off a panel you can plainly see
+     on top of it. what you can read, you can press. */
+  const vw = vrui.mesh();
+  if (vw) {
+    const vh = raycaster.intersectObject(vw, false)[0];
+    if (vh) return vh;
+  }
   const hits = raycaster.intersectObjects(targets, false);
   return hits[0] || null;
 }
+
+/* ---------------- in-world windows (VR) ----------------
+   DOM overlays are invisible inside a headset. vrui hangs a canvas panel in
+   the room instead: the laser hovers it, the trigger clicks it, and walking
+   away closes it. The radio, METRO OS and the creator open here when a
+   session is live; everything still DOM-only stays behind vrBlocked. */
+const vrui = createVRUI({ scene: world.scene, camera });
 
 // a ray that only sees bare wall + the solid things stuck to it — used while
 // re-hanging a note so the note you're carrying (floating on top of the
@@ -1692,6 +1762,9 @@ controls.onAction((ndcX, ndcY) => {
     return;
   }
   const hit = castAt(ndcX, ndcY);
+  // an open window eats its own clicks — buttons fire, the card swallows
+  // the rest so you can't accidentally work the room through it
+  if (hit && hit.object.userData.vrui) { vrui.click(hit); return; }
   // in the arena, a click is a swing — unless you're on a catapult
   // handle (then the punch IS the launch) or aiming at something useful
   if (inArena) {
@@ -1927,10 +2000,10 @@ controls.onAction((ndcX, ndcY) => {
     openMixer();
   } else if (hit.object.userData.radio && hit.distance < 2.8) {
     tourDid("radio");
-    if (inVR()) vrToggleRadio(radios.sr); else openRadio(radios.sr);
+    if (inVR()) openVRRadio(radios.sr); else openRadio(radios.sr);
   } else if (hit.object.userData.laradio && hit.distance < 2.8) {
     tourDid("radio");
-    if (inVR()) vrToggleRadio(radios.la); else openRadio(radios.la);
+    if (inVR()) openVRRadio(radios.la); else openRadio(radios.la);
   } else if (hit.object.userData.gtrFilter && hit.distance < 2.8) {
     openFilter();
   } else if (hit.object.userData.vacuum && hit.distance < 2.6) {
@@ -1991,6 +2064,8 @@ setInterval(() => {
   xrRef.tip(aimTip.classList.contains("show") ? aimTip.textContent : "");
 }, 150);
 setInterval(() => {
+  // an in-world window lets go when you wander off, whatever else is happening
+  if (vrui.isOpen()) vrui.tick(controls.pos);
   // pointer lock never applies in a headset: the laser IS the crosshair
   if ((!controls.locked && !inVR()) || modalOpen) { aimTip.classList.remove("show"); return; }
   if (carrying) {
@@ -2011,6 +2086,17 @@ setInterval(() => {
     return;
   }
   const hit = castAt(0, 0);
+  // hovering an open window: highlight the widget under the laser and put
+  // its purpose on the tip (the wrist HUD mirrors it in a session)
+  if (vrui.isOpen()) {
+    const over = hit && hit.object.userData.vrui;
+    const t = vrui.hover(over ? hit : null);
+    if (over) {
+      if (t) { aimTip.textContent = t; aimTip.classList.add("show"); }
+      else aimTip.classList.remove("show");
+      return;
+    }
+  }
   if (hit && hit.object.userData.tagSurface && hit.distance < 4.2
       && world.bath && world.bath.tags.surfaceAt(hit)) {
     aimTip.textContent = `${TAP} to write on the wall`;
@@ -2524,12 +2610,14 @@ function refreshOverlay(info) {
 }
 // keep the prop in lockstep always, and the overlay too when this radio is the
 // open one. fires on every change — button, dial, or a stream event.
+// (and the VR window, when it's this radio's — its text rows re-read info())
 function makeRadioStatus(key) {
   return (info) => {
     const r = radios[key];
     r.setNeedle(info.total > 1 ? info.idx / (info.total - 1) : 0);
     r.setPower(info.on);
     if (activeRadio === r) refreshOverlay(info);
+    if (vrRadioFor === r && vrRadioWin) vrRadioWin.repaint();
   };
 }
 
@@ -2602,19 +2690,43 @@ function applyRoomFlags(f, withRadio = true) {
   }
 }
 
-// in a headset the radio and the dimmer are physical things: a click is the
-// power knob / the next brightness step, not an overlay you can't see
-// one button, the whole dial: off → first station → next → … → last → off,
-// so a headset can work the radio without the station overlay
-function vrToggleRadio(r) {
-  const before = r.radio.info();
-  if (!before.on) r.radio.power(true);
-  else if (before.idx >= before.total - 1) r.radio.power(false);
-  else r.radio.scan(1);
-  broadcastRadio(r);
-  const now = r.radio.info();
-  const name = now.station && (now.station.name || now.station.label);
-  xrRef.note(now.on ? `📻 ${name || "station " + (now.idx + 1)}` : "radio off");
+// in a headset the dimmer stays a physical thing: a click is the next
+// brightness step, not an overlay you can't see. the radio used to be the
+// same — one button cycling the WHOLE dial to reach "off" — and now gets a
+// real window instead: power, scan both ways, volume, close.
+let vrRadioFor = null, vrRadioWin = null;
+function openVRRadio(r) {
+  // note the order: open() first (it closes any previous window, and THAT
+  // window's onClose nulls these), then claim the slots
+  vrRadioWin = vrui.open({
+    title: "THE RADIO",
+    rows: [
+      { text: () => {
+        const i = r.radio.info();
+        if (!i.on) return "· off ·";
+        const s = i.station || {};
+        return `📻 ${s.name || s.label || "station " + (i.idx + 1)}`;
+      }, cls: "bright" },
+      { text: () => {
+        const i = r.radio.info();
+        return i.on ? `${i.idx + 1}/${i.total} · ${i.state} · vol ${Math.round(i.vol * 100)}%`
+                    : "click power to tune in";
+      }, cls: "dim" },
+      { gap: 6 },
+      { buttons: [
+        { label: "⏻ power", tip: "power on / off", on: () => r.radio.info().on,
+          cb: () => { r.radio.toggle(); broadcastRadio(r); } },
+        { label: "◀ scan", tip: "previous station", cb: () => { r.radio.scan(-1); broadcastRadio(r); } },
+        { label: "scan ▶", tip: "next station", cb: () => { r.radio.scan(1); broadcastRadio(r); } },
+      ] },
+      { buttons: [
+        { label: "vol −", tip: "quieter (just for you)", cb: () => r.radio.volume(Math.max(0, r.radio.info().vol - 0.1)) },
+        { label: "vol +", tip: "louder (just for you)", cb: () => r.radio.volume(Math.min(1, r.radio.info().vol + 0.1)) },
+      ] },
+    ],
+    onClose: () => { vrRadioFor = null; vrRadioWin = null; },
+  });
+  vrRadioFor = r;
 }
 function vrCycleDimmer() {
   dimLevel = dimLevel >= 0.99 ? 0 : Math.min(1, Math.round((dimLevel + 0.34) * 100) / 100);
@@ -3032,6 +3144,9 @@ function studioFill(pad) {
 
 function fadeTo(fn) {
   try { xrRef && xrRef.clearHud && xrRef.clearHud(); } catch (e) {}   // each world keeps its own wrist
+  // and its own windows: a panel opened in the bedroom must not ride the
+  // fade into the garden and hang there in mid-air
+  vrui.close();
   const f = $("#fade");
   f.classList.add("dark");
   setTimeout(() => {
@@ -4700,12 +4815,18 @@ function termUser() {
   const n = (identity.name || "visitor").toLowerCase().replace(/[^a-z0-9_-]+/g, "");
   return n || "visitor";
 }
+// the same scrollback, twice: the DOM shell for a flat screen, and a plain
+// line buffer the VR window paints from (DOM is invisible in a session)
+const termVRLines = [];
 function termPrint(text = "", cls = "") {
   const div = document.createElement("div");
   if (cls) div.className = cls;
   div.textContent = text;
   termOut.appendChild(div);
   termOut.scrollTop = termOut.scrollHeight;
+  termVRLines.push({ text, cls });
+  if (termVRLines.length > 80) termVRLines.shift();
+  if (vrPCWin) vrPCWin.repaint();
 }
 function termBanner() {
   termPrint("METRO OS v3.0", "bright");
@@ -4803,7 +4924,11 @@ const TERM_COMMANDS = {
   whoami: { blurb: "your name in the room", run() {
     termPrint(identity.name || "visitor");
   } },
-  clear: { blurb: "wipe the scrollback", run() { termOut.textContent = ""; } },
+  clear: { blurb: "wipe the scrollback", run() {
+    termOut.textContent = "";
+    termVRLines.length = 0;
+    if (vrPCWin) vrPCWin.repaint();
+  } },
   exit: { blurb: "back to the room", run() { closePC(); } },
 };
 // a few things people will inevitably try
@@ -4851,8 +4976,34 @@ termIn.addEventListener("keydown", (e) => {
 pcOverlay.addEventListener("click", (e) => {
   if (e.target.closest(".term-shell")) termIn.focus();
 });
+/* the terminal in a headset: the same scrollback and command table on an
+   in-world window. no keyboard in here, so the commands are BUTTONS — which
+   covers everything except free text (msg still wants a flat screen). */
+let vrPCWin = null;
+function openVRPC() {
+  termPromptEl.textContent = `${termUser()}@metro:~$`;
+  if (!termBooted) { termBooted = true; termBanner(); }
+  const cmd = (name) => ({ label: name, tip: TERM_COMMANDS[name].blurb, cb: () => runTerm(name) });
+  vrPCWin = vrui.open({
+    title: "METRO OS",
+    rows: [
+      { lines: () => termVRLines, max: 18 },
+      { label: "commands" },
+      { buttons: ["help", "new", "cat", "weather", "time"].map(cmd) },
+      { buttons: [
+        // `music` walks you to the garden; the window lets go on its own
+        // the moment the teleport carries you out of reach
+        cmd("music"),
+        { label: "new all", tip: "the whole history", cb: () => runTerm("new all") },
+        cmd("clear"),
+        { label: "exit", tip: "back to the room", cb: () => vrui.close() },
+      ] },
+    ],
+    onClose: () => { vrPCWin = null; },
+  });
+}
 function openPC() {
-  if (vrBlocked("METRO OS needs a flat screen for now")) return;
+  if (inVR()) { openVRPC(); return; }
   modalOpen = true;
   controls.unlock();
   termPromptEl.textContent = `${termUser()}@metro:~$`;
@@ -5354,8 +5505,16 @@ const xr = setupXR({
 
 xrRef = xr;   // helpers above can reach it now that it exists
 
+// leaving the session leaves its windows behind — the flat screen has real
+// overlays, and a forgotten panel would hang in front of the desktop camera
+renderer.xr.addEventListener("sessionend", () => vrui.close());
+
 window.METRO_DEBUG = { renderer, camera, world, controls, xr, disc, hoop: hoopGame, lightPool,
   vrArcadePanel: { open: openVrArcadePanel, close: closeVrArcadePanel },
+  // the in-world windows, reachable without a headset — the smoke harness
+  // can't start a session, but it can open a panel and look at it
+  vrui: { ui: vrui, radio: () => openVRRadio(radios.la), pc: openVRPC, look: openVRPicker,
+          radioInfo: () => radios.la.radio.info(), outfit: () => outfitSpec },
   // a hand on the garden, same habit as the rest of the room — the smoke
   // harness can't type at the terminal, so the door is reachable directly
   garden: { enter: enterGarden, leave: leaveGarden, play: playPlant,

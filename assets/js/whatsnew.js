@@ -25,6 +25,10 @@ export const WHATS_NEW = [
   {
     date: "2026-08-19",
     items: [
+      "in a headset, the computer, the radio and the look-builder all open properly now. a panel appears in front of you and you point at it — no more being told to go and find a flat screen",
+      "the radio has a real power button in there too, and scans both ways. you don’t have to walk the whole dial round to switch it off any more",
+      "close a panel when you’re done, or just walk away from it — it lets go on its own",
+      "and the art on the sound panels sits still in a headset. it used to slide around with your head and black out at certain angles",
       "there\u2019s a garden now. sit at the computer, type `music`, and it walks you out to a path with flower beds either side. every plant in them is one of metro\u2019s sound design tracks, grown in the shape of its own sound \u2014 the long ones are long pieces, the spiky ones are the busy ones. click a plant to hear it, click it again to stop",
       "the plant lights up as it plays, so you can see how far into a piece you are from the other end of the path",
       "and each one comes from its own bed, so you can walk up to a track and away from it",

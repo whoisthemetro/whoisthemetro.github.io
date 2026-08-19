@@ -86,9 +86,18 @@ export function makeShaderBake(renderer, { px = 288, hz = 20, perFrame = 2, near
     }
     quad.material = it.mat;
     const prev = renderer.getRenderTarget();     // never null — see the note above
+    /* and the CAMERA needs the same care as the framebuffer: while a session
+       is presenting, renderer.render() ignores the camera you pass and
+       substitutes the headset's eyes. the bake was being drawn from the
+       visitor's HEAD POSE — so the art slid around with every head turn, and
+       went black whenever the quad fell out of the head's frustum. switch xr
+       off for the pass so the ortho quad camera actually gets used. */
+    const xrWas = renderer.xr.enabled;
+    renderer.xr.enabled = false;
     renderer.setRenderTarget(it.rt);
     renderer.render(scene, cam);
     renderer.setRenderTarget(prev);
+    renderer.xr.enabled = xrWas;
     it.fresh = true;
   }
 

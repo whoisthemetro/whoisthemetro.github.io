@@ -4,6 +4,57 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-08-19 — windows in VR, and the wall art stops chasing your head
+
+Three of the room's overlays stopped being flat-screen-only, and two
+offscreen passes stopped being rendered from the visitor's eyeballs.
+
+- **`assets/js/vrui.js` (new): in-world windows.** A canvas painted onto a
+  plane, hung where you're looking, worked with the laser and trigger like
+  everything else in the room. Rows are declarative (`label` / `text` /
+  `lines` / `buttons` / `swatches` / `gap`); text and labels may be functions,
+  so `repaint()` re-reads the world instead of caching a snapshot. One window
+  at a time. It closes on ✕, on walking 3.4 m from where you opened it
+  (`tick`), on a room fade, and on session end.
+- **The computer, the radio and the creator open in it.** `openPC`,
+  `openPicker` and the radio click branch now fork on `inVR()` rather than
+  bailing through `vrBlocked`. METRO OS mirrors its scrollback into a plain
+  line buffer (DOM is invisible in a session) and offers its commands as
+  buttons, since there's no keyboard in there. The creator is the same option
+  lists driving the same live preview — the figure on the podium is world
+  geometry, so a headset could always see it; only the panel was DOM. It hangs
+  to your left so the figure stays in view, with turn buttons standing in for
+  the mouse drag.
+- **The radio got a real front panel while it was in hand.** It used to be
+  one button cycling the entire dial — the only way to switch it off was to
+  scan through every station to the end. Now: power, scan both ways, volume,
+  close.
+- **Windows win the raycast outright.** They draw with `depthTest: false` (a
+  window buried in the desk is a window you can't read), so sorting the hit by
+  distance let anything standing nearer — Trinity, a chair — steal clicks off
+  a panel plainly on top of it. `castAt` casts the panel first and returns it
+  if hit at all. The controller beams moved to `depthTest: false` /
+  renderOrder 960 for the same reason: the cursor must read over the window.
+- **The fix that was actually a bug in the room, not in VR:**
+  `renderer.render()` **throws away the camera you pass it** and substitutes
+  the headset's eyes whenever `xr.enabled && xr.isPresenting`. The acoustic-
+  slab bake (`shaderbake.js`) and the KuKo rug (`world.js`) both render an
+  ortho full-screen quad into their own target — so in a session both were
+  being drawn **from the visitor's head pose**. That is exactly the reported
+  symptom: the wall art slid around as you turned your head, and blacked out
+  at the angles where the quad left the eye frustum. Both passes now clear
+  `xr.enabled` for the duration, which is what the bathroom mirror pass
+  (world.js ~5058) had been doing correctly all along — the two later passes
+  just never copied it. Neither needs the mirror's viewport restore: both run
+  before the frame's own `renderer.render`, which re-establishes it.
+- Verified headlessly: `~/.metro-smoke/vruiclick.js` aims at each widget's
+  real centre (via a `_widgets()` test hook) and fires the true click
+  dispatch — the radio powers on and scans, `new` fills the terminal 6 -> 104
+  lines, a hair chip rebuilds the podium figure. `~/.metro-smoke/xrbake.js`
+  wraps `renderer.render` with `xr.enabled` forced true and asserts the guard:
+  323 offscreen passes, none with the flag set; 150 room renders, all of them
+  with it. All eight HTML entry points load clean.
+
 ## 2026-08-19 — the babylon bedroom is retired
 
 `/wip/` is gone, and with it the 40 MB it was the only thing holding up.

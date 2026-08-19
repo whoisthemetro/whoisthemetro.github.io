@@ -33,10 +33,14 @@ export function setupXR({ renderer, camera, scene, controls, world, onSelect, ca
     const c = renderer.xr.getController(i);
     const beam = new THREE.Line(
       new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(0, 0, -4)]),
-      new THREE.LineBasicMaterial({ color: 0xffb347, transparent: true, opacity: 0.6 }));
+      // depth off + late order: the beam is the cursor, and it must read over
+      // the in-world windows (vrui draws at 950, depth off) or you aim blind
+      new THREE.LineBasicMaterial({ color: 0xffb347, transparent: true, opacity: 0.6, depthTest: false }));
+    beam.renderOrder = 960;
     const tip = new THREE.Mesh(
       new THREE.SphereGeometry(0.012, 8, 8),
-      new THREE.MeshBasicMaterial({ color: 0xffb347 }));
+      new THREE.MeshBasicMaterial({ color: 0xffb347, depthTest: false }));
+    tip.renderOrder = 960;
     c.add(beam, tip);
     c.visible = false;   // lasers exist only inside a session
     c.addEventListener("select", () => { if (renderer.xr.isPresenting) onSelect(c); });
