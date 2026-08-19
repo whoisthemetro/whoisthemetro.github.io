@@ -25,7 +25,13 @@
 
 import * as THREE from "three";
 
-const W = 640;                    // canvas width — heights are computed
+/* canvas width is PER WINDOW — heights are always computed. the creator needs
+   all 640 (fourteen swatches in a row is what sets it); the radio is four
+   short buttons and at 640 was mostly empty card. metres follow pixels at a
+   fixed density, so a narrower card is a physically smaller window, not the
+   same window with bigger text. */
+const DEFAULT_W = 640;
+const M_PER_PX = 0.92 / 640;      // 640 px reads as 0.92 m at arm's length
 const PAD = 18;
 /* the terminal block is sized so the WIDEST thing METRO OS prints fits on
    one line. its commands already wrap themselves to 58 characters for the
@@ -34,7 +40,6 @@ const PAD = 18;
 const LINE_FONT = "500 15px ui-monospace, Menlo, Consolas, monospace";
 const LINE_H = 21;
 const TITLE_H = 48;
-const PANEL_W = 0.92;             // metres in the room
 const CLOSE_DIST = 3.4;           // walk this far away and it lets go
 
 // the room's palette: amber phosphor on near-black, like the terminal
@@ -63,7 +68,7 @@ export function createVRUI({ scene, camera }) {
   const headFwd = new THREE.Vector3();
 
   /* ---------- layout: turn rows into positioned widgets ---------- */
-  function layout(rows, g) {
+  function layout(rows, g, W) {
     const widgets = [];   // clickable rects
     const paint = [];     // everything drawable, in order
     let y = TITLE_H + 10;
@@ -112,7 +117,7 @@ export function createVRUI({ scene, camera }) {
   /* ---------- painting ---------- */
   function draw() {
     if (!win) return;
-    const { g, cvs, paint, title } = win;
+    const { g, cvs, paint, title, W } = win;
     const H = cvs.height;
     g.clearRect(0, 0, W, H);
     // the card
@@ -214,12 +219,14 @@ export function createVRUI({ scene, camera }) {
   }
 
   /* ---------- open / close ---------- */
-  function open({ title = "", rows = [], onClose = null, side = 0 }) {
+  function open({ title = "", rows = [], onClose = null, side = 0,
+                  width = DEFAULT_W, beside = null }) {
     close();   // one window at a time — opening another replaces it
 
+    const W = Math.round(width);
     const cvs = document.createElement("canvas");
     const g = cvs.getContext("2d");
-    const { widgets, paint, height } = layout(rows, g);
+    const { widgets, paint, height } = layout(rows, g, W);
     cvs.width = W; cvs.height = height;
 
     const closeWg = { kind: "button", x: W - PAD - 40, y: 8, w: 40, h: 34, label: "✕", cb: () => close() };
@@ -228,35 +235,63 @@ export function createVRUI({ scene, camera }) {
     const tex = new THREE.CanvasTexture(cvs);
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.anisotropy = 4;
+    const panelW = W * M_PER_PX, panelH = height * M_PER_PX;
     const mesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(PANEL_W, PANEL_W * (height / W)),
+      new THREE.PlaneGeometry(panelW, panelH),
       // depthTest off + late renderOrder: it's a WINDOW, it reads over the
       // room the way a DOM overlay would, instead of burying in the desk
       new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false }));
     mesh.renderOrder = 950;
     mesh.userData.vrui = true;
 
-    /* hang it where you're looking. the read distance follows the card's
-       HEIGHT: the radio is a postcard and wants to be close, the creator is
-       1.3 m of panel and at the same distance would fill your whole view.
-       roughly a constant angular size, clamped to arm's reach either way.
-       `side` slides it off-axis (the creator uses it so you still see the
-       figure you're dressing). */
-    const panelH = PANEL_W * (height / W);
-    const dist = Math.min(2.1, Math.max(1.15, 0.55 + panelH * 0.95));
     camera.getWorldPosition(headPos);
     camera.getWorldDirection(headFwd);
     headFwd.y = 0;
     if (headFwd.lengthSq() < 1e-6) headFwd.set(0, 0, -1); else headFwd.normalize();
-    const rightX = -headFwd.z, rightZ = headFwd.x;
-    mesh.position.set(
-      headPos.x + headFwd.x * dist + rightX * side,
-      headPos.y - 0.06,
-      headPos.z + headFwd.z * dist + rightZ * side);
+
+    if (beside) {
+      /* park it clear of a THING, not clear of your nose. sliding the card
+         sideways from the head still leaves it between you and whatever you
+         opened it for — the creator landed square in front of the figure it
+         was previewing. measure from the object instead: same distance as it,
+         far enough to one side that the card's near edge clears its width. */
+      let dx = beside.x - headPos.x, dz = beside.z - headPos.z;
+      const d = Math.hypot(dx, dz) || 1;
+      dx /= d; dz /= d;
+      const leftX = dz, leftZ = -dx;              // left of the view axis
+      const off = panelW / 2 + (beside.clear || 0.55);
+      /* only the PLACEMENT comes from the object — the height stays at yours.
+         the podium's own anchor sits at chest height, and centring a 1.3 m
+         card there would hang its bottom edge by the floor. */
+      const y = beside.y != null ? beside.y : headPos.y - 0.06;
+      let px = beside.x + leftX * off, pz = beside.z + leftZ * off;
+      /* what clears the figure is the ANGLE, not the distance — so keep the
+         angle and reel the card in to something you can actually read. parked
+         out at the podium's own distance it was legible but needlessly small;
+         pulled to arm's length it's half again as big and still well outside
+         the figure's silhouette. */
+      let ox = px - headPos.x, oz = pz - headPos.z;
+      const od = Math.hypot(ox, oz) || 1;
+      const want = Math.min(1.85, Math.max(1.3, od));
+      px = headPos.x + (ox / od) * want;
+      pz = headPos.z + (oz / od) * want;
+      mesh.position.set(px, y, pz);
+    } else {
+      /* hang it where you're looking. the read distance follows the card's
+         HEIGHT: the radio is a postcard and wants to be close, a tall card at
+         the same distance would fill your whole view. roughly a constant
+         angular size, clamped to arm's reach either way. */
+      const dist = Math.min(2.1, Math.max(1.15, 0.55 + panelH * 0.95));
+      const rightX = -headFwd.z, rightZ = headFwd.x;
+      mesh.position.set(
+        headPos.x + headFwd.x * dist + rightX * side,
+        headPos.y - 0.06,
+        headPos.z + headFwd.z * dist + rightZ * side);
+    }
     mesh.lookAt(headPos.x, mesh.position.y, headPos.z);
     scene.add(mesh);
 
-    win = { mesh, tex, cvs, g, widgets, paint, title, onClose, closeWg,
+    win = { mesh, tex, cvs, g, W, widgets, paint, title, onClose, closeWg,
             anchor: headPos.clone(), hover: null, pressed: null };
     draw();
     return { repaint: draw, close };
@@ -276,7 +311,7 @@ export function createVRUI({ scene, camera }) {
   /* ---------- hits: hover paints, click fires ---------- */
   function widgetAt(hit) {
     if (!win || !hit.uv) return null;
-    const px = hit.uv.x * W, py = (1 - hit.uv.y) * win.cvs.height;
+    const px = hit.uv.x * win.W, py = (1 - hit.uv.y) * win.cvs.height;
     for (const wg of win.widgets) {
       if (px >= wg.x && px <= wg.x + wg.w && py >= wg.y && py <= wg.y + wg.h) return wg;
     }
@@ -322,7 +357,7 @@ export function createVRUI({ scene, camera }) {
        one's centre (v measured from the TOP, the way the canvas is) */
     _widgets: () => (win ? win.widgets.map((w) => ({
       label: w.label || "", kind: w.kind,
-      u: (w.x + w.w / 2) / W, v: (w.y + w.h / 2) / win.cvs.height,
+      u: (w.x + w.w / 2) / win.W, v: (w.y + w.h / 2) / win.cvs.height,
     })) : []),
   };
 }

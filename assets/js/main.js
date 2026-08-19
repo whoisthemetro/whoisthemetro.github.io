@@ -1091,9 +1091,13 @@ function openVRPicker() {
     c, on: () => work[key] === c, cb: () => { work[key] = c; preview(); } })) });
   vrui.open({
     title: "YOUR LOOK",
-    // far enough left that the card's right edge clears the centre of your
-    // view — the figure on the podium is the preview, so it must stay visible
-    side: -0.66,
+    /* beside the FIGURE, not beside your nose. sliding the card off your own
+       view axis still left it between you and the podium — it sat right in
+       front of the thing it was previewing. anchored to the podium instead,
+       it stands to the left of the figure at the figure's own distance,
+       however you walked up to it. `clear` is half the podium's width plus a
+       gap, so the card's near edge never laps the body. */
+    beside: { x: world.podium.anchor.x, z: world.podium.anchor.z, clear: 0.85 },
     rows: [
       { label: "build" }, chips("build", OPTIONS.build),
       { label: "skin" }, swat("skin", OPTIONS.skinTones),
@@ -2700,6 +2704,9 @@ function openVRRadio(r) {
   // window's onClose nulls these), then claim the slots
   vrRadioWin = vrui.open({
     title: "THE RADIO",
+    // four short buttons and two lines of text — at the full 640 it was
+    // mostly empty card to the right of the scan row
+    width: 440,
     rows: [
       { text: () => {
         const i = r.radio.info();

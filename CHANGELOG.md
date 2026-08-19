@@ -4,6 +4,30 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-08-19 — the VR windows get sized and placed properly
+
+Follow-up to the same day's window work, from wearing it.
+
+- **Canvas width is per-window now** (`DEFAULT_W` + `M_PER_PX`, metres follow
+  pixels at a fixed density, so a narrower card is a physically smaller
+  window rather than the same window with bigger text). The radio is four
+  short buttons and two lines of text; at the full 640 it was mostly empty
+  card to the right of the scan row. It's 440 px / 0.63 m now. The creator
+  keeps all 640 — fourteen swatches in a row is what sets that width.
+- **`beside:` places a window relative to a THING, not to your head.** The
+  creator was sliding off your own view axis, which still left it between you
+  and the podium — square in front of the figure it was previewing. It now
+  anchors to the podium: left of the figure, at the figure's own bearing,
+  however you walked up to it. Only the placement comes from the object; the
+  height stays at yours, because the podium's anchor is at chest height and
+  centring a 1.3 m card there hangs its bottom edge by the floor.
+- **What clears the figure is the angle, not the distance**, so the card keeps
+  its 30.8° offset and is reeled in to 1.85 m instead of parking out at the
+  podium's 2.56 m. Half again as big to read, still well outside the figure's
+  silhouette.
+- Watch for this if you touch `vrui.js`: `W` is no longer a module constant.
+  Hit-testing (`widgetAt`) and the `_widgets()` test hook both read `win.W`.
+
 ## 2026-08-19 — windows in VR, and the wall art stops chasing your head
 
 Three of the room's overlays stopped being flat-screen-only, and two
