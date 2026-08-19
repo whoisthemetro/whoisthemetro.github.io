@@ -4,6 +4,23 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-08-19 — Trinity, quieter in a headset
+
+- She sat at the same gain everywhere, and a Quest is not a room: on speakers
+  her voice crosses the bedroom with the rest of the mix around it, in a
+  headset it's two drivers a few centimetres from your ears with nothing in
+  between, and she stands close enough to talk to. Reported as "really loud
+  when I was talking to her", which is exactly what that is.
+- `VR_VOICE = 0.78` in main.js, applied at `fx.say` so it's read per line —
+  the level follows you in and out of the headset rather than being decided
+  once at boot. Desktop and phone are untouched at 1.0.
+- A judged number, not a derived one. The only place it can be judged is with
+  the thing on your head.
+- `voicelock.mjs` gained a case asserting the volume reaches the gain node at
+  all (it's the one part of this that can silently do nothing), and a headless
+  run through the real guide confirms 1.0 on a screen, 0.78 with `presenting()`
+  true, and 1.0 again after.
+
 ## 2026-08-19 — the VR windows get sized and placed properly
 
 Follow-up to the same day's window work, from wearing it.

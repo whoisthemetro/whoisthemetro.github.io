@@ -29,12 +29,13 @@ let audioCalls = 0;
 globalThis.Audio = class { constructor(src) { this.src = src; audioCalls++; setTimeout(() => this.onerror && this.onerror(), 5); } play() { return Promise.reject(new Error("NotAllowedError")); } pause() {} };
 
 let started = [];
+const gains = [];
 let resumes = 0;
 const fakeCtx = {
   state: "running",
   resume: async () => { resumes++; fakeCtx.state = "running"; },
   createBufferSource: () => ({ connect() {}, start() { started.push(1); setTimeout(() => this.onended && this.onended(), 5); }, stop() {} }),
-  createGain: () => ({ gain: {}, connect() {} }),
+  createGain: () => { const g = { connect() {} }; Object.defineProperty(g, "gain", { value: { set value(v) { gains.push(v); } } }); return g; },
   createAnalyser: () => ({ fftSize: 512, connect() {}, getByteTimeDomainData() {} }),
   createMediaElementSource: () => ({ connect() {} }),
   decodeAudioData: (buf, ok) => ok({ duration: 1 }),
@@ -96,7 +97,14 @@ await wait(1500);
 check("a mimed line asks for the card", say.wasMimed() === true, JSON.stringify(say.voiceDiag()));
 FETCH_MODE = "ok";
 
-// 6. a caller with no clip at all still gets the synth (unchanged)
+// 6. the headset asks for a quieter Trinity, and the gain actually gets it —
+// she sits a few centimetres from your ears in a Quest, not across the room
+say.stopSpeaking(); gains.length = 0;
+say.speak("quieter in here.", { clip: "aaaa1111", volume: 0.78 });
+await wait(200);
+check("volume reaches the gain node", gains.length === 1 && gains[0] === 0.78, `gains=${JSON.stringify(gains)}`);
+
+// 7. a caller with no clip at all still gets the synth (unchanged)
 say.stopSpeaking(); synthCalls.length = 0;
 say.speak("no clip for this one.");
 await wait(60);
