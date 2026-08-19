@@ -68,6 +68,28 @@ At the end of buildWorld, every Lambert/Standard material is swapped for `MeshTo
 - **Z-fighting:** anything mounted on a wall sits ≥3 cm proud of it (notes use `0.03 + seq stagger` in notes3d.js). Two more shapes of the same bug turn up whenever a doorway gets built: a casing sized to "line the wall thickness" needs the two wall planes ACTUALLY set that far apart — the bathroom's was 30 cm deep between planes 3 cm apart, so it squirted 13 cm into the hall and swallowed the neon bar whole. And frame pieces should BUTT (head spans only between the jambs), not overlap: overlapping leaves two coplanar faces sharing an area, which speckles even when both are the same colour. `/tmp/metro-smoke/edges.js` finds both — it walks the meshes in a volume and reports BURIED (one AABB mostly inside another) and COPLANAR (parallel faces within 2 mm that also overlap in area). The rule that keeps a fitted-out room clean is **every end runs PAST what it meets**: a partition sized exactly to the room leaves its top in the ceiling's plane and its ends in the wall planes, and where two pieces lap, the lapping one is made thinner and shorter so its side faces aren't in the other's planes either. Read COPLANAR, not BURIED: BURIED is AABB-based, so it cries wolf on anything rotated (a door knob inside a swung door's bounding box) or deliberately nested (a basin's bowl disc).
 - **`emissive` survives the toon pass** (it's copied onto the MeshToonMaterial), which makes it the way to lift a room's black corners when a light can't be placed. A material that raises its own floor cannot leak through a wall, because it isn't a light. The bathroom's tile carries `emissive: 0x1c2026` for exactly this — the corners nearest its door are close enough to the hall that nothing could light them without crossing the wall.
 - **Planar reflections (the bathroom mirrors) — the four things that cost a session.** (1) `renderer.clippingPlanes` is GLOBAL renderer state. Setting it inside `onBeforeRender` re-clips everything drawn *after* that mesh in the same frame — the room loses its own walls. Hide the few blockers with `.visible` instead. (2) three.js's `Reflector` kills blockers by shearing the projection into an oblique near plane; that degenerates when you stand square to the mirror and returns an empty target. (3) Clipping/oblique planes discard fragments but still SUBMIT geometry — 534 draw calls at a basin. Object-level **layer culling** is what makes the pass cost the room instead of the hall: tag the room onto a layer (5 here; 1–2 are XR eyes, 3 boat, 4 arena) and `camera.layers.set()` it, remembering that lights are collected through the same camera-layer test — miss them and the reflection renders black. (4) The mirror's own FRAME sits *behind* the glass, so the virtual camera stares at its back: hide it alongside the mirror. Coplanar, co-facing mirrors can share ONE pass and one texture if the vertex shader projects `modelMatrix * position` instead of baking each mirror's model matrix into the texture matrix. Drive it from `onBeforeRender` so it runs only when a mirror is actually on screen, and time-guard it so the second mirror reuses the first's render.
+- **Lights are the fragment budget, and JavaScript cannot see it.** Every lit
+  pixel loops over EVERY light in the scene, so cost is lights x pixels — which
+  means it doubles on a Retina display and is invisible to every timer you can
+  reach from JS. A CPU profile of this room came back **71.6% idle** with frame
+  intervals flat on vsync while the GPU was actually taking **46 ms a frame**
+  (~22 fps) at dpr 2, 95% of it the 44 bedroom+arcade lights. The CPU submits
+  and walks away; it is not waiting for the answer. Measure with
+  `EXT_disjoint_timer_query_webgl2`, NOT with `performance.now()` around
+  `render()`, and NOT with `gl.finish()` as a fence — on this ANGLE/Metal
+  backend finish() reported 6.9 Mpx as costing the same as 1.7 Mpx. Also warm
+  every material to completion before timing or recompiles land inside the
+  timed window and invert your result.
+- **You cannot fix that by switching lights off, because changing the light
+  COUNT recompiles every shader in the scene.** The fix is a FIXED bank of
+  slots that real lights are copied into each frame (`lightpool.js`) — count
+  never changes, so nothing ever recompiles, and the room behaves as if all 44
+  were lit. Two things it taught: a light with a finite `distance` cannot touch
+  a fragment outside its own sphere, so frustum-culling those is EXACT rather
+  than an approximation; and any importance score of the form `1/d^2` saturates
+  for a light you are standing INSIDE, which let the arcade's twelve wide
+  ceiling lamps take every slot and put out the podium's feature spot. Put a
+  floor under the divisor.
 - Shadow masks around the window are thick DoubleSide boxes, not thin planes.
 - **A sphere cap on a sphere has no edge.** Sit a `SphereGeometry` cap on a `SphereGeometry` head and you get a swim cap, however you colour it — two concentric surfaces read as one. Two rules got the avatars' hair out of it (`avatar-builder.js`): **tip the cap back** (~0.3 rad) so its rim rides high at the front and low at the nape, because a cap's rim is otherwise at one height the whole way round and hair never is; and **break the rim with separate pieces** — five-sided tapered cylinders make cheap angular locks, and three of them across the brow at different angles turn a circular hairline into a diagonal one. Matching trap: a shell offset backwards further than (its radius − the head's) dips INSIDE the head at the front, and the intersection curve shows up as a ragged notch over one eye.
 

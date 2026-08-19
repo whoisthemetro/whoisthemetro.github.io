@@ -25,6 +25,7 @@ export const WHATS_NEW = [
   {
     date: "2026-08-19",
     items: [
+      "the room runs about five times smoother on a computer. it was lighting every surface with forty-four lamps at once, most of them behind you or in another room",
       "trinity always sounds like trinity now. on a phone she'd sometimes answer in a flat robot voice instead of her own — that can't happen anymore",
       "and if she can't be heard at all, she holds the words up on a card beside her instead of mouthing at you in silence",
       "the room gets its sound back on its own. take a call, lock your phone, switch apps — everything used to stay dead until you reloaded. now the next thing you touch turns it back on",

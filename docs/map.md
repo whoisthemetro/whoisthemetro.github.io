@@ -67,6 +67,7 @@ for python-heredoc edits, so **leave them intact.**
 | Arcade basketball | `basketball.js` |
 | Gym basketball | `gymball.js` |
 | VR — anything | `xr.js` (+ the room's own file) |
+| Lighting cost / the light slots | `lightpool.js`, `main.js` ~181 (pool creation + `applyLightCull`), ~5486 (the per-frame refill) |
 | Movement, collision, look, aim-lock | `controls.js` |
 | Sound | `ambience.js` |
 | The sequencer room | `assets/js/studio/*`, `docs/studio.md`, `tools/mi/` for the wasm |

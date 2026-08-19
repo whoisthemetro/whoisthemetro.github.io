@@ -7,6 +7,7 @@ import { buildWorld } from "./world.js";
 import { Controls } from "./controls.js";
 import { NotesWall } from "./notes3d.js";
 import { Ghosts } from "./ghosts.js";
+import { makeLightPool } from "./lightpool.js";
 import { store } from "./store.js";
 import { presence } from "./presence.js";
 import { startAmbience, citySound, pianoNote, semitoneToKey, audioNow, purr, setRain, setWater, setRoomTone, setClubTone, setClubBed, kettleBoil, setThruster, boostSound, discSound, goalHorn, meow, hiss, careSound, drumHit, setArcadeZone, punchSound, shieldClang, stunBuzz, edrumHit, guitarPluck, guitarNote, shotSound, smokeSound, setFx, setDelayTempo, setBusLevel, setGuitarFilter, startVacuum, stopVacuum, beep, fireSound, audioDebug, loadFarts, fartsReady, fart, bathroomSend, loadBathMusic, startBathMusic, setBathMusic, bathMusicOn, loadDJ, wakeAudio } from "./ambience.js";
@@ -171,13 +172,27 @@ const cullLights = { home: [], desi: [], crew: [], venue: [], gym: [] };
     (cullLights[r] || cullLights.home).push(o);
   });
 })();
+/* ...and then hand most of them to the pool. Room culling above decides WHICH
+   room's lights exist; the pool decides how many of that room's lights the
+   shader has to loop over at once. Measured on an M1 Max at a Retina pixel
+   ratio, the 44 "home" lights were 95% of all GPU time (46 ms/frame). Only
+   lights with a finite throw are adoptable — a light with no sphere can't be
+   proven irrelevant, so it keeps its own slot. See lightpool.js. */
+const lightPool = makeLightPool(world.scene, IS_TOUCH ? { points: 8, spots: 6 } : { points: 12, spots: 12 });
+for (const room in cullLights) for (const lt of cullLights[room]) lightPool.adopt(lt);
+
 let lightCullRoom = null;
 function applyLightCull(scope) {
   if (scope === lightCullRoom) return;
   lightCullRoom = scope;
   for (const room in cullLights) {
     const on = room === scope;
-    for (const lt of cullLights[room]) lt.visible = on;
+    // a pooled light is never drawn directly — the pool reads this flag instead,
+    // so switching rooms still can't leak one room's lamps into another.
+    for (const lt of cullLights[room]) {
+      if (lt.userData.pooled) lt.userData.poolOn = on;
+      else lt.visible = on;
+    }
   }
 }
 // everyone spawns home — cull to it before the first render so a GPU that can't
@@ -5219,7 +5234,7 @@ const xr = setupXR({
 
 xrRef = xr;   // helpers above can reach it now that it exists
 
-window.METRO_DEBUG = { renderer, camera, world, controls, xr, disc, hoop: hoopGame,
+window.METRO_DEBUG = { renderer, camera, world, controls, xr, disc, hoop: hoopGame, lightPool,
   vrArcadePanel: { open: openVrArcadePanel, close: closeVrArcadePanel },
   // a hand on the sequencer, same habit as the rest of the room
   studio: { state: sState, act: sAct, rec: sRec, hit: sHitPanel, apply: applyStudioHit,
@@ -5479,6 +5494,7 @@ renderer.setAnimationLoop(() => {
   shieldMesh.visible = inArena && !!controls.blocking;
   if (inArena) setThruster(controls.thrusting);
   stepRideCam(dt);                         // nudge the camera while the car travels
+  lightPool.update(camera, dt);            // refill the light slots for THIS view (lightpool.js)
   renderer.render(world.scene, camera);
   screen.renderCSS(camera);                // the venue big screen (flat <video> on the wall via CSS3D)
   if (dbg) dbg.tick(dt);                    // diagnostics overlay (only when #debug)

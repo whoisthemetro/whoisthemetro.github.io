@@ -4,6 +4,62 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-08-19 — one bank of lights, refilled every frame
+
+Desktop was asked to run smoother. It measured as light-bound, not
+geometry-bound, and by a margin nothing else came close to.
+
+- **The room was never CPU-bound.** A CPU profile of the live loop came back
+  71.6% idle, and every non-idle entry in the top twenty was inside three.js's
+  own renderer — not one function from world.js or main.js. Frame intervals
+  sat on vsync at a flat 16.7 ms. By every measurement available from
+  JavaScript the room was fine, which is why this went unfound for so long:
+  the CPU submits the frame and walks away while the GPU falls behind.
+- **GPU timer queries (`EXT_disjoint_timer_query_webgl2`) told the real
+  story.** At a Retina pixel ratio, on an M1 Max, one frame took **46 ms —
+  about 22 fps**. With every point and spot light hidden it was 2.25 ms. The
+  bedroom+arcade carry **44 lights**, every lit fragment loops over all of
+  them, and that was **95% of all GPU time**.
+- Beware `gl.finish()` as a fence here: an earlier pass timed with it reported
+  dpr 2 (6.9 Mpx) as costing the same as dpr 1 (1.7 Mpx), and a *fewer*-lights
+  case as slower. It is not a real sync on this ANGLE/Metal backend. Timer
+  queries are, and shader recompiles will still creep inside the timed window
+  unless every material is re-rendered to completion first.
+- **The fix could not be "switch lights off when they leave the view",**
+  because changing the light COUNT recompiles every shader in the scene.
+  Turning your head would stutter.
+- **So the count never changes.** `lightpool.js` holds one fixed bank of slots
+  (12 point + 12 spot on desktop, 8 + 6 on touch). Every frame the lights that
+  actually matter are copied INTO those slots — position, colour, distance,
+  decay, cone — and a slot nobody wants fades to zero and waits. Originals
+  stay in the scene graph but are never drawn, so whatever animates their
+  intensity or drags them around still works untouched.
+- **Half of it is exact, not approximate.** A light with a finite `distance`
+  physically cannot touch a fragment outside its own sphere, so any light
+  whose sphere misses the view frustum is contributing nothing and dropping it
+  changes no pixel. Only when more lights survive that test than there are
+  slots does the pool start choosing.
+- **Scoring saturates if you let it.** The first version ranked lights by
+  `intensity x reach / d^2` with `d` clamped at 0.25 — so any light you were
+  STANDING INSIDE divided by ~0 and scored off the scale. The arcade's twelve
+  wide ceiling lamps took every spot slot, the podium's own spot went out, and
+  the figure standing on it went flat grey. Ranking on apparent size with a
+  floor under the divisor (`max(reach * 0.35, d)`) makes being inside a lamp
+  worth about 3x instead of 16x, and the feature lights keep their slots.
+- Slots are sticky: a light that keeps its slot never moves, and one that
+  loses it dims out over 0.18 s rather than vanishing.
+- **Result, same tree, same view, one session:** dpr 2 **46.0 ms -> 8.8 ms**
+  (~5x, 22 fps -> 60 fps+), dpr 1 **9.6 ms -> 2.8 ms**. Verified **0 shader
+  recompiles** across a full spin-and-walk of the whole space (87 programs
+  before, 87 after), p99 frame 21.8 ms, 1 frame over 25 ms in 1196.
+- Every other room fits entirely inside the slots (crew 8, desi 3, gym 6,
+  venue/studio 5), so the pool is provably a no-op outside home.
+- Side effect worth having: home now presents at most 12 point + 12 spot to
+  the shader — **72 vec4 of light uniforms on desktop, 40 on touch, against
+  the 217 that used to be the worst case** and the 256-vec4 Adreno cap that
+  caused the see-through-walls bug on cheap Androids. That headroom is now
+  enormous.
+
 ## 2026-08-19 — she goes quiet, the room notices
 
 Follow-up the same day: with the synth locked out, she played one line and
