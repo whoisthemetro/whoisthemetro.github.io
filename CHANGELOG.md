@@ -112,6 +112,32 @@ detour budget backs it up, because the per-stall budget is refilled by progress
 and a route that gains two centimetres between every obstacle can refill it
 forever.
 
+## 2026-08-18 — the room warms up before you walk in
+
+Metro's idea, and the right one: the first few seconds inside were stuttery,
+so load everything up front like a game does.
+
+**What the stutter actually was.** three.js compiles a material's shader the
+first time it is rendered and uploads a texture the first time it is sampled.
+Measured: 25 shader programs and 219 textures were arriving one hitch at a time
+while you walked. None of that work is avoidable, but WHERE it is paid is a
+choice.
+
+`world.warmup()` now pays for it against the login screen — `compileAsync` over
+the whole scene, then every texture uploaded in chunks on timers so the live
+shader title keeps running. A thin bar under the enter button says what it is
+doing. `[enter]` waits for it, and a press made too early is remembered and
+opens the door the moment it is ready, so nobody has to press twice.
+
+Measured after: **25 programs compiled during play, now 4** — and those four
+are the background models, which each warm themselves before joining.
+
+**What it deliberately does NOT wait for.** The first build blocked on the GLB
+models too, and on a throttled phone that was eighteen seconds of somebody
+watching a progress bar, which is worse than the stutter it replaced. They are
+~2MB of cosmetic upgrades over procedural stand-ins that already look right, so
+they stream in behind the door now. Same throttled test: **0.8 seconds.**
+
 ## 2026-08-18 — the phone stops cooking
 
 Reported as "my phone gets really hot on the website". Heat is sustained load,

@@ -46,6 +46,13 @@
     <p class="login-line">guest@metro:~$ login</p>
     <input type="text" id="visitor-name" maxlength="24" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="name">
     <button id="enter-btn">[ enter ]</button>
+    <!-- the room warms itself up behind this: shaders compiled, textures
+         uploaded, models loaded. usually finished before anyone has typed
+         a name, so most people never see it move. -->
+    <div id="boot" class="boot">
+      <div class="boot-bar"><div id="boot-fill"></div></div>
+      <p class="boot-say" id="boot-say">waking the room</p>
+    </div>
     <p class="mode-badge" id="mode-badge"></p>
   </div>
 </div>

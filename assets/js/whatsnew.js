@@ -32,6 +32,7 @@ export const WHATS_NEW = [
       "on a phone the walk stick has a slow speed in it now. you can ease up to the wall and stop instead of marching past it, and resting your thumb on the stick no longer drifts you across the room",
       "pressing the stick and holding still works too — it used to need a wiggle before you'd move at all",
       "and when you tap the floor to walk somewhere, you go AROUND the furniture in the way instead of stopping dead at it",
+      "the room gets itself ready while you type your name, so it stops stuttering in your first few seconds inside",
       "the room is much easier on a phone now. it was quietly redrawing itself up to 120 times a second, which is why it got hot in your hand",
       "trinity has a new voice, and it's her voice everywhere now instead of changing on you halfway through",
       "she gives you a proper tour of the bedroom too, and she tells you where things actually are. the radio on the right hand end of the desk, the drum pads in the far corner, that sort of thing",

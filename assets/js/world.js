@@ -5378,16 +5378,81 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
   // are ~300KB each now and the GPU warm-up spreads their cost, so there's
   // nothing worth deferring. (pong and defender ship turned; sketchfab
   // models pick their own forward.)
-  setTimeout(async () => {
-    await swapCabinetModel(tronGrp, "assets/models/tron_cabinet.glb", 1.78);
-    await swapCabinetModel(pacGrp, "assets/models/pac_cabinet.glb", 1.78);
-    await swapCabinetModel(pongGrp, "assets/models/pong_cabinet.glb", 1.78, Math.PI / 2);
-    await swapCabinetModel(defGrp, "assets/models/defender_cabinet.glb", 1.78, Math.PI);
-    // the smoking corner, sized to the stand-ins they replace
-    await swapProp(smokeProps.bong, "assets/models/bong.glb", { size: 0.375, axis: "y", tag: "bong" });
-    await swapProp(smokeProps.ashtray, "assets/models/ashtray.glb", { size: 0.155, axis: "xz", tag: "joint" });
-    await swapProp(smokeProps.joint, "assets/models/joint.glb", { size: 0.095, axis: "max", centre: true, tag: "joint" });
-  }, 1200);
+  /* --- THE WARM-UP ------------------------------------------------------
+     three.js compiles a material's shader the FIRST TIME it is rendered and
+     uploads a texture the first time it is sampled. Left alone that happens
+     while you are walking around: 25 programs and 219 textures arriving one
+     hitch at a time, which is exactly what "it's stuttery when I first get
+     in" is. None of that work is avoidable, but WHERE it is paid is a
+     choice, so it is paid against the login screen instead, where a pause is
+     a progress bar and nobody minds.
+
+     The models used to load on a bare 1.2s timer after the world was built,
+     which put them in the same window. They are part of this now, and the
+     door does not open until it is all done. --- */
+  let warmPromise = null;
+  function warmup(onStep) {
+    if (warmPromise) return warmPromise;
+    const step = (label, frac) => { try { onStep && onStep(label, frac); } catch (e) {} };
+    warmPromise = (async () => {
+      const models = [
+        ["the arcade cabinets", () => swapCabinetModel(tronGrp, "assets/models/tron_cabinet.glb", 1.78)],
+        ["the arcade cabinets", () => swapCabinetModel(pacGrp, "assets/models/pac_cabinet.glb", 1.78)],
+        ["the arcade cabinets", () => swapCabinetModel(pongGrp, "assets/models/pong_cabinet.glb", 1.78, Math.PI / 2)],
+        ["the arcade cabinets", () => swapCabinetModel(defGrp, "assets/models/defender_cabinet.glb", 1.78, Math.PI)],
+        ["the smoking corner", () => swapProp(smokeProps.bong, "assets/models/bong.glb", { size: 0.375, axis: "y", tag: "bong" })],
+        ["the smoking corner", () => swapProp(smokeProps.ashtray, "assets/models/ashtray.glb", { size: 0.155, axis: "xz", tag: "joint" })],
+        ["the smoking corner", () => swapProp(smokeProps.joint, "assets/models/joint.glb", { size: 0.095, axis: "max", centre: true, tag: "joint" })],
+      ];
+      /* The models are NOT awaited. Roughly 2MB of them, and on a throttled
+         phone that was eighteen seconds of somebody staring at a progress
+         bar, which is a worse experience than the stutter we set out to
+         remove. They are cosmetic upgrades over procedural stand-ins that
+         already look right, and swapCabinetModel/swapProp each do their own
+         GPU warm-up before joining the scene, so they arrive without a hitch
+         whenever they arrive. The door waits only on LOCAL work. */
+      (async () => {
+        for (const [label, run] of models) {
+          try { await run(); } catch (e) {}    // a model that won't load is not a locked door
+        }
+      })();
+
+      // every shader, compiled now rather than the moment you first see it
+      step("compiling shaders", 0.25);
+      try {
+        if (renderer && renderer.compileAsync) await renderer.compileAsync(scene, warmupCam, scene);
+      } catch (e) {}
+
+      /* Every texture, uploaded now. Chunked on timers rather than done in
+         one go: this runs while the login screen is on screen and its title
+         is a live shader, and a 200-texture blocking loop would freeze it.
+         NOT rAF — that sleeps in a headset and on a backgrounded tab. */
+      step("warming textures", 0.45);
+      const texs = new Set();
+      scene.traverse((o) => {
+        const m = o.material; if (!m) return;
+        for (const mm of (Array.isArray(m) ? m : [m])) {
+          if (!mm) continue;
+          for (const k of ["map", "normalMap", "roughnessMap", "metalnessMap", "aoMap", "emissiveMap", "alphaMap"]) {
+            if (mm[k]) texs.add(mm[k]);
+          }
+        }
+      });
+      const list = [...texs];
+      for (let i = 0; i < list.length; i += 12) {
+        for (let j = i; j < Math.min(i + 12, list.length); j++) {
+          try { renderer.initTexture(list[j]); } catch (e) {}
+        }
+        step("warming textures", 0.45 + 0.54 * (i / Math.max(1, list.length)));
+        await new Promise((r) => setTimeout(r, 0));
+      }
+      step("ready", 1);
+      return { programs: renderer ? renderer.info.programs.length : 0, textures: list.length };
+    })();
+    return warmPromise;
+  }
+  // a page that never asks (the standalone studio) still gets its models
+  setTimeout(() => warmup(), 2500);
 
   /* --- floor plan: every game that's coming gets its footprint taped out
      on the carpet now. so the empty hall reads as an arcade mid-build, not a
@@ -10212,7 +10277,7 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     closetHits: [leftLeaf, rightLeaf], toggleCloset, setCloset,
     closetOpen: () => closet.open,
     arcadeHits,
-    smokeHits, puffSmoke, pingFloor,
+    smokeHits, puffSmoke, pingFloor, warmup,
     // the bathroom's mirror-only body — main.js hangs your figure in it
     bath: bathSelf,
     // the avatar podium in the arcade's far corner. `mount` is where main.js

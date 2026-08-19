@@ -1202,6 +1202,12 @@ function enterRoom() {
     toast("the room wants a name first");
     return;
   }
+  // still warming: remember the press and open the door the moment it's done
+  if (!bootReady) {
+    bootWanted = true;
+    bootSay.textContent = "almost";
+    return;
+  }
   identity.name = name;
   saveIdentity(identity);
   // only NOW do we appear to anyone else — join broadcasts you as a peer, so
@@ -1228,6 +1234,30 @@ function enterRoom() {
   else if (studioDeepLink) setupStudio();
 }
 $("#enter-btn").addEventListener("click", enterRoom);
+/* THE WARM-UP, in front of the login screen.
+   Everything the room needs is loaded and compiled here rather than in your
+   first ten seconds of walking. It starts the moment the world is built, so
+   on any decent connection it finishes while you are still typing a name and
+   you never see the bar move. If it hasn't, [enter] waits for it: better a
+   visible second here than a stuttering minute in there. */
+const bootEl = $("#boot"), bootFill = $("#boot-fill"), bootSay = $("#boot-say");
+let bootReady = false, bootWanted = false;
+$("#enter-btn").classList.add("waiting");
+world.warmup((label, frac) => {
+  bootSay.textContent = label;
+  bootFill.style.width = Math.round(frac * 100) + "%";
+}).then(() => {
+  bootReady = true;
+  bootEl.classList.add("done");
+  $("#enter-btn").classList.remove("waiting");
+  if (bootWanted) enterRoom();          // they already pressed it; go now
+}).catch(() => {                         // never let a warm-up failure lock the door
+  bootReady = true;
+  bootEl.classList.add("done");
+  $("#enter-btn").classList.remove("waiting");
+  if (bootWanted) enterRoom();
+});
+
 // the door sign: a live shader masked to the hand-drawn letters
 startTitleFX($("#title-fx"));
 nameInput?.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); enterRoom(); } });
