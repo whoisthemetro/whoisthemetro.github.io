@@ -102,6 +102,22 @@ home and moving is one string.
   releases the stream when you walk out. 5 GB/month is ~200 full-catalog listens;
   that ceiling is the reason R2 is still on the list.
 
+`tools/garden/to-r2.mjs` is the migration off Supabase, ready to run the moment
+the bucket exists: it speaks R2's S3 API and signs SigV4 out of `node:crypto`
+(nothing to install), uploads with a real year-long immutable Cache-Control,
+verifies **every** object over the public URL, and rewrites `GARDEN_BASE` with
+`--commit`. It checks the headers that decide whether the room can *use* a file,
+not just whether it's there — a missing `Access-Control-Allow-Origin` is the
+failure that looks like success.
+
+`--selftest` checks the signing chain against AWS's own published SigV4 example,
+no credentials and no network. Worth having, because a bad signature is just a
+403 with no hint which of four derivations was wrong — and because the first
+version of that test was itself wrong (in AWS's example the query string belongs
+in the canonical QUERY field with an empty payload; putting the query in the
+payload yields a convincing mismatch and sends you hunting a bug that isn't
+there).
+
 Seven things the room taught us, all now in CLAUDE.md's three.js section:
 
 - **The toon pass does not carry `vertexColors`.** It rebuilds every

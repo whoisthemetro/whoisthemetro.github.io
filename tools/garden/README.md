@@ -168,7 +168,30 @@ total, across everyone.
    `assets/audio/garden/`, which is what you want while working offline. The
    encoder preserves whatever is in there when it rewrites the file.
 
-### uploading
+### doing the move
+
+Once the bucket, domain and CORS policy exist, put the four values in
+`~/.config/metro/r2.env` (the file the tool asks for) and run:
+
+```sh
+node tools/garden/to-r2.mjs --selftest   # signing is sane, no creds needed
+node tools/garden/to-r2.mjs --commit     # upload, verify every object, rewrite GARDEN_BASE
+```
+
+Then commit the catalog and push. That's the whole migration — the same files in
+a different place and one string changed. Nothing else in the room knows where
+audio comes from, so nothing else has to change and a visitor can't tell.
+
+`to-r2.mjs` speaks R2's S3 API and signs with SigV4 out of `node:crypto`, so
+there is nothing to install. It verifies **every** object over the public URL
+before declaring success, and it checks the two headers that actually decide
+whether the room can use a file rather than just whether the file exists:
+`Access-Control-Allow-Origin` and range support. A missing CORS header is the
+failure that looks like success — the garden plays silence with no error at all.
+
+Afterwards the Supabase `garden` bucket can be deleted, or left as a fallback.
+
+### uploading by hand (rclone)
 
 `rclone` is the least annoying way (`brew install rclone`, then
 `rclone config` → `s3` → provider `Cloudflare`, endpoint
