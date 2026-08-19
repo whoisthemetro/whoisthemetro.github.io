@@ -14,7 +14,13 @@
 
 // where the audio lives. an empty string means "next to the site", i.e.
 // assets/audio/garden/ — which is gitignored, so that's the local-only case.
-export const GARDEN_BASE = "";
+//
+// Supabase Storage for now (the `garden` bucket, public, read-only to the site's
+// key), because it's already in the stack and needed no new account. R2 is still
+// the intended home — zero egress fees, and this tier serves everything
+// `no-cache` so a repeat listen re-downloads. Moving is one line: upload to R2
+// and change this string. Nothing else in the room knows or cares.
+export const GARDEN_BASE = "https://donnxntnewmkzrycugpn.supabase.co/storage/v1/object/public/garden/g/";
 
 export const GARDEN_TRACKS = [
   {

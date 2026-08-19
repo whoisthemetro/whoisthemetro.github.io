@@ -133,13 +133,35 @@ export function makeGardenPlayer(opts = {}) {
     return true;
   }
 
+  /* Stopping PAUSES and rewinds — it does NOT drop the src. Tearing the source
+     down throws away everything the browser has buffered, so clicking a plant,
+     stopping it and clicking it again re-downloaded the whole track. That's
+     pure waste on any host, and on this one it's waste that shows up on an
+     egress bill: Supabase's free tier serves public objects `no-cache`
+     regardless of what Cache-Control the object carries (browser caching there
+     needs Smart CDN, a paid feature), so the buffer we keep in memory is the
+     only cache a repeat listen gets. `leave()` is what actually releases it. */
   function stop() {
     wantId = null;
-    if (el) { try { el.pause(); } catch (e) {} el.removeAttribute("src"); try { el.load(); } catch (e) {} }
+    if (el) {
+      try { el.pause(); } catch (e) {}
+      try { el.currentTime = 0; } catch (e) {}
+    }
     curId = null;
     loading = false;
     level = 0;
     push();
+  }
+
+  // leaving the room releases the stream for real — a garden you walked out of
+  // should not still be holding a few MB of audio, or still downloading it
+  function release() {
+    stop();
+    if (el) {
+      el.removeAttribute("src");
+      try { el.load(); } catch (e) {}
+      el.preload = "none";
+    }
   }
 
   /* ---- per frame: the listener follows the camera, the meter feeds the plant ----
@@ -205,7 +227,7 @@ export function makeGardenPlayer(opts = {}) {
     configured: () => !!GARDEN_BASE,
     // the room goes quiet behind you: the studio does the same thing with its
     // master gain, but a stream should stop DOWNLOADING too, not just mute
-    leave: stop,
+    leave: release,
     tracks: GARDEN_TRACKS,
   };
 }

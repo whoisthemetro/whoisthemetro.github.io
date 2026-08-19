@@ -25,6 +25,10 @@ export const WHATS_NEW = [
   {
     date: "2026-08-19",
     items: [
+      "there\u2019s a garden now. sit at the computer, type `music`, and it walks you out to a path with flower beds either side. every plant in them is one of metro\u2019s sound design tracks, grown in the shape of its own sound \u2014 the long ones are long pieces, the spiky ones are the busy ones. click a plant to hear it, click it again to stop",
+      "the plant lights up as it plays, so you can see how far into a piece you are from the other end of the path",
+      "and each one comes from its own bed, so you can walk up to a track and away from it",
+      "you\u2019re on your own out there. it\u2019s a place for listening, not for running into people",
       "the room runs several times smoother on a computer, and worst of all at the desk, where it used to crawl. it was lighting every surface with forty-four lamps at once AND redrawing every piece of art on the walls from scratch, every single frame",
       "trinity always sounds like trinity now. on a phone she'd sometimes answer in a flat robot voice instead of her own — that can't happen anymore",
       "and if she can't be heard at all, she holds the words up on a card beside her instead of mouthing at you in silence",

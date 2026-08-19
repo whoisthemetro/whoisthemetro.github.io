@@ -78,7 +78,50 @@ for id in drone pulse swell rain perc riser sparse long; do
 done
 ```
 
-## R2
+## where the audio actually is right now: Supabase
+
+**Live on Supabase Storage**, bucket `garden`, folder `g/`. It was already in the
+stack and needed no new account, so the garden could open the same day. R2 is
+still the intended home — see below for why and how to move.
+
+The bucket is **public for reads and closed for writes.** Reads need no policy at
+all (public is a bucket property); the site's anon key cannot write to it. To
+plant more tracks you open a window, upload, and shut it again — the two
+migrations are already applied and named, so re-running them is the procedure:
+
+```sh
+# 1. open  → supabase migration `garden_planting_window_reopen_for_cache_headers`
+# 2. upload
+ANON=$(grep -oE 'eyJ[A-Za-z0-9._-]+' assets/js/config.js | head -1)
+URL=https://donnxntnewmkzrycugpn.supabase.co
+for f in assets/audio/garden/*.m4a; do
+  curl -s -o /dev/null -w "%{http_code} $(basename $f)\n" -X POST \
+    "$URL/storage/v1/object/garden/g/$(basename $f)" \
+    -H "Authorization: Bearer $ANON" -H "apikey: $ANON" \
+    -H "Content-Type: audio/mp4" -H "x-upsert: true" --data-binary "@$f"
+done
+# 3. close → supabase migration `garden_bed_closed_for_good`
+```
+
+Leaving that window open would let anyone with the site's public key (which is
+public, by design) write into the bucket. It is not a thing to forget about.
+
+### the one real cost of this tier
+
+Supabase's free tier serves public objects **`Cache-Control: no-cache`** no
+matter what the object carries — the objects here are stored with
+`max-age=31536000, immutable` and it is ignored, because browser caching there
+needs Smart CDN, a paid feature. So a repeat listen re-downloads the track, and
+the 5 GB/month egress is the real ceiling: the whole 25 MB catalog is about 200
+complete listens a month, or ~1,700 single-track plays.
+
+`garden/player.js` mitigates the part it can — stopping a track pauses and
+rewinds rather than dropping the source, so stop/replay costs zero extra
+requests (verified). Changing tracks still refetches, which is unavoidable.
+
+**If plays ever get near that ceiling, move to R2.** It is one line.
+
+## R2 — the intended home
 
 The audio is served from Cloudflare R2 rather than from this repo or Supabase
 Storage. 10 GB free, and — the actual reason — **zero egress fees**, so
@@ -114,7 +157,8 @@ total, across everyone.
    before it makes a sound, which defeats the point of not using
    `decodeAudioData`.
 4. Point the catalog at it — edit `GARDEN_BASE` at the top of
-   `assets/js/garden-catalog.js`:
+   `assets/js/garden-catalog.js`. That single string is the entire migration;
+   nothing else in the room knows where the audio comes from:
 
    ```js
    export const GARDEN_BASE = "https://audio.whoisthemetro.com/";

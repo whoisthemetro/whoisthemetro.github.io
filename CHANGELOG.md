@@ -79,6 +79,29 @@ Then ten real tracks went in (27 minutes, 29 MB) and the room needed more work:
   necessary doesn't exist. Crushing sound design to save 6 MB would have been
   throwing away transients for nothing.
 
+**The garden is OPEN.** The ten tracks are on Supabase Storage (bucket `garden`,
+25 MB, public read / closed write) and `GARDEN_BASE` points at it, so `music`
+walks you out to a path you can actually hear. Supabase rather than R2 because it
+was already in the stack and needed no new account — R2 is still the intended
+home and moving is one string.
+
+- The upload window is a pair of migrations, opened and shut around the upload.
+  Leaving an anon INSERT policy in place would let anyone with the site's public
+  key write into the bucket; verified closed afterwards, and the procedure is
+  written down in `tools/garden/README.md` for the next batch.
+- **Proof that it works is the analyser, not a 200.** A cross-origin media
+  element without CORS is *tainted*: it plays, it reports progress, and it feeds
+  the Web Audio graph pure silence with no error anywhere. The smoke test asserts
+  `level > 0` on a real deployed track — that's the only thing that can tell the
+  difference.
+- Supabase's free tier serves public objects `no-cache` whatever the object
+  carries (the files are stored `max-age=31536000, immutable` and it's ignored —
+  browser caching needs Smart CDN, a paid feature). So `stop()` now **pauses and
+  rewinds instead of dropping the source**: stop-then-replay was re-downloading
+  the whole track, and now costs zero extra requests. `leave()` is what actually
+  releases the stream when you walk out. 5 GB/month is ~200 full-catalog listens;
+  that ceiling is the reason R2 is still on the list.
+
 Seven things the room taught us, all now in CLAUDE.md's three.js section:
 
 - **The toon pass does not carry `vertexColors`.** It rebuilds every
