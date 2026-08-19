@@ -25,6 +25,8 @@ export const WHATS_NEW = [
   {
     date: "2026-08-19",
     items: [
+      "in a headset, people can see you MOVE now. your arms follow your controllers — point at something, wave, hold a drink up — and your head turns when you look around instead of your whole body swinging with it",
+      "and your body only comes round once you've really turned to look, so you can glance sideways at someone without spinning on the spot",
       "people look like people in the dark now. standing in an unlit corner used to flatten you into a cardboard cut-out — you get proper light and shadow down your body instead, and an edge that keeps you readable",
       "trinity talks at a normal volume now, everywhere — she was too loud on every screen and in the headset, not just one of them",
       "in a headset, the computer, the radio and the look-builder all open properly now. a panel appears in front of you and you point at it — no more being told to go and find a flat screen",

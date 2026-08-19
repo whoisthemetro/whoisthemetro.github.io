@@ -1337,7 +1337,15 @@ function enterRoom() {
   saveIdentity(identity);
   // only NOW do we appear to anyone else — join broadcasts you as a peer, so
   // nobody shows up in the room until they've walked in with a name on
-  presence.join(identity, () => controls.pose());
+  /* in a headset the pose carries more: which way the BODY faces (as opposed
+     to the head), where the head is looking, and both hands — so peers see you
+     turn and point instead of sliding about facing one way. Nothing extra is
+     sent from a flat screen. */
+  presence.join(identity, () => {
+    const p = controls.pose();
+    const vr = xr.vrPose && xr.vrPose(p);
+    return vr ? { ...p, ...vr } : p;
+  });
   entered = true;
   startAmbience();
   applyFxStates();                        // restore each stompbox's saved on/off into the new graph

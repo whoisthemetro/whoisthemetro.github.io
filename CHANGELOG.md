@@ -4,6 +4,52 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-08-19 — a headset visitor gets a body
+
+Peers can see a VR visitor's arms and head move. Peers ONLY for now: you still
+see a laser rather than your own hands, which is where the clipping problems
+live and is a separate job.
+
+- **The head TURNS, and it cost one group to do it.** The head, ears, hair,
+  beard, face plane and voice halo were six siblings on `body`, each pinned at
+  an absolute height (1.435, 1.47, and a hundred more inside `buildHair` /
+  `buildBeard`). Re-parenting them under a pivot at `HEAD_Y` would have shifted
+  every one up by 1.44 and meant rebasing the whole hair file. So `headPivot`
+  carries a `headFrame` that undoes its own lift: a piece placed at 1.47 still
+  lands at 1.47, and rotating the pivot turns the lot. **Not one coordinate
+  moved.**
+- **The arms REACH, with two-bone IK.** Aiming the whole limb at the hand was
+  the first cut and it reads fine while your arm is straight — but the hand
+  then sits at full stretch always, so a controller held near your chest drove
+  a hand through the middle of your own torso. The forearm and hand now hang
+  off an `elbow` group and both bones solve. Measured: the drawn hand lands
+  9 mm from the sent hand with hands at the chest, 15–24 mm at full reach (the
+  residual is the 2 cm quantisation plus the hand mesh's own offset).
+- **The body follows the head lazily, and this is why `controls.yaw` had to
+  stop being the whole story.** In a session `controls.yaw` is set from the
+  head's direction every frame, so a peer's entire BODY swivelled every time
+  they glanced sideways — an owl, not a person. `bodyYaw` in xr.js now gives
+  about 55° of free look before the torso is dragged round just far enough to
+  keep up, and squares up slowly when you hold still. The head carries only the
+  difference. `controls.yaw` is untouched — movement and aiming still use it.
+- **Quantisation is not about bytes, it's about the idle filter.** presence.js
+  keeps a still room quiet by dropping poses that match the last one; a head is
+  never perfectly still, so at full precision that filter would never fire
+  again. xr.js rounds head angles to 0.02 rad and hands to 2 cm, and those
+  rounded values are what the dedup key is built from.
+- Hands travel in the ghost's OWN frame — xr.js undoes the `yaw + PI` the ghost
+  will apply — so a raised right hand comes out on the right shoulder.
+- Nothing is sent from a flat screen: `vrPose()` returns null off-session and a
+  desktop pose is the same four numbers it always was. Undriven joints ease
+  back to their rest pose, so a peer who takes the headset off relaxes instead
+  of freezing mid-gesture. The glow-blob tier has no joints and is skipped.
+
+New smoke: `~/.metro-smoke/vrbody.js` injects a fake peer over BroadcastChannel
+with chosen head and hand values and measures where the joints actually ended
+up — including the hand-lands-on-target error, and that the arms relax when the
+VR fields stop arriving. It caught its own bug: adding the elbow changed the
+arm's child order, so the test had been measuring the elbow, not the hand.
+
 ## 2026-08-19 — one volume, everywhere
 
 - Same day as "Trinity, quieter in a headset", and a correction of it. That

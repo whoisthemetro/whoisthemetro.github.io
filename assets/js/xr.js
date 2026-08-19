@@ -27,6 +27,30 @@ export function setupXR({ renderer, camera, scene, controls, world, onSelect, ca
   const rig = new THREE.Group();
   scene.add(rig);
 
+  /* --- the body under the head ------------------------------------------
+     A headset knows where your HEAD is and nothing at all about your
+     shoulders. Until now `controls.yaw` was simply set to the head's
+     direction, which meant a peer's whole BODY swivelled every time they
+     glanced sideways — an owl, not a person.
+     So the torso follows lazily: you get about 55 degrees of free look, and
+     past that the body is dragged round just far enough to keep up. It also
+     squares up slowly when you hold still, so you never end up permanently
+     wound round. The head then only has to carry the DIFFERENCE. --- */
+  let bodyYaw = null;
+  const HEAD_FREE = 0.95;          // rad you can turn before the body follows
+  const headQ = new THREE.Quaternion();
+  const headE = new THREE.Euler();
+  const handV = new THREE.Vector3();
+
+  function trackBody(dt, headYaw) {
+    if (bodyYaw === null) { bodyYaw = headYaw; return; }
+    let d = headYaw - bodyYaw;
+    d = Math.atan2(Math.sin(d), Math.cos(d));     // shortest way round
+    const over = Math.abs(d) - HEAD_FREE;
+    if (over > 0) bodyYaw += Math.sign(d) * over; // dragged, exactly enough
+    else bodyYaw += d * Math.min(1, (dt || 0.016) * 0.6);   // and eases home
+  }
+
   // lasers on both hands — either one can point and click
   const controllers = [];
   for (let i = 0; i < 2; i++) {
@@ -127,6 +151,7 @@ export function setupXR({ renderer, camera, scene, controls, world, onSelect, ca
   renderer.xr.addEventListener("sessionend", () => {
     rig.remove(camera);
     for (const c of controllers) c.visible = false;
+    bodyYaw = null;   // next session re-seeds from wherever you're looking
     tipText = ""; noteText = ""; hud.visible = false;
     // hand the body back to the desktop controls where VR left it
     camera.position.set(controls.pos.x, 1.5, controls.pos.z);
@@ -316,6 +341,7 @@ export function setupXR({ renderer, camera, scene, controls, world, onSelect, ca
     camera.getWorldDirection(hv);
     controls.yaw = Math.atan2(-hv.x, -hv.z);
     controls.pitch = Math.asin(Math.max(-1, Math.min(1, hv.y)));
+    trackBody(dt, controls.yaw);
     wroteX = controls.pos.x; wroteZ = controls.pos.z;
     wasZeroG = true;
   }
@@ -467,7 +493,44 @@ export function setupXR({ renderer, camera, scene, controls, world, onSelect, ca
     controls.pos.z = headWorld.z;
     camera.getWorldDirection(fwd);
     controls.yaw = Math.atan2(-fwd.x, -fwd.z);
+    trackBody(dt, controls.yaw);
     wroteX = controls.pos.x; wroteZ = controls.pos.z;
+  }
+
+  /* --- what the ROOM sees of you in a headset -----------------------------
+     Handed the pose presence is about to send, this returns the parts only a
+     session knows: which way the body faces (as opposed to the head), where
+     the head is looking, and where your two hands are.
+
+     Hands come back in the ghost's OWN frame. A peer figure is drawn at the
+     feet and turned by `yaw + PI` (avatars are modelled facing +Z while a
+     player at yaw 0 looks down -Z), so undoing exactly that rotation is what
+     makes a raised right hand come out on the right shoulder at the other
+     end. Everything is quantised — a head is never perfectly still, and at
+     full precision the idle filter in presence.js would never fire again. --- */
+  const Q = (v, step) => Math.round(v / step) * step;
+  function vrPose(base) {
+    const session = renderer.xr.getSession && renderer.xr.getSession();
+    if (!renderer.xr.isPresenting || !session || bodyYaw === null) return null;
+    camera.getWorldQuaternion(headQ);
+    headE.setFromQuaternion(headQ, "YXZ");
+    let hy = headE.y - bodyYaw;
+    hy = Math.atan2(Math.sin(hy), Math.cos(hy));
+    const out = {
+      yaw: Q(bodyYaw, 0.02),
+      hy: Q(hy, 0.02), hp: Q(headE.x, 0.02), hr: Q(headE.z, 0.02),
+    };
+    // hands, by handedness rather than by slot — index 0 is not always left
+    const inv = -(bodyYaw + Math.PI), ci = Math.cos(inv), si = Math.sin(inv);
+    const srcs = session.inputSources;
+    for (let i = 0; i < srcs.length; i++) {
+      const key = srcs[i].handedness === "left" ? "lh" : srcs[i].handedness === "right" ? "rh" : null;
+      if (!key || !controllers[i]) continue;
+      controllers[i].getWorldPosition(handV);
+      const dx = handV.x - base.x, dy = handV.y - (base.y || 0), dz = handV.z - base.z;
+      out[key] = [Q(dx * ci - dz * si, 0.02), Q(dy, 0.02), Q(dx * si + dz * ci, 0.02)];
+    }
+    return out;
   }
 
   // --- the door into VR: a quiet terminal-style button ---
@@ -517,7 +580,8 @@ export function setupXR({ renderer, camera, scene, controls, world, onSelect, ca
     },
     // test rig: lets a headless harness drive the REAL step with a fake
     // session — the only way to exercise VR code without a headset
-    _debug: { step, rig, controllers },
+    vrPose,
+    _debug: { step, rig, controllers, vrPose, bodyYaw: () => bodyYaw },
     note,                                     // a transient message
     tip,                                      // what you're pointing at
     aimController: () => primary || controllers[0],

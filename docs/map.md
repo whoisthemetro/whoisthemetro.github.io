@@ -68,6 +68,7 @@ for python-heredoc edits, so **leave them intact.**
 | Arcade basketball | `basketball.js` |
 | Gym basketball | `gymball.js` |
 | VR — anything | `xr.js` (+ the room's own file) |
+| A headset visitor's BODY as peers see it (arms, head) | `xr.js` (`vrPose`, `trackBody`), `avatar-builder.js` (`arms`/`headPivot`/`bones`), `ghosts.js` (`driveJoints`), `presence.js` (`VR_KEYS`) |
 | VR — a panel/overlay that must work in a headset | `vrui.js` (in-world windows), `main.js` `openVRRadio`/`openVRPC`/`openVRPicker`. DOM is invisible in a session: give it a window here rather than another `vrBlocked` |
 | Shader art on the walls / its cost | `shaderbake.js`, `shaderart.js`, world.js `makeToy` + `PANEL_SHADERS` @2657 |
 | Lighting cost / the light slots | `lightpool.js`, `main.js` ~181 (pool creation + `applyLightCull`), ~5486 (the per-frame refill) |

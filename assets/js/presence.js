@@ -44,12 +44,22 @@ function emitPose(uid, pose) {
   poseListeners.forEach(fn => { try { fn(uid, pose); } catch (e) {} });
 }
 
+/* what a headset adds to a pose: head yaw-off-body, pitch, roll, and the two
+   hands as [x,y,z] in the ghost's own frame. absent entirely on a flat
+   screen, so a desktop pose is the same four numbers it always was. */
+const VR_KEYS = ["hy", "hp", "hr", "lh", "rh"];
 let lastSentAt = 0;
 function sendPoseLoop() {
   setInterval(() => {
     if (!getPose) return;
     const p = getPose();
-    const key = `${p.x.toFixed(2)},${(p.y || 0).toFixed(2)},${p.z.toFixed(2)},${p.yaw.toFixed(2)}`;
+    /* the headset extras (head angles + both hands) ride along only inside a
+       session, and they are ALREADY quantised by xr.js — coarsely enough that
+       a head resting still reads as unchanged. that matters more than the
+       bytes: the idle filter below is what keeps a still room quiet, and at
+       full precision a head would jitter it awake on every single tick. */
+    const vr = VR_KEYS.map((k) => (p[k] === undefined ? "" : String(p[k]))).join("|");
+    const key = `${p.x.toFixed(2)},${(p.y || 0).toFixed(2)},${p.z.toFixed(2)},${p.yaw.toFixed(2)},${vr}`;
     // idle still saves bandwidth — but not FOREVER. ghosts only render a peer
     // once a live pose arrives (the phantom filter), so someone standing
     // still has to keep whispering "I'm here" or every late joiner walks
@@ -59,6 +69,7 @@ function sendPoseLoop() {
     lastSent = key;
     lastSentAt = now;
     const msg = { uid: me.uid, x: p.x, y: p.y || 0, z: p.z, yaw: p.yaw };
+    for (const k of VR_KEYS) if (p[k] !== undefined) msg[k] = p[k];
     if (chan) chan.send({ type: "broadcast", event: "pose", payload: msg });
     else bc?.postMessage({ type: "pose", ...msg });
   }, 1000 / POSE_HZ);

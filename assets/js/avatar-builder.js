@@ -51,6 +51,10 @@ const HEAD_R = 0.15;
 // the torso's two ends. TORSO_TOP is where the capsule's top cap lands for
 // every build — the neck starts there and the arms hang just under it.
 const TORSO_TOP = 1.26, HIP_Y = 0.6;
+/* the arm's two bones, measured off the meshes that were already there: the
+   shoulder pivot is y=0, the elbow ELBOW_D below it, the hand ELBOW_D+FORE_D.
+   Anything solving for a hand position needs both. */
+const ELBOW_D = 0.27, FORE_D = 0.28;
 const SHOULDER_Y = 1.19;
 // the 8-bit face's eyes sit at y 1.470–1.495 (face.js draws them at rows 12–16
 // of a 32px canvas on a 0.2 plane centred at 1.47). NOTHING opaque goes in
@@ -199,17 +203,35 @@ export function buildAvatarFigure(spec = {}) {
      then carries it out: 0.22 rad is what it takes for the forearm and hand to
      clear the trunk and the belt below it. Note the sign —
      `sx * splay` swings the hand OUT, `-sx * splay` swings it into the hip. */
+  const arms = {};
   for (const sx of [-1, 1]) {
     const arm = new THREE.Group();
     arm.position.set(sx * 0.178 * wide, SHOULDER_Y, 0);
     arm.rotation.z = sx * 0.24;
+    /* the resting splay is also the HOME pose: anything that drives this arm
+       (a headset visitor's controller) has to be able to let go and fall back
+       to exactly this, or a peer who takes the headset off is left doing a
+       star jump. the figure faces +Z, so +X is their LEFT. */
+    arms[sx > 0 ? "l" : "r"] = arm;
     body.add(arm);
     const upper = new THREE.Mesh(track(new THREE.CapsuleGeometry(0.053, 0.19, 4, 8)), lam(topC));
     upper.position.y = -0.155; arm.add(upper);
+    /* the forearm and hand hang off an ELBOW, so the arm can fold. Aiming the
+       whole limb like a stick was the first attempt and it has one fatal flaw:
+       the hand ends up at full stretch no matter where the real hand is, so a
+       controller held near the chest drove a hand straight through the torso.
+       With a hinge here the arm can actually solve for where the hand IS.
+       The rest pose keeps the old -0.1 forearm tilt, so a figure nobody is
+       driving looks exactly as it always did. */
+    const elbow = new THREE.Group();
+    elbow.position.y = -ELBOW_D; arm.add(elbow);
     const fore = new THREE.Mesh(track(new THREE.CapsuleGeometry(0.046, 0.19, 4, 8)), lam(s.skin));
-    fore.position.y = -0.385; fore.rotation.x = -0.1; arm.add(fore);   // a tee = bare forearms
+    fore.position.y = -0.385 + ELBOW_D; fore.rotation.x = -0.1; elbow.add(fore);   // a tee = bare forearms
     const hand = new THREE.Mesh(track(new THREE.SphereGeometry(0.05, 8, 6)), lam(s.skin));
-    hand.position.set(0, -0.55, 0.012); hand.scale.set(0.85, 1.1, 0.75); arm.add(hand);
+    hand.position.set(0, -0.55 + ELBOW_D, 0.012); hand.scale.set(0.85, 1.1, 0.75); elbow.add(hand);
+    arm.userData.elbow = elbow;
+    arm.userData.rest = arm.quaternion.clone();
+    arm.userData.elbowRest = elbow.quaternion.clone();
   }
 
   // chest logo
@@ -223,27 +245,43 @@ export function buildAvatarFigure(spec = {}) {
 
   // --- neck + head (skin) ---
   const neck = new THREE.Mesh(track(new THREE.CylinderGeometry(0.058, 0.072, 0.12, 8)), lam(shade(s.skin, -0.12)));
-  neck.position.y = 1.29; body.add(neck);
+  neck.position.y = 1.29; body.add(neck);   // the neck stays put; necks barely turn
+  /* --- the head TURNS, and this is how it does it without moving a number.
+     The head, the ears, the hair, the beard, the face and the voice halo were
+     six siblings on `body`, each pinned at its own ABSOLUTE height (1.435,
+     1.47, and a hundred more inside buildHair/buildBeard). Re-parenting them
+     under a pivot at HEAD_Y would have shifted every one of them up by 1.44
+     and meant rebasing the whole hair file.
+     So the pivot carries a FRAME that undoes its own lift: a piece placed at
+     1.47 inside `headFrame` still lands at 1.47, and rotating `headPivot`
+     turns the lot of them around the head's centre. Nothing below had to
+     change. --- */
+  const headPivot = new THREE.Group();
+  headPivot.position.y = HEAD_Y;
+  body.add(headPivot);
+  const headFrame = new THREE.Group();
+  headFrame.position.y = -HEAD_Y;
+  headPivot.add(headFrame);
   const head = new THREE.Mesh(track(new THREE.SphereGeometry(HEAD_R, 16, 14)), lam(s.skin));
-  head.position.y = HEAD_Y; body.add(head);
+  head.position.y = HEAD_Y; headFrame.add(head);
   // ears — two flat discs at the temples. tiny, but they break the perfect
   // sphere, and every hairstyle then has something to sit in front of.
   for (const sx of [-1, 1]) {
     const ear = new THREE.Mesh(track(new THREE.SphereGeometry(0.032, 8, 6)), lam(s.skin));
-    ear.position.set(sx * 0.142, 1.435, -0.006); ear.scale.set(0.45, 1, 0.8); body.add(ear);
+    ear.position.set(sx * 0.142, 1.435, -0.006); ear.scale.set(0.45, 1, 0.8); headFrame.add(ear);
   }
 
   // --- hair + beard ---
-  buildHair(body, s, lam, track);
-  buildBeard(body, s, lam, track);
+  buildHair(headFrame, s, lam, track);
+  buildBeard(headFrame, s, lam, track);
 
   // --- the glowing 8-bit face + a voice halo ---
   const halo = new THREE.Mesh(track(new THREE.PlaneGeometry(0.46, 0.46)),
     new THREE.MeshBasicMaterial({ map: track(softGlow()), transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, color: s.faceColor }));
-  halo.position.set(0, 1.47, 0.175); body.add(halo);
+  halo.position.set(0, 1.47, 0.175); headFrame.add(halo);
   disposables.push(halo.material);
   const face = makeFace(0.2, s.faceColor);
-  face.mesh.position.set(0, 1.47, 0.185); body.add(face.mesh);   // proud of the head so hair never covers it
+  face.mesh.position.set(0, 1.47, 0.185); headFrame.add(face.mesh);   // proud of the head so hair never covers it
 
   // slim/broad also stand a little shorter/taller — uniform, so the feet stay
   // on the floor, and a crowd of peers stops looking like one person cloned
@@ -261,7 +299,10 @@ export function buildAvatarFigure(spec = {}) {
   }
   function dispose() { for (const d of disposables) { try { d.dispose && d.dispose(); } catch (e) {} } }
 
-  return { group, face, setVoice, dispose };
+  /* `arms` and `headPivot` are the only moving joints on this figure, and
+     `lift` is what the shoes added underfoot — a driver needs it to rebase a
+     hand position measured from the floor into this body's frame. */
+  return { group, face, setVoice, dispose, arms, headPivot, lift, bones: { upper: ELBOW_D, fore: FORE_D } };
 }
 
 /* ---------------- shoes ----------------

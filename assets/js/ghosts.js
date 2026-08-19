@@ -60,7 +60,77 @@ function makeBlob(color) {
 function buildPeerVisual(meta) {
   if (!meta.outfit) return makeBlob(meta.color || "#ffb347");
   const a = buildAvatarFigure(meta.outfit);
-  return { node: a.group, setVoice: a.setVoice, dispose: a.dispose };
+  // arms/headPivot/lift are the joints a headset visitor drives. the blob has
+  // none of them, and everything below checks before reaching for one.
+  return { node: a.group, setVoice: a.setVoice, dispose: a.dispose,
+           arms: a.arms, headPivot: a.headPivot, lift: a.lift, bones: a.bones };
+}
+
+/* --- driving a headset visitor's joints ---------------------------------
+   Their pose carries the head's angles off the chest and both hands, already
+   in this figure's own frame (xr.js undid the ghost's yaw before sending).
+
+   The arms REACH, with two-bone IK across the shoulder and the elbow. Simply
+   aiming the whole limb at the hand was the first cut and it reads fine while
+   your arm is straight — but the hand then sits at full stretch always, so a
+   controller held near your chest drove a hand through the middle of your own
+   torso. Solving both bones puts the hand where the hand really is, which is
+   what makes pointing at something mean anything.
+
+   Standard planar solve: `a` swings the upper bone off the line to the target,
+   the elbow closes by pi minus its interior angle, and the elbow bends about
+   the arm's local X so it tracks forward like a real one. The reach is clamped
+   just inside full extension — at exactly straight the triangle degenerates
+   and the joint snaps.
+
+   Everything eases, and everything falls back to its rest pose, so a peer who
+   takes the headset off relaxes instead of freezing mid-gesture. --- */
+const AIM_DOWN = new THREE.Vector3(0, -1, 0);
+const AXIS_X = new THREE.Vector3(1, 0, 0);
+const _dir = new THREE.Vector3();
+const _q = new THREE.Quaternion();
+const _bend = new THREE.Quaternion();
+const _e = new THREE.Euler();
+const clamp1 = (v) => Math.min(1, Math.max(-1, v));
+
+function driveJoints(g, dt) {
+  const vis = g.vis, t = g.target || {};
+  if (!vis || !vis.arms) return;                 // a blob has no joints
+  const k = Math.min(1, dt * 9);
+  const vr = t.hy !== undefined;
+
+  if (vis.headPivot) {
+    _e.set(vr ? (t.hp || 0) : 0, vr ? t.hy : 0, vr ? (t.hr || 0) : 0, "YXZ");
+    _q.setFromEuler(_e);
+    vis.headPivot.quaternion.slerp(_q, k);
+  }
+  for (const side of ["l", "r"]) {
+    const arm = vis.arms[side];
+    if (!arm) continue;
+    const elbow = arm.userData.elbow;
+    const hand = vr ? t[side === "l" ? "lh" : "rh"] : null;
+    if (hand && vis.bones) {
+      // the hand arrives measured from the FEET; the shoulder lives in the
+      // body group, which the shoes raised by `lift`
+      _dir.set(hand[0] - arm.position.x,
+               hand[1] - (vis.lift || 0) - arm.position.y,
+               hand[2] - arm.position.z);
+      const L1 = vis.bones.upper, L2 = vis.bones.fore;
+      const d = Math.min(Math.max(_dir.length(), Math.abs(L1 - L2) + 0.02), L1 + L2 - 0.01);
+      if (d > 1e-3) {
+        _dir.normalize();
+        const a = Math.acos(clamp1((L1 * L1 + d * d - L2 * L2) / (2 * L1 * d)));
+        const th = Math.acos(clamp1((L1 * L1 + L2 * L2 - d * d) / (2 * L1 * L2)));
+        _q.setFromUnitVectors(AIM_DOWN, _dir);      // point the limb at the hand
+        _q.multiply(_bend.setFromAxisAngle(AXIS_X, a));   // swing the upper bone off it
+        arm.quaternion.slerp(_q, k);
+        if (elbow) elbow.quaternion.slerp(_bend.setFromAxisAngle(AXIS_X, -(Math.PI - th)), k);
+        continue;
+      }
+    }
+    arm.quaternion.slerp(arm.userData.rest, k);   // nobody driving: hang
+    if (elbow) elbow.quaternion.slerp(arm.userData.elbowRest, k);
+  }
 }
 
 // a key that changes when someone's look changes, so we rebuild only then
@@ -138,6 +208,7 @@ export class Ghosts {
     const k = Math.min(1, dt * 7);   // smoothing
     for (const [uid, g] of this.byUid) {
       if (g.vis && g.vis.setVoice) g.vis.setVoice(levelFn ? (levelFn(uid) || 0) : 0, dt);
+      driveJoints(g, dt);
       const px = g.grp.position.x, py = g.grp.position.y, pz = g.grp.position.z;
       g.grp.position.x += (g.target.x - g.grp.position.x) * k;
       g.grp.position.z += (g.target.z - g.grp.position.z) * k;
