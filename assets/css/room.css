@@ -138,8 +138,10 @@ body {
   border-radius: 999px; padding: 5px 12px; white-space: nowrap;
 }
 #aim-tip.show { opacity: 1; }
+/* Top edge on every screen. They used to sit along the bottom on desktop,
+   which is where the eye isn't and where a browser's own chrome creeps up. */
 #online-pill {
-  position: absolute; right: 16px; bottom: 16px;
+  position: absolute; right: 16px; top: 16px;
   background: rgba(10, 14, 17, 0.7); border: 1px solid var(--line);
   border-radius: 999px; padding: 7px 14px; font-size: 12px; color: var(--ink);
   display: flex; align-items: center; gap: 8px;
@@ -299,12 +301,20 @@ textarea:focus, input:focus { border-color: var(--amber); }
 
 /* ---------- cat status ---------- */
 #cat-pill {
-  position: absolute; left: 16px; bottom: 16px;
+  position: absolute; left: 16px; top: 16px;
   background: rgba(10, 14, 17, 0.7); border: 1px solid var(--line);
   border-radius: 999px; padding: 7px 14px; font-size: 12px; color: var(--ink);
+  display: flex; align-items: center; gap: 9px;
 }
 #cat-pill .low { color: var(--amber); }
 #cat-pill .crit { color: #e07054; }
+/* one icon set for the whole HUD: 16-unit box, filled with currentColor, so
+   the low/crit classes tint the glyph and its number together */
+.hud-i { width: 13px; height: 13px; flex: none; fill: currentColor; }
+.hud-cat { width: 15px; height: 15px; opacity: .92; }
+#cat-meters { display: flex; align-items: center; gap: 9px; }
+.hud-m { display: inline-flex; align-items: center; gap: 4px; font-variant-numeric: tabular-nums; }
+.hud-m.crit .hud-i { animation: pulse 1.6s ease-in-out infinite; }
 
 /* ---------- light dimmer ---------- */
 .dim-panel { width: min(92vw, 360px); }
@@ -519,9 +529,11 @@ textarea:focus, input:focus { border-color: var(--amber); }
   #cat-pill {
     left: max(8px, env(safe-area-inset-left)); top: max(8px, env(safe-area-inset-top));
     bottom: auto;
-    font-size: 10px; padding: 4px 9px; letter-spacing: 0;
-    max-width: 34vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    font-size: 10px; padding: 4px 9px; letter-spacing: 0; gap: 7px;
   }
+  #cat-pill .hud-i { width: 11px; height: 11px; }
+  #cat-pill .hud-cat { width: 13px; height: 13px; }
+  #cat-meters { gap: 7px; }
   /* the online count comes up out of the thumb zone to the opposite corner,
      in portrait as well as landscape */
   #online-pill {
@@ -542,6 +554,26 @@ textarea:focus, input:focus { border-color: var(--amber); }
   #flight-strip .fs-type { display: none; }
   /* and the aim tip drops below all three rather than under the strip alone */
   #aim-tip { top: calc(max(8px, env(safe-area-inset-top)) + 30px); font-size: 9px; }
+}
+
+/* ---------- portrait: the strip gets its own row ----------
+   Three things do not fit across 390px. The strip was clipped to 30vw (117px
+   on an iPhone) and the cat pill ended at 138px while the strip started at
+   137, so they collided and half the flight text was sliced off. In portrait
+   it drops to a second row instead: full width, nothing hidden, and the type
+   code comes back because there is finally room for it.
+
+   Portrait ONLY, layered on top of the coarse-pointer rules above rather than
+   replacing them — landscape has the width for three lanes and keeps them.
+   `top` only, so the show/hide transform is left alone. */
+@media (max-width: 900px) and (pointer: coarse) and (orientation: portrait) {
+  #flight-strip {
+    top: calc(max(8px, env(safe-area-inset-top)) + 30px);
+    max-width: calc(100vw - 20px);
+    font-size: 10px; padding: 4px 10px;
+  }
+  #flight-strip .fs-type { display: inline; }
+  #aim-tip { top: calc(max(8px, env(safe-area-inset-top)) + 64px); }
 }
 
 /* ---------- message in a bottle ---------- */

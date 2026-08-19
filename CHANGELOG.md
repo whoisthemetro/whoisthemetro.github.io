@@ -112,6 +112,28 @@ detour budget backs it up, because the per-stall budget is refilled by progress
 and a route that gains two centimetres between every obstacle can refill it
 forever.
 
+## 2026-08-18 — the readouts become icons, and move up
+
+**The words were being sliced in half.** On a portrait phone the cat pill was
+clipped to 34vw and the flight strip to 30vw, so "fed 100% · hydrated 100%"
+became "fed 100% · hydrated…" and half a flight number went with it. Measured
+on a 390px screen: the cat pill ended at 138px and the strip began at 137. They
+were overlapping.
+
+Both readouts are icons and numbers now. A bowl, a droplet, a litter tray when
+it needs one, a person for the headcount. Nobody needs the word "hydrated" next
+to a picture of water, and an empty bowl pulses red instead of announcing
+itself in a sentence too long to finish reading.
+
+**And in portrait the flight strip gets its own row.** Three things do not fit
+across 390px, and clipping the least-fitting one was the wrong answer. It drops
+below the pills, full width, and the aircraft type code comes back because
+there is finally room for it. Landscape has the width for three lanes and keeps
+them.
+
+**Both pills sit at the top on desktop too**, where the eye is, rather than
+along the bottom edge where browser chrome creeps up.
+
 ## 2026-08-18 — the room warms up before you walk in
 
 Metro's idea, and the right one: the first few seconds inside were stuttery,

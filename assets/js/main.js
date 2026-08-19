@@ -1106,12 +1106,24 @@ function applyCatState(s) {
   const pct = (v) => `${Math.round(v * 100)}%`;
   const well = (v) => v < 0.4 ? "crit" : v < 0.75 ? "low" : "";
   const dirty = (v) => v > 0.85 ? "crit" : v > 0.6 ? "low" : "";
+  /* Icons, not words. "fed 100% · hydrated 100%" was being sliced in half by
+     the ellipsis on a portrait phone, and an empty bowl announced itself in a
+     sentence nobody could finish reading. A bowl and a droplet say the same
+     thing in a tenth of the width, and an empty one just pulses red. */
+  const ICON = {
+    food: '<svg class="hud-i" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.8 7.4h12.4a6.2 6.2 0 0 1-12.4 0z"/><circle cx="5.6" cy="5" r="1.35"/><circle cx="9.4" cy="4.4" r="1.15"/><circle cx="12" cy="5.4" r=".95"/></svg>',
+    water: '<svg class="hud-i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.6c2.6 3.4 4.2 5.6 4.2 7.4a4.2 4.2 0 0 1-8.4 0C3.8 7.2 5.4 5 8 1.6z"/></svg>',
+    litter: '<svg class="hud-i" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 5.4h12l-1.3 8.2a.9.9 0 0 1-.9.8H4.2a.9.9 0 0 1-.9-.8z"/><rect x="1.1" y="3.4" width="13.8" height="1.9" rx=".9"/></svg>',
+  };
+  const meter = (icon, cls, v, title) =>
+    `<span class="hud-m ${cls}" title="${title}">${ICON[icon]}${pct(v)}</span>`;
+  // an empty bowl is the urgent case, so it overrides the decay colour
+  const foodCls = (d.hungry && d.food <= 0.05) ? "crit" : well(d.fed);
+  const waterCls = (d.thirsty && d.water <= 0.05) ? "crit" : well(d.hydrated);
   $("#cat-meters").innerHTML =
-    `fed <span class="${well(d.fed)}">${pct(d.fed)}</span>` +
-    ` · hydrated <span class="${well(d.hydrated)}">${pct(d.hydrated)}</span>` +
-    (d.litter > 0.5 ? ` · litter <span class="${dirty(d.litter)}">${pct(d.litter)}</span>` : "") +
-    ((d.hungry && d.food <= 0.05) ? ` · <span class="crit">food bowl empty!</span>` : "") +
-    ((d.thirsty && d.water <= 0.05) ? ` · <span class="crit">water bowl empty!</span>` : "");
+    meter("food", foodCls, d.fed, (d.hungry && d.food <= 0.05) ? "the food bowl is empty" : "fed") +
+    meter("water", waterCls, d.hydrated, (d.thirsty && d.water <= 0.05) ? "the water bowl is empty" : "hydrated") +
+    (d.litter > 0.5 ? meter("litter", dirty(d.litter), d.litter, "the litter box") : "");
 }
 setInterval(() => { if (catState) applyCatState(catState); }, 60000);  // re-check the timers
 
