@@ -4,6 +4,28 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-08-19 — 40 MB of models nothing was loading
+
+Housekeeping, asked for directly. Worth being clear about what it does and
+does not do: **the site was never fetching these, so this is not a speed
+win.** It is a tidier tree and a smaller clone.
+
+- `assets/models/` held 36 GLBs, 42 MB. The live world loads exactly **seven**
+  — the four scanned arcade cabinets and the three smoking-corner props
+  (world.js:5421-5427, the only two `GLTFLoader` call sites in the codebase).
+- The other 29 (40 MB) were referenced only by **`assets/js/babylon-bedroom.js`**,
+  the paused Babylon.js migration of the bedroom. **Nothing imports that file
+  and no HTML loads it** — Babylon itself isn't even on the page. It is why
+  every one of these looked "used" to a grep.
+- Verified by watching the network rather than by reading code: on a full
+  load the browser requests those seven GLBs, all 200, and asks for nothing
+  else. Deleting files the page never requests cannot change what it draws.
+- Removed with `git rm`, so every one of them is still in history and can come
+  back with `git checkout <commit> -- <path>` if a model is ever wanted again.
+- `babylon-bedroom.js` itself is LEFT IN PLACE — it is a paused migration, not
+  a 3D asset, and that call isn't this job's to make. Flagged instead: 281 KB,
+  dead, and now pointing at 29 files that no longer exist.
+
 ## 2026-08-19 — the wall art stops repainting the screen
 
 Same day, same complaint: still choppy on a desktop. The lights were the
