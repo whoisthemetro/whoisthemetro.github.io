@@ -600,17 +600,19 @@ const bartender = new Bartender(world.scene, world.barInfo, {
 // because picking between them meant seeing them in this room's own light,
 // and that's worth being able to do again.
 const GUIDE_FORM = new URLSearchParams(location.search).get("form") || "bat";
-/* She is louder in a headset than she is on a screen, and it isn't the mix.
+/* How loud she is, everywhere.
 
-   On speakers her voice arrives from across the room with the room's own
-   sound around it; in a Quest it's two drivers a few centimetres from your
-   ears with nothing between, and she stands close enough to talk to. Same
-   gain, much less air.
+   ONE number, on purpose. The first pass at this turned her down in a
+   headset only, on the theory that a Quest is two drivers a few centimetres
+   from your ears and a desktop is a room — true, but it made her level a
+   per-platform argument, and "turn Trinity down" is not a per-platform
+   request. She is a character with a speaking volume. If she's too loud she
+   is too loud in the bedroom, on a phone and in a headset, and there is one
+   place to change it: here.
 
-   So the headset gets its own level. 0.78 is where she was asked to sit
-   after a session in a Quest — this is a judged number, not a derived one,
-   and the only place it can be judged is with the thing on your head. */
-const VR_VOICE = 0.78;
+   A judged number, not a derived one — the only way to set it is to stand in
+   the room and listen to her. */
+const VOICE_LEVEL = 0.5;
 
 const guide = new Guide(world.scene, { x: 0.2, z: 0.9, yaw: 0.80, name: "Trinity", form: GUIDE_FORM }, {
   greet: bedroomSound(() => { try { beep(587, 0.08, "sine", 0.03); setTimeout(() => beep(880, 0.09, "sine", 0.028), 95); } catch (e) {} }),
@@ -647,7 +649,7 @@ const guide = new Guide(world.scene, { x: 0.2, z: 0.9, yaw: 0.80, name: "Trinity
   // them along the bottom of the screen as well was just saying it twice.
   // (portrait phones get neither — the card is off there and she's audible,
   // which is the trade that screen size buys.)
-  say: (line, clip) => speak(line, { clip, volume: inVR() ? VR_VOICE : 1 }),
+  say: (line, clip) => speak(line, { clip, volume: VOICE_LEVEL }),
 });
 
 

@@ -97,12 +97,13 @@ await wait(1500);
 check("a mimed line asks for the card", say.wasMimed() === true, JSON.stringify(say.voiceDiag()));
 FETCH_MODE = "ok";
 
-// 6. the headset asks for a quieter Trinity, and the gain actually gets it —
-// she sits a few centimetres from your ears in a Quest, not across the room
+// 6. her level actually reaches the gain node. one number sets how loud she
+// is on every platform (VOICE_LEVEL in main.js), and this is the one part of
+// that which can silently do nothing.
 say.stopSpeaking(); gains.length = 0;
-say.speak("quieter in here.", { clip: "aaaa1111", volume: 0.78 });
+say.speak("quieter in here.", { clip: "aaaa1111", volume: 0.5 });
 await wait(200);
-check("volume reaches the gain node", gains.length === 1 && gains[0] === 0.78, `gains=${JSON.stringify(gains)}`);
+check("volume reaches the gain node", gains.length === 1 && gains[0] === 0.5, `gains=${JSON.stringify(gains)}`);
 
 // 7. a caller with no clip at all still gets the synth (unchanged)
 say.stopSpeaking(); synthCalls.length = 0;

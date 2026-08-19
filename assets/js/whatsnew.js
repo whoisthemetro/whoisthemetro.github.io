@@ -25,7 +25,7 @@ export const WHATS_NEW = [
   {
     date: "2026-08-19",
     items: [
-      "trinity is quieter in a headset. she was talking right into your ears in there",
+      "trinity talks at a normal volume now, everywhere — she was too loud on every screen and in the headset, not just one of them",
       "in a headset, the computer, the radio and the look-builder all open properly now. a panel appears in front of you and you point at it — no more being told to go and find a flat screen",
       "the radio has a real power button in there too, and scans both ways. you don’t have to walk the whole dial round to switch it off any more",
       "close a panel when you’re done, or just walk away from it — it lets go on its own",

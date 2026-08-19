@@ -4,6 +4,22 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-08-19 — one volume, everywhere
+
+- Same day as "Trinity, quieter in a headset", and a correction of it. That
+  change turned her down in VR only, which made her level a per-platform
+  argument — and "turn Trinity down" was never a per-platform request. She is
+  a character with a speaking volume: if she's too loud she's too loud in the
+  bedroom, on a phone and in a Quest.
+- `VR_VOICE` is gone. `VOICE_LEVEL = 0.5` in main.js is the one number, read
+  per line at `fx.say`, applied on every platform. Anyone changing how loud
+  she is changes it in one place and is done.
+- 0.5 is a judged number. The only way to set it is to stand in the room and
+  listen to her.
+- Checked headless through the real `guide.speak` → `fx.say` → say.js path on
+  a desktop viewport and a phone viewport, each with `presenting()` false and
+  true: 0.5 in all four, read off the gain node the graph is actually handed.
+
 ## 2026-08-19 — people stop looking like stickers
 
 **The fix for the silhouette bug worked and looked awful.** Every avatar colour
