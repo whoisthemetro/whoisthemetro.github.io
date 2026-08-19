@@ -129,6 +129,23 @@ Seven things the room taught us, all now in CLAUDE.md's three.js section:
 - **Don't spawn someone inside the furniture.** The arrival step was 1.2 m from
   the first lamp post, so you materialised with a hood filling the corner of
   the frame. The first lamp now starts 5.2 m in.
+## 2026-08-19 — put the models back, /wip/ was using them
+
+Correction to the entry below, same day. **That deletion was wrong and it
+broke a live page.**
+
+- `/wip/` — the paused Babylon bedroom, live, linked from README.md and
+  robots-disallowed — loads 29 of those GLBs through
+  `assets/js/babylon-bedroom.js`. It went to **21 GLBs 404ing**.
+- The mistake was the search, not the reasoning. `grep` over `assets/js/` and
+  root `*.html` finds nothing, because **`wip/index.html` is a subdirectory
+  page** and was never in the glob. `babylon-bedroom.js` looked orphaned; it
+  is loaded by `wip/index.html:273`.
+- The lesson that generalises: **prove an asset is unused by watching the
+  network on every PAGE the site serves, not by grepping the code.** There are
+  nine HTML entry points here, not one. `find . -name "*.html"` is the list.
+- All 36 GLBs restored. `/wip/` works again.
+
 ## 2026-08-19 — 40 MB of models nothing was loading
 
 Housekeeping, asked for directly. Worth being clear about what it does and
