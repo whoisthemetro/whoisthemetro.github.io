@@ -76,6 +76,65 @@ function softGlow() {
   return new THREE.CanvasTexture(c);
 }
 
+/* ---------------- making a person legible in an unlit corner ----------------
+   ALL room light here comes from the window, so a Lambert body standing where
+   the window can't reach renders pure black — a peer becomes a silhouette with
+   floating eyes, because the face and the chest logo are Basic and light
+   themselves.
+
+   The first fix for that was an EMISSIVE floor: every colour emitted a share
+   of itself. It worked and it looked awful, and the reason is worth keeping.
+   Emissive is CONSTANT ACROSS THE SURFACE. A figure carrying enough of it to
+   read in the dark has the same value on its chest, its shoulders and under
+   its chin — no gradient anywhere — so it stops looking like an object with
+   light falling on it and starts looking like a sticker pasted on the room.
+   The problem was never that it glowed too brightly. It's that it was FLAT.
+
+   What replaces it is two terms that both vary over the body, so whatever
+   they add still reads as light:
+
+   1. A HEMISPHERE FILL — a fake sky-above / floor-below bounce, keyed on the
+      world normal. Shoulders and the tops of arms catch more of it than the
+      undersides, which is a gradient, which is form. It multiplies the
+      surface colour, so it keeps being that person's colours.
+   2. A RIM — a fresnel edge that only appears where the surface turns away
+      from you. This is the part that does NOT multiply the colour, and it has
+      to be: a share of near-black is near-black, so the fill alone leaves a
+      black tee invisible. The rim traces the outline instead, which is enough
+      to read a person against a dark room without lighting them up.
+
+   Both are cheap, neither is a light (nothing to leak through a wall, nothing
+   in the light budget), and one shared program serves every avatar in the
+   room. Avatars are built after buildWorld on purpose, so the toon pass never
+   touches these materials and the injection survives. */
+const AMB_SKY = 0.34, AMB_GROUND = 0.07;      // fake bounce, top vs underside
+const RIM_POW = 2.4, RIM_STRENGTH = 0.5;      // edge falloff, edge brightness
+
+function litForDarkRooms(mat) {
+  mat.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace("#include <common>", "#include <common>\nvarying vec3 vAvNormalW;")
+      .replace("#include <beginnormal_vertex>",
+               "#include <beginnormal_vertex>\nvAvNormalW = normalize(mat3(modelMatrix) * objectNormal);");
+    shader.fragmentShader = shader.fragmentShader
+      .replace("#include <common>", "#include <common>\nvarying vec3 vAvNormalW;")
+      .replace("#include <opaque_fragment>", `
+        // sky-above / floor-below bounce: a gradient down the body, not a wash
+        float avUp = normalize(vAvNormalW).y * 0.5 + 0.5;
+        outgoingLight += mix(${AMB_GROUND.toFixed(3)}, ${AMB_SKY.toFixed(3)}, avUp) * diffuseColor.rgb;
+        // the outline. NOT multiplied by the colour — that's the whole point,
+        // a black tee has no colour to take a share of.
+        float avRim = pow(1.0 - clamp(dot(normal, vec3(0.0, 0.0, 1.0)), 0.0, 1.0), ${RIM_POW.toFixed(2)});
+        outgoingLight += avRim * ${RIM_STRENGTH.toFixed(3)} * mix(vec3(0.72, 0.80, 1.0), diffuseColor.rgb, 0.45);
+        #include <opaque_fragment>`);
+  };
+  // every avatar material runs the same injected code, so they must all share
+  // ONE compiled program — without this three.js compiles a fresh one per
+  // material and a room full of peers pays for every colour they're wearing
+  mat.customProgramCacheKey = () => "avatar-dark-room-v1";
+  return mat;
+}
+
 export function buildAvatarFigure(spec = {}) {
   const s = { ...DEFAULT_SPEC, ...spec };
   const group = new THREE.Group();
@@ -84,39 +143,10 @@ export function buildAvatarFigure(spec = {}) {
   // one material per colour: a figure is ~20 meshes sharing four or five
   // colours, and every peer in the room builds one of these
   const mats = new Map();
-  /* Every body part is Lambert, and in this world ALL room light comes from
-     the window. Stand where the window doesn't reach and a Lambert body
-     renders pure black — which is how a peer ends up as a silhouette with
-     nothing but floating eyes, because the face and the logo are Basic and
-     light themselves. A person is the one thing in here that must be legible
-     from anywhere.
-
-     So each colour carries an EMISSIVE floor of itself. It costs no light
-     budget (it isn't a light), it can't leak through a wall, and it survives
-     the toon pass — the same trick the bathroom tile uses for its corners.
-     Low enough that real light still does the shading and the figure keeps
-     its form; high enough that a body in a dark corner still reads as that
-     person's colours. */
-  // a share of the colour, PLUS a small flat lift. the share alone leaves dark
-  // clothing dark (34% of near-black is still near-black), and a black tee in
-  // an unlit corner is the silhouette problem all over again. the flat part is
-  // what keeps the shape readable; the share is what keeps it that person's
-  // colour rather than a uniform grey.
-  const FLOOR_MUL = 0.30, FLOOR_ADD = 0.075;
-  const floorOf = (c) => {
-    const col = new THREE.Color(c);
-    col.setRGB(Math.min(1, col.r * FLOOR_MUL + FLOOR_ADD),
-               Math.min(1, col.g * FLOOR_MUL + FLOOR_ADD),
-               Math.min(1, col.b * FLOOR_MUL + FLOOR_ADD));
-    return col;
-  };
   const lam = (c) => {
     const k = String(c);
     let m = mats.get(k);
-    if (!m) {
-      m = track(new THREE.MeshLambertMaterial({ color: c, emissive: floorOf(c) }));
-      mats.set(k, m);
-    }
+    if (!m) { m = track(litForDarkRooms(new THREE.MeshLambertMaterial({ color: c }))); mats.set(k, m); }
     return m;
   };
 

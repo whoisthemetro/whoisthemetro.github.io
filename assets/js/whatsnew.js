@@ -25,6 +25,7 @@ export const WHATS_NEW = [
   {
     date: "2026-08-19",
     items: [
+      "people look like people in the dark now. standing in an unlit corner used to flatten you into a cardboard cut-out — you get proper light and shadow down your body instead, and an edge that keeps you readable",
       "trinity talks at a normal volume now, everywhere — she was too loud on every screen and in the headset, not just one of them",
       "in a headset, the computer, the radio and the look-builder all open properly now. a panel appears in front of you and you point at it — no more being told to go and find a flat screen",
       "the radio has a real power button in there too, and scans both ways. you don’t have to walk the whole dial round to switch it off any more",
