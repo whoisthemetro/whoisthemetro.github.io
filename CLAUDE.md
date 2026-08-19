@@ -80,6 +80,23 @@ At the end of buildWorld, every Lambert/Standard material is swapped for `MeshTo
   backend finish() reported 6.9 Mpx as costing the same as 1.7 Mpx. Also warm
   every material to completion before timing or recompiles land inside the
   timed window and invert your result.
+- **A Shadertoy piece worn as a material is priced per SCREEN PIXEL.** The
+  fourteen acoustic slabs ran their fragment shaders over every pixel they
+  covered, every frame — 47% of a frame at the spawn view, and 61 ms (16 fps)
+  standing at the desk where the gallery wall fills the view. None of it
+  bought detail you can see on a half-metre slab. Bake each piece into its own
+  small render target and wear the texture (`shaderbake.js`): cost stops
+  scaling with resolution or standing distance. Rate-limit it (20 Hz looks
+  identical to 120 for generative art), budget it (2 panels per frame,
+  round-robin, so N panels can never spike one frame), gate it on visibility,
+  and paint every target once at build so none is ever blank. Tag the target
+  `SRGBColorSpace` or the round trip shifts every colour. **Get the distance
+  gate right**: at 18 m the bake made the ARCADE slower than before, cheerfully
+  repainting bedroom panels 12 m away through a doorway.
+- **Measure at the pixel ratio the user actually has.** dpr 2 is four times the
+  fragments of dpr 1 and every Retina Mac runs it. The spawn view was 3.0 ms at
+  dpr 1 and 19.4 ms at dpr 2 — the difference between "fine" and 51 fps, and
+  the whole problem is invisible if you profile at dpr 1.
 - **You cannot fix that by switching lights off, because changing the light
   COUNT recompiles every shader in the scene.** The fix is a FIXED bank of
   slots that real lights are copied into each frame (`lightpool.js`) — count

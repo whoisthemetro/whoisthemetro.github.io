@@ -4,6 +4,47 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-08-19 — the wall art stops repainting the screen
+
+Same day, same complaint: still choppy on a desktop. The lights were the
+biggest single cost but they were not the only one.
+
+- **Measure the thing you are actually running.** At dpr 1 the spawn view
+  costs 3.0 ms. At dpr 2 — which is what any Retina Mac runs — it cost
+  **19.4 ms, about 51 fps.** That is 6.5x for 4x the pixels, which is the
+  signature of fragment cost, and it is invisible unless you measure at the
+  pixel ratio the user actually has.
+- **The acoustic slabs were being evaluated per SCREEN PIXEL.** Fourteen
+  hand-written Shadertoy pieces, worn as materials on the slabs, so each one
+  ran over every pixel it covered, every frame, forever. **47% of a frame at
+  spawn.** The worst spot in the room was the desk: **61 ms, 16 fps**, because
+  from there the gallery wall fills the view.
+- None of that bought any visible detail. A slab is half a metre wide.
+- **So each piece now paints its own small texture and the slab wears that**
+  (`shaderbake.js`) — the same trick the KuKo rug already used. Cost stops
+  scaling with resolution or with how close you stand, and becomes fixed.
+  512 px tall on desktop, 256 on touch; at 288 the big east panel was
+  visibly soft up close, and 512 was the point where an A/B at 1:1 pixels
+  stopped showing a difference.
+- Three limits keep it honest: it steps at **20 Hz** (generative art at 20 fps
+  looks exactly as alive as at 120), at most **2 panels redraw per frame**
+  round-robin so fourteen can never spike one frame, and **a panel you can't
+  see doesn't redraw at all**. Every panel is painted once at build time so
+  none is ever blank.
+- **Get the radius right or you make it worse.** The first cut used 9 m, then
+  18 m — and at 18 m the ARCADE got *slower* (4.26 -> 5.67 ms), because it was
+  faithfully repainting bedroom panels from 12 m away through a doorway. The
+  bedroom is ~8.5 m corner to corner, so 9 m keeps every panel live from
+  anywhere inside it and dead from anywhere outside.
+- The render target is tagged `SRGBColorSpace` so the trip through a texture
+  encodes and decodes back to the same pixels. Verified against the live
+  shader at 1:1 — the colours match.
+- **Result at dpr 2:** spawn **24.2 -> 8.2 ms**, desk **61.3 -> 8.0 ms**,
+  gallery **23.1 -> 8.5**, doorway **13.5 -> 6.6**, arcade **5.0 -> 4.5**.
+  Every position in the room now sits inside the 120 fps budget. 0 shader
+  recompiles, no page errors, and 9 of 15 panels repainting at any moment —
+  the other 6 being exactly the ones behind you.
+
 ## 2026-08-19 — one bank of lights, refilled every frame
 
 Desktop was asked to run smoother. It measured as light-bound, not

@@ -5340,7 +5340,7 @@ renderer.setAnimationLoop(() => {
     arcadeVrFrame(performance.now());
     vrArcade.tex.needsUpdate = true;
   }
-  world.tick(dt, controls.pos);
+  world.tick(dt, controls.pos, camera);   // camera so the wall art knows what you can see
 
   /* The bedroom's two CONTINUOUS beds — its room tone and the rain on its
      window — stop at the arcade wall. Every other room turns these off on the

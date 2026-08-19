@@ -26,6 +26,7 @@ import { rand, IS_TOUCH } from "./util.js";
 import { getSunPosition, getMoonPosition, getMoonIllumination, getStarPosition, getPlanetPositions, STARS } from "./astro.js";
 import { makeAttractScreen } from "./arcade.js";
 import { SHADER_ART, KUKO_A, KUKO_B, KUKO_IMAGE } from "./shaderart.js";
+import { makeShaderBake } from "./shaderbake.js";
 import { createGraffiti } from "./graffiti.js";
 import { buildRoom as buildStudioRoom } from "./studio/room.js";
 
@@ -2656,6 +2657,13 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
      shaderart.js, one material per slab. the prelude makes vUv stand in
      for gl_FragCoord and pins iMouse, so every piece renders in the
      slab's own aspect. --- */
+  /* the gallery pieces don't paint the screen any more — each one paints a
+     small texture of its own and the slab wears that. see shaderbake.js for
+     why (it was 47% of a frame at the spawn view). */
+  const shaderBake = makeShaderBake(renderer, IS_TOUCH
+    ? { px: 256, hz: 12, perFrame: 1, near: 7 }
+    : { px: 512, hz: 20, perFrame: 2, near: 9 });
+
   const TOYS = [];
   const makeToy = ({ frag, glsl3 }) => {
     const uniforms = {
@@ -2845,9 +2853,13 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
       } else {
         ps.uniforms.iResolution.value.set(pw * 1000, ph * 1000, 1);
       }
-      const face = new THREE.Mesh(new THREE.PlaneGeometry(pw - 0.02, ph - 0.02), ps.mat);
+      // the slab wears the BAKED texture; the shader itself only ever draws
+      // into that little target, never straight at the screen
+      ps.baked = ps.baked || shaderBake.add(ps.mat, pw, ph);
+      const face = new THREE.Mesh(new THREE.PlaneGeometry(pw - 0.02, ph - 0.02), ps.baked.faceMat);
       face.position.copy(center).addScaledVector(wall.normal, 0.041);
       face.lookAt(face.position.clone().add(wall.normal));
+      ps.baked.mesh = face;
       add(face);
     }
     panelIdx++;
@@ -2864,16 +2876,24 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     blockers.push(slab);
     ledRim(slab, 0.55, 1.2);
     if (fx4 === 2.2) {
-      const face = new THREE.Mesh(new THREE.PlaneGeometry(0.53, 1.18), sunGridMat);
+      const b2 = shaderBake.add(sunGridMat, 0.53, 1.18);
+      const face = new THREE.Mesh(new THREE.PlaneGeometry(0.53, 1.18), b2.faceMat);
       face.position.set(fx4, 1.6, ZF + 0.079);
+      b2.mesh = face;
       add(face);
     }
     if (fx4 === -2.32) {   // the raymarched sunset rides the other window-wall slab
-      const face = new THREE.Mesh(new THREE.PlaneGeometry(0.53, 1.18), sunsetMat);
+      const b3 = shaderBake.add(sunsetMat, 0.53, 1.18);
+      const face = new THREE.Mesh(new THREE.PlaneGeometry(0.53, 1.18), b3.faceMat);
       face.position.set(fx4, 1.6, ZF + 0.079);
+      b3.mesh = face;
       add(face);
     }
   }
+  // nothing on a wall should ever be blank, including pieces you haven't
+  // looked at yet, so every target gets painted once, here, after the last
+  // one is registered
+  shaderBake.warm(0);
 
   /* --- the window (faces south over LA) --- */
   const WIN = { w: 3.6, h: 1.4, cx: 0, cy: 1.6 };
@@ -8545,8 +8565,9 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
   }
   dockVacuum();
 
-  function tick(dt, ppos) {
+  function tick(dt, ppos, cam) {
     elapsed += dt;
+    if (cam) shaderBake.tick(dt, elapsed, cam);   // repaint a couple of wall pieces
     for (const m of cabinetMixers) m.update(dt);   // the pac cabinet's attract loop
     tickNeuro(elapsed, dt);
     tickKuko(elapsed, dt, ppos);
@@ -10299,7 +10320,7 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     setLivePlanes: (v) => { livePlanes = !!v; },
     // the plane hunt: the window is a shooting gallery if your aim is true
     glassHit: glass,
-    setRoomCull, cullAdd,
+    setRoomCull, cullAdd, _shaderBake: shaderBake,
     planeUp: () => planeT >= 0 && !planeShot,
     jetCanvas: () => jetXY(plane01, planeDir),   // (tests aim with this)
     // (u, v) is the raycast uv on the glass → sky-canvas pixels, with
