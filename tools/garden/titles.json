@@ -1,14 +1,13 @@
 {
-  "_comment": "Titles for the stakes in the beds, keyed by track id (the slug of the source filename). The catalog is GENERATED, so a title typed straight into garden-catalog.js is lost the next time that track is re-encoded — this file is where a name survives. Anything without an entry falls back to its filename, cleaned up.",
-
-  "6-audio-0004-2025-09-13-184254": "audio 0004",
+  "_comment": "Titles for the stakes in the beds, keyed by track id (the slug of the source filename). The catalog is GENERATED, so a title typed straight into garden-catalog.js is lost the next time that track is re-encoded - this file is where a name survives. Edit a name here and run `node tools/garden/encode.mjs --reshape` to write it through. Keep them to ~14 characters: the stake label truncates past that. Anything without an entry falls back to its filename, cleaned up.",
+  "6-audio-0004-2025-09-13-184254": "gate rattle",
   "portal": "portal",
   "proteus": "proteus",
   "qd-beads": "qd beads",
   "rachael-alert": "rachael alert",
   "slow-mo-guitar-track": "slow mo guitar",
-  "sound-design-6": "sound design 6",
-  "sound-design-11": "sound design 11",
-  "sound-design-12": "sound design 12",
+  "sound-design-6": "self-patched",
+  "sound-design-11": "wavefolder",
+  "sound-design-12": "sample & hold",
   "tasty-chips": "tasty chips"
 }

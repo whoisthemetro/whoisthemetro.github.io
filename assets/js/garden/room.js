@@ -324,11 +324,19 @@ export function buildGarden(opts = {}) {
         g.fillRect(0, Math.random() * h, w, 1);
       }
       g.strokeStyle = "#3d3225"; g.lineWidth = 4; g.strokeRect(2, 2, w - 4, h - 4);
-      g.font = "700 46px ui-monospace, Menlo, monospace";
+      // a name SHRINKS to fit, it doesn't get cut. Truncating first turned
+      // "slow mo guitar" into "SLOW MO GUIT" on the stake, and a real track
+       // name losing its last word is worse than it being a bit smaller.
+      // Only after the type is as small as it can usefully go does it clip.
+      const FONT = (px) => `700 ${px}px ui-monospace, Menlo, monospace`;
+      const budget = w - 130;               // the duration lives in that 130
       g.textBaseline = "middle";
       g.fillStyle = "#cbbfa4";
       let t = (track.title || track.id).toUpperCase();
-      while (g.measureText(t).width > w - 130 && t.length > 4) t = t.slice(0, -2);
+      let px = 46;
+      g.font = FONT(px);
+      while (g.measureText(t).width > budget && px > 28) { px -= 2; g.font = FONT(px); }
+      while (g.measureText(t).width > budget && t.length > 4) t = t.slice(0, -1);
       g.fillText(t, 18, h / 2);
       const m = Math.floor(track.dur / 60), s = Math.round(track.dur % 60);
       g.font = "600 34px ui-monospace, Menlo, monospace";
