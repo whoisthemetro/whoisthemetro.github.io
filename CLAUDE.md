@@ -224,6 +224,21 @@ experiment `controls.js` from a movement job, deploying the worst-measured
 tuning of a change nobody had finished. Nothing was lost, but the live site ran
 someone's scratch work and the commit message said nothing about it.
 
+**And `git reset --hard origin/main` in this clone will silently DELETE the other
+chat's finished commit.** This happened on 2026-08-19: a models job committed,
+pushed a rebased copy, then reset the shared working tree to `origin/main` — which
+threw away an R2-tooling commit that was sitting on top, files and all. The push
+that followed had no conflict to report, because from git's point of view there
+was nothing there any more. Nothing was actually lost (the object survives in the
+reflog, and `git cherry-pick <sha>` puts it back), but you only find it by
+noticing your own commit missing from `git log`.
+
+So before any reset, `git log --oneline origin/main..HEAD` and look at what you're
+about to discard. If there's a commit there you didn't write, it's the other
+chat's and a reset is the wrong tool — rebase or leave it alone. And if you find
+your own commit gone, `git reflog` has it: cherry-pick it back on top rather than
+redoing the work.
+
 So: **stage by path, never by wildcard.** `git add <the files this job touched>`.
 Before committing, `git status --short` and account for every line — anything you
 don't recognise belongs to the other chat, and it is not yours to commit. Note
