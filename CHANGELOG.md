@@ -50,7 +50,36 @@ worse browser. The catalog is plain data, so the decks can pull from it later.
   goes in with that switch-on, not with this commit — until then there is
   nothing for a visitor to notice.
 
-Five things the room taught us, all now in CLAUDE.md's three.js section:
+Then ten real tracks went in (27 minutes, 29 MB) and the room needed more work:
+
+- **The garden is SOLO.** Nobody is ever rendered out there, not even another
+  real visitor walking the path at the same time — presence still flows, we
+  just don't build a body for it. The headcount pill goes too: it answers a
+  question this room isn't asking. Every other space here is somewhere you
+  might run into somebody; this one is somewhere you go to listen.
+- **A peak envelope of mastered material is a rectangle.** Ten loudness-matched
+  tracks gave ten identical hedges — the plant was showing the limiter's work,
+  not the music's. The shape is now `0.4 * peak + 0.6 * RMS`, **normalized per
+  track** with a `^0.72` lift. Per-track is the right call precisely BECAUSE
+  everything is loudness-matched: absolute height across plants encodes crest
+  factor, not loudness, so spending the full height on each piece's own dynamics
+  costs nothing and buys everything. Now `proteus` swells, `rachael alert` has
+  its silent intro, `portal` and `tasty chips` fade out.
+- **How long the row is, is how long the track is.** Every plant used to be
+  2.05 m wide whether it was 0:32 or 6:42. Duration is real information and the
+  bed is the only place a visitor can read it from twenty metres away. `sqrt`
+  scaled, 1.15–3.0 m, with reed count following at 30/metre so planting density
+  stays even. This is the thing that makes the garden read as varied.
+- `tools/garden/titles.json` — the catalog is generated, so a name typed into it
+  dies on the next encode. Names live here and are re-applied every run.
+- `--reshape` recomputes every planted waveform from the encode already on disk,
+  no re-encoding and no masters needed.
+- Encoded at **128k AAC, not the lo-fi Metro offered to accept** — 27 minutes is
+  26 MB against R2's 10 GB, so the constraint that made low quality sound
+  necessary doesn't exist. Crushing sound design to save 6 MB would have been
+  throwing away transients for nothing.
+
+Seven things the room taught us, all now in CLAUDE.md's three.js section:
 
 - **The toon pass does not carry `vertexColors`.** It rebuilds every
   Lambert/Standard material from a fixed field list, and `vertexColors` isn't
@@ -70,6 +99,13 @@ Five things the room taught us, all now in CLAUDE.md's three.js section:
   level meter pegs at 1.0 on anything louder than a whisper, so the plant sat
   at full brightness and never breathed. `getByteTimeDomainData`, centred at
   128, is the actual amplitude.
+- **A shape with no light on ANY face reads as a hole, not an object.** The lamp
+  hoods sat above their own bulbs with the spot pointing down and away, so
+  nothing in the room lit them — a black wedge cut out of the sky whenever you
+  stood near a lamp. Emissive, again: the fixture lifts its own floor.
+- **Don't spawn someone inside the furniture.** The arrival step was 1.2 m from
+  the first lamp post, so you materialised with a hood filling the corner of
+  the frame. The first lamp now starts 5.2 m in.
 ## 2026-08-19 — 40 MB of models nothing was loading
 
 Housekeeping, asked for directly. Worth being clear about what it does and

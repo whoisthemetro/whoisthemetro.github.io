@@ -84,8 +84,10 @@ export function buildGarden(opts = {}) {
   parent.add(root);
   const add = (m) => { root.add(m); return m; };
 
-  const REEDS = 64;            // reeds per plant = teeth in the waveform
-  const SPACING = 3.6;         // metres between plants on the same side
+  // reeds per plant scale with the row's length so planting density stays even
+  // — a long piece gets more teeth, not wider-spaced ones
+  const REED_DENSITY = 30;     // reeds per metre of row
+  const SPACING = 4.0;         // metres between plants on the same side
   const PATH_W = 2.9;          // gravel width (in z)
   const BED_D = 4.4;           // each bed's depth (in z)
   const BED_Y = 0.34;          // how high the soil sits above the path
@@ -247,6 +249,14 @@ export function buildGarden(opts = {}) {
 
     // 256 buckets down to REEDS, taking the loudest in each — the plant keeps
     // the track's peaks, not its average
+    /* HOW LONG the row is IS how long the track is. Six minutes should not look
+       like thirty seconds — duration is real information and this is the only
+       place a visitor can read it from twenty metres away. sqrt, not linear, or
+       a 6:42 piece would be eight times the width of a 0:32 one and the bed
+       would be one hedge and nine sprouts. */
+    const LEN = Math.max(1.15, Math.min(3.0, 1.1 + 1.9 * Math.sqrt((track.dur || 60) / 400)));
+    const REEDS = Math.max(32, Math.min(96, Math.round(LEN * REED_DENSITY)));
+
     const pk = track.peaks || [];
     const heights = [];
     for (let r = 0; r < REEDS; r++) {
@@ -255,8 +265,6 @@ export function buildGarden(opts = {}) {
       for (let j = a; j < Math.max(b, a + 1); j++) mx = Math.max(mx, pk[j] || 0);
       heights.push(0.22 + (mx / 100) * 1.24);       // 22 cm floor so silence still sprouts
     }
-
-    const LEN = 2.05;                                // how far the row runs along the path
     const geos = [];
     const spans = [];                                // vertex range per reed, for the playhead
     let cursor = 0;
@@ -418,14 +426,21 @@ export function buildGarden(opts = {}) {
      fixture at home (the other being a distance leash you have to re-check
      every time either end moves). */
   const lampMat = new THREE.MeshLambertMaterial({ color: 0x2a2622, emissive: 0x0c0a08 });
+  // the hood is lit by NOTHING: its own spot points down and away from it, and
+  // no other light in the room reaches up there. Left on the post material it
+  // read as a black wedge cut out of the sky whenever you stood near a lamp.
+  // Emissive is the fix — a material that lifts its own floor, no light needed.
+  const hoodMat = new THREE.MeshLambertMaterial({ color: 0x322b24, emissive: 0x241a12 });
   const bulbMat = new THREE.MeshBasicMaterial({ color: 0xffd9a0, fog: false });
   const lampStep = 6.0;
-  for (let x = -HALF + 3, k = 0; x <= HALF - 3; x += lampStep, k++) {
+  // the first lamp starts well in from the arrival step: at -HALF+3 you spawned
+  // with a hood 2 m from your face, filling the corner of the frame
+  for (let x = -HALF + 5.2, k = 0; x <= HALF - 3; x += lampStep, k++) {
     const s = (k % 2) ? 1 : -1;
     const lz = s * (PATH_W / 2 + 0.28);
     const post = add(new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.06, 2.3, 8), lampMat));
     post.position.set(x, 1.15, lz);
-    const hood = add(new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.2, 10), lampMat));
+    const hood = add(new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.2, 10), hoodMat));
     hood.position.set(x, 2.34, lz);
     const bulb = add(new THREE.Mesh(new THREE.SphereGeometry(0.075, 8, 6), bulbMat));
     bulb.position.set(x, 2.2, lz);

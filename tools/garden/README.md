@@ -29,9 +29,32 @@ VBR with `+faststart`, reads 256 peak buckets, and writes the entry into
 node tools/garden/encode.mjs --demo        # 8 placeholder pieces, different shapes
 node tools/garden/encode.mjs --list        # what's planted
 node tools/garden/encode.mjs --rm <id>     # dig one up
+node tools/garden/encode.mjs --reshape     # recompute every waveform, no re-encode
 node tools/garden/encode.mjs --raw ...     # skip loudness matching
 node tools/garden/encode.mjs --bitrate 96k ...
 ```
+
+## naming a plant
+
+The catalog is **generated**, so a title typed straight into
+`garden-catalog.js` is lost the next time that track is encoded. Names live in
+`tools/garden/titles.json`, keyed by track id (the slug of the source
+filename), and every encode run re-applies them to everything already planted.
+Rename a track there and run `--reshape` to write it through.
+
+## what the plant's shape actually is
+
+Not a plain peak envelope. A peak envelope of anything mastered pins to the
+ceiling in nearly every bucket, so ten tracks gave ten identical hedges — the
+plant was showing the limiter's work instead of the music's. It's
+`0.4 * peak + 0.6 * RMS`, **normalized per track**, with a `^0.72` lift so
+quiet passages don't vanish into the 22 cm floor.
+
+Per-track normalization is right *because* everything is loudness-matched:
+absolute height across plants would encode crest factor, not loudness, which is
+nothing a listener cares about. And the row's **length** is the track's
+duration (sqrt-scaled, 1.15–3.0 m) — that's the part you can read from twenty
+metres down the path.
 
 Roughly **1 MB per minute** at the default bitrate. Reckon on that when you're
 deciding how much goes in.

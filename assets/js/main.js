@@ -3457,6 +3457,13 @@ let lastMyScope = null;                    // my space last frame, to re-scope g
 function refreshGhostScope() {
   if (!lastPeers) return;
   const scope = myScope();
+  // THE GARDEN IS SOLO. Every other space here is somewhere you might run into
+  // somebody; the garden is somewhere you go to listen, and a stranger walking
+  // the path while you're standing at a plant is the wrong feeling entirely. So
+  // nobody is ever rendered out there — not even another real visitor who has
+  // walked out at the same time. Presence still flows (they're on the channel,
+  // their pose is arriving); we just don't build a body for it.
+  if (scope === "garden") { ghosts.syncPeers(new Map()); return; }
   const here = new Map();
   for (const [uid, meta] of lastPeers) {
     if (peerScope.get(uid) === scope) here.set(uid, meta);
@@ -4773,7 +4780,7 @@ const TERM_COMMANDS = {
     termPrint("the garden", "bright");
     termPrint("\u2500".repeat(34), "dim");
     termPrint(`${n} ${n === 1 ? "plant" : "plants"} \u00b7 ${mins} min of sound design`);
-    termPrint("every one is a track. the tall ones are loud.", "dim");
+    termPrint("every one is a track. long piece, long plant.", "dim");
     termPrint("");
     termPrint("walking you out there now\u2026", "bright");
     enterGarden();

@@ -30,6 +30,8 @@
      --bitrate 128k   AAC bitrate (default 128k)
      --raw            skip loudness matching (already mastered to spec)
      --bed a|b        which side of the path (default: alternates)
+     --reshape        recompute every planted track's waveform from the
+                      encode that's already on disk (no re-encoding)
    ============================================================ */
 
 import { execFile } from "node:child_process";
@@ -42,6 +44,7 @@ const exec = promisify(execFile);
 const ROOT = path.resolve(import.meta.dirname, "../..");
 const OUT_DIR = path.join(ROOT, "assets/audio/garden");
 const CATALOG = path.join(ROOT, "assets/js/garden-catalog.js");
+const TITLES = path.join(import.meta.dirname, "titles.json");
 
 const BINS = 256;          // peak buckets per track = how many teeth the blade has
 const TARGET_LUFS = -16;   // web-standard-ish; podcasts sit here, so do most streams
@@ -160,8 +163,24 @@ async function encode(file, dest) {
     dest]);
 }
 
-// the shape of the plant: decode to cheap mono, bucket into BINS, take the
-// loudest sample in each bucket. That's a waveform's outline.
+/* the shape of the plant: decode to cheap mono, bucket into BINS, and measure
+   each bucket. Three decisions here, and all three came from looking at ten
+   real mastered tracks and finding ten identical hedges.
+
+   1. PEAK ALONE IS A RECTANGLE. A peak envelope of anything mastered pins to
+      the ceiling in nearly every bucket, so the plant shows the limiter's work
+      and not the music's. RMS shows where a piece actually breathes. The blend
+      keeps transients readable (a percussive hit still spikes) while letting
+      dynamics drive the silhouette.
+   2. NORMALIZED PER TRACK. Every track has already been loudness-matched to
+      the same -16 LUFS, so absolute height across plants encodes crest factor
+      — not loudness, and nothing a listener cares about. Scaling each plant to
+      its own maximum spends the full height on the thing that IS informative:
+      this piece's own shape. A silent intro reads as bare soil; a swell reads
+      as a hill.
+   3. A GAMMA LIFT. Quiet passages sit so far down a linear scale that they
+      vanish into the 22 cm floor. ^0.72 pulls them up without flattening the
+      loud half. */
 async function peaks(file) {
   const { stdout } = await exec("ffmpeg", ["-hide_banner", "-loglevel", "error",
     "-i", file, "-ac", "1", "-ar", "8000", "-f", "s16le", "-"],
@@ -170,14 +189,23 @@ async function peaks(file) {
   const out = new Array(BINS).fill(0);
   if (!n) return out;
   const per = n / BINS;
+  const raw = new Array(BINS).fill(0);
   for (let b = 0; b < BINS; b++) {
     const i0 = Math.floor(b * per), i1 = Math.min(n, Math.floor((b + 1) * per));
-    let mx = 0;
+    let mx = 0, sum = 0, cnt = 0;
     for (let i = i0; i < i1; i++) {
-      const v = Math.abs(stdout.readInt16LE(i * 2));
-      if (v > mx) mx = v;
+      const v = stdout.readInt16LE(i * 2) / 32768;
+      const a = Math.abs(v);
+      if (a > mx) mx = a;
+      sum += v * v; cnt++;
     }
-    out[b] = Math.round((mx / 32768) * 100);
+    const rms = cnt ? Math.sqrt(sum / cnt) : 0;
+    raw[b] = mx * 0.4 + rms * 0.6;
+  }
+  const top = Math.max(...raw);
+  if (top <= 0) return out;
+  for (let b = 0; b < BINS; b++) {
+    out[b] = Math.round(Math.pow(raw[b] / top, 0.72) * 100);
   }
   return out;
 }
@@ -218,6 +246,14 @@ async function makeDemo(spec, tmp) {
   return wav;
 }
 
+/* ---------------- titles ----------------
+   The catalog is generated, so a name hand-typed into it dies the next time
+   that track is re-encoded. titles.json is where a name survives. */
+async function readTitles() {
+  try { return JSON.parse(await fs.readFile(TITLES, "utf8")); }
+  catch (e) { return {}; }
+}
+
 /* ---------------- main ---------------- */
 const slug = (s) => path.basename(s).replace(/\.[^.]+$/, "").toLowerCase()
   .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 48) || "track";
@@ -227,6 +263,7 @@ const titleOf = (s) => path.basename(s).replace(/\.[^.]+$/, "")
 async function main() {
   await fs.mkdir(OUT_DIR, { recursive: true });
   const cat = await readCatalog();
+  const titles = await readTitles();
 
   if (has("list")) {
     if (!cat.tracks.length) return console.log("nothing planted yet.");
@@ -236,6 +273,18 @@ async function main() {
       console.log(`  ${t.id.padEnd(22)} ${String(m)}:${String(s).padStart(2, "0")}  ${t.title}`);
     }
     return;
+  }
+
+  if (has("reshape")) {
+    for (const t of cat.tracks) {
+      const f = path.join(OUT_DIR, t.file);
+      try { await fs.access(f); } catch (e) { console.log(`  ${t.id} … no local encode, skipped`); continue; }
+      t.peaks = await peaks(f);
+      if (titles[t.id]) t.title = titles[t.id];
+      console.log(`  ${t.id} … reshaped`);
+    }
+    await writeCatalog(cat.base, cat.tracks);
+    return console.log(`\n${cat.tracks.length} plants re-shaped`);
   }
 
   if (has("rm")) {
@@ -257,7 +306,10 @@ async function main() {
       console.log("nothing to plant. pass some audio files, or --demo for placeholders.");
       return;
     }
-    jobs = files.map((f) => ({ id: slug(f), title: titleOf(f), src: path.resolve(f) }));
+    jobs = files.map((f) => {
+      const id = slug(f);
+      return { id, title: titles[id] || titleOf(f), src: path.resolve(f) };
+    });
   }
 
   for (const j of jobs) {
@@ -284,6 +336,7 @@ async function main() {
     console.log(`${m}:${String(s).padStart(2, "0")}  ${(size / 1048576).toFixed(1)} MB`);
   }
 
+  for (const t of cat.tracks) if (titles[t.id]) t.title = titles[t.id];
   await writeCatalog(cat.base, cat.tracks);
   await fs.rm(tmp, { recursive: true, force: true });
 
