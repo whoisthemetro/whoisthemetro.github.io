@@ -102,7 +102,7 @@ function wireSupabase(name) {
       emitPeers();
     })
     .on("broadcast", { event: "pose" }, ({ payload }) => { if (payload.uid !== me.uid) emitPose(payload.uid, payload); })
-    .on("broadcast", { event: "note" }, ({ payload }) => { if (payload.uid !== me.uid) noteListeners.forEach(fn => { try { fn(payload.uid, payload.i, payload.v); } catch (e) {} }); })
+    .on("broadcast", { event: "note" }, ({ payload }) => { if (payload.uid !== me.uid) noteListeners.forEach(fn => { try { fn(payload.uid, payload.i, payload.v, payload.s); } catch (e) {} }); })
     .on("broadcast", { event: "act" }, ({ payload }) => { if (payload.uid !== me.uid) actListeners.forEach(fn => { try { fn(payload); } catch (e) {} }); })
     .on("broadcast", { event: "chat" }, ({ payload }) => { if (payload.uid !== me.uid) chatListeners.forEach(fn => { try { fn(payload); } catch (e) {} }); })
     .on("broadcast", { event: "arcade" }, ({ payload }) => { if (payload.uid !== me.uid) gameListeners.forEach(fn => { try { fn(payload); } catch (e) {} }); })
@@ -122,7 +122,7 @@ function wireLocal(name) {
       peers.set(m.uid, { name: m.name, color: m.color, outfit: m.outfit || null, lastSeen: Date.now() });
       if (!known) { lastSent = ""; emitPeers(); }   // a newcomer needs our pose now, not when we next move
     } else if (m.type === "pose") { emitPose(m.uid, m); }
-    else if (m.type === "note") { noteListeners.forEach(fn => { try { fn(m.uid, m.i, m.v); } catch (e) {} }); }
+    else if (m.type === "note") { noteListeners.forEach(fn => { try { fn(m.uid, m.i, m.v, m.s); } catch (e) {} }); }
     else if (m.type === "act") { actListeners.forEach(fn => { try { fn(m.payload); } catch (e) {} }); }
     else if (m.type === "chat") { chatListeners.forEach(fn => { try { fn(m.payload); } catch (e) {} }); }
     else if (m.type === "arcade") { gameListeners.forEach(fn => { try { fn(m.payload); } catch (e) {} }); }
@@ -189,10 +189,16 @@ export const presence = {
   onPeers: fn => { peerListeners.add(fn); return () => peerListeners.delete(fn); },
   onPose:  fn => { poseListeners.add(fn); return () => poseListeners.delete(fn); },
   onNote:  fn => { noteListeners.add(fn); return () => noteListeners.delete(fn); },
-  // a key someone pressed — everyone in the room hears it, same voice
-  sendNote(i, v = 0) {
+  /* A key someone pressed — everyone in the room hears it, same voice.
+     `s` is the actual SEMITONE, and it exists because the plaits panel lets
+     you pick a scale and a root: the key index alone stopped being enough
+     to know what note was played, since the listener's own panel would have
+     mapped it somewhere else. Optional, so anything that doesn't care (the
+     cat, the songs) still just sends an index. */
+  sendNote(i, v = 0, s = null) {
     if (!me) return;
     const msg = { uid: me.uid, i, v };
+    if (s != null) msg.s = s;
     if (chan) chan.send({ type: "broadcast", event: "note", payload: msg });
     else bc?.postMessage({ type: "note", ...msg });
   },

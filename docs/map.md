@@ -35,6 +35,7 @@ for python-heredoc edits, so **leave them intact.**
 | The window, room light, astro ceiling | 2527–2920 | `astro.js` |
 | Instruments — e-kit, telecaster, pedalboard, filter treadle | 2957–3375 | `main.js` 1933–2143, `ambience.js` |
 | The desk rig — mixer, monitors, rack, lava lamp, radio | 5288–5760 | `main.js` 1933–2010, `radio.js` |
+| The MIDI keyboard, its PLAITS voice + the panel over it | the `midiKeys` block @6637 (chassis, keybed, button, panel mount) | `synth-panel.js` (all of the UI, the scales, the layout), `ambience.js` (`initPlaits`/`plaitsNote`/`setPlaits`, `PIANO_VOICES`), `main.js` (`synthPress`, `arpTick`, `applySynthHit`, the knob drag) |
 | The cat's corner, dimmer, mix & master neon | 5812–5998 | `cat.js` |
 | **THE ARCADE** — the hall itself, lighting, floorplan | shell @3784, lights @3860, floor plan @4807, bar @4850 | — |
 | The arcade elevator | @4296 | `main.js` (room transitions) |

@@ -28,6 +28,7 @@ import { makeAttractScreen } from "./arcade.js";
 import { SHADER_ART, KUKO_A, KUKO_B, KUKO_IMAGE } from "./shaderart.js";
 import { makeShaderBake } from "./shaderbake.js";
 import { createGraffiti } from "./graffiti.js";
+import { makePanel as makeSynthPanel } from "./synth-panel.js";
 import { buildRoom as buildStudioRoom } from "./studio/room.js";
 import { buildGarden } from "./garden/room.js";
 import { GARDEN_TRACKS } from "./garden-catalog.js";
@@ -6682,6 +6683,38 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     keyResetTimer = setTimeout(() => drawKeys(-1), 180);
   }
 
+  /* --- the synth panel --- */
+  // A button on the controller's left cheek, and the window it opens. Both
+  // hang off midiKeys rather than the desk, because midiKeys is a movable:
+  // pick the keyboard up in the layout editor and the panel goes with it.
+  const synthBtn = new THREE.Mesh(
+    new THREE.BoxGeometry(0.055, 0.012, 0.03),
+    new THREE.MeshLambertMaterial({ color: 0x2a3a4a, emissive: 0x0e2233 }));
+  synthBtn.position.set(-0.42, 0.035, 0.02);      // on the chassis, left of the keys
+  synthBtn.userData.synthBtn = true;
+  midiKeys.add(synthBtn);
+  // a lit strip on the button face, so it reads as a control and not a scuff
+  const synthLed = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.034, 0.008),
+    new THREE.MeshBasicMaterial({ color: 0x2b6f9c }));
+  synthLed.rotation.x = -Math.PI / 2;
+  synthLed.position.set(-0.42, 0.0415, 0.02);
+  midiKeys.add(synthLed);
+
+  const synthPanel = makeSynthPanel();
+  /* Where it sits. Up off the keybed and tilted back toward you, far enough
+     forward of the monitor that the two don't fight — and high enough that
+     looking down at the keys never has the panel in the way, which is the
+     whole reason it isn't a DOM overlay. */
+  synthPanel.group.position.set(0, 0.50, -0.06);
+  synthPanel.group.rotation.x = -0.20;
+  midiKeys.add(synthPanel.group);
+  const setSynthPanelOpen = (on) => {
+    synthPanel.group.visible = !!on;
+    synthLed.material.color.setHex(on ? 0x7ec8ff : 0x2b6f9c);
+    if (on) synthPanel.markDirty();
+  };
+
   desk.position.set(0.2, 0, ZF + 0.49);
   add(desk);
 
@@ -10313,6 +10346,8 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     curtainsClosed: () => curtains.closed,
     pianoMesh: midiKeybed, pressPianoKey,
     pianoVoiceMesh: midiBody,
+    synth: { panel: synthPanel, btn: synthBtn, screen: synthPanel.screen, setOpen: setSynthPanelOpen,
+             isOpen: () => synthPanel.group.visible },
     stompHits, setStompLED, stompIds: Object.keys(stompLEDs),
     // the guitar filter treadle (wah-style lowpass) — see main.js openFilter
     filterPedalHit, setGuitarPedalTilt,

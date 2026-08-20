@@ -572,6 +572,98 @@ and the first one is the one that was actually killing her.
   Chrome with clip fetches broken and asserts `speechSynthesis.speak` is
   never called.
 
+## 2026-08-18 — the keyboard grows a synth
+
+The MIDI controller under the desk was a switch with five sounds behind it.
+It now has **Plaits** in it — Émilie Gillet's twenty-four-engine macro
+oscillator, the same wasm the studio runs — with a panel over the keybed
+carrying every parameter that shapes it, plus an arpeggiator.
+
+**The panel is in the world, not in the DOM,** and that is the whole design
+rather than a preference. A DOM overlay takes the pointer, which means the
+instant the parameters are up the keyboard underneath them stops being
+playable — and playing while you turn a knob is the thing that was asked
+for. It is also invisible in a headset. A canvas on a plane is worked with
+the same crosshair and the same laser as everything else here, so the keys
+answer the whole time it's open (there's a smoke test that stands at the
+desk with the panel up and checks the crosshair still finds the keybed).
+
+**It hangs off `midiKeys`, not off the room.** That group is a movable — the
+layout editor can pick the whole instrument up — so a panel pinned to world
+coordinates would have been left behind the first time somebody did.
+
+### The audio: a second context, not a second engine
+
+The studio has its own `AudioContext`; the bedroom has `ambience.js`'s. A
+node belongs to the context that made it and the two graphs never meet, so
+the room cannot borrow the studio's Plaits. What it CAN share is the hard
+part: **an AudioWorklet registry is per-context**, so `ambience.initPlaits()`
+adds the same `studio/mi-worklet.js` and the same `mi.wasm` to the room's
+context and gets its own node out of it. One copy of the DSP, two rooms.
+
+It's lazy — 266 KB most visits never ask for, fetched on the first reach for
+the sound. And it's a sixth entry in `PIANO_VOICES` rather than a special
+case, which buys the fallback for free: `parts` on that entry is the SYNTH
+oscillators, so a keyboard set to PLAITS before the wasm lands (or if it
+never lands) is never a silent keyboard. Same three-states-and-no-fourth
+shape the studio's `miStatus` has.
+
+`pianoNote`'s chromatic clamp went from 0..24 to 0..60. The songs never leave
+two octaves, but a scale-mapped keybed with the arp stacking octaves on top
+does — pentatonic reaches the third octave on its own.
+
+### The arpeggiator, and why HOLD is the whole mechanism
+
+The keybed has no key-UP. You tap a key; you don't hold one. So an arp that
+waits for held keys would never start, and HOLD is not a convenience here —
+it's the switch between the two ways this can work:
+
+- **HOLD off** — a tap REPLACES the chord. One key, one running line.
+- **HOLD on** — a tap ADDS to the chord, and tapping the same key again
+  takes it back out. That is what lets you build something and then go and
+  turn knobs while it plays.
+
+Turning HOLD off clears what's held, so there's always an obvious way back
+to nothing. UP / DOWN / UP-DN / RANDOM / AS PLAYED, one to three octaves,
+five divisions down to 1/16 triplets, and its own tempo. UP-DN does not play
+the turn-round notes twice; that's the limp in a naive up-down and you hear
+it as a hesitation at each end.
+
+**Scales do double duty.** Picking one re-maps the KEYBED as well as the arp,
+so the fifteen keys play that scale instead of always C major. One setting,
+one meaning — picking "minor" and finding the keyboard still in major would
+be the surprising thing. Which is also why `presence.sendNote` now carries an
+optional **semitone**: the key index alone stopped being enough to know what
+was played, since a listener's own panel would have mapped it somewhere else.
+
+**The arp survives closing the panel** but not leaving the bedroom. A
+sequence you set running is a thing you set running, and the button that
+closed the window is right there; walking out is a different intent, and it
+stops like every other sound in this room.
+
+### Small things that cost something
+
+- **Knobs are drag-only on a mouse** — the studio's rule, for the studio's
+  reason: a tap that jumped a value would go off every time you looked at
+  the panel and clicked to look somewhere else. A touch screen has no drag
+  to offer and neither does a headset trigger, so on both of those the tap
+  IS the gesture and lands where you put it on the sweep.
+- **The playhead redraw is rate-limited to ~12 Hz.** It's the only reason a
+  running arp repaints, and a repaint is a 1024×548 canvas plus a texture
+  upload; at 1/16 triplets and 200 bpm that's twenty a second to move a
+  five-pixel bar. A closed panel repaints not at all.
+- **The panel is only a raycast target while it's open.** three.js does not
+  skip invisible meshes when it casts, so a closed panel left in the target
+  list would have gone on silently eating clicks aimed at the monitor and
+  the keys behind it.
+- `synth-panel.js` exports `centres()` — the pixel centre of every control,
+  computed from the same `layout()` the painter uses. A test that has to
+  guess where a button is isn't testing the button, it's testing the guess,
+  and the first version of that test failed on all eight of them.
+- The canvas is 548 px tall because that is what the layout needs. It was
+  660, which left a hand's width of empty panel under the last row and read
+  as a dialog with something missing from it.
+
 ## 2026-08-18 — Trinity keeps a post instead of keeping up
 
 She used to follow. Past two metres she'd abandon her spot and come after you,

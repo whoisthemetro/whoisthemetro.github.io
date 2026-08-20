@@ -55,7 +55,8 @@ import { initPool } from "./pool.js";
 import { initBasket } from "./basketball.js";
 import { makeGymBall } from "./gymball.js";
 import { initDebug } from "./debug.js";
-import { PIANO_VOICES, GUITAR_VOICES, audioGraph } from "./ambience.js";
+import { PIANO_VOICES, GUITAR_VOICES, audioGraph, PLAITS_VOICE, initPlaits, setPlaits, plaitsStatus } from "./ambience.js";
+import * as SynthPanel from "./synth-panel.js";
 import { createRadio, SR_STATIONS, LA_STATIONS } from "./radio.js";
 import { startTitleFX } from "./title.js";
 import { setupXR } from "./xr.js";
@@ -507,6 +508,186 @@ addEventListener("keydown", (e) => {
 addEventListener("keyup", (e) => {
   if (e.code === "KeyV" && voice.mode() === "ptt") { voice.stopTalk(); updateMicUI(); }
 });
+
+/* ---- PLAITS, and the panel over the keyboard ----------------------------
+   The keyboard's sixth voice is a wasm macro-oscillator with more to say
+   about itself than a click on the chassis can carry, so it gets a panel:
+   the twenty-four engines, the five knobs, and an arpeggiator. All of it is
+   LOCAL to you, the same way the other five voices already were — what you
+   turn changes what you hear, and peers hear the pitch you played rather
+   than a copy of your settings.
+
+   The state lives in synth-panel.js next to the drawing that reads it, and
+   persists per browser. `plaitsApply` is the one road to the audio thread. */
+const synth = SynthPanel.loadState();
+let synthHeld = [];             // semitones the arp is chewing on
+let arpStep = 0, arpNext = 0;   // where the arp is, and when its next note is due
+let lastArpPaint = 0;           // the playhead redraw, rate-limited (see arpTick)
+function plaitsApply() {
+  setPlaits({ harmonics: synth.harm, timbre: synth.timbre, morph: synth.morph,
+              decay: synth.decay, lpg: synth.lpg, engine: synth.engine | 0 });
+}
+function synthDirty(save = true) {
+  world.synth.panel.markDirty();
+  if (save) SynthPanel.saveState(synth);
+}
+/* Push the saved panel into the parameter cache at boot. setPlaits keeps the
+   values whether or not the wasm exists yet, and initPlaits sends them the
+   moment it does — so a visitor who left the keyboard on PLAITS last time
+   gets their own sound back on the first key, not the factory one. */
+plaitsApply();
+
+/* Playing a key. `key` is the keybed index (0..14); the panel's scale and
+   root turn it into a semitone, so the same fifteen keys are C major or
+   B blues depending on what the panel says. Everything that makes a note —
+   your hand, the arp, a peer — comes through here. */
+function synthKey(key, when = null, broadcast = true) {
+  const semi = SynthPanel.keyToSemi(key, synth.scale, synth.root);
+  synthSemi(semi, key, when, broadcast);
+}
+/* A key you actually pressed, as opposed to one the arp played. It sounds,
+   and if the arp is running it also joins (or leaves) the chord — HOLD is
+   what decides which. Everything about pressing a key lives here rather
+   than in the click handler, because the click handler is not the only
+   thing that presses keys. */
+function synthPress(key, broadcast = true) {
+  synthKey(key, null, broadcast);
+  if (!synth.arp) return;
+  if (!synth.hold) synthHeld = [key];
+  else {
+    const at = synthHeld.indexOf(key);
+    if (at >= 0) synthHeld.splice(at, 1); else synthHeld.push(key);
+  }
+  if (!arpNext) arpStep = 0;
+  synthDirty(false);
+}
+function synthSemi(semi, key, when = null, broadcast = true) {
+  const gate = 0.25 + synth.decay * 1.6;
+  pianoNote(semi, PLAITS_VOICE, 1, when, true, gate);
+  if (key != null) world.pressPianoKey(Math.max(0, Math.min(14, key)));
+  if (broadcast) sendSynthNote(key == null ? 0 : key, semi);
+}
+/* The room hears your arp, but there's a ceiling on it: 1/16 triplets at
+   200 bpm is twenty notes a second, and presence is a shared channel that
+   also carries everyone's pose at 8 Hz. Twelve a second is faster than
+   anything you can play by hand and slow enough to be polite. */
+let lastNoteSent = 0;
+function sendSynthNote(key, semi) {
+  const now = performance.now();
+  if (now - lastNoteSent < 80) return;
+  lastNoteSent = now;
+  presence.sendNote(key, PLAITS_VOICE, semi);
+}
+
+/* ---- the arpeggiator ----
+   The keybed has no key-UP — you tap a key, you don't hold one — so an arp
+   that waits for held keys would never start. HOLD is the answer and it is
+   the switch between the two ways this can work:
+
+     HOLD off — a tap REPLACES the chord. One key, one running line.
+     HOLD on  — a tap ADDS to the chord, and tapping it again takes it back
+                out. That's what lets you build something and then go and
+                turn knobs while it plays, which is what it's for.
+
+   Turning HOLD off clears what's held, so there's always an obvious way to
+   start again. */
+function arpSeq() {
+  if (!synthHeld.length) return [];
+  const base = synthHeld.map(k => ({ key: k, semi: SynthPanel.keyToSemi(k, synth.scale, synth.root) }));
+  let seq = [];
+  for (let o = 0; o < synth.octaves; o++)
+    for (const n of base) seq.push({ key: n.key, semi: n.semi + o * 12 });
+  const mode = SynthPanel.MODES[synth.mode % SynthPanel.MODES.length];
+  if (mode === "UP") seq.sort((a, b) => a.semi - b.semi);
+  else if (mode === "DOWN") seq.sort((a, b) => b.semi - a.semi);
+  else if (mode === "UP-DN") {
+    seq.sort((a, b) => a.semi - b.semi);
+    // the turn-round notes are not played twice — that's the limp in a
+    // naive up-down, and you hear it as a hesitation at each end
+    seq = seq.concat(seq.slice(1, -1).reverse());
+  }
+  return seq;                      // AS PLAYED keeps the order you tapped
+}
+function arpStop() {
+  synthHeld = [];
+  arpStep = 0; arpNext = 0;
+  synthDirty(false);
+}
+/* Scheduled against the AUDIO clock, not the frame clock, and always a
+   little ahead of itself — the same rule the studio runs on. A step that
+   fires when JavaScript gets around to it is a step that swings whenever
+   the room gets busy, and the room here is a whole city out of a window. */
+function arpTick() {
+  if (!synth.arp) { arpNext = 0; return; }
+  const seq = arpSeq();
+  if (!seq.length) { arpNext = 0; return; }
+  const now = audioNow();
+  if (!now) return;
+  const per = SynthPanel.RATES[synth.rate % SynthPanel.RATES.length].per;
+  const dt = 60 / Math.max(40, synth.bpm) / per;
+  if (!arpNext || arpNext < now - 0.5) arpNext = now + 0.05;   // first note, or we were away
+  while (arpNext < now + 0.12) {
+    const mode = SynthPanel.MODES[synth.mode % SynthPanel.MODES.length];
+    const i = mode === "RANDOM" ? (Math.random() * seq.length) | 0 : arpStep % seq.length;
+    const n = seq[i];
+    synthSemi(n.semi, n.key, arpNext);
+    arpStep = (arpStep + 1) % (seq.length * 4);
+    arpNext += dt;
+    /* The playhead under the ARP button is the only reason a running arp
+       redraws the panel, and a redraw is a 1024x548 canvas plus a texture
+       upload. At 1/16 triplets and 200 bpm that's twenty of them a second
+       to move a five-pixel bar. Twelve a second looks identical and costs
+       a third as much — same argument as the rug in CLAUDE.md. */
+    const now2 = performance.now();
+    if (now2 - lastArpPaint > 84) { lastArpPaint = now2; synthDirty(false); }
+  }
+}
+
+/* what the panel is showing about itself, recomputed only when it redraws */
+function synthLive() {
+  const seq = arpSeq();
+  return {
+    status: plaitsStatus(),
+    held: synthHeld.map(k => SynthPanel.keyToSemi(k, synth.scale, synth.root)),
+    total: seq.length, at: seq.length ? arpStep % seq.length : 0,
+  };
+}
+
+/* a tap on the panel */
+function applySynthHit(h) {
+  if (!h || h.type === "none") return;
+  if (h.type === "close") { world.synth.setOpen(false); return; }
+  if (h.type === "engine") {
+    synth.engine = Math.max(0, Math.min(23, (synth.engine | 0) + h.d));
+    plaitsApply();
+    toast(SynthPanel.ENGINES[synth.engine]);
+    synthDirty();
+  } else if (h.type === "cycle") {
+    const wasHold = synth.hold;
+    SynthPanel.cycle(synth, h.key);
+    // letting go of HOLD lets go of the chord — otherwise there's no way
+    // back to an empty arp except by un-tapping every key you tapped
+    if (h.key === "hold" && wasHold && !synth.hold) arpStop();
+    if (h.key === "arp" && !synth.arp) arpStop();
+    if (h.key === "arp" && synth.arp) arpNext = 0;
+    toast(`${h.key.toUpperCase()}: ${
+      h.key === "scale" ? synth.scale : h.key === "root" ? SynthPanel.ROOT_NAMES[synth.root]
+      : h.key === "mode" ? SynthPanel.MODES[synth.mode] : h.key === "rate" ? SynthPanel.RATES[synth.rate].label
+      : h.key === "octaves" ? synth.octaves : (synth[h.key] ? "on" : "off")}`);
+    synthDirty();
+  } else if (h.type === "knob") {
+    /* On a mouse, knobs only answer to a drag — a tap that jumped a value
+       would go off every time you looked at the panel and clicked to look
+       somewhere else. A touch screen has no drag to offer (there's no
+       pointer lock and no movementX) and neither does a headset trigger,
+       so on both of those the tap IS the gesture: where you put your finger
+       (or your laser) on the sweep is where the knob goes. */
+    if ((!IS_TOUCH && !inVR()) || h.frac == null) return;
+    SynthPanel.knobWrite(synth, h.key, h.frac);
+    plaitsApply();
+    synthDirty();
+  }
+}
 
 // piano voice — sticky per visitor, broadcast with each note
 let pianoVoice = 0;
@@ -1416,7 +1597,7 @@ function castAt(ndcX, ndcY) {
     raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera);
   }
   // doors are included as blockers so notes can't be pinned onto them
-  const targets = [cat.hitMesh, toyHit, bartender.hitMesh, guide.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, ...world.elevHits, ...world.elevCallHits, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.guitarVoiceHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, world.pool.hit, world.pool.resetHit, world.pool.joinHit, world.pool2.hit, world.pool2.resetHit, world.pool2.joinHit, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.radioHits, ...world.laRadioHits, ...world.filterPedalHit, ...world.vacuumHits, ...world.studio.screens, ...world.studio.doorHits, ...notesWall.raycastTargets(), screenMesh, world.gym.joinHit, world.gym.exitHit, ...world.gym.readyHits, ...world.podium.hits, ...world.garden.hits, ...(world.bath ? world.bath.hits : []), ...(world.bath ? world.bath.tags.meshes() : []), ...world.blockers];
+  const targets = [cat.hitMesh, toyHit, bartender.hitMesh, guide.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.synth.btn, ...(world.synth.isOpen() ? [world.synth.screen] : []), world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, ...world.elevHits, ...world.elevCallHits, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.guitarVoiceHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, world.pool.hit, world.pool.resetHit, world.pool.joinHit, world.pool2.hit, world.pool2.resetHit, world.pool2.joinHit, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.radioHits, ...world.laRadioHits, ...world.filterPedalHit, ...world.vacuumHits, ...world.studio.screens, ...world.studio.doorHits, ...notesWall.raycastTargets(), screenMesh, world.gym.joinHit, world.gym.exitHit, ...world.gym.readyHits, ...world.podium.hits, ...world.garden.hits, ...(world.bath ? world.bath.hits : []), ...(world.bath ? world.bath.tags.meshes() : []), ...world.blockers];
   /* an open in-world window is CAST FIRST and wins outright if it's hit at
      all. it draws with depthTest off — it reads over the room the way a DOM
      overlay does — so sorting it by distance would let anything standing
@@ -1917,9 +2098,17 @@ controls.onAction((ndcX, ndcY) => {
   } else if (hit.object.userData.piano && hit.distance < 2.4 && hit.uv) {
     const key = Math.max(0, Math.min(14, Math.floor(hit.uv.x * 15)));
     tourDid("instrument");
-    pianoNote(key, pianoVoice);
-    world.pressPianoKey(key);
-    presence.sendNote(key, pianoVoice);
+    if (pianoVoice === PLAITS_VOICE) {
+      /* On PLAITS the key goes through the panel: its scale and root decide
+         the pitch, and if the arp is running the key joins (or leaves) the
+         chord rather than just sounding once. It sounds once as well — you
+         should hear what you just added. */
+      synthPress(key);
+    } else {
+      pianoNote(key, pianoVoice);
+      world.pressPianoKey(key);
+      presence.sendNote(key, pianoVoice);
+    }
     progress.bump("piano");
     aInstrument("piano");
     if (Date.now() - (window.__pianoLogAt || 0) > 60000) {
@@ -2010,8 +2199,26 @@ controls.onAction((ndcX, ndcY) => {
     drumHit(pad);
     world.pressVolcaPad(pad);
     presence.sendAct({ kind: "volca", pad });
+  } else if (hit.object.userData.synthPanel && hit.distance < 3.2 && hit.uv) {
+    applySynthHit(SynthPanel.hit(hit.uv.x, hit.uv.y));
+  } else if (hit.object.userData.synthBtn && hit.distance < 2.6) {
+    /* The button does two things because they are one thing: it opens the
+       parameters AND puts the keyboard on the voice those parameters
+       describe. Opening a Plaits panel over a keyboard playing an e-piano
+       would be a panel that does nothing. */
+    const open = !world.synth.isOpen();
+    world.synth.setOpen(open);
+    if (open) {
+      pianoVoice = PLAITS_VOICE;
+      try { localStorage.setItem("metro.voice", String(pianoVoice)); } catch (e) {}
+      initPlaits().then(() => { plaitsApply(); world.synth.panel.markDirty(); });
+      plaitsApply();
+      toast("PLAITS — drag a knob, tap the keys");
+    }
+    synthDirty(false);
   } else if (hit.object.userData.pianoVoice && hit.distance < 2.4) {
     pianoVoice = (pianoVoice + 1) % PIANO_VOICES.length;
+    if (pianoVoice === PLAITS_VOICE) { initPlaits().then(plaitsApply); plaitsApply(); }
     try { localStorage.setItem("metro.voice", String(pianoVoice)); } catch (e) {}
     // just switch the voice — no preview note (clicking the body shouldn't play)
     toast(`piano voice: ${PIANO_VOICES[pianoVoice].name}`);
@@ -2178,6 +2385,16 @@ setInterval(() => {
   } else if (hit && hit.object.userData.piano && hit.distance < 2.4) {
     aimTip.textContent = `${TAP} the keys to play`;
     aimTip.classList.add("show");
+  } else if (hit && hit.object.userData.synthBtn && hit.distance < 2.6) {
+    aimTip.textContent = `${TAP} — ${world.synth.isOpen() ? "close the synth panel" : "PLAITS · the synth panel"}`;
+    aimTip.classList.add("show");
+  } else if (hit && hit.object.userData.synthPanel && hit.distance < 3.2 && hit.uv) {
+    const h = SynthPanel.hit(hit.uv.x, hit.uv.y);
+    aimTip.textContent = h.type === "knob" ? (IS_TOUCH || inVR() ? `${TAP} the ring to set it` : "hold and drag to turn")
+      : h.type === "close" ? `${TAP} to close`
+      : h.type === "engine" ? `${TAP} — next engine`
+      : h.type === "cycle" ? `${TAP} — ${h.key}` : "";
+    aimTip.classList.toggle("show", !!aimTip.textContent);
   } else if (hit && hit.object.userData.pianoVoice && hit.distance < 2.4) {
     aimTip.textContent = `${TAP} to change the piano sound (${PIANO_VOICES[pianoVoice].name})`;
     aimTip.classList.add("show");
@@ -3072,6 +3289,43 @@ function endStudioDrag() {
   else sAct.setParam(d.h.dev, d.h.key, d.value);
   sApplyMixer();
 }
+/* ---- turning a knob on the synth panel ----
+   The same hardware feel the studio has, and for the same reason: hold the
+   mouse on a knob and the CAMERA stops listening while the hand turns the
+   control. `controls.dragLock` is what routes the motion here instead of
+   into the head. Live preview all the way, one committed value on release. */
+let synthDrag = null;
+function beginSynthDrag(key) {
+  synthDrag = { key, start: SynthPanel.knobFrac(synth, key), moved: false };
+  controls.dragLock = true;
+  controls.dragDX = 0; controls.dragDY = 0;
+}
+function tickSynthDrag() {
+  if (!synthDrag) return;
+  if (Math.abs(controls.dragDX) + Math.abs(controls.dragDY) > 3) synthDrag.moved = true;
+  if (!synthDrag.moved) return;
+  // right or up turns it clockwise; 320 px of hand is the whole sweep
+  SynthPanel.knobWrite(synth, synthDrag.key, synthDrag.start + (controls.dragDX - controls.dragDY) / 320);
+  plaitsApply();
+  synthDirty(false);
+}
+function endSynthDrag() {
+  if (!synthDrag) return;
+  const moved = synthDrag.moved;
+  synthDrag = null;
+  controls.dragLock = false;
+  if (moved) SynthPanel.saveState(synth);
+}
+document.addEventListener("mousedown", () => {
+  if (inStudio || !controls.locked || modalOpen || renderer.xr.isPresenting) return;
+  if (!world.synth.isOpen()) return;
+  const hit = castAt(0, 0);
+  if (!hit || !hit.object.userData.synthPanel || !hit.uv || hit.distance > 3.2) return;
+  const h = SynthPanel.hit(hit.uv.x, hit.uv.y);
+  if (h.type === "knob") beginSynthDrag(h.key);
+});
+document.addEventListener("mouseup", () => endSynthDrag());
+
 document.addEventListener("mousedown", () => {
   if (!inStudio || !controls.locked || modalOpen || renderer.xr.isPresenting) return;
   const hit = castAt(0, 0);
@@ -5251,9 +5505,12 @@ addEventListener("keydown", (e) => {
     ghosts.setPose(uid, pose);
     peerX.set(uid, pose.x);
   });
-  presence.onNote((uid, i, v) => {
+  presence.onNote((uid, i, v, semi) => {
     if (inBoat || inArena || inArcade()) return;   // the bedroom piano stays in the bedroom
-    pianoNote(i, v ?? 0);
+    // a semitone came with it (the plaits panel sends one) — play THAT, or
+    // your own scale would retune what they played on theirs
+    if (semi != null) pianoNote(semi, v ?? 0, 1, null, true);
+    else pianoNote(i, v ?? 0);
     world.pressPianoKey(i);
   });
   presence.onGame((p) => {
@@ -5557,6 +5814,22 @@ window.METRO_DEBUG = { renderer, camera, world, controls, xr, disc, hoop: hoopGa
   garden: { enter: enterGarden, leave: leaveGarden, play: playPlant,
             stop: () => gardenPlayer.stop(), playing: () => gardenPlayer.playing(),
             state: () => gardenState, inside: () => inGarden },
+  /* a hand on the synth panel. the harness can't take pointer lock, so the
+     panel is reachable in CANVAS PIXELS — the same coordinates the drawing
+     is written in — and `castCentre` answers the one question a screenshot
+     can't: is the crosshair actually finding the panel, or something behind it. */
+  synth: {
+    state: () => synth, held: () => synthHeld, status: plaitsStatus, init: initPlaits,
+    open: (v = true) => world.synth.setOpen(v), isOpen: () => world.synth.isOpen(),
+    tapPx: (px, py) => applySynthHit(SynthPanel.hit(px / SynthPanel.SIZE.w, 1 - py / SynthPanel.SIZE.h)),
+    hitPx: (px, py) => SynthPanel.hit(px / SynthPanel.SIZE.w, 1 - py / SynthPanel.SIZE.h),
+    where: () => SynthPanel.centres(),
+    key: (k) => synthPress(k, false),
+    seq: () => arpSeq(), tick: () => arpTick(), step: () => arpStep,
+    castCentre: () => { const h = castAt(0, 0); return h ? { panel: !!h.object.userData.synthPanel,
+      ud: Object.keys(h.object.userData), d: +h.distance.toFixed(2),
+      uv: h.uv ? [+h.uv.x.toFixed(3), +h.uv.y.toFixed(3)] : null } : null; },
+  },
   // a hand on the sequencer, same habit as the rest of the room
   studio: { state: sState, act: sAct, rec: sRec, hit: sHitPanel, apply: applyStudioHit,
             steps: sStepCount, playhead: sPlayhead, mi: () => SA.miStatus(),
@@ -5655,6 +5928,21 @@ renderer.setAnimationLoop(() => {
   // the club lights dance to the set; everywhere else energy stays at zero
   world.setClubEnergy(inClub ? voice.djLevel() : 0);
   tickStudioDrag();               // a held knob follows the hand each frame
+  tickSynthDrag();                // and the same for the synth panel's
+  /* The synth panel and its arp belong to the bedroom. Walk out — the lift,
+     the arcade, the studio door — and the arp stops and the window shuts,
+     the same rule every other sound in this room follows. It reopens where
+     you left it, because the panel state is saved, not the window.
+     The arp does NOT stop when you close the panel: a sequence you set
+     running is a thing you set running, and the button that closed the
+     window is right there to open it again. */
+  if (bedroomHere()) {
+    arpTick();
+    if (world.synth.isOpen()) world.synth.panel.render(synth, synthLive);
+  } else if (world.synth.isOpen() || synthHeld.length) {
+    world.synth.setOpen(false);
+    arpStop();
+  }
   // the VR cabinet panel: the page's rAF sleeps in a session, so the world
   // loop drives the game and refreshes its texture
   if (vrArcade) {

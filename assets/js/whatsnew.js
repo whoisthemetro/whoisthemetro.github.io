@@ -46,6 +46,8 @@ export const WHATS_NEW = [
   {
     date: "2026-08-18",
     items: [
+      "the keyboard under the desk has a real synth in it now. press the little button on its left cheek and a panel opens over the keys — twenty four different sounds, five knobs to bend them with, and the keys keep playing the whole time it's up",
+      "that panel has an arpeggiator. hold a few keys, turn HOLD on, and it runs while you go and twist things. pick a scale and the keyboard plays in it",
       "trinity stopped shadowing you everywhere. she waits in the room you're in — by the window in the bedroom, just inside the door in the arcade — and if you walk into her she steps out of your way",
       "the planes are back. the flight feed we used shut its doors, so the window goes through our own now — real jets over LAX again, with their real flight numbers",
       "the cat stays off the keyboard. it was funny once",

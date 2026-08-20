@@ -436,7 +436,77 @@ export const PIANO_VOICES = [
   { name: "8-BIT",     parts: [[1, "square", 0.55]], dec: 0.45, peak: 0.05 },
   { name: "SYNTH",     parts: [[1, "sawtooth", 0.6], [1.006, "sawtooth", 0.45]], dec: 0.9, peak: 0.05, lp: 1900 },
   { name: "ORGAN",     parts: [[1, "sine", 0.7], [2, "sine", 0.5], [4, "sine", 0.22]], dec: 0.6, peak: 0.06 },
+  /* PLAITS is not made of oscillators like the five above it — it's Émilie
+     Gillet's macro-oscillator running as wasm on the audio thread, and it
+     only exists once initPlaits() has fetched it. `parts` is what you hear
+     until then, and what you hear forever if the fetch fails: the SYNTH
+     voice, so a keyboard set to PLAITS is never a silent keyboard. */
+  { name: "PLAITS",    parts: [[1, "sawtooth", 0.6], [1.006, "sawtooth", 0.45]], dec: 0.9, peak: 0.05, lp: 1900, mi: true },
 ];
+export const PLAITS_VOICE = PIANO_VOICES.findIndex(v => v.mi);
+
+/* ---------- PLAITS, in the bedroom ----------
+
+   The studio has its own AudioContext and its own copy of this; the room
+   cannot borrow that one, because a node belongs to the context that made
+   it and the two graphs never meet. What IS shared is the hard part: the
+   worklet (studio/mi-worklet.js) and the wasm. Both are context-agnostic,
+   an AudioWorklet registry is per-context, so adding the same module to a
+   second context is just a second registration of the same code.
+
+   Lazy on purpose. It's 266 KB of wasm that most visits never ask for, so
+   nothing is fetched until somebody actually reaches for the sound —
+   opening the panel, choosing the voice, or hearing a peer play it.
+
+   Three states and no fourth: "off" (never asked), "loading", "on",
+   "failed". Anything but "on" falls through to the SYNTH oscillators in
+   PIANO_VOICES, which is why a failure here is quiet rather than silent. */
+let miMode = "off";
+let plaitsNode = null;
+let plaitsLevel = null;         // its own trim: wasm output is hotter than our oscillators
+export const plaitsStatus = () => miMode;
+export const plaitsReady = () => miMode === "on";
+
+export async function initPlaits() {
+  if (miMode !== "off") return miMode === "on";
+  if (!ctx || !ctx.audioWorklet) { miMode = "failed"; return false; }
+  miMode = "loading";
+  try {
+    const [bytes] = await Promise.all([
+      fetch("/assets/wasm/mi.wasm").then(r => r.arrayBuffer()),
+      ctx.audioWorklet.addModule("/assets/js/studio/mi-worklet.js"),
+    ]);
+    const module = await WebAssembly.compile(bytes);
+    plaitsNode = new AudioWorkletNode(ctx, "mi-plaits", {
+      numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [1],
+      processorOptions: { module },
+    });
+    plaitsLevel = ctx.createGain();
+    plaitsLevel.gain.value = 0.22;
+    // into the keyboard's own pedal chain, so it lands where the other five
+    // voices land — chorus, delay, reverb and the level bump, all of it
+    plaitsNode.connect(plaitsLevel).connect(pianoBus || master);
+    miMode = "on";
+    setPlaits(plaitsParams);      // whatever the panel already had on it
+    return true;
+  } catch (e) {
+    miMode = "failed";
+    return false;
+  }
+}
+
+// the panel's knobs live here so the node can be handed them the moment it
+// exists — turning a knob before the wasm lands must not be a lost edit
+let plaitsParams = { harmonics: 0.5, timbre: 0.5, morph: 0.5, decay: 0.6, lpg: 0.4, engine: 8 };
+export function setPlaits(p = {}) {
+  plaitsParams = { ...plaitsParams, ...p };
+  if (plaitsNode) plaitsNode.port.postMessage({ t: "set", ...plaitsParams });
+}
+export function plaitsNote(midi, dur = 1.6, level = 0.6, when = null) {
+  if (!plaitsNode || !ctx) return false;
+  plaitsNode.port.postMessage({ t: "note", midi, at: Math.max(ctx.currentTime + 0.005, when || 0), dur, level });
+  return true;
+}
 
 // the audio clock, for anything that wants to schedule against it
 export function audioNow() { return ctx ? ctx.currentTime : 0; }
@@ -462,12 +532,25 @@ export function wakeAudio() {
 // i is a white-key index (0..14 → C_MAJOR) for free-play, or a raw
 // chromatic semitone (0..24 from C4) when chromatic=true — the songs use
 // the latter so they can reach accidentals the keybed can't free-play.
-export function pianoNote(i = 0, voice = 0, vel = 1, when = null, chromatic = false) {
+export function pianoNote(i = 0, voice = 0, vel = 1, when = null, chromatic = false, gate = 0) {
   if (!ctx) return;
   const v = PIANO_VOICES[Math.abs(voice) % PIANO_VOICES.length];
   // schedule slightly ahead — no past-start clicks
   const t = Math.max(ctx.currentTime + 0.005, when || 0);
-  const semi = chromatic ? Math.max(0, Math.min(24, i)) : C_MAJOR[Math.max(0, Math.min(14, i))];
+  /* 0..60 rather than 0..24: the songs never leave two octaves, but a
+     scale-mapped keybed with the arp stacking octaves on top of it does —
+     pentatonic reaches the third octave on its own, and a root of B plus
+     three arp octaves puts the top note five above middle C. */
+  const semi = chromatic ? Math.max(0, Math.min(60, i)) : C_MAJOR[Math.max(0, Math.min(14, i))];
+  /* PLAITS gets first refusal. If the wasm is up it takes the note and we're
+     done; if it isn't, we start fetching it and let the oscillators below
+     cover this note — so the first key you press after switching sounds like
+     the fallback and every one after it is the real thing. Note that
+     plaitsNote wants MIDI: semitone 0 here is C4, which is 60. */
+  if (v.mi) {
+    if (plaitsNote(60 + semi, gate || 1.4, 0.55 * Math.max(0.05, vel), t)) return;
+    if (miMode === "off") initPlaits();
+  }
   const f = 261.63 * Math.pow(2, semi / 12);
   const g = ctx.createGain();
   let out = g;
