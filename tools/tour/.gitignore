@@ -1,0 +1,8 @@
+# rendered narration, frames and the finished mp4 are BUILD ARTIFACTS.
+# the script is the content and belongs in the repo; a minute of mp3, two
+# thousand PNGs and an mp4 do not — they cost nothing to make again
+# (`node tools/tour/record.mjs`) and the repo is public.
+audio/
+frames/
+out/
+node_modules

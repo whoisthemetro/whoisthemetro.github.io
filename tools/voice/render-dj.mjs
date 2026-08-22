@@ -18,73 +18,32 @@ import { writeFile, readFile, mkdir, readdir, unlink } from "node:fs/promises";
 import { existsSync, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { djClips } from "../../assets/js/djlines.js";
+import { SECRETS, requireKey, speak, shrink } from "./eleven.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.resolve(HERE, "../../assets/audio/dj");
 
-// same store render.mjs reads — one key, one place, every tool and chat
-const SECRETS = path.join(os.homedir(), ".config", "metro", "voice.env");
-function keyFromFile() {
-  try {
-    for (const line of readFileSync(SECRETS, "utf8").split(/\r?\n/)) {
-      const m = /^\s*(?:export\s+)?ELEVENLABS_API_KEY\s*=\s*(.+?)\s*$/.exec(line);
-      if (m) return m[1].replace(/^["']|["']$/g, "");
-    }
-  } catch (e) {}
-  return null;
-}
-const KEY = process.env.ELEVENLABS_API_KEY || keyFromFile();
+// the key, the POST and the mp3 shrink are shared — see eleven.mjs
 // Adam — the closest stock voice to a station ident. Swap via DJ_VOICE_ID.
 const VOICE = process.env.DJ_VOICE_ID || "pNInz6obpgDQGcFmaJgB";
 const MODEL = process.env.DJ_MODEL || "eleven_multilingual_v2";
 const FORCE = process.argv.includes("--force");
 const DRY = process.argv.includes("--dry");
 
-if (!KEY && !DRY) {
-  console.error(`no ElevenLabs key. looked in $ELEVENLABS_API_KEY and ${SECRETS}\n\n` +
-    "it must be the KEY, not the key id — real ones start with sk_ and are\n" +
-    "only shown when the key is created or rotated.\n");
-  process.exit(1);
-}
+const KEY = requireKey(DRY);
 
-async function render(text) {
-  const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${VOICE}`, {
-    method: "POST",
-    headers: { "xi-api-key": KEY, "Content-Type": "application/json", accept: "audio/mpeg" },
-    body: JSON.stringify({
-      text,
-      model_id: MODEL,
-      /* The opposite of Trinity's settings. She's explaining a room and gets
-         style 0 so she doesn't put a performance on. He IS a performance:
-         style up, stability down, so he lands the exclamation marks. */
-      voice_settings: { stability: 0.30, similarity_boost: 0.80, style: 0.65, use_speaker_boost: true },
-    }),
-  });
-  if (!res.ok) throw new Error(`${res.status} ${(await res.text()).slice(0, 240)}`);
-  return Buffer.from(await res.arrayBuffer());
-}
+/* The opposite of Trinity's settings. She's explaining a room and gets style
+   0 so she doesn't put a performance on. He IS a performance: style up,
+   stability down, so he lands the exclamation marks. */
+const SETTINGS = { stability: 0.30, similarity_boost: 0.80, style: 0.65, use_speaker_boost: true };
+const render = (text) => speak(text, { key: KEY, voice: VOICE, model: MODEL, settings: SETTINGS });
 
 /* Everything he says goes through a 3.6 kHz lowpass at the far end anyway,
    so shipping a 44.1 kHz stereo mp3 would be paying to send detail the room
    throws away. 22 kHz mono at 40k is already past what survives. */
-async function shrink(file) {
-  try {
-    const tmp = file + ".tmp.mp3";
-    await new Promise((res, rej) => {
-      const ff = spawn("ffmpeg", ["-loglevel", "error", "-y", "-i", file,
-        "-ac", "1", "-ar", "22050", "-b:a", "40k", tmp]);
-      ff.on("error", rej);
-      ff.on("close", c => (c === 0 ? res() : rej(new Error("ffmpeg " + c))));
-    });
-    const buf = await readFile(tmp);
-    await writeFile(file, buf);
-    await unlink(tmp);
-    return buf.length;
-  } catch (e) { return 0; }
-}
+const shrinkDj = (file) => shrink(file, { rate: 22050, bitrate: "40k" });
 
 const clips = djClips();
 await mkdir(OUT, { recursive: true });
@@ -100,7 +59,7 @@ for (const { id, text } of clips) {
   const buf = await render(text);
   await writeFile(file, buf);
   const raw = buf.length;
-  const small = await shrink(file);
+  const small = await shrinkDj(file);
   made++;
   console.log(small ? `${(raw / 1024).toFixed(0)}kb → ${(small / 1024).toFixed(0)}kb` : `${(raw / 1024).toFixed(0)}kb`);
 }

@@ -3238,8 +3238,22 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
       { beacon: beaconOn, plane: planeFx(), zilla, bat }, skyCache.phase);
   }
 
+  /* The room runs on real Los Angeles time, which is right for a place
+     somebody lives in and wrong for anything that needs to PHOTOGRAPH it.
+     `skyPreview` repaints the view, but says so itself: interior light is
+     untouched and updateSky takes it back inside a minute. That is fine for
+     a screenshot and useless for a six-minute frame-by-frame render, which
+     would watch the sun come up six times.
+
+     So the clock itself can be pinned. updateSky reads THIS rather than the
+     wall clock, so the sky, the window light, the beam, the star projector
+     and the city outside all agree and all stay put. Pass null to hand the
+     room back to real time. */
+  let timeOverride = null;
+  function worldNow() { return timeOverride || new Date(); }
+
   function updateSky() {
-    const now = new Date();
+    const now = worldNow();
     const sun = getSunPosition(now, LAT, LNG);
     const moon = getMoonPosition(now, LAT, LNG);
     const { fraction, phase } = getMoonIllumination(now);
@@ -10449,6 +10463,10 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     // stomp a one-off paint before the screenshot fires. updateSky()
     // still takes it back within a minute; for a screenshot that's forever.
     // interior light is untouched; this is the VIEW only.
+    // pin the room to a moment (a Date), or null for real time. repaints at
+    // once so the caller doesn't have to wait out the 60-second cycle.
+    setWorldTime: (d) => { timeOverride = d ? new Date(d) : null; updateSky(); },
+    worldTime: () => timeOverride,
     skyPreview: (altDeg, o = {}) => {
       const D = Math.PI / 180;
       skyCache = {

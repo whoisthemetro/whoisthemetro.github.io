@@ -607,6 +607,68 @@ and the first one is the one that was actually killing her.
   Chrome with clip fetches broken and asserts `speechSynthesis.speak` is
   never called.
 
+## 2026-08-22 — a tour you can put on a feed
+
+`node tools/tour/record.mjs` renders a 69-second portrait mp4 of the
+bedroom with Trinity leading the camera and narrating in her own voice.
+1080×1920, H.264, straight onto a feed.
+
+**Frame by frame, not a screen recording.** Chrome will screencast the page,
+but it delivers ~25 fps whatever the room is rendering at, and the interval
+wobbles. Stepping the camera and taking a still each time decouples render
+time from playback time: motion is exactly as smooth as the frame rate you
+asked for, and the audio lines up by construction because frame N is always
+at N/FPS seconds. ~200 ms a frame, so a minute of video is six minutes of
+rendering — nothing, for something you make once.
+
+**The voice is never captured from the browser.** It doesn't need to be. Her
+lines render to mp3 up front and the audio track is assembled from the files,
+so the narration is clean speech with no room tone and no fight with a
+headless audio device. The room is still told how long each line is, so her
+mouth and her glow run for exactly as long as the sentence.
+
+### New in the room
+
+`world.setWorldTime(date)` pins the room to a moment; null hands it back to
+real time. `updateSky` reads it, so the sky, the window light, the beam, the
+star projector and the city outside all agree and all STAY. `skyPreview`
+already existed and says itself why it isn't enough: it repaints the view,
+leaves the interior light alone, and `updateSky` takes it back within a
+minute. Fine for a screenshot, useless for a six-minute render that would
+otherwise watch the sun come up six times.
+
+### Shared, because three copies is a decision
+
+`tools/voice/eleven.mjs` now holds the key lookup, the POST and the mp3
+shrink. `render.mjs` and `render-dj.mjs` each carried their own copy and the
+tour would have been a third — and the KEY lookup is the thing you least
+want three subtly different versions of. What deliberately did NOT move is
+the voice id and the voice settings: those belong to whoever is speaking,
+and a shared default is how a later session renders half of somebody's lines
+as somebody else.
+
+### Four things that each cost a render
+
+- **Set the room dressing every beat, not once.** Blinds, dimmer and lava
+  lamp are shared room flags that arrive from the database a moment after
+  you enter. The first cut opened the blinds and had them shut again two
+  seconds later, which put slats across the one shot the whole video is for.
+- **The room lamp runs to intensity 26.** 0.72 of it washed the back wall
+  and ceiling to cream and put out the star projector — the subject of one
+  of the beats. 0.26 is a lamp on in a dark room.
+- **The portrait FOV is ~100°**, solved so a player on a phone can see a
+  whole wall. Right for playing, far too wide for a detail shot. Beats set
+  their own now.
+- **Her subtitle card appears in headless Chrome.** It's a fallback for a
+  device with no voice at all, and headless has no speech synth — so she
+  decided you couldn't hear her and printed the line, sliced in half by the
+  portrait edge. Suppressed for the recording only.
+
+The readouts stay in frame — a real LAX callsign is the cheapest proof the
+room is live, which is the hardest thing for a video to convey. They're
+nudged down out of the top strip where TikTok and Reels put their own
+chrome, by a stylesheet that exists only for the render.
+
 ## 2026-08-22 — a month that's over is sealed
 
 The wall turns over monthly; this is what makes the months behind it an

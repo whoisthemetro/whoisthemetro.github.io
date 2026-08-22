@@ -80,7 +80,8 @@ for python-heredoc edits, so **leave them intact.**
 | The cat | `cat.js` |
 | The bartender | `bartender.js` |
 | The guide (bedroom tutor) | `guide.js`, `say.js` (the voice), `lines.js` (everything she says), `main.js` ~475 (placement) |
-| …re-rendering her voice | `tools/voice/render.mjs` — just run it, it finds its key in `~/.config/metro/voice.env` |
+| …re-rendering her voice | `tools/voice/render.mjs` — just run it, it finds its key in `~/.config/metro/voice.env`. The ElevenLabs bits (key lookup, the POST, the mp3 shrink) are shared in `tools/voice/eleven.mjs` |
+| A video of the room for social | `tools/tour/script.mjs` (what she says + where the camera goes — this is the file you edit), `tools/tour/record.mjs` (the machinery), `tools/tour/README.md`. Read the README before changing a shot; four of its bullets each cost a render to find out |
 | Notes on the wall | `notes3d.js`, `store.js` |
 | …the wall's MONTHS (the archive + the plate above the wall) | `wall-months.js` (the plate's drawing + hit test), `notes3d.js` (`months`/`showMonth`/`all`/`monthKeyOf`), `world.js` (the plate mount, just before the front-wall window hole), `main.js` (`paintMonthPlate`/`setWallMonth`/`stepWallMonth`) |
 | METRO OS (the desk computer) + the visitor changelog | `whatsnew.js` (the copy), `main.js` `TERM_COMMANDS`, `#pc` in index.html |

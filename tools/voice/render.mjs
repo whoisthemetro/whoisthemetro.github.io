@@ -18,42 +18,18 @@
    one file and mints one new name. Re-running only pays for what changed.
    ============================================================ */
 
-import { writeFile, readFile, mkdir, readdir, unlink } from "node:fs/promises";
-import { existsSync, readFileSync } from "node:fs";
-import os from "node:os";
+import { writeFile, mkdir, readdir, unlink } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import path from "node:path";
-import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { allSpoken, clipId } from "../../assets/js/lines.js";
+import { SECRETS, requireKey, speak, shrink } from "./eleven.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.resolve(HERE, "../../assets/audio/trinity");
 
-/* The key finds ITSELF. It used to be pasted into a session scratchpad, which
-   is scoped to one chat and deleted with it — so the key vanished, and no
-   other chat ever knew one existed. It lives at ~/.config/metro/voice.env
-   now: OUTSIDE the repo (this repo is public, so a key inside it is one
-   `git add -A` away from being published) and outside any one session.
+// the key, the POST and the mp3 shrink are shared — see eleven.mjs
 
-   Anything running this tool just runs it. The value never needs to be
-   pasted into a chat again, and never appears in a transcript. To set or
-   rotate it, in a terminal:
-
-     mkdir -p ~/.config/metro && chmod 700 ~/.config/metro
-     printf 'ELEVENLABS_API_KEY=sk_your_key_here\n' > ~/.config/metro/voice.env
-     chmod 600 ~/.config/metro/voice.env
-*/
-const SECRETS = path.join(os.homedir(), ".config", "metro", "voice.env");
-function keyFromFile() {
-  try {
-    for (const line of readFileSync(SECRETS, "utf8").split(/\r?\n/)) {
-      const m = /^\s*(?:export\s+)?ELEVENLABS_API_KEY\s*=\s*(.+?)\s*$/.exec(line);
-      if (m) return m[1].replace(/^["']|["']$/g, "");
-    }
-  } catch (e) {}
-  return null;
-}
-const KEY = process.env.ELEVENLABS_API_KEY || keyFromFile();
 // Rachel — a long-standing stock voice, warm and unfussy. Swap via
 // EL_VOICE_ID once you've picked one from your own account.
 /* Lily, a PREMADE ElevenLabs voice. She used to be Janet, which is a
@@ -68,53 +44,12 @@ const MODEL = process.env.EL_MODEL || "eleven_multilingual_v2";
 const FORCE = process.argv.includes("--force");
 const DRY = process.argv.includes("--dry");
 
-if (!KEY && !DRY) {
-  console.error(
-    `no ElevenLabs key. looked in $ELEVENLABS_API_KEY and ${SECRETS}\n\n` +
-    "it must be the KEY, not the key id — real ones start with sk_ and are\n" +
-    "only shown when the key is created or rotated. to store it once, for good:\n\n" +
-    "  mkdir -p ~/.config/metro && chmod 700 ~/.config/metro\n" +
-    "  printf 'ELEVENLABS_API_KEY=sk_your_key_here\\n' > ~/.config/metro/voice.env\n" +
-    "  chmod 600 ~/.config/metro/voice.env\n");
-  process.exit(1);
-}
+const KEY = requireKey(DRY);
 
-async function render(text) {
-  const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${VOICE}`, {
-    method: "POST",
-    headers: { "xi-api-key": KEY, "Content-Type": "application/json", accept: "audio/mpeg" },
-    body: JSON.stringify({
-      text,
-      model_id: MODEL,
-      // steady rather than theatrical: she's explaining a room, not acting.
-      // style 0 keeps her from putting a performance on the longer lines.
-      voice_settings: { stability: 0.45, similarity_boost: 0.75, style: 0.0, use_speaker_boost: true },
-    }),
-  });
-  if (!res.ok) throw new Error(`${res.status} ${(await res.text()).slice(0, 240)}`);
-  return Buffer.from(await res.arrayBuffer());
-}
-
-/* ElevenLabs hands back a 44.1kHz stereo mp3, which is a music format for
-   something that is one woman talking: the full set came to 3.4 MB. Mono at
-   24kHz/48kbps is indistinguishable for speech and lands at 1.3 MB, which
-   matters because these are fetched on a phone. This lives in the tool
-   rather than in a one-off command, or the next re-render quietly puts the
-   2 MB back. Skipped without complaint if ffmpeg isn't installed. */
-async function shrink(file) {
-  try {
-    const tmp = file + ".tmp.mp3";
-    await new Promise((res, rej) => {
-      const ff = spawn("ffmpeg", ["-loglevel", "error", "-y", "-i", file, "-ac", "1", "-ar", "24000", "-b:a", "48k", tmp]);
-      ff.on("error", rej);
-      ff.on("close", c => (c === 0 ? res() : rej(new Error("ffmpeg " + c))));
-    });
-    const buf = await readFile(tmp);
-    await writeFile(file, buf);
-    await unlink(tmp);
-    return buf.length;
-  } catch (e) { return 0; }          // no ffmpeg, or it choked — keep the original
-}
+// steady rather than theatrical: she's explaining a room, not acting.
+// style 0 keeps her from putting a performance on the longer lines.
+const SETTINGS = { stability: 0.45, similarity_boost: 0.75, style: 0.0, use_speaker_boost: true };
+const render = (text) => speak(text, { key: KEY, voice: VOICE, model: MODEL, settings: SETTINGS });
 
 const lines = allSpoken();
 // the same sentence appearing in two places should cost one file, not two
