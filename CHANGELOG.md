@@ -575,8 +575,13 @@ and the first one is the one that was actually killing her.
 ## 2026-08-22 — the wall was full, and nothing said so
 
 Somebody tried to leave a note and it didn't appear. It wasn't a bug in the
-posting path — **all three bedroom walls were physically out of room**, and had
-been since roughly the start of August.
+posting path — **all three bedroom walls were physically out of room**.
+
+The blackout dates from **2026-08-18 01:15**, the last note that landed
+(*Aa*'s "Hi", back wall). Everything after that was refused. An earlier draft
+of this entry said "since early August", which the successful posts on the
+13th, 16th and 18th plainly contradict — the walls filled one at a time and
+the last of them closed with that note.
 
 ### How it hid
 
@@ -622,7 +627,7 @@ existing notes still lands**, and none of the art moved.
 The aim tip said "click to leave something" on a wall that could not take one.
 The composer opened. You typed. Only then did it say no — and since the check
 never reaches the database, what you wrote was gone with no record anywhere.
-That is why this went unnoticed for three weeks.
+Four days of that was enough to catch a first-time visitor.
 
 `notesWall.isFull(wallId)` now answers "is it worth opening the composer at
 all", which is a different question from `canPlace`'s "can this go here". The
