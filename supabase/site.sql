@@ -254,17 +254,53 @@ security definer
 set search_path = ''
 as $$
 declare
-  v_owner text;
+  v_owner   text;
+  v_wall    text;
+  v_created timestamptz;
+  v_bedroom constant text[] := array['back', 'west', 'east'];
 begin
   if note_uid is null or new_x < 0 or new_x > 1 or new_y < 0 or new_y > 1
      or new_rot < -0.5 or new_rot > 0.5
      or new_wall not in ('back', 'west', 'east', 'boat_port', 'boat_stb', 'boat_door') then
     return false;
   end if;
-  select uid into v_owner from public.notes where id = note_id and not deleted;
+  select uid, wall, created_at into v_owner, v_wall, v_created
+    from public.notes where id = note_id and not deleted;
   if v_owner is null or v_owner <> note_uid then
     return false;     -- not yours (or it was never tagged) → no move
   end if;
+
+  /* PAST MONTHS ARE LOCKED.
+     The bedroom wall shows one month at a time and new notes always land on
+     the current one — INSERT can't reach the past, because created_at
+     defaults to now(). This is the other door: a note that has been hung and
+     the month has turned over stays exactly where its author left it.
+
+     It belongs here rather than in the browser. The whole reason the wall
+     quietly filled up in August is that its only guard ran client-side,
+     where a refusal leaves no trace and a crafted request never meets it.
+
+     LA months, not UTC — a note posted at 02:00 UTC on the 1st went up the
+     evening before in Los Angeles, and it belongs to the month its author
+     was living in. Same rule as monthKeyOf() in notes3d.js.
+
+     The boat is exempt, the same way it is exempt from the month view: its
+     three walls hold fourteen notes, most of them Desi's, and they are not
+     part of the monthly turnover. */
+  if v_wall = any(v_bedroom)
+     and date_trunc('month', v_created at time zone 'America/Los_Angeles')
+       <> date_trunc('month', now() at time zone 'America/Los_Angeles') then
+    return false;
+  end if;
+
+  -- and a note stays in the room it was left in. nothing in the UI can move
+  -- one across (you can only point at walls you're standing in front of), but
+  -- this function is reachable without the UI, and "move it to the boat" was
+  -- otherwise a way around the month lock above.
+  if (v_wall = any(v_bedroom)) <> (new_wall = any(v_bedroom)) then
+    return false;
+  end if;
+
   update public.notes
      set wall = new_wall, x = new_x, y = new_y, rot = new_rot
    where id = note_id;

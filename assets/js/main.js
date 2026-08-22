@@ -58,7 +58,7 @@ import { initDebug } from "./debug.js";
 import { PIANO_VOICES, GUITAR_VOICES, audioGraph, PLAITS_VOICE, initPlaits, setPlaits, plaitsStatus } from "./ambience.js";
 import * as SynthPanel from "./synth-panel.js";
 import * as MonthPlate from "./wall-months.js";
-import { currentMonthKey, monthLabel } from "./notes3d.js";
+import { currentMonthKey, monthLabel, monthKeyOf } from "./notes3d.js";
 import { createRadio, SR_STATIONS, LA_STATIONS } from "./radio.js";
 import { startTitleFX } from "./title.js";
 import { setupXR } from "./xr.js";
@@ -1635,8 +1635,27 @@ function castWalls(ndcX, ndcY) {
 
 /* ---------- pick up & re-hang your OWN note ---------- */
 
+/* Is this note sealed into a month that has been and gone?
+
+   The wall turns over monthly and the months behind it are an archive, so
+   once the calendar moves on, a note stays exactly where its author left it
+   — including from the author. The real lock is in the database (move_note
+   refuses it outright); this is here so the room can SAY so rather than
+   quietly doing nothing, which is the failure mode that lost somebody's note
+   in the first place.
+
+   The boat is exempt, the same way it's exempt from the month view. */
+function noteLocked(note) {
+  if (!note || !notesWall.isMonthWall(note.wall)) return false;
+  return monthKeyOf(note.created_at) !== currentMonthKey();
+}
+
 function pickUpNote(note) {
   if (carrying || !note || note.uid !== identity.uid) return;
+  if (noteLocked(note)) {
+    toast(`${monthLabel(monthKeyOf(note.created_at))} is done — that one stays where you put it`);
+    return;
+  }
   const home = notesWall.pickUp(note.id);
   if (!home) return;
   carrying = { id: note.id, home };
@@ -2534,7 +2553,10 @@ setInterval(() => {
       `treat jar — ${Math.max(0, treatsLeftToday())} left today`;
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.note && hit.distance < NOTE_REACH) {
-    aimTip.textContent = `${TAP} to read`;
+    const n = hit.object.userData.note;
+    aimTip.textContent = (n.uid && n.uid === identity.uid && noteLocked(n))
+      ? `${TAP} to read — ${monthLabel(monthKeyOf(n.created_at))} is sealed`
+      : `${TAP} to read`;
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.monthPlate && hit.distance < 4.2 && hit.uv) {
     const h = MonthPlate.hit(hit.uv.x, hit.uv.y, notesWall.months());
@@ -2648,6 +2670,16 @@ $("#post-btn").addEventListener("click", async () => {
     base.text = $("#link-title").value.trim().slice(0, 80) || null;
   }
 
+  /* The month can have moved under this composer — you opened it at 23:59
+     on the 31st, or the plate was stepped back some other way. The click
+     path already refuses to open a composer on an older month; this is the
+     check at the moment of writing, which is the only one that can be sure. */
+  if (notesWall.isMonthWall(base.wall) && notesWall.month !== currentMonthKey()) {
+    closeComposer();
+    setWallMonth(currentMonthKey());
+    return toast("that wall moved on — this is the month you can write on");
+  }
+
   // resolve a spot BEFORE we touch the db. otherwise a packed wall still
   // inserts the row (firing the discord webhook) and only then fails to place
   // it — leaving an invisible orphan note and a "packed" toast at the same
@@ -2737,8 +2769,10 @@ function openReader(note) {
   $("#reader-meta").textContent =
     `${note.author ? note.author + " · " : ""}${timeAgo(note.created_at)}`;
   $("#reader-delete").classList.toggle("hidden", !adminMode);
-  // you can re-hang anything you posted (going forward — old notes have no uid)
-  $("#reader-move").classList.toggle("hidden", !(note.uid && note.uid === identity.uid));
+  // you can re-hang anything you posted (going forward — old notes have no
+  // uid), but only while its month is still the one being written on
+  $("#reader-move").classList.toggle("hidden",
+    !(note.uid && note.uid === identity.uid) || noteLocked(note));
   show(reader);
 }
 function closeReader() {
@@ -5710,9 +5744,15 @@ addEventListener("keydown", (e) => {
         ghosts.flash(p.target, 0x66e0ff);
       }
     } else if (p.kind === "notemove") {
-      // someone re-hung their note — slide it to its new home for us too
-      notesWall.moveTo(p.id, { wall: p.wall, x: p.x, y: p.y, rot: p.rot });
-      refreshNoteVisibility();
+      // someone re-hung their note — slide it to its new home for us too.
+      // a sealed month doesn't move, whoever says it did: the database
+      // refuses the write, so honouring it here would show a lie that
+      // un-tells itself on the next reload.
+      const nm = notesWall.all.get(p.id);
+      if (!nm || !noteLocked(nm)) {
+        notesWall.moveTo(p.id, { wall: p.wall, x: p.x, y: p.y, rot: p.rot });
+        refreshNoteVisibility();
+      }
     } else if (p.kind === "fireworks") {
       // the dj painted the sky — everyone in the venue sees the same show
       if (inClub) world.clubFireworks(p.seed);
@@ -5928,7 +5968,10 @@ window.METRO_DEBUG = { renderer, camera, world, controls, xr, disc, hoop: hoopGa
   toy: () => toy, grabToy, throwToy,
   hoops: hoopGame,
   gym: { join: joinGym, leave: leaveGym, ball: gymBall, team: () => myGymTeam, teams: gymTeams, inGym: () => inGym, debug: () => gymBall.debug() },
-  carry: { pick: pickUpNote, drop: dropCarried, state: () => carrying },
+  carry: { pick: pickUpNote, drop: dropCarried, cancel: cancelCarry, state: () => carrying,
+           // the harness needs to ask "is this one sealed" and "who am I",
+           // and to be able to open a reader on a note it chose
+           locked: noteLocked, reader: openReader, me: () => identity.uid },
   booth: { dj: () => djState, canDJ: () => canDJ(), headcount: () => clubHeadcount(), live: () => voice.djLive() } };
 
 // on-device diagnostics panel — opt in with #debug (or ?debug) in the URL.

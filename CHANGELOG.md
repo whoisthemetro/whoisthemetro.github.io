@@ -572,6 +572,48 @@ and the first one is the one that was actually killing her.
   Chrome with clip fetches broken and asserts `speechSynthesis.speak` is
   never called.
 
+## 2026-08-22 — a month that's over is sealed
+
+The wall turns over monthly; this is what makes the months behind it an
+archive rather than a backlog. Once the calendar moves on, a note stays
+exactly where its author left it — including from its author.
+
+**The lock is in the database.** `move_note` refuses to move a bedroom note
+whose `created_at` falls in a different LA month, and separately refuses to
+move any note between the bedroom and the boat, which was otherwise the way
+round it (move it to a boat wall, move it back). Verified against live data:
+
+| attempt | |
+| --- | --- |
+| move a June bedroom note | **refused** |
+| move an August bedroom note | allowed |
+| move an August note onto a boat wall | **refused** |
+| move a June *boat* note | allowed — the boat is exempt |
+
+It belongs there and not in the browser, and today is the reason why: the
+wall's only capacity guard ran client-side, so when it started refusing
+things it left no trace anywhere and nobody knew for four days. A rule that
+matters is a rule the server enforces.
+
+INSERT needs no lock at all — `created_at` defaults to `now()`, so a new row
+is in the current month by construction. There is no way to write into the
+past.
+
+**The browser explains rather than enforces.** `noteLocked(note)` gates three
+places: the reader hides its re-hang button on a sealed note, picking one up
+says *"june 2026 is done — that one stays where you put it"* instead of
+quietly doing nothing, and the aim tip on your own sealed note says so before
+you try. The post button re-checks the month at the moment of writing too —
+the click path already refuses to open a composer on an older month, but a
+composer opened at 23:59 on the 31st is posted in a different month than it
+was opened in.
+
+One more path: a peer broadcasting `notemove` for a sealed note is ignored.
+The database would refuse the write, so honouring the live event would show a
+move that un-tells itself on the next reload.
+
+THE DESI is exempt throughout, the same way it's exempt from the month view.
+
 ## 2026-08-22 — the wall gets a calendar
 
 Making the notes smaller bought two months and would have bought the same

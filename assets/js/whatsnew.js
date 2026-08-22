@@ -28,7 +28,7 @@ export const WHATS_NEW = [
       "the wall takes notes again. it had quietly run out of room — every wall in the bedroom was full, so posting anything just did nothing",
       "and it can't fill up again. the wall shows one month at a time now, with a little plate above it telling you which. new notes go on this month; the months behind it are all still there",
       "there are arrows on that plate, and a row of ticks — one per month since the room opened, tall where it was busy. tap one to go and read that month",
-      "nothing was thrown away. every note anyone has ever left is still there, on the month they left it",
+      "nothing was thrown away. every note anyone has ever left is still there, on the month they left it — and once a month is over it's sealed, so what's up there is exactly what was up there",
     ],
   },
   {
