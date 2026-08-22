@@ -2284,7 +2284,14 @@ controls.onAction((ndcX, ndcY) => {
     openReader(hit.object.userData.note);
   } else if (hit.object.userData.postable && hit.distance < NOTE_REACH && notesWall.postableFrom(hit, controls.pos)) {
     const place = notesWall.placementFromHit(hit);
-    if (place) { tourDid("note"); openComposer(place); }
+    /* Ask BEFORE the composer opens, not after it's been filled in. The
+       packed check runs entirely in the browser, so a note refused at post
+       time is gone with no trace of it anywhere — which is how these three
+       walls stayed full since early August without a single error to show
+       for it. If the smallest thing you can post won't fit, say so now. */
+    if (place && notesWall.isFull(place.wall)) {
+      toast("this wall is full — try another one");
+    } else if (place) { tourDid("note"); openComposer(place); }
   } else {
     tapWalk(ndcX, ndcY);          // it hit scenery with nothing to do: go there instead
   }
@@ -2513,7 +2520,10 @@ setInterval(() => {
     aimTip.textContent = `${TAP} to read`;
     aimTip.classList.add("show");
   } else if (hit && hit.object.userData.postable && hit.distance < NOTE_REACH && notesWall.postableFrom(hit, controls.pos)) {
-    aimTip.textContent = `${TAP} to leave something`;
+    // isFull is cached per wall, which it has to be — this runs six times a
+    // second and the honest answer sweeps the whole wall
+    const wid = notesWall.wallIdOf(hit.object);
+    aimTip.textContent = wid && notesWall.isFull(wid) ? "this wall is full" : `${TAP} to leave something`;
     aimTip.classList.add("show");
   } else {
     aimTip.classList.remove("show");

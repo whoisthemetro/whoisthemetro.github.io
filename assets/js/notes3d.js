@@ -12,7 +12,22 @@
 import * as THREE from "three";
 import { PAPERS, hostOf } from "./util.js";
 
-const NOTE_W = 0.30, PHOTO_W = 0.38, LINK_W = 0.36;
+/* How big a thing on the wall is, in metres.
+
+   These were 0.30 / 0.38 / 0.36 and the three bedroom walls FILLED UP —
+   measured 2026-08-22 against the live database: 0% of back, west or east
+   would take another note, and every attempt to post had been dying on the
+   "that wall's packed" check since roughly the start of August. Nobody saw
+   an error, because the check happens in the browser and never reaches the
+   database; a visitor just wrote a note and watched it not appear.
+
+   The wall is not as big as it looks. Thirteen acoustic slabs push no-post
+   rects onto it, and between them they leave only 15-23% of each wall
+   postable before a single note goes up. A note also needs its WHOLE
+   footprint clear, so shrinking it wins back area faster than linearly —
+   13% off each side is what turns "no room at all" into room for about
+   sixty more. Measured, not guessed. */
+const NOTE_W = 0.26, PHOTO_W = 0.33, LINK_W = 0.32;
 
 // footprint on the wall per kind, in meters [w, h]
 const KIND_SIZE = {
@@ -20,11 +35,14 @@ const KIND_SIZE = {
   photo: [PHOTO_W, PHOTO_W * (300 / 256)],
   link: [LINK_W, LINK_W * (132 / 256)],
 };
-const PAD = 0.03;   // breathing room between notes
+const PAD = 0.02;   // breathing room between notes
 // usable vertical strip as a fraction of wall height — notes live between
 // these. wider band + smaller notes = the wall holds a lot more before it's
 // genuinely "packed" (it used to cap at the middle 13%–78% of the wall).
-const BAND_LO = 0.08, BAND_HI = 0.86;
+// the top went 0.86 -> 0.92 in the same pass: on a 2.7 m wall that's a note
+// centred at 2.48 m instead of 2.32, which is high on the wall and still
+// well clear of the ceiling.
+const BAND_LO = 0.08, BAND_HI = 0.92;
 
 function roundRect(g, x, y, w, h, r) {
   g.beginPath();
@@ -148,6 +166,7 @@ export class NotesWall {
     this.byId = new Map();       // id -> mesh
     this.seq = 0;                // stacking order → tiny z offsets
     this.occupied = new Map();   // wall id -> [{id, cu, cv, hu, hv}] in meters
+    this._fullCache = new Map(); // "wall:kind" -> is it out of room? (see isFull)
   }
 
   has(id) { return this.byId.has(id); }
@@ -246,6 +265,7 @@ export class NotesWall {
     // its own patch of wall, with a tiny stagger against z-fighting
     if (!this.occupied.has(wall.id)) this.occupied.set(wall.id, []);
     this.occupied.get(wall.id).push({ id: note.id, ...spot });
+    this._forgetFull();
 
     mesh.userData.note = note;
     this._placeMesh(mesh, wall, spot.cu, spot.cv, note.rot || 0);
@@ -297,7 +317,7 @@ export class NotesWall {
     const note = mesh.userData.note;
     for (const taken of this.occupied.values()) {
       const i = taken.findIndex(o => o.id === id);
-      if (i >= 0) { taken.splice(i, 1); break; }
+      if (i >= 0) { taken.splice(i, 1); this._forgetFull(); break; }
     }
     mesh.userData.carrying = true;
     mesh.renderOrder = 999;
@@ -340,6 +360,31 @@ export class NotesWall {
     return this._resolveSpot(wall, { kind, x, y }) != null;
   }
 
+  /* Is this wall out of room for the SMALLEST thing you can post?
+
+     Worth its own method because it answers a different question from
+     canPlace: not "can this go here" but "is it worth opening the composer
+     at all". Before this existed the room would happily invite you to write
+     something onto a full wall, let you type it, and only then say no — and
+     since the check never reaches the database, the note was gone and there
+     was no trace of the attempt anywhere. That's how the wall being full
+     since early August went unnoticed.
+
+     Cached per wall, because the honest answer runs _resolveSpot's whole
+     fallback sweep — a few thousand cells against every note already up —
+     and the aim tip asks six times a second. Anything that changes what's
+     on a wall drops the cache. */
+  isFull(wallId, kind = "note") {
+    const key = wallId + ":" + kind;
+    if (this._fullCache.has(key)) return this._fullCache.get(key);
+    // seed from the middle: _resolveSpot sweeps the whole wall before it
+    // gives up, so where we start it doesn't change the answer
+    const full = !this.canPlace(wallId, kind, 0.5, 0.5);
+    this._fullCache.set(key, full);
+    return full;
+  }
+  _forgetFull() { this._fullCache.clear(); }
+
   // set the note down at place: re-resolve a free patch (spiral, like a fresh
   // post), settle the mesh, restore solid rendering. returns the FINAL place
   // (normalized to the resolved spot, so reloads land it exactly here) or null
@@ -353,6 +398,7 @@ export class NotesWall {
     if (!spot) return null;
     if (!this.occupied.has(wall.id)) this.occupied.set(wall.id, []);
     this.occupied.get(wall.id).push({ id, ...spot });
+    this._forgetFull();
 
     const final = { wall: place.wall, x: spot.cu / wall.w, y: spot.cv / wall.h, rot: place.rot ?? (note.rot || 0) };
     Object.assign(mesh.userData.note, final);
@@ -374,13 +420,14 @@ export class NotesWall {
     if (!mesh || !wall) return;
     for (const taken of this.occupied.values()) {
       const i = taken.findIndex(o => o.id === id);
-      if (i >= 0) { taken.splice(i, 1); break; }
+      if (i >= 0) { taken.splice(i, 1); this._forgetFull(); break; }
     }
     const [kw, kh] = KIND_SIZE[mesh.userData.note.kind] || KIND_SIZE.note;
     const hu = kw / 2 + PAD, hv = kh / 2 + PAD;
     const cu = place.x * wall.w, cv = place.y * wall.h;
     if (!this.occupied.has(wall.id)) this.occupied.set(wall.id, []);
     this.occupied.get(wall.id).push({ id, cu, cv, hu, hv });
+    this._forgetFull();
     Object.assign(mesh.userData.note, { wall: place.wall, x: place.x, y: place.y, rot: place.rot ?? (mesh.userData.note.rot || 0) });
     this._placeMesh(mesh, wall, cu, cv, mesh.userData.note.rot || 0);
   }
@@ -395,7 +442,7 @@ export class NotesWall {
     this.byId.delete(id);
     for (const taken of this.occupied.values()) {
       const i = taken.findIndex(o => o.id === id);
-      if (i >= 0) { taken.splice(i, 1); break; }
+      if (i >= 0) { taken.splice(i, 1); this._forgetFull(); break; }
     }
   }
 
@@ -409,6 +456,12 @@ export class NotesWall {
   // the bedroom's west wall seen from the arcade behind it. each wall's normal
   // points into its own room, so you may only post from the front (room) side.
   // true if `pos` (a {x,y,z}) is on that side of the wall this hit landed on.
+  // which wall a raycast hit landed on, by id (null if it wasn't a wall)
+  wallIdOf(mesh) {
+    const w = this.walls.find(x => x.mesh === mesh);
+    return w ? w.id : null;
+  }
+
   postableFrom(hit, pos) {
     const wall = this.walls.find(w => w.mesh === hit.object);
     if (!wall || !pos) return false;

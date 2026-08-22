@@ -23,6 +23,13 @@
 
 export const WHATS_NEW = [
   {
+    date: "2026-08-22",
+    items: [
+      "the wall takes notes again. it had quietly run out of room — every wall in the bedroom was full, so posting anything just did nothing. everything already up there stayed exactly where it is, and there's space for about sixty more",
+      "and if a wall ever does fill up, it says so before you write anything instead of after",
+    ],
+  },
+  {
     date: "2026-08-19",
     items: [
       "in a headset, people can see you MOVE now. your arms follow your controllers — point at something, wave, hold a drink up — and your head turns when you look around instead of your whole body swinging with it",

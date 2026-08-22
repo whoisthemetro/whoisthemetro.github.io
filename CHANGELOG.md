@@ -572,6 +572,77 @@ and the first one is the one that was actually killing her.
   Chrome with clip fetches broken and asserts `speechSynthesis.speak` is
   never called.
 
+## 2026-08-22 — the wall was full, and nothing said so
+
+Somebody tried to leave a note and it didn't appear. It wasn't a bug in the
+posting path — **all three bedroom walls were physically out of room**, and had
+been since roughly the start of August.
+
+### How it hid
+
+The packed check runs in the BROWSER. `canPlace` resolves a spot before
+`store.add` is ever called, precisely so a full wall can't fire the Discord
+webhook and leave an orphan row — good reason, bad consequence: a refused note
+produces **no server-side trace at all**. Five days of Supabase edge logs held
+exactly one POST to `/rest/v1/notes`, and it succeeded. There was no error to
+find because nothing ever asked.
+
+Running the site's own `canPlace()` against the live database over an
+800-point grid: **back 0% free, west 0%, east 0%.** That is the whole bug.
+`_resolveSpot` sweeps every legal patch before it gives up, so a single `null`
+is already a complete answer.
+
+### Why it filled
+
+The wall is much smaller than it looks. Thirteen acoustic slabs each push a
+no-post rect, and between them they leave only **15–23% of each wall postable
+before a single note goes up**. Fifty-nine notes then took the rest.
+
+### The fix: smaller notes, more of the wall
+
+Measured against the live wall, re-placing every existing note at each
+candidate size and then packing until nothing more fits:
+
+| | back | west | east | total |
+| --- | --- | --- | --- | --- |
+| as shipped | 0 | 0 | 0 | **0** |
+| taller band only | +7 | +1 | +3 | +11 |
+| 0.26 + pad 0.02 + band 0.92 | +24 | +16 | +18 | **+58** |
+| 0.24 | +32 | +21 | +23 | +76 |
+
+`NOTE_W` 0.30 → **0.26**, `PHOTO_W` 0.38 → 0.33, `LINK_W` 0.36 → 0.32, `PAD`
+0.03 → 0.02, `BAND_HI` 0.86 → 0.92. Thirteen percent off each side, which is
+barely visible and roughly doubles the wall's life. A note needs its WHOLE
+footprint clear, so shrinking wins area back faster than linearly — that's why
+13% off turns "no room at all" into room for sixty. **Every one of the 73
+existing notes still lands**, and none of the art moved.
+
+### And the dead end is closed
+
+The aim tip said "click to leave something" on a wall that could not take one.
+The composer opened. You typed. Only then did it say no — and since the check
+never reaches the database, what you wrote was gone with no record anywhere.
+That is why this went unnoticed for three weeks.
+
+`notesWall.isFull(wallId)` now answers "is it worth opening the composer at
+all", which is a different question from `canPlace`'s "can this go here". The
+aim tip reads **"this wall is full"**, and the click refuses with a reason
+instead of taking your note first. It's cached per wall — the honest answer
+runs the whole fallback sweep against every note already up, and the tip asks
+six times a second — and every path that changes what's on a wall drops the
+cache.
+
+### Worth keeping
+
+- **A full wall leaves no server-side trace.** If notes stop appearing, measure
+  `canPlace` against live data; don't go looking for errors that were never
+  generated.
+- To drive the LIVE data headlessly, just don't stub `METRO_CONFIG` — `config.js`
+  ships the anon key, so a local page talks to the real database.
+- The smoke scripts moved from `/tmp/metro-smoke/` to `~/metro-smoke/`. `/tmp`
+  was swept out from under a session twice in one day, taking the scripts and
+  their node_modules with it.
+
 ## 2026-08-18 — the keyboard grows a synth
 
 The MIDI controller under the desk was a switch with five sounds behind it.
