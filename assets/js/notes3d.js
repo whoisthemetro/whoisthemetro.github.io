@@ -35,14 +35,50 @@ const KIND_SIZE = {
   photo: [PHOTO_W, PHOTO_W * (300 / 256)],
   link: [LINK_W, LINK_W * (132 / 256)],
 };
+/* ---------- the wall has a HISTORY, not just a surface ----------
+
+   A wall is a fixed amount of room and the room fills up; on 2026-08-22 all
+   three bedroom walls were full and posting had silently stopped. Making the
+   notes smaller bought a couple of months and would have bought the same
+   problem back in November.
+
+   So the bedroom wall shows ONE MONTH at a time. New notes land on this
+   month, which starts empty every time the calendar turns over, and the
+   months behind it are still there to walk back through. "Full" stops being
+   a state the wall can reach, and nothing is ever deleted — which matters,
+   because the room's own promise is "it's on the wall. it stays."
+
+   Only the bedroom walls do this. THE DESI's three walls hold fourteen notes
+   between them, most of them hers, and hiding those behind a month you have
+   to go looking for would be the wrong trade entirely. They show everything,
+   always. */
+const MONTH_WALLS = new Set(["back", "west", "east"]);
+
+// which month a note belongs to, in LA — where the room is. a note posted at
+// 02:00 UTC on the 1st went up the evening BEFORE in Los Angeles, and it
+// belongs to the month the person was living in when they wrote it.
+export function monthKeyOf(iso, now) {
+  const d = iso ? new Date(iso) : (now || new Date());
+  const la = new Date(d.toLocaleString("en-US", { timeZone: "America/Los_Angeles" }));
+  return `${la.getFullYear()}-${String(la.getMonth() + 1).padStart(2, "0")}`;
+}
+export function currentMonthKey(now) { return monthKeyOf(null, now); }
+const MONTH_NAMES = ["january", "february", "march", "april", "may", "june",
+                     "july", "august", "september", "october", "november", "december"];
+export function monthLabel(key) {
+  const [y, m] = String(key).split("-").map(Number);
+  return `${MONTH_NAMES[(m || 1) - 1]} ${y}`;
+}
+
 const PAD = 0.02;   // breathing room between notes
 // usable vertical strip as a fraction of wall height — notes live between
 // these. wider band + smaller notes = the wall holds a lot more before it's
 // genuinely "packed" (it used to cap at the middle 13%–78% of the wall).
-// the top went 0.86 -> 0.92 in the same pass: on a 2.7 m wall that's a note
-// centred at 2.48 m instead of 2.32, which is high on the wall and still
-// well clear of the ceiling.
-const BAND_LO = 0.08, BAND_HI = 0.92;
+// the top is 0.85 because the month plate hangs above it: notes stop at
+// 2.295 m on a 2.7 m wall and the plate's bottom edge is at 2.346. it went
+// 0.86 -> 0.92 for one commit to buy capacity, which the monthly turnover
+// made unnecessary — a month's worth of notes was never the problem.
+const BAND_LO = 0.08, BAND_HI = 0.85;
 
 function roundRect(g, x, y, w, h, r) {
   g.beginPath();
@@ -167,16 +203,92 @@ export class NotesWall {
     this.seq = 0;                // stacking order → tiny z offsets
     this.occupied = new Map();   // wall id -> [{id, cu, cv, hu, hv}] in meters
     this._fullCache = new Map(); // "wall:kind" -> is it out of room? (see isFull)
+    this.all = new Map();        // id -> note, EVERY month, whether hung or not
+    this._monthsCache = null;    // months() is asked far more often than it changes
+    this.month = currentMonthKey();   // which one the bedroom walls are showing
+  }
+
+  /* ---------- months ---------- */
+
+  isMonthWall(wallId) { return MONTH_WALLS.has(wallId); }
+  // does this note belong on the wall as it's currently set?
+  showing(note) {
+    return !MONTH_WALLS.has(note.wall) || monthKeyOf(note.created_at) === this.month;
+  }
+  /* Every month from the first note to this one, oldest first — INCLUDING
+     the quiet ones. A list of only the months that have something in it
+     would be shorter, but the rail on the plate is a timeline: the gaps are
+     part of what it's telling you, and a room that went quiet for a summer
+     should look like it did. This month is always the last entry, so there
+     is always somewhere to write. */
+  months() {
+    // memoized — the aim tip and the plate's hit test both ask, several
+    // times a second, and the honest answer walks every note in the archive
+    if (this._monthsCache) return this._monthsCache;
+    const seen = new Map();
+    for (const n of this.all.values()) {
+      if (!MONTH_WALLS.has(n.wall)) continue;
+      const k = monthKeyOf(n.created_at);
+      seen.set(k, (seen.get(k) || 0) + 1);
+    }
+    const now = currentMonthKey();
+    if (!seen.has(now)) seen.set(now, 0);
+    const keys = [...seen.keys()].sort();
+    const out = [];
+    let [y, m] = keys[0].split("-").map(Number);
+    const [ey, em] = now.split("-").map(Number);
+    // walk the calendar rather than the notes, so an empty month still gets
+    // a tick. guarded at 600 so a clock skewed into the future can't hang us.
+    for (let guard = 0; guard < 600; guard++) {
+      const key = `${y}-${String(m).padStart(2, "0")}`;
+      out.push({ key, count: seen.get(key) || 0 });
+      if (y === ey && m === em) break;
+      if (++m > 12) { m = 1; y++; }
+    }
+    this._monthsCache = out;
+    return this._monthsCache;
+  }
+  _forgetMonths() { this._monthsCache = null; }
+
+  /* Hang a different month. The meshes for the month you were reading are
+     thrown away rather than hidden: every note owns a canvas and a texture,
+     and a room that has been going for years would otherwise carry every one
+     of them in memory to show you twenty. Boat notes are untouched. */
+  showMonth(key) {
+    if (key === this.month) return;
+    this.month = key;
+    for (const [id, mesh] of [...this.byId]) {
+      if (!MONTH_WALLS.has(mesh.userData.note.wall)) continue;
+      this.remove(id);
+    }
+    this._hangAll();
+  }
+
+  // (re)hang everything that belongs on the wall right now, oldest first —
+  // the de-overlap spiral is order-dependent, so this is what makes every
+  // visitor see the same layout
+  _hangAll() {
+    const want = [...this.all.values()].filter(n => this.showing(n) && !this.byId.has(n.id));
+    want.sort((a, b) =>
+      String(a.created_at).localeCompare(String(b.created_at)) || String(a.id).localeCompare(String(b.id)));
+    for (const n of want) this._hang(n);
   }
 
   has(id) { return this.byId.has(id); }
 
   setAll(notes) {
-    // oldest first → the deterministic de-overlap below gives every
-    // visitor the exact same layout
-    const sorted = [...notes].sort((a, b) =>
-      String(a.created_at).localeCompare(String(b.created_at)) || String(a.id).localeCompare(String(b.id)));
-    for (const n of sorted) this.add(n);
+    this.all.clear();
+    this._forgetMonths();
+    for (const n of notes) this.all.set(n.id, n);
+    /* Open on the newest month that actually HAS anything, not blindly on
+       this one. Otherwise the first visitor on the 2nd of the month walks in
+       to a bare wall, which is a worse thing to show someone than last
+       month's — and the whole reason this exists is that the wall made a bad
+       first impression. Writing still always goes to the current month; the
+       dial makes it obvious which one you're standing in front of. */
+    const withNotes = this.months().filter(m => m.count > 0);
+    this.month = withNotes.length ? withNotes[withNotes.length - 1].key : currentMonthKey();
+    this._hangAll();
   }
 
   // Every note is its own thing: if the stored spot overlaps an earlier
@@ -226,7 +338,16 @@ export class NotesWall {
     return null;
   }
 
+  /* A note arrives — yours, or a peer's over realtime. It always joins the
+     archive; it only goes ON the wall if the wall is showing its month. */
   add(note) {
+    this.all.set(note.id, note);
+    this._forgetMonths();
+    if (!this.showing(note)) return;
+    return this._hang(note);
+  }
+
+  _hang(note) {
     if (this.byId.has(note.id)) return;
     const wall = this.walls.find(w => w.id === note.wall);
     if (!wall) return;
@@ -432,6 +553,10 @@ export class NotesWall {
     this._placeMesh(mesh, wall, cu, cv, mesh.userData.note.rot || 0);
   }
 
+  /* Take a note OFF the wall. This is un-hanging, not deleting — switching
+     months calls it on everything currently up, and the archive keeps them.
+     Actual deletion is forget(), below. Getting these two the same way round
+     would mean walking back a month emptied it. */
   remove(id) {
     const mesh = this.byId.get(id);
     if (!mesh) return;
@@ -444,6 +569,13 @@ export class NotesWall {
       const i = taken.findIndex(o => o.id === id);
       if (i >= 0) { taken.splice(i, 1); this._forgetFull(); break; }
     }
+  }
+
+  // gone for good — an admin delete, or a peer's removal over realtime
+  forget(id) {
+    this.remove(id);
+    this.all.delete(id);
+    this._forgetMonths();
   }
 
   // everything clickable: notes first (closer), then bare walls

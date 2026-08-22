@@ -82,6 +82,7 @@ for python-heredoc edits, so **leave them intact.**
 | The guide (bedroom tutor) | `guide.js`, `say.js` (the voice), `lines.js` (everything she says), `main.js` ~475 (placement) |
 | …re-rendering her voice | `tools/voice/render.mjs` — just run it, it finds its key in `~/.config/metro/voice.env` |
 | Notes on the wall | `notes3d.js`, `store.js` |
+| …the wall's MONTHS (the archive + the plate above the wall) | `wall-months.js` (the plate's drawing + hit test), `notes3d.js` (`months`/`showMonth`/`all`/`monthKeyOf`), `world.js` (the plate mount, just before the front-wall window hole), `main.js` (`paintMonthPlate`/`setWallMonth`/`stepWallMonth`) |
 | METRO OS (the desk computer) + the visitor changelog | `whatsnew.js` (the copy), `main.js` `TERM_COMMANDS`, `#pc` in index.html |
 | Getting a track into the garden (encode, loudness, waveform, R2) | `tools/garden/encode.mjs`, `tools/garden/README.md` |
 | Avatars / other people | `avatar-builder.js` (the figure + hair), `ghosts.js`, `picker.js` (the chooser), `main.js` ~670–860 (podium figure, drag-to-spin, `openPicker`) |

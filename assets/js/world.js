@@ -29,6 +29,7 @@ import { SHADER_ART, KUKO_A, KUKO_B, KUKO_IMAGE } from "./shaderart.js";
 import { makeShaderBake } from "./shaderbake.js";
 import { createGraffiti } from "./graffiti.js";
 import { makePanel as makeSynthPanel } from "./synth-panel.js";
+import { makeMonthPlate } from "./wall-months.js";
 import { buildRoom as buildStudioRoom } from "./studio/room.js";
 import { buildGarden } from "./garden/room.js";
 import { GARDEN_TRACKS } from "./garden-catalog.js";
@@ -1937,6 +1938,33 @@ export function buildWorld(renderer) {
         { u0: 4.50, u1: 5.08, v0: 1.26, v1: 1.84 },  // the gold record's spot
       ],
     });
+
+  /* --- the month plate --- */
+  /* The wall shows one month at a time (see notes3d.js), and this is what
+     says which — hung across the top of each bedroom wall like the label
+     above a gallery hang, because that is what it is. One shared texture,
+     three meshes: the month belongs to the room, not to the wall you happen
+     to be facing, and sharing the canvas makes that true by construction.
+
+     It sits ABOVE the notes rather than among them. BAND_HI stops notes at
+     0.85 of the wall (2.295 m here) and the plate's lower edge is at 2.346,
+     so nothing has to be moved out of its way — the void below is belt and
+     braces for anything that resolves close to the ceiling. */
+  const monthPlate = makeMonthPlate();
+  for (const wid of ["back", "west", "east"]) {
+    const wl = walls.find(w2 => w2.id === wid);
+    if (!wl) continue;
+    const vC = wl.h * 0.913;
+    const mesh = monthPlate.makeMesh();
+    mesh.position.copy(wl.origin.clone()
+      .addScaledVector(wl.uDir, wl.w / 2)
+      .addScaledVector(wl.vDir, vC)
+      .addScaledVector(wl.normal, 0.045));
+    mesh.lookAt(mesh.position.clone().add(wl.normal));
+    add(mesh);
+    wl.voids.push({ u0: wl.w / 2 - monthPlate.width / 2 - 0.06, u1: wl.w / 2 + monthPlate.width / 2 + 0.06,
+                    v0: vC - monthPlate.height / 2 - 0.04, v1: wl.h });
+  }
 
   // the front wall wears a REAL hole where the window is — the view behind
   // it is stacked geometry now, and a solid wall would simply hide LA.
@@ -10344,6 +10372,7 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     careTargets, updateCare,
     curtainHits, toggleCurtains, setCurtains,
     curtainsClosed: () => curtains.closed,
+    monthPlate,
     pianoMesh: midiKeybed, pressPianoKey,
     pianoVoiceMesh: midiBody,
     synth: { panel: synthPanel, btn: synthBtn, screen: synthPanel.screen, setOpen: setSynthPanelOpen,

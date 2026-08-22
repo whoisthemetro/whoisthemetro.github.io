@@ -57,6 +57,8 @@ import { makeGymBall } from "./gymball.js";
 import { initDebug } from "./debug.js";
 import { PIANO_VOICES, GUITAR_VOICES, audioGraph, PLAITS_VOICE, initPlaits, setPlaits, plaitsStatus } from "./ambience.js";
 import * as SynthPanel from "./synth-panel.js";
+import * as MonthPlate from "./wall-months.js";
+import { currentMonthKey, monthLabel } from "./notes3d.js";
 import { createRadio, SR_STATIONS, LA_STATIONS } from "./radio.js";
 import { startTitleFX } from "./title.js";
 import { setupXR } from "./xr.js";
@@ -273,6 +275,9 @@ function aInstrument(name) {
 let aArcadeGame = null, aArcadeStart = 0;
 const controls = new Controls(camera, canvas, world.bounds, world.isWalkable);
 const notesWall = new NotesWall(world.noteGroup, world.walls, store);
+// say something before the wall has loaded — a blank plate over an empty
+// wall reads as broken, and the load is a network round trip away
+paintMonthPlate();
 const ghosts = new Ghosts(world.ghostGroup);
 const raycaster = new THREE.Raycaster();
 raycaster.layers.enableAll();   // clickables exist on both light layers
@@ -1597,7 +1602,7 @@ function castAt(ndcX, ndcY) {
     raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera);
   }
   // doors are included as blockers so notes can't be pinned onto them
-  const targets = [cat.hitMesh, toyHit, bartender.hitMesh, guide.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.synth.btn, ...(world.synth.isOpen() ? [world.synth.screen] : []), world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, ...world.elevHits, ...world.elevCallHits, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.guitarVoiceHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, world.pool.hit, world.pool.resetHit, world.pool.joinHit, world.pool2.hit, world.pool2.resetHit, world.pool2.joinHit, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.radioHits, ...world.laRadioHits, ...world.filterPedalHit, ...world.vacuumHits, ...world.studio.screens, ...world.studio.doorHits, ...notesWall.raycastTargets(), screenMesh, world.gym.joinHit, world.gym.exitHit, ...world.gym.readyHits, ...world.podium.hits, ...world.garden.hits, ...(world.bath ? world.bath.hits : []), ...(world.bath ? world.bath.tags.meshes() : []), ...world.blockers];
+  const targets = [cat.hitMesh, toyHit, bartender.hitMesh, guide.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.synth.btn, ...(world.synth.isOpen() ? [world.synth.screen] : []), world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, ...world.elevHits, ...world.elevCallHits, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.guitarVoiceHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, world.pool.hit, world.pool.resetHit, world.pool.joinHit, world.pool2.hit, world.pool2.resetHit, world.pool2.joinHit, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.radioHits, ...world.laRadioHits, ...world.filterPedalHit, ...world.vacuumHits, ...world.studio.screens, ...world.studio.doorHits, ...notesWall.raycastTargets(), ...world.monthPlate.meshes, screenMesh, world.gym.joinHit, world.gym.exitHit, ...world.gym.readyHits, ...world.podium.hits, ...world.garden.hits, ...(world.bath ? world.bath.hits : []), ...(world.bath ? world.bath.tags.meshes() : []), ...world.blockers];
   /* an open in-world window is CAST FIRST and wins outright if it's hit at
      all. it draws with depthTest off — it reads over the room the way a DOM
      overlay does — so sorting it by distance would let anything standing
@@ -2282,8 +2287,20 @@ controls.onAction((ndcX, ndcY) => {
     handleCare(hit.object.userData.care);
   } else if (hit.object.userData.note && hit.distance < NOTE_REACH) {
     openReader(hit.object.userData.note);
+  } else if (hit.object.userData.monthPlate && hit.distance < 4.2 && hit.uv) {
+    const h = MonthPlate.hit(hit.uv.x, hit.uv.y, notesWall.months());
+    if (h.type === "step") stepWallMonth(h.d);
+    else if (h.type === "pick") setWallMonth((notesWall.months()[h.index] || {}).key);
   } else if (hit.object.userData.postable && hit.distance < NOTE_REACH && notesWall.postableFrom(hit, controls.pos)) {
     const place = notesWall.placementFromHit(hit);
+    /* You can read any month; you can only WRITE on this one. Reading June
+       and clicking the wall brings the wall forward rather than refusing —
+       one click to come back, and it says so. Posting into a month that has
+       already been and gone would make the archive a lie. */
+    if (place && notesWall.isMonthWall(place.wall) && notesWall.month !== currentMonthKey()) {
+      setWallMonth(currentMonthKey());
+      return;
+    }
     /* Ask BEFORE the composer opens, not after it's been filled in. The
        packed check runs entirely in the browser, so a note refused at post
        time is gone with no trace of it anywhere — which is how these three
@@ -2519,11 +2536,18 @@ setInterval(() => {
   } else if (hit && hit.object.userData.note && hit.distance < NOTE_REACH) {
     aimTip.textContent = `${TAP} to read`;
     aimTip.classList.add("show");
+  } else if (hit && hit.object.userData.monthPlate && hit.distance < 4.2 && hit.uv) {
+    const h = MonthPlate.hit(hit.uv.x, hit.uv.y, notesWall.months());
+    aimTip.textContent = h.type === "step" ? (h.d < 0 ? `${TAP} — the month before` : `${TAP} — the month after`)
+      : h.type === "pick" ? `${TAP} — jump to a month` : "the wall, one month at a time";
+    aimTip.classList.add("show");
   } else if (hit && hit.object.userData.postable && hit.distance < NOTE_REACH && notesWall.postableFrom(hit, controls.pos)) {
     // isFull is cached per wall, which it has to be — this runs six times a
     // second and the honest answer sweeps the whole wall
     const wid = notesWall.wallIdOf(hit.object);
-    aimTip.textContent = wid && notesWall.isFull(wid) ? "this wall is full" : `${TAP} to leave something`;
+    aimTip.textContent = wid && notesWall.isMonthWall(wid) && notesWall.month !== currentMonthKey()
+      ? `${TAP} to come back to ${monthLabel(currentMonthKey())} and write`
+      : wid && notesWall.isFull(wid) ? "this wall is full" : `${TAP} to leave something`;
     aimTip.classList.add("show");
   } else {
     aimTip.classList.remove("show");
@@ -2639,6 +2663,7 @@ $("#post-btn").addEventListener("click", async () => {
     const saved = await store.add(base, blob);
     const placed = notesWall.add(saved);
     refreshNoteVisibility();
+    paintMonthPlate();
     store.logEvent(saved.kind);
     track("note_left", { room: aRoomNow(), kind: saved.kind });   // analytics
     aEngage();
@@ -2741,7 +2766,7 @@ $("#reader-delete").addEventListener("click", async () => {
   try {
     await store.adminDelete(currentNote.id, pass);
     sessionStorage.setItem("metro.adminpass", pass);
-    notesWall.remove(currentNote.id);
+    notesWall.forget(currentNote.id);
     closeReader();
     toast("gone.");
   } catch (e) {
@@ -3661,6 +3686,35 @@ function teardownBoat() {
   setWater(false);                       // the sea stays on the boat, fully
 }
 // each room shows only its own notes
+/* ---- the month plate ------------------------------------------------
+   The wall shows one month; this keeps the label on it honest. Repainted
+   only when something moved — a canvas upload per frame for three meshes
+   sharing one texture is exactly the kind of cost that hides. */
+function paintMonthPlate() {
+  const sel = notesWall.month;
+  world.monthPlate.markDirty();
+  world.monthPlate.render(notesWall.months(), sel, {
+    live: sel === currentMonthKey(),
+    readOnly: sel !== currentMonthKey(),
+  });
+}
+function setWallMonth(key) {
+  if (!key || key === notesWall.month) return;
+  notesWall.showMonth(key);
+  refreshNoteVisibility();
+  paintMonthPlate();
+  const n = (notesWall.months().find(m => m.key === key) || {}).count | 0;
+  toast(key === currentMonthKey()
+    ? (n ? `${monthLabel(key)} — this month's wall` : `${monthLabel(key)} — a fresh wall`)
+    : `${monthLabel(key)} — ${n} ${n === 1 ? "note" : "notes"}`);
+}
+function stepWallMonth(d) {
+  const ms = notesWall.months();
+  const i = ms.findIndex(m => m.key === notesWall.month);
+  const j = Math.max(0, Math.min(ms.length - 1, (i < 0 ? ms.length - 1 : i) + d));
+  if (ms[j]) setWallMonth(ms[j].key);
+}
+
 function refreshNoteVisibility() {
   for (const mesh of world.noteGroup.children) {
     const onBoat = String(mesh.userData.note?.wall || "").startsWith("boat");
@@ -5468,13 +5522,17 @@ addEventListener("keydown", (e) => {
     const notes = await store.list();
     notesWall.setAll(notes);
     refreshNoteVisibility();
+    paintMonthPlate();
   } catch (e) {
     console.warn("[metro] couldn't load the wall:", e);
     toast("couldn't load the wall — refresh to retry");
   }
 
-  store.onNew((n) => { if (!notesWall.has(n.id)) { notesWall.add(n); refreshNoteVisibility(); } });
-  store.onRemoved((id) => notesWall.remove(id));
+  // a note arriving over realtime joins the archive whatever month is up;
+  // it only APPEARS if the wall is showing its month. either way the count
+  // on the plate moved, so the plate is repainted.
+  store.onNew((n) => { if (!notesWall.has(n.id)) { notesWall.add(n); refreshNoteVisibility(); paintMonthPlate(); } });
+  store.onRemoved((id) => { notesWall.forget(id); paintMonthPlate(); });
   // another tab re-hung a note (local mode) — mirror its new spot
   store.onMoved((m) => { notesWall.moveTo(m.id, m); refreshNoteVisibility(); });
 
@@ -5824,6 +5882,20 @@ window.METRO_DEBUG = { renderer, camera, world, controls, xr, disc, hoop: hoopGa
   garden: { enter: enterGarden, leave: leaveGarden, play: playPlant,
             stop: () => gardenPlayer.stop(), playing: () => gardenPlayer.playing(),
             state: () => gardenState, inside: () => inGarden },
+  /* a hand on the wall's months. the plate is addressed in CANVAS PIXELS,
+     the coordinates its drawing is written in, so a test doesn't have to
+     guess where the arrows are. */
+  wall: {
+    month: () => notesWall.month, months: () => notesWall.months(),
+    set: setWallMonth, step: stepWallMonth,
+    hung: () => notesWall.byId.size, archived: () => notesWall.all.size,
+    tapPx: (px, py) => {
+      const h = MonthPlate.hit(px / 768, 1 - py / 132, notesWall.months());
+      if (h.type === "step") stepWallMonth(h.d);
+      else if (h.type === "pick") setWallMonth((notesWall.months()[h.index] || {}).key);
+      return h;
+    },
+  },
   /* a hand on the synth panel. the harness can't take pointer lock, so the
      panel is reachable in CANVAS PIXELS — the same coordinates the drawing
      is written in — and `castCentre` answers the one question a screenshot

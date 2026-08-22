@@ -572,6 +572,61 @@ and the first one is the one that was actually killing her.
   Chrome with clip fetches broken and asserts `speechSynthesis.speak` is
   never called.
 
+## 2026-08-22 — the wall gets a calendar
+
+Making the notes smaller bought two months and would have bought the same
+problem back in November. A wall is a fixed amount of room; the room keeps
+going. So the wall stops being a surface and becomes a place with a history.
+
+**It shows one month at a time.** New notes land on the month we're in, which
+starts empty every time the calendar turns over, and the months behind it are
+still there to walk back through. "Full" stops being a state the wall can
+reach, and nothing is ever deleted — which matters, because the room's own
+promise is *"it's on the wall. it stays."*
+
+**The plate** (`wall-months.js`) hangs across the top of each bedroom wall and
+says which month you're reading, how much is on it, and whether it's the one
+you can write on. Arrows either side, and a rail of ticks underneath — one per
+month since the room opened, INCLUDING the quiet ones, tick height square-
+rooted from that month's traffic. The rail is a timeline, so the gaps are part
+of what it tells you: you can see at a glance which stretches of this room's
+life had people in them. Tap a tick to go there.
+
+One canvas, one material, three meshes — the month belongs to the room, not to
+the wall you happen to be facing, and sharing the texture makes three plates
+saying the same thing true by construction instead of by remembering to redraw
+all of them. It hangs above the notes rather than among them: `BAND_HI` 0.92 →
+0.85 stops notes at 2.295 m and the plate's lower edge is at 2.346.
+
+### The parts that would have bitten
+
+- **`all` is the archive; `byId` is only what's hung.** So `remove()` un-hangs
+  and `forget()` deletes, and they are not the same call. Getting them the same
+  way round means walking back a month empties it permanently.
+- **Switching months throws the meshes away rather than hiding them.** Every
+  note owns a canvas and a texture; a room that has been going for years would
+  otherwise carry every one of them in memory to show you twenty.
+- **Months are LA months.** `created_at` is UTC, and a note posted at 02:00 UTC
+  on the 1st went up the evening *before* in Los Angeles. It belongs to the
+  month the person was living in when they wrote it.
+- **You can read any month; you can only write on this one.** Clicking a wall
+  while reading June brings the wall forward instead of refusing — one click to
+  come back, and the aim tip says so. Posting into a month that has been and
+  gone would make the archive a lie.
+- **THE DESI is exempt.** Its three walls hold fourteen notes between them, most
+  of them hers. Hiding those behind a month you have to go looking for is the
+  wrong trade; the boat shows everything, always.
+- **`months()` is memoized** — the aim tip and the plate's hit test both ask,
+  several times a second, and the honest answer walks the whole archive.
+- The wall opens on the newest month that actually has something in it, not
+  blindly on this one. Otherwise the first visitor on the 2nd walks in to a bare
+  wall, and the entire reason this exists is that the wall made a bad first
+  impression.
+
+The note-shrink and the "this wall is full" guard from earlier today both stay.
+They shouldn't fire again, but a single viral month is exactly the case where
+you want the belt as well as the braces.
+
 ## 2026-08-22 — the wall was full, and nothing said so
 
 Somebody tried to leave a note and it didn't appear. It wasn't a bug in the
