@@ -56,6 +56,7 @@ const ROAM = 0.55;             // how far from her post she'll drift
 const STUCK = 1.6;             // seconds of getting nowhere before she gives up walking
 const BLINK = 9;               // beyond this she doesn't even try to walk it
 const YIELD = 1.15;            // come inside this and she gives you the floor
+const CLEAR = 1.5;             // ...and she keeps giving it until you're back outside THIS
 const GIVE = 1.9;              // m/s she backs off at — faster than you close on her
 const ARRIVED = 0.35;          // near enough to her post to call it standing there
 
@@ -104,6 +105,43 @@ export class Guide {
      axis-slide the player has in controls.js: try the whole step, and if the
      room says no, keep whichever single axis still works. that's what gets her
      along a wall and through a doorway without any pathfinding. */
+  /* Back away from a point, and get round the furniture while doing it.
+
+     Straight-back-and-axis-slide was not enough, and the failure looks
+     exactly like what was reported: crowded toward a wall she'd grind into
+     it, because the only two directions the slide will try are the world
+     axes. So this sweeps outward from "directly away" — a bit to one side,
+     then the other, widening to nearly ninety degrees — and takes the first
+     opening. What that reads as in the room is her slipping AROUND you along
+     the wall rather than getting pinned against it.
+
+     The other half is the degenerate case. Stand exactly on her and the
+     away-vector is a division by nothing: she had no direction to flee in
+     and simply sat inside you, which measured as zero movement and looked
+     like she'd frozen. Under about 8 cm there is no meaningful "away from
+     you", so she uses her own facing instead — she's looking at you when
+     you're that close, so behind her is as good an answer as exists. */
+  _retreat(dt, px, pz, dist) {
+    let ax, az;
+    if (dist > 0.08) { ax = (this.pos.x - px) / dist; az = (this.pos.z - pz) / dist; }
+    else { ax = -Math.sin(this.yaw); az = -Math.cos(this.yaw); }
+    for (const turn of [0, 0.5, -0.5, 1.0, -1.0, 1.5, -1.5]) {
+      const c = Math.cos(turn), n = Math.sin(turn);
+      if (this._stepDir(dt, ax * c - az * n, ax * n + az * c, GIVE)) return true;
+    }
+    return false;                // boxed in on every side; she stays put
+  }
+
+  // one step along a direction, all or nothing. no axis-slide: _retreat is
+  // already trying angles, and sliding on top of that fights it.
+  _stepDir(dt, dx, dz, speed) {
+    const sx = dx * speed * dt, sz = dz * speed * dt;
+    const ok = this.fx.walkable || (() => true);
+    if (!ok(this.pos.x + sx, this.pos.z + sz)) return false;
+    this.pos.x += sx; this.pos.z += sz;
+    return true;
+  }
+
   _step(dt, tx, tz, speed) {
     const dx = tx - this.pos.x, dz = tz - this.pos.z;
     const d = Math.hypot(dx, dz);
@@ -125,8 +163,12 @@ export class Guide {
      it does NOT move her post any more. the post is the thing she's trying to
      REACH, and rewriting it here is exactly how she used to end up living
      wherever she happened to give up. */
-  _blinkTo(tx, tz) {
-    const ok = this.fx.walkable || (() => true);
+  _blinkTo(tx, tz, avoid) {
+    const walk = this.fx.walkable || (() => true);
+    // never rematerialise inside the visitor — arriving on top of someone is
+    // the one landing worse than not arriving
+    const ok = (x, z) => walk(x, z) &&
+      (!avoid || Math.hypot(x - avoid.x, z - avoid.z) > YIELD);
     const land = (x, z) => {
       this.pos.x = x; this.pos.z = z;
       this.stuckT = 0; this.lastD = Infinity; this.popT = 0.5;
@@ -476,6 +518,12 @@ export class Guide {
       const a = Math.random() * Math.PI * 2, r = Math.random() * ROAM;
       this.target = { x: this.home.x + Math.cos(a) * r, z: this.home.z + Math.sin(a) * r };
       if (this.fx.walkable && !this.fx.walkable(this.target.x, this.target.z)) this.target = null;
+      // and never amble into the person she's talking to. her patch is small
+      // enough that a visitor standing in it covers a good share of the spots
+      // she'd otherwise pick, and strolling into you is the same bug as
+      // walking home into you, just slower.
+      if (this.target && this._player &&
+          Math.hypot(this.target.x - this._player.x, this.target.z - this._player.z) < CLEAR) this.target = null;
       this.state = this.target ? "walk" : "idle";
       this.timer = 5;
     } else {
@@ -487,6 +535,7 @@ export class Guide {
   /* ---------- per-frame ---------- */
 
   tick(dt, t, playerPose) {
+    this._player = playerPose;      // _pick needs to know where not to wander
     this.timer -= dt;
     this.gazeT = Math.max(0, this.gazeT - dt);
     if (this.gazeT <= 0) this.gaze = null;
@@ -512,21 +561,42 @@ export class Guide {
        one under it. */
     const hd = Math.hypot(this.home.x - this.pos.x, this.home.z - this.pos.z);
 
-    if (playerPose && dist < YIELD) {
-      /* One: personal space. Walk into her and SHE is the one who moves —
-         straight away from you, through the same axis-slide as everything
-         else, so she gives ground along a wall instead of into it. This is
-         what "in the way" actually meant, and it's the only motion of hers
-         you can cause. She wanders back to her post the moment you step off
-         her, because the post never moved. */
+    /* Personal space is a BAND, not a line, and her post is allowed to be
+       occupied. Both of those were bugs you could see.
+
+       She used to yield inside 1.15 m and walk back to her post the instant
+       she was outside it — and if you were standing anywhere near the post,
+       walking back to it walked her straight into you again. Yield, travel,
+       yield, travel, once per frame: measured at 143 state changes and 142
+       direction reversals in three seconds, 4.67 m walked to end up 5 cm
+       from where she started. That is the "glitching" — she wasn't stuck,
+       she was going both ways at once.
+
+       Two rules fix it and both are about the same idea, which is that
+       giving ground has to STAY given. She keeps yielding until you're back
+       outside a wider ring (hysteresis, so the boundary can't be straddled),
+       and she does not walk home at all while you're standing on her post —
+       she waits where she is until you move off it. */
+    const postD = playerPose ? Math.hypot(playerPose.x - this.home.x, playerPose.z - this.home.z) : Infinity;
+    const yielding = !!playerPose && dist < (this.state === "yield" ? CLEAR : YIELD);
+    const postTaken = postD < CLEAR;
+
+    if (yielding) {
+      /* One: personal space. Walk into her and SHE is the one who moves. This
+         is the only motion of hers you can cause, and she wanders back to her
+         post once you step off it, because the post never moved. */
       this.state = "yield";
       this.target = null;
       this.stuckT = 0; this.lastD = Infinity;
-      const ax = (this.pos.x - playerPose.x) / Math.max(dist, 1e-3);
-      const az = (this.pos.z - playerPose.z) / Math.max(dist, 1e-3);
-      this._step(dt, this.pos.x + ax, this.pos.z + az, GIVE);
+      this._retreat(dt, playerPose.x, playerPose.z, dist);
       if (!this.greeted) { this.greeted = true; this.nodT = 0.5; this.fx.greet?.(); }
-    } else if (hd > ARRIVED) {
+    } else if (hd > BLINK) {
+      // you took the lift. distance alone settles this one — a post you're
+      // standing on is still the post she belongs at.
+      this.state = "travel";
+      this.target = null;
+      this._blinkTo(this.home.x, this.home.z, playerPose);
+    } else if (hd > ARRIVED && !postTaken) {
       /* Two: she's not where she's meant to be — you changed rooms, or you
          just finished shoving her across the floor. She goes to the POST, not
          to you. Same doorway steering as before: aiming at a spot on the far
@@ -534,20 +604,16 @@ export class Guide {
          shape where this file doesn't. */
       this.state = "travel";
       this.target = null;
-      if (hd > BLINK) {
-        this._blinkTo(this.home.x, this.home.z);       // you took the lift
-      } else {
-        const wp = this.fx.waypoint?.(this.pos.x, this.pos.z, this.home.x, this.home.z);
-        const tx = wp ? wp.x : this.home.x, tz = wp ? wp.z : this.home.z;
-        this._step(dt, tx, tz, CHASE);
-        // did that get her anywhere? measured against whatever she's currently
-        // AIMED at — against the post it would read as stuck every time she
-        // walks to a doorway that happens to be away from it
-        const now = Math.hypot(tx - this.pos.x, tz - this.pos.z);
-        this.stuckT = (now < this.lastD - 0.004) ? 0 : this.stuckT + dt;
-        this.lastD = now;
-        if (this.stuckT > STUCK) this._blinkTo(this.home.x, this.home.z);
-      }
+      const wp = this.fx.waypoint?.(this.pos.x, this.pos.z, this.home.x, this.home.z);
+      const tx = wp ? wp.x : this.home.x, tz = wp ? wp.z : this.home.z;
+      this._step(dt, tx, tz, CHASE);
+      // did that get her anywhere? measured against whatever she's currently
+      // AIMED at — against the post it would read as stuck every time she
+      // walks to a doorway that happens to be away from it
+      const now = Math.hypot(tx - this.pos.x, tz - this.pos.z);
+      this.stuckT = (now < this.lastD - 0.004) ? 0 : this.stuckT + dt;
+      this.lastD = now;
+      if (this.stuckT > STUCK) this._blinkTo(this.home.x, this.home.z, playerPose);
     } else if (near) {
       this.stuckT = 0; this.lastD = Infinity;
       if (this.state !== "attend") { this.state = "attend"; this.target = null; }

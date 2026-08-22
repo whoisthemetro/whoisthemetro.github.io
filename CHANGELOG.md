@@ -4,6 +4,41 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-08-22 — Trinity stops arguing with herself
+
+Reported as "she's glitching and doesn't have enough space to fly around the
+user, like she's getting stuck". She wasn't stuck — she was going both ways at
+once, once per frame.
+
+- **The oscillation.** She yielded inside 1.15 m and walked back to her post
+  the instant she was outside it. Stand anywhere near the post and walking
+  back to it walks her into you again: yield, travel, yield, travel, every
+  frame. Measured standing half a metre off her post — **143 state changes and
+  142 direction reversals in three seconds, 4.67 m walked to end up 5 cm from
+  where she started**. Now 1 state change, 0 reversals, and she settles.
+- Two rules, both saying that ground given has to stay given. Personal space
+  is a **band**: she yields inside `YIELD` (1.15) and keeps yielding until
+  you're outside `CLEAR` (1.5), so the boundary can't be straddled. And she
+  **does not walk home while you're standing on her post** — she waits where
+  she is until you step off it, then goes back as before.
+- **The frozen case.** Standing exactly on her, the away-vector was a division
+  by nothing: no direction to flee in, zero movement, which is the half that
+  actually looked like being stuck. Under 8 cm she uses her own facing
+  instead — she's looking at you when you're that close, so behind her is as
+  good an answer as exists.
+- **"Not enough space to fly around."** Straight-back plus axis-slide only
+  ever tries the two world axes, so crowded toward a wall she ground into it.
+  `_retreat` now sweeps outward from directly-away — a bit to one side, then
+  the other, out to nearly ninety degrees — and takes the first opening, which
+  reads as her slipping around you along the wall.
+- She also won't pick a roam target within `CLEAR` of you, and a blink home
+  won't land her inside you. Same bug as walking home into you, just slower.
+- `~/metro-smoke/guidecrowd.js` is the measure: it stands on her, crowds her
+  toward a wall, and walks straight through her, reporting churn (metres
+  walked over net displacement), state flips and direction reversals. Churn is
+  1.0 in every case now — straight, purposeful movement — and the last check
+  confirms she still returns to her post (0.33 m, idle) once left alone.
+
 ## 2026-08-19 — a headset visitor gets a body
 
 Peers can see a VR visitor's arms and head move. Peers ONLY for now: you still
