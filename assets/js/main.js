@@ -1419,7 +1419,13 @@ function applyCatState(s) {
   // an empty bowl is the urgent case, so it overrides the decay colour
   const foodCls = (d.hungry && d.food <= 0.05) ? "crit" : well(d.fed);
   const waterCls = (d.thirsty && d.water <= 0.05) ? "crit" : well(d.hydrated);
+  /* She is called SHARTACUS, and until 2026-08-22 the room never said so
+     anywhere — the pill was three meters and Trinity called her "the cat".
+     A named animal is a character and an unnamed one is a mechanic, and the
+     difference costs one word. It goes in front of the meters rather than in
+     a tooltip, because a name nobody sees isn't a name. */
   $("#cat-meters").innerHTML =
+    '<span class="hud-name">Shartacus</span>' +
     meter("food", foodCls, d.fed, (d.hungry && d.food <= 0.05) ? "the food bowl is empty" : "fed") +
     meter("water", waterCls, d.hydrated, (d.thirsty && d.water <= 0.05) ? "the water bowl is empty" : "hydrated") +
     (d.litter > 0.5 ? meter("litter", dirty(d.litter), d.litter, "the litter box") : "");
@@ -5288,10 +5294,11 @@ const TERM_COMMANDS = {
     termPrint("walking you out there now\u2026", "bright");
     enterGarden();
   } },
-  cat: { blurb: "how the cat's doing", run() {
+  cat: { blurb: "how Shartacus is doing", run() {
     const d = store.decayCat(catState);
     const mood = cat.mood > 0.5 ? "purring" : cat.mood > 0 ? "content"
       : cat.mood > -0.4 ? "aloof" : "plotting something";
+    termPrint("SHARTACUS", "hi");
     termPrint(`fed ${Math.round(d.fed * 100)}% · hydrated ${Math.round(d.hydrated * 100)}% · mood: ${mood}`);
     termPrint(`currently: ${cat.state}`, "dim");
   } },

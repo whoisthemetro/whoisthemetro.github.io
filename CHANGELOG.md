@@ -607,6 +607,21 @@ and the first one is the one that was actually killing her.
   Chrome with clip fetches broken and asserts `speechSynthesis.speak` is
   never called.
 
+## 2026-08-22 — the cat is called Shartacus
+
+She has been in this room since the beginning and nothing in it ever said her
+name. The pill was three meters, Trinity called her "the cat", and the
+terminal reported her mood without introducing her.
+
+It came up writing the tour script: the video named her, and a video that
+names an animal the room never introduces sends people in to meet a stranger.
+A named animal is a character and an unnamed one is a mechanic, and the
+difference costs one word.
+
+The name goes in FRONT of the meters rather than in a tooltip, because a name
+nobody sees isn't a name. Two of Trinity's lines re-rendered; the orphaned
+takes were pruned.
+
 ## 2026-08-22 — a tour you can put on a feed
 
 `node tools/tour/record.mjs` renders a 69-second portrait mp4 of the

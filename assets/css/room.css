@@ -1059,3 +1059,12 @@ body.in-garden #online-pill { display: none; }
 /* while you're writing, the cursor is the brush and the crosshair is noise */
 body.tagging { cursor: crosshair; }
 body.tagging #aim-tip { display: none; }
+
+/* the cat has a name. it sits in front of her meters — small, quiet, and
+   the first thing in the pill, because a name nobody reads isn't a name. */
+#cat-pill .hud-name {
+  font-weight: 600;
+  letter-spacing: .02em;
+  opacity: .92;
+  margin-right: 2px;
+}
