@@ -21,3 +21,11 @@ supabase/.temp/
 # tools/garden/encode.mjs writes these; assets/js/garden-catalog.js (which IS
 # committed) is the index the room builds from.
 assets/audio/garden/
+
+# THE TOUR — the finished videos. Same reasoning as the garden's audio: git
+# keeps every version of every file forever, and this is 36 MB a cut of a
+# thing you re-shoot. It is also a PUBLIC repo that GitHub Pages serves, so
+# a swept-in video is 36 MB in everyone's clone and on the CDN.
+# The script IS committed (tools/tour/script.mjs) — that's the content, and
+# `node tools/tour/record.mjs` makes the file again in ten minutes.
+video/
