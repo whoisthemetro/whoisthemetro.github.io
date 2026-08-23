@@ -127,16 +127,17 @@ async function capture(beats) {
   });
   await new Promise(r => setTimeout(r, 9000));
 
-  /* The readouts stay — they're the cheapest proof the room is live, and
-     a real callsign over LAX is worth more than a clean frame. But the top
-     of a vertical video is where TikTok and Reels put their own chrome, so
-     they move down out of it. Recording only; the site is untouched. */
-  await page.addStyleTag({ content: `
-    #crosshair, #aim-tip { display: none !important; }
-    #cat-pill  { top: 190px !important; bottom: auto !important; }
-    #online-pill { top: 190px !important; bottom: auto !important; }
-    #flight-strip { top: 190px !important; }
-  ` });
+  /* No readouts. They were kept in the first cut as proof the room is live,
+     but at phone size they're small, they sit in the strip TikTok and Reels
+     cover with their own chrome, and the current formatting looks like a
+     screenshot of a game rather than a place. The flight strip is the one
+     with real information on it, so the narration says what it says instead
+     of the frame trying to. Recording only; the site is untouched. */
+  // toasts too. the room narrates itself in the corner of the screen — "the
+  // food bowl is still pretty full", "vacuuming, walk to clean the carpet" —
+  // which is right when you're playing and is a caption fighting the voiceover
+  // when you're watching. one of them landed in the middle of the vacuum gag.
+  await page.addStyleTag({ content: `#hud, #toast { display: none !important; }` });
 
   /* Re-asserted at the top of EVERY beat, not once at the start. The room
      is a shared world: its blinds, its dimmer and its lava lamp are room
@@ -145,12 +146,14 @@ async function capture(beats) {
      this tour opened the blinds and then had them shut again by the loaded
      flag two seconds later, which put slats over the one shot the whole
      video is for. Setting it per beat costs nothing and cannot lose. */
-  const setDressing = (beat) => page.evaluate((light, fov) => {
+  const setDressing = (beat) => page.evaluate((light, fov, pinTime) => {
     const D = window.METRO_DEBUG;
     // 21:40 in Los Angeles. pinned, so the sky, the window light, the beam
     // and the star projector all agree and all STAY — updateSky runs every
     // 60 seconds and would otherwise walk the sun back up mid-render.
-    D.world.setWorldTime(new Date("2026-08-23T04:40:00Z"));
+    // NOT re-pinned on a beat that sweeps the clock itself, or the dressing
+    // would drag the sun back to night on every frame of the sunset.
+    if (pinTime) D.world.setWorldTime(new Date("2026-08-23T04:40:00Z"));
     /* Practicals on, but LOW. The ceiling lamp runs to intensity 26 and the
        first pass had it at 0.72 of that, which washed the back wall and the
        ceiling to cream and put out the star projector entirely — the thing
@@ -173,7 +176,8 @@ async function capture(beats) {
        nobody asked for, and a 3D card in a portrait frame gets sliced in
        half by the edge. Recording only; the room is untouched. */
     D.guide.wantPanel = () => false;
-  }, beat && beat.light != null ? beat.light : 0.26, (beat && beat.fov) || 92);
+  }, beat && beat.light != null ? beat.light : 0.26, (beat && beat.fov) || 92,
+     !(beat && beat.timeSweep));
   await setDressing(null);
   await new Promise(r => setTimeout(r, 1200));   // the blinds take a second to gather
 
@@ -184,15 +188,48 @@ async function capture(beats) {
     const frames = Math.max(1, Math.round((b.dur + (b.hold || 0)) * FPS));
     // she moves at the START of a beat, so she's flying to the next thing
     // while the camera is still arriving — that's what makes her lead it
-    await page.evaluate((tx, tz, say, ms, open) => {
+    await page.evaluate((beat, ms) => {
       const D = window.METRO_DEBUG;
-      if (tx != null) D.guide.relocate(tx, tz);
-      D.guide.speak(say, ms);           // mouth and glow for exactly the line
-      if (open === "synth") { D.synth.open(true); D.synth.state().arp = true; }
-    }, b.trinity ? b.trinity[0] : null, b.trinity ? b.trinity[1] : null, b.say, b.dur * 1000, b.open || null);
+      if (beat.trinity) D.guide.relocate(beat.trinity[0], beat.trinity[1]);
+      D.guide.speak(beat.say, ms);      // mouth and glow for exactly the line
+      if (beat.open === "synth") { D.synth.open(true); D.synth.state().arp = true; }
+      // the wall opens on whichever month the beat wants — June has 53 notes
+      // on it and this month has five, and a bare wall is a bad advert
+      if (beat.month) D.wall.set(beat.month);
+      // the vacuum is what makes the cat bolt, and it only frightens her
+      // within 2.3 m — so the beat before this one has to be the close orbit
+      /* Block the cat like an actor. Orbiting her wherever she happened to
+         wander put the camera inside a wall twice — she is a small animal
+         with her own plans and a 1.35 m orbit around her is only clear if
+         she's standing somewhere clear. Setting her mark is what a shoot
+         does; she goes back to her own business the moment it's over. */
+      if (beat.catAt) { D.cat.pos.x = beat.catAt[0]; D.cat.pos.z = beat.catAt[1]; D.cat.target = null; }
+      if (beat.vacuum) D.vacuum(true);
+      if (beat.vacuumOff) D.vacuum(false);
+      /* Somebody else in the room. The multiplayer beat claiming other people
+         turn up, over an empty room, is the one shot that would read as a
+         lie. ghosts.syncPeers builds a real peer figure with its real name
+         label — the same code path a live visitor goes through. */
+      if (beat.peer) {
+        /* The outfit MATTERS: ghosts.js falls back to a glow blob when a peer
+           has none, and at a metre and a half that is a featureless pale egg
+           rather than a person. Borrowing the local figure's spec builds a
+           real avatar through the real builder. */
+        const peers = new Map([[beat.peer.uid, { uid: beat.peer.uid, name: beat.peer.name,
+          color: beat.peer.color || "#7ec8ff",
+          outfit: beat.peer.outfit || D.vrui.outfit() || null }]]);
+        D.ghosts.syncPeers(peers);
+        D.ghosts.setPose(beat.peer.uid, { x: beat.peer.x, z: beat.peer.z, yaw: beat.peer.yaw || 0 });
+      }
+      if (beat.pc) D.vrui.pc();
+    }, b, b.dur * 1000);
+    // the in-world window places itself relative to where you're standing,
+    // so the camera has to be there BEFORE it opens
+    if (b.pc) await new Promise(r => setTimeout(r, 400));
 
     for (let i = 0; i < frames; i++) {
-      await page.evaluate(async (beat, k) => {
+      await page.evaluate(async (beat, kk, k2) => {
+        const k = kk;
         const D = window.METRO_DEBUG, c = D.controls;
         // a beat either dollies from A to B or orbits a moving subject —
         // the orbit ones carry no from/to at all
@@ -201,8 +238,45 @@ async function capture(beats) {
           c.pos.x = fx + (tx2 - fx) * k;
           c.pos.z = fz + (tz2 - fz) * k;
         }
-        // aim at the thing, not at an angle somebody solved by hand
+        /* A day rolling into night, inside one shot. setWorldTime repaints
+           the sky, so it runs every third frame rather than every one — at
+           30fps that's still ten sky updates a second, which is smoother
+           than any sunset, and a third of the cost. */
+        if (beat.timeSweep && k2 % 3 === 0) {
+          const a = Date.parse(beat.timeSweep[0]), b2 = Date.parse(beat.timeSweep[1]);
+          D.world.setWorldTime(new Date(a + (b2 - a) * k));
+        }
+        // walking the wall back through its months while she talks about it
+        if (beat.monthSweep) {
+          const i2 = Math.min(beat.monthSweep.length - 1, Math.floor(k * beat.monthSweep.length));
+          D.wall.set(beat.monthSweep[i2]);
+        }
+        // aim at the thing, not at an angle somebody solved by hand.
+        // `atTo` pans the aim across the shot, so one move can start on a
+        // person and end on a doorway without cutting.
         let target = beat.cam.at;
+        if (beat.cam.atTo && Array.isArray(target)) {
+          const t2 = beat.cam.atTo;
+          /* The aim can WAIT before it travels. Panning straight off the
+             first subject means nobody sees it — the peer in the last beat
+             was gone before the sentence naming her had finished. */
+          const h = beat.cam.atHold || 0;
+          const k = kk <= h ? 0 : (kk - h) / (1 - h);
+          target = [target[0] + (t2[0] - target[0]) * k,
+                    target[1] + (t2[1] - target[1]) * k,
+                    target[2] + (t2[2] - target[2]) * k];
+        }
+        // the in-world METRO OS window hangs where you were standing when it
+        // opened, so the shot has to ask it where that was
+        if (beat.cam.at === "pcwin") {
+          const m = D.vrui.ui.mesh();
+          const v = new D.THREE.Vector3();
+          if (m) { m.getWorldPosition(v); target = [v.x, v.y, v.z]; }
+        }
+        // a fixed camera PANNING to follow something that moves — which is
+        // what you'd do with a real camera and a cat running away from a
+        // vacuum cleaner
+        if (beat.cam.track === "cat") target = [D.cat.pos.x, 0.34, D.cat.pos.z];
         /* The cat walks around, so a fixed camera path either loses her or
            frames the chair she isn't on. Orbit HER instead: the shot is
            defined relative to the subject, which is what you'd do with a
@@ -221,7 +295,7 @@ async function capture(beats) {
         }
         await new Promise(r => requestAnimationFrame(r));
         await new Promise(r => requestAnimationFrame(r));
-      }, b, ease(frames === 1 ? 1 : i / (frames - 1)));
+      }, b, ease(frames === 1 ? 1 : i / (frames - 1)), i);
       await page.screenshot({ path: path.join(FRAMES, `f${String(n++).padStart(6, "0")}.png`),
                               type: "png", optimizeForSpeed: true });
     }

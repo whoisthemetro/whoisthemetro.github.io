@@ -5975,6 +5975,8 @@ window.METRO_DEBUG = { renderer, camera, world, controls, xr, disc, hoop: hoopGa
   toy: () => toy, grabToy, throwToy,
   hoops: hoopGame,
   gym: { join: joinGym, leave: leaveGym, ball: gymBall, team: () => myGymTeam, teams: gymTeams, inGym: () => inGym, debug: () => gymBall.debug() },
+  // the vacuum, for the tour: switching it on is what makes the cat bolt
+  vacuum: (on = true) => setVacuuming(!!on),
   carry: { pick: pickUpNote, drop: dropCarried, cancel: cancelCarry, state: () => carrying,
            // the harness needs to ask "is this one sealed" and "who am I",
            // and to be able to open a reader on a note it chose

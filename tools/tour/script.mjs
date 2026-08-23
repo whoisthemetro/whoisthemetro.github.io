@@ -17,15 +17,22 @@
    Camera positions are `[x, z]` on the floor and the camera looks at
    `at: [x, y, z]`, because aiming at a THING is what you actually mean
    and solving the yaw by hand is how a shot ends up pointing at a wall.
-   Real coordinates, read out of the running room — see tools/tour/README.
+   Real coordinates, read out of the running room — see the README.
+
+   Beats can also: open on a particular `month` of the wall, `monthSweep`
+   through several, `timeSweep` the clock across the shot, switch the
+   `vacuum` on, put a `peer` in the room, open the in-world `pc` window,
+   `track` something that moves, and set their own `fov` and `light`.
 
    WHAT SHE SAYS
 
    Same rules as lines.js, and they matter more here because this one
    goes out where people who've never been in the room will see it: no
-   em dashes (the voice reads them as a stumble), no names except the
-   opening, and every claim has to be TRUE of the room as it is today.
-   Check the code before you add one. That list has been wrong before.
+   em dashes (the voice reads them as a stumble), and every claim has to
+   be TRUE of the room as it is today. Check the code before you add
+   one. Three claims in the first draft of this script needed checking
+   and one of them — the cat's name — turned out not to exist in the
+   room at all until it was put there.
    ============================================================ */
 
 /* Where things actually are. Pulled from the running room rather than
@@ -33,106 +40,121 @@
    are local offsets inside other groups, and reading the numbers without
    reading which group they join is how the radio ended up on the desk. */
 export const PLACES = {
-  window:    [0.00, 1.55, -3.29],
+  window:    [0.00, 1.40, -3.29],
   monitor:   [0.20, 1.05, -3.00],
   keybed:    [0.20, 0.64, -2.31],
   synthPanel:[0.20, 1.11, -2.45],
-  edrum:    [-2.15, 0.94, -2.25],
-  tele:      [1.53, 0.63, -2.62],
-  lava:      [1.96, 0.83, -2.68],
-  backWall:  [0.00, 1.30,  3.30],
+  backWall:  [0.00, 1.25,  3.30],
   plate:     [0.00, 2.47,  3.25],
-  ceiling:   [0.00, 2.68,  0.20],
   arcade:   [-2.25, 1.20, -0.40],
 };
+
+// the wall's months, oldest first. June is the full one — 53 notes — and
+// it is what the wall should be showing when she talks about the wall.
+const JUNE = "2026-06", JULY = "2026-07", AUG = "2026-08";
 
 export const TOUR = [
   {
     id: "open",
-    say: "This is Metro's bedroom. Everything in here is real, and most of it does something.",
-    cam: { from: [1.1, 2.75], to: [0.7, 2.0], at: [0.0, 1.5, -3.29] },
+    say: "This is Metro's bedroom. It's alive and there's a lot to interact with.",
+    // wide, drifting in from the door end with the night city in the glass
+    cam: { from: [1.15, 2.8], to: [0.7, 1.95], at: PLACES.window },
     trinity: [1.5, 1.1], fov: 100,
-    hold: 0.35,
-  },
-  {
-    id: "city",
-    say: "That's Los Angeles out the window. Not a picture of it. You can walk up to the glass and look down the street.",
-    cam: { from: [0.7, 2.0], to: [0.15, -2.0], at: [0.0, 1.45, -3.29] },
-    fov: 88,
-    trinity: [1.4, 0.2],
-    hold: 0.3,
-  },
-  {
-    id: "planes",
-    say: "And those are real aeroplanes. Live traffic into LAX, with the flight numbers they're actually flying under.",
-    cam: { from: [0.15, -2.0], to: [-0.1, -2.45], at: [0.0, 1.62, -3.29] },
-    fov: 78,
-    trinity: [1.3, -0.9],
-    hold: 0.3,
-  },
-  {
-    id: "desk",
-    say: "The computer works. There's a whole little operating system on it, and it'll tell you what's new since you last came by.",
-    cam: { from: [0.95, -1.35], to: [0.5, -1.95], at: PLACES.monitor },
-    fov: 70,
-    trinity: [1.5, -1.8],
-    hold: 0.25,
-  },
-  {
-    id: "synth",
-    say: "The keyboard has a proper synthesiser in it. Twenty four different engines, five knobs, and an arpeggiator you can leave running.",
-    cam: { from: [0.5, -1.5], to: [0.3, -1.8], at: PLACES.synthPanel },
-    fov: 66,
-    trinity: [1.35, -1.6],
-    open: "synth",
-    hold: 0.3,
-  },
-  {
-    id: "drums",
-    say: "The drums are real too. Play the right fill on them and a door opens that isn't in this room.",
-    cam: { from: [-0.4, -0.5], to: [-1.05, -1.05], at: PLACES.edrum },
-    fov: 78,
-    trinity: [-0.8, -1.1],
-    hold: 0.3,
-  },
-  {
-    id: "cat",
-    say: "There's a cat. She gets hungry whether you're here or not, and she remembers being fed.",
-    cam: { follow: "cat", orbit: 0.5, sweep: 0.7, radius: 1.35 },
-    fov: 72,
-    trinity: [1.2, 0.9],
+    month: JUNE,                 // set now so the wall is already full behind us
     hold: 0.3,
   },
   {
     id: "wall",
-    say: "You can leave something on the wall. Write it, pin it up, and it stays there for everyone who comes after you.",
-    cam: { from: [0.3, 0.7], to: [0.1, 1.7], at: [0.0, 1.25, 3.30] },
-    fov: 86,
-    trinity: [1.4, 1.8],
+    say: "Leave a note or picture on the wall and it stays there permanently.",
+    // turn to the back wall with June on it: 53 notes, floor to ceiling
+    cam: { from: [0.55, 0.8], to: [0.2, 1.85], at: PLACES.backWall },
+    trinity: [1.45, 1.7], fov: 86,
     hold: 0.3,
   },
   {
-    id: "months",
-    say: "The wall keeps every month it's ever had. Slide it back and you can read what people wrote in June.",
-    cam: { from: [0.1, 1.7], to: [0.05, 1.15], at: PLACES.plate },
-    fov: 62,
-    trinity: [1.5, 1.6],
+    id: "slider",
+    say: "Use the slider to view notes posted from an earlier time.",
+    /* Framed to hold the plate AND the wall under it, because the point
+       isn't the control, it's that the notes CHANGE when you move it. */
+    cam: { from: [0.15, 1.85], to: [0.1, 1.35], at: [0.0, 1.95, 3.30] },
+    monthSweep: [JUNE, JULY, AUG, JUNE],
+    trinity: [1.5, 1.5], fov: 76,
+    hold: 0.35,
+  },
+  {
+    id: "cat",
+    say: "There's a cat named Shartacus. Keep her food and water bowls full and her litter clean, or she'll get mad.",
+    /* She gets a mark. The camera holds still on the clear middle of the
+       floor and she is put on it — orbiting her wherever she'd wandered to
+       had the camera inside a wall twice. It also has to stand within 2.3 m,
+       because that is the range at which the vacuum in the NEXT beat
+       frightens her, and a gag that doesn't fire is just a pause. */
+    cam: { from: [1.05, 2.15], to: [0.7, 1.6], track: "cat" },
+    catAt: [0.25, 0.55],
+    trinity: [1.9, 1.9], fov: 62, light: 0.42,
     hold: 0.3,
   },
   {
-    id: "ceiling",
-    say: "At night the ceiling turns into the actual sky over Los Angeles, planets and all.",
-    cam: { from: [0.2, 1.0], to: [0.2, 0.25], at: PLACES.ceiling },
-    trinity: [1.5, 0.6], light: 0.05, fov: 100,
+    id: "vacuum",
+    say: "She hates the vacuum.",
+    /* The camera stops moving and PANS to follow her instead — which is
+       what you'd do with a real camera and a cat leaving a room. She only
+       spooks within 2.3 m, so the beat before this one has to be the close
+       orbit; that's why these two are next to each other and not merged. */
+    cam: { from: [0.7, 1.6], to: [0.7, 1.6], track: "cat" },
+    vacuum: true,
+    trinity: [1.9, 1.9], fov: 78, light: 0.42,
+    hold: 1.4,                   // the line is two seconds; the bolt needs room
+  },
+  {
+    id: "window",
+    say: "Out the window is the city, and when a plane goes over, its real flight number comes up.",
+    /* Stood back at the desk. Pressed against the glass the gathered blind
+       stack and the pale near-towers fill the frame and read as slats —
+       that was the "blinds are broken" bug, and it was the camera. */
+    cam: { from: [0.25, -0.2], to: [0.2, -1.15], at: PLACES.window },
+    vacuumOff: true,
+    trinity: [1.5, -0.4], fov: 82,
     hold: 0.3,
   },
   {
-    id: "arcade",
-    say: "And this is one room out of seven. Through there is the arcade. Come and find the rest.",
-    cam: { from: [-0.3, -0.4], to: [-1.4, -0.4], at: PLACES.arcade },
-    fov: 90,
-    trinity: [-1.0, 0.5],
-    hold: 0.9,
+    id: "daynight",
+    say: "The room runs on LA time. Watch what the city does after dark.",
+    // midday rolling over into night, inside the one shot
+    cam: { from: [0.2, -1.15], to: [0.15, -1.5], at: PLACES.window },
+    timeSweep: ["2026-08-22T20:00:00Z", "2026-08-23T04:40:00Z"],
+    trinity: [1.5, -0.6], fov: 84, light: 0.18,
+    hold: 0.4,
+  },
+  {
+    id: "os",
+    say: "Click the monitor and you'll see Metro OS and use the command line to see other features.",
+    // the in-world window, which hangs where you're standing when it opens
+    cam: { from: [0.6, -1.2], to: [0.45, -1.35], at: "pcwin" },
+    pc: true,
+    trinity: [1.6, -0.9], fov: 74,
+    hold: 0.3,
+  },
+  {
+    id: "synth",
+    say: "The keyboard uses a famous Eurorack module for its sound engine. Use the computer to send Metro a DM if you know what it is.",
+    cam: { from: [0.5, -1.5], to: [0.3, -1.8], at: PLACES.synthPanel },
+    open: "synth",
+    trinity: [2.0, -0.2], fov: 66,
+    hold: 0.3,
+  },
+  {
+    id: "multiplayer",
+    say: "This is a multiplayer room where other people can come in and join the experience. There's a chat and voice feature and also an arcade where you can play solo or head to head. Come and check it out.",
+    /* Somebody else is standing in the room for this one, built through the
+       same code path a real visitor goes through — name label and all. A
+       line about other people turning up, over an empty room, is the one
+       shot in this video that would read as a lie. The move ends walking at
+       the arcade doorway with the arcade lit beyond it. */
+    cam: { from: [1.35, 2.35], to: [-0.85, -0.25], at: [-0.55, 1.05, 0.95], atTo: PLACES.arcade, atHold: 0.45 },
+    peer: { uid: "tour-guest", name: "kali", color: "#ff9d5c", x: -0.55, z: 0.95, yaw: 0.94 },
+    trinity: [1.1, 0.2], fov: 92,
+    hold: 1.0,
   },
 ];
 

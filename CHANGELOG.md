@@ -607,6 +607,48 @@ and the first one is the one that was actually killing her.
   Chrome with clip fetches broken and asserts `speechSynthesis.speak` is
   never called.
 
+## 2026-08-22 — the tour, shot to Metro's script
+
+Ten beats, 58 seconds, Metro's own words with three fixes: "send me a DM"
+became "send Metro a DM" (the `msg` command is labelled *send metro a message*
+and lands in his inbox, not Trinity's — as written she was asking people to
+message her about a thing she'd have to answer), the cat line was split so the
+vacuum gag got its own shot, and the LAX line came out of the passive.
+
+### What the recorder learned to do
+
+`month` opens the wall on a given month, `monthSweep` walks it through several
+inside one shot, `timeSweep` rolls the clock across a beat, `vacuum` switches
+the cleaner on, `peer` puts another visitor in the room, `pc` opens the
+in-world METRO OS window, `track` pans to follow something that moves, and
+`atTo`/`atHold` let the aim travel from one subject to another partway through
+a line. Beats set their own `fov` and `light`.
+
+### Six things that each cost a render
+
+- **The blinds were never broken.** `blindsOpen()` goes true, the stack
+  gathers to 18% and parks at the left edge. Pressed against the glass at
+  0.8 m, that stack and the pale near-towers fill a 78° frame and read as
+  slats. It was the camera; the shot stands back at the desk now.
+- **Block the cat like an actor.** Orbiting her wherever she'd wandered put
+  the camera inside a wall twice. She gets a mark, and the camera holds still
+  and pans. She has to be within 2.3 m too — that's the range at which the
+  vacuum frightens her, and a gag that doesn't fire is just a pause.
+- **A peer with no outfit is a glow blob.** ghosts.js falls back to one, and
+  at a metre and a half that's a featureless pale egg rather than a person.
+  Borrowing the local figure's spec builds a real avatar with a real name
+  label — the same path a live visitor takes.
+- **An aim that starts panning immediately shows nobody the first subject.**
+  The guest was out of frame before the sentence naming her had finished.
+  `atHold` waits.
+- **Trinity stands where the camera is going.** At 1.1 m off the lens she was
+  a brown blur filling a third of the synth shot. She gets blocked too.
+- **Toasts are in the frame.** The room narrates itself in the corner — "the
+  food bowl is still pretty full", "vacuuming, walk to clean the carpet" —
+  which is right when you're playing and is a caption fighting the voiceover
+  when you're watching. One landed in the middle of the vacuum gag. Hidden
+  for the render, along with the whole HUD.
+
 ## 2026-08-22 — the cat is called Shartacus
 
 She has been in this room since the beginning and nothing in it ever said her
