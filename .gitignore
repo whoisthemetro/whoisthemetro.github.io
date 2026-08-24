@@ -29,3 +29,9 @@ assets/audio/garden/
 # The script IS committed (tools/tour/script.mjs) — that's the content, and
 # `node tools/tour/record.mjs` makes the file again in ten minutes.
 video/
+
+# the wasm toolchain and the DSP sources it builds from. emsdk alone is over
+# a gigabyte of LLVM; eurorack and stmlib are somebody else's repos. the
+# RECIPE is committed (tools/mi/README.md + build_mi.sh) and the BINARY is
+# committed (assets/wasm/mi.wasm) — the machinery in between is not.
+tools/mi/work/

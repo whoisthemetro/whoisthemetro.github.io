@@ -25,6 +25,7 @@ export const WHATS_NEW = [
   {
     date: "2026-08-22",
     items: [
+      "the synth button on the keyboard can be moved where metro wants it",
       "the cat has a name. she's called shartacus, it's on her readout, and trinity introduces her properly now",
       "trinity gets out of your way properly. walk into her and she used to shudder on the spot like she couldn't decide which way to go — now she steps aside, slips round you if there's a wall behind her, and waits until you move off before going back to her spot",
       "the wall takes notes again. it had quietly run out of room — every wall in the bedroom was full, so posting anything just did nothing",

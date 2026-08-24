@@ -3633,10 +3633,15 @@ function layoutClick() {
   layRay.layers.enableAll();
   const h = layRay.intersectObjects(Object.values(world.movables), true)[0];
   if (!h || h.distance > 4.5) { layoutDrop(); return; }
-  for (const [id, g] of Object.entries(world.movables)) {
-    let o = h.object;
-    while (o && o !== g) o = o.parent;
-    if (o === g) { layoutSelect(id); return; }
+  /* Walk UP from what the ray hit and take the first movable you meet, which
+     is the innermost one. Movables nest — the synth panel's button is inside
+     the MIDI keyboard, and both are movable — and the old loop scanned the
+     registry in declaration order instead, so clicking the button selected
+     whichever of its ancestors happened to be listed first. Nearest wins. */
+  const owner = new Map(Object.entries(world.movables).map(([id, g]) => [g, id]));
+  for (let o = h.object; o; o = o.parent) {
+    const id = owner.get(o);
+    if (id) { layoutSelect(id); return; }
   }
   layoutDrop();
 }

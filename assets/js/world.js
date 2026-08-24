@@ -6729,19 +6729,26 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
   // A button on the controller's left cheek, and the window it opens. Both
   // hang off midiKeys rather than the desk, because midiKeys is a movable:
   // pick the keyboard up in the layout editor and the panel goes with it.
+  /* Button and its lamp live in their OWN group, because the group is what
+     the admin layout editor picks up — and where this button sits was the
+     first thing Metro wanted to change about it. It still hangs off midiKeys
+     rather than the room, so moving the keyboard takes the button with it;
+     the layout editor then moves the button WITHIN the keyboard. */
+  const synthBtnGrp = new THREE.Group();
+  synthBtnGrp.position.set(-0.42, 0.035, 0.02);   // on the chassis, left of the keys
+  midiKeys.add(synthBtnGrp);
   const synthBtn = new THREE.Mesh(
     new THREE.BoxGeometry(0.055, 0.012, 0.03),
     new THREE.MeshLambertMaterial({ color: 0x2a3a4a, emissive: 0x0e2233 }));
-  synthBtn.position.set(-0.42, 0.035, 0.02);      // on the chassis, left of the keys
   synthBtn.userData.synthBtn = true;
-  midiKeys.add(synthBtn);
+  synthBtnGrp.add(synthBtn);
   // a lit strip on the button face, so it reads as a control and not a scuff
   const synthLed = new THREE.Mesh(
     new THREE.PlaneGeometry(0.034, 0.008),
     new THREE.MeshBasicMaterial({ color: 0x2b6f9c }));
   synthLed.rotation.x = -Math.PI / 2;
-  synthLed.position.set(-0.42, 0.0415, 0.02);
-  midiKeys.add(synthLed);
+  synthLed.position.set(0, 0.0065, 0);
+  synthBtnGrp.add(synthLed);
 
   const synthPanel = makeSynthPanel();
   /* Where it sits. Up off the keybed and tilted back toward you, far enough
@@ -10335,6 +10342,11 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
      rotation.y transplant cleanly. homes are recorded so reset works and
      a bad saved layout can always be walked back. --- */
   const movables = {
+    /* synthbtn is INSIDE midikeys, which is also a movable. layoutClick picks
+       the innermost enclosing one, so the order here doesn't decide it — but
+       keep them adjacent anyway, because reading them next to each other is
+       what tells you the nesting exists. */
+    synthbtn: synthBtnGrp,
     tele, pedalboard, kbpedals: kbPedals, midikeys: midiKeys, radio: laRadio.group,
     lava, mixer, clock: deskClock,
     monitor: deskMonitor, interface: deskInterface, keyboard: deskKeyboard,
