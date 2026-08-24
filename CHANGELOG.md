@@ -607,6 +607,38 @@ and the first one is the one that was actually killing her.
   Chrome with clip fetches broken and asserts `speechSynthesis.speak` is
   never called.
 
+## 2026-08-24 — the panels come to the thumb
+
+PLAITS and RINGS hang in the room on a canvas, which is right for a mouse and
+right for a laser. On a phone it is the wrong shape entirely: a knob is about
+seventeen CSS pixels across at arm's length, it moves when you turn your head,
+and setting one means landing a tap on an exact point of a ring.
+
+**So on touch the same panel is also drawn onto a sheet locked to the bottom
+of the screen.** Not a second UI — the same `draw()`, the same `hit()`, the
+same layout in the same canvas pixels, on a second surface. A separate mobile
+implementation would be two things to keep in step, and they would stop being
+in step the first week.
+
+**The one thing that differs is how a knob moves.** In the room a tap sets it
+by where you land on the sweep, because a crosshair has no drag. On the sheet
+a knob LATCHES and then follows your finger anywhere on it — a real drag, the
+way the desktop one already worked, which is the thing that was actually
+being asked for. Once latched the whole sheet is the drag surface, so a thumb
+sliding off the knob doesn't drop the value. 180 CSS px is the full 270°
+sweep: about a thumb's reach without re-gripping. The in-world drag uses 320
+because a mouse has a whole desk.
+
+It sits at the bottom and is only as tall as its own aspect ratio needs, so
+the instrument is still on screen above it. A panel that covers the room is a
+panel you can't play under — which is the entire reason these are canvases in
+the world rather than modals.
+
+Pointer events rather than touch events, so a stylus and a tablet get the same
+path, and `touch-action: none` on the canvas because double-tap zoom will
+otherwise eat a knob turn. The in-world panel stays up alongside the sheet:
+other people in the room should still see what you're working on.
+
 ## 2026-08-24 — the synth gets octaves too
 
 The same stepper the guitar got, on the keyboard: −3 to +2, on a third row of

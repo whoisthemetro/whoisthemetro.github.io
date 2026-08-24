@@ -59,6 +59,7 @@ import { PIANO_VOICES, GUITAR_VOICES, audioGraph, PLAITS_VOICE, initPlaits, setP
          RINGS_VOICE, initRings, setRings, ringsStatus } from "./ambience.js";
 import * as SynthPanel from "./synth-panel.js";
 import * as RingsPanel from "./rings-panel.js";
+import { createPanelSheet } from "./panel-sheet.js";
 import * as MonthPlate from "./wall-months.js";
 import { currentMonthKey, monthLabel, monthKeyOf } from "./notes3d.js";
 import { createRadio, SR_STATIONS, LA_STATIONS } from "./radio.js";
@@ -542,8 +543,10 @@ function plaitsApply() {
   setPlaits({ harmonics: synth.harm, timbre: synth.timbre, morph: synth.morph,
               decay: synth.decay, lpg: synth.lpg, engine: synth.engine | 0 });
 }
+let sheetDirty = false;
 function synthDirty(save = true) {
   world.synth.panel.markDirty();
+  sheetDirty = true;
   if (save) SynthPanel.saveState(synth);
 }
 /* Push the saved panel into the parameter cache at boot. setPlaits keeps the
@@ -731,6 +734,7 @@ function ringsApply() {
 }
 function ringsDirty(save = true) {
   world.rings.panel.markDirty();
+  sheetDirty = true;
   if (save) RingsPanel.saveState(rings);
 }
 const ringsLive = () => ({ status: ringsStatus() });
@@ -2229,8 +2233,9 @@ controls.onAction((ndcX, ndcY) => {
       world.setGuitarVoiceSwitch(guitarVoice, GUITAR_VOICES.length);
       initRings().then(() => { ringsApply(); world.rings.panel.markDirty(); });
       ringsApply();
-      toast("RINGS — drag a knob, strum the strings");
+      toast(IS_TOUCH ? "RINGS — drag the knobs down there" : "RINGS — drag a knob, strum the strings");
     }
+    syncPanelSheet();
     ringsDirty(false);
   } else if (hit.object.userData.guitarVoice && hit.distance < 2.4) {
     guitarVoice = (guitarVoice + 1) % GUITAR_VOICES.length;
@@ -2301,8 +2306,9 @@ controls.onAction((ndcX, ndcY) => {
       try { localStorage.setItem("metro.voice", String(pianoVoice)); } catch (e) {}
       initPlaits().then(() => { plaitsApply(); world.synth.panel.markDirty(); });
       plaitsApply();
-      toast("PLAITS — drag a knob, tap the keys");
+      toast(IS_TOUCH ? "PLAITS — drag the knobs down there" : "PLAITS — drag a knob, tap the keys");
     }
+    syncPanelSheet();
     synthDirty(false);
   } else if (hit.object.userData.pianoVoice && hit.distance < 2.4) {
     pianoVoice = (pianoVoice + 1) % PIANO_VOICES.length;
@@ -3475,9 +3481,40 @@ function applyRingsHit(h) {
    (panel-kit.js). `which` picks the state and the apply. */
 let synthDrag = null;
 const PANELS = {
-  synth: { mod: SynthPanel, state: () => synth, apply: () => plaitsApply(), dirty: synthDirty },
-  rings: { mod: RingsPanel, state: () => rings, apply: () => ringsApply(), dirty: ringsDirty },
+  synth: { mod: SynthPanel, state: () => synth, apply: () => plaitsApply(), dirty: synthDirty,
+           tap: applySynthHit, live: synthLive, world: () => world.synth },
+  rings: { mod: RingsPanel, state: () => rings, apply: () => ringsApply(), dirty: ringsDirty,
+           tap: applyRingsHit, live: ringsLive, world: () => world.rings },
 };
+
+/* THE SAME PANEL, LOCKED TO THE SCREEN, ON TOUCH.
+   In the room a knob is 17 css pixels across at arm's length and moves when
+   you turn your head, so setting one means landing a tap on an exact point
+   of a ring. The sheet draws the identical canvas at the bottom of the
+   screen and lets a knob LATCH and follow your finger — see panel-sheet.js.
+   The in-world panel stays up alongside it: other people in the room should
+   still see what you're working on. */
+const panelSheet = createPanelSheet();
+function openPanelSheet(which) {
+  if (!IS_TOUCH) return;
+  const P = PANELS[which];
+  panelSheet.show({
+    mod: P.mod, size: P.mod.SIZE, state: P.state,
+    apply: () => P.apply(),
+    save: () => P.dirty(),
+    // the tap goes through the SAME handler the crosshair uses, so closing,
+    // stepping an engine and cycling a scale all behave identically
+    tap: (h) => { P.tap(h); if (!P.world().isOpen()) panelSheet.hide(); else panelSheet.refresh(); },
+    live: P.live,
+  });
+}
+// whichever panel is up owns the sheet; neither means no sheet
+function syncPanelSheet() {
+  if (!IS_TOUCH) return;
+  const which = world.synth.isOpen() ? "synth" : world.rings.isOpen() ? "rings" : null;
+  if (!which) { if (panelSheet.isOpen()) panelSheet.hide(); return; }
+  if (!panelSheet.isOpen()) openPanelSheet(which);
+}
 function beginSynthDrag(key, which = "synth") {
   const P = PANELS[which];
   synthDrag = { which, key, start: P.mod.knobFrac(P.state(), key), moved: false };
@@ -6051,6 +6088,8 @@ window.METRO_DEBUG = { renderer, camera, world, controls, xr, disc, hoop: hoopGa
   garden: { enter: enterGarden, leave: leaveGarden, play: playPlant,
             stop: () => gardenPlayer.stop(), playing: () => gardenPlayer.playing(),
             state: () => gardenState, inside: () => inGarden },
+  sheet: { open: openPanelSheet, hide: () => panelSheet.hide(), isOpen: () => panelSheet.isOpen(),
+           sync: syncPanelSheet },
   // a hand on the guitar's resonator, same habit as the synth panel
   rings: {
     state: () => rings, status: ringsStatus, init: initRings, apply: ringsApply,
@@ -6204,9 +6243,13 @@ renderer.setAnimationLoop(() => {
     arpTick();
     if (world.synth.isOpen()) world.synth.panel.render(synth, synthLive);
     if (world.rings.isOpen()) world.rings.panel.render(rings, ringsLive);
+    // the sheet shows the arp playhead too, so it repaints on the same beat
+    // the in-world panel does — markDirty is what says something moved
+    if (panelSheet.isOpen() && sheetDirty) { sheetDirty = false; panelSheet.refresh(); }
   } else if (world.synth.isOpen() || world.rings.isOpen() || synthHeld.length) {
     world.synth.setOpen(false);
     world.rings.setOpen(false);
+    panelSheet.hide();
     arpStop();
   }
   // the VR cabinet panel: the page's rAF sleeps in a session, so the world

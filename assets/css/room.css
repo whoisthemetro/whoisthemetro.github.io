@@ -1068,3 +1068,37 @@ body.tagging #aim-tip { display: none; }
   opacity: .92;
   margin-right: 2px;
 }
+
+/* ---------- the module panels, locked to the screen on a phone ----------
+   PLAITS and RINGS hang in the room on a canvas, which is right for a mouse
+   and a laser and wrong for a thumb. On touch the same drawing is also put
+   here: bottom of the screen, full width, only as tall as its own aspect
+   needs. It deliberately does NOT cover the room — the instrument is still
+   up there and still playable, which is the whole reason these panels are
+   canvases in the world rather than modals in the first place. */
+#panel-sheet {
+  position: fixed;
+  left: 0; right: 0;
+  bottom: max(8px, env(safe-area-inset-bottom));
+  padding: 0 max(6px, env(safe-area-inset-left)) 0 max(6px, env(safe-area-inset-right));
+  z-index: 60;
+  display: none;
+  pointer-events: none;
+}
+#panel-sheet.show { display: block; }
+#panel-sheet canvas {
+  display: block;
+  width: 100%;
+  aspect-ratio: var(--sheet-aspect, 1024 / 566);
+  height: auto;
+  border-radius: 12px;
+  border: 1px solid rgba(126, 200, 255, 0.22);
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.55);
+  pointer-events: auto;
+  /* a control surface, not a document: no scroll-chaining, no text select,
+     no long-press callout, and no double-tap zoom stealing a knob turn */
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
