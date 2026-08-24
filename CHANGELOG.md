@@ -607,6 +607,33 @@ and the first one is the one that was actually killing her.
   Chrome with clip fetches broken and asserts `speechSynthesis.speak` is
   never called.
 
+## 2026-08-24 — the Rings panel moves over the headstock
+
+Bigger model steppers (54x84 → 104x116, with the glyph at 52px and MODEL
+written under each) and the panel now sits above the guitar's headstock: the
+head is at local y 0.730 and its shape runs 0.124 further up, so 1.08 clears
+it. It inherits the tele's own lean, which is what "above the headstock"
+physically means.
+
+`btnW` moved into `layout()`. It was declared three times — in `draw`, in
+`hit` and in `centres` — which is exactly how a button gets drawn somewhere
+its hit test isn't, and the whole reason that file has a layout function.
+
+### The bit that wasn't the code
+
+Moving the default did nothing, and the reason is worth keeping: **a saved
+layout freezes every movable.** `layoutSnapshot` walks the whole registry, so
+when the layout was saved this afternoon it pinned `ringspanel` at the
+position it had at that moment — and `applyLayout` then restores that over
+whatever world.js says, silently, on every load. Measured at runtime the panel
+was at its old `(-0.62, 0.62, 0.22)` while the source said `(0, 1.08, 0.05)`.
+
+`movableHomes` is captured at buildWorld, before any layout is applied, so it
+holds the code defaults: **R in the layout editor resets the selected prop to
+them**, and L saves. Written into CLAUDE.md, along with the fact that the
+snapshot stores `p`/`ry`/`s` only — rotation on X and Z survives a layout but
+can't be edited by one.
+
 ## 2026-08-24 — the guitar gets Rings
 
 The telecaster's voice is now Émilie Gillet's **Rings**, running as wasm on

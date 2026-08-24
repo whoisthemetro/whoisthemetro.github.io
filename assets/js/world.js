@@ -3698,12 +3698,13 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
   ringsBtnGrp.add(ringsLed);
 
   const ringsPanel = makeRingsPanel();
-  /* Beside the guitar rather than over it: the tele leans on a stand against
-     the east wall, and a panel hung above it would be in the window. Out to
-     the player's left, turned to face where you'd stand to play. */
-  ringsPanel.group.position.set(-0.62, 0.62, 0.22);
-  ringsPanel.group.rotation.y = 0.34;
-  ringsPanel.group.rotation.x = -0.12;
+  /* ABOVE THE HEADSTOCK. The head sits at local y 0.730 and its shape runs
+     0.124 further up, so the top of the guitar is 0.854; the panel is 0.36
+     tall, which puts its centre at 1.08 to clear it. It inherits the tele's
+     own lean, which is what "above the headstock" physically means, plus a
+     touch forward so it faces the player rather than the ceiling. */
+  ringsPanel.group.position.set(0, 1.08, 0.05);
+  ringsPanel.group.rotation.x = 0.10;
   tele.add(ringsPanel.group);
   const setRingsPanelOpen = (on) => {
     ringsPanel.group.visible = !!on;

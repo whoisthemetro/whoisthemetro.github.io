@@ -67,20 +67,28 @@ export function saveState(st) {
 // shorter than the Plaits panel because it has less on it: four knobs and
 // two buttons, not five knobs and eight. A panel sized to its sibling
 // rather than to its contents is a panel with a hole in it.
-const W = 1024, H = 452;
+const W = 1024, H = 480;
 
 function layout() {
   const pad = 26;
   const headH = 56;
-  const modY = headH + 20, modH = 84;
-  const knobY = modY + modH + 84;
+  /* The model steppers are the biggest thing on the panel after the knobs.
+     They started at 54x84 and were the hardest control to hit from across a
+     room — you're aiming a crosshair at a guitar from standing height, not
+     clicking with a mouse on a monitor. btnW lives HERE rather than as a
+     local in each function: it was declared three times, in draw, in hit and
+     in centres, which is exactly how a button ends up drawn somewhere its
+     hit test isn't. */
+  const btnW = 104, modH = 116;
+  const modY = headH + 20;
+  const knobY = modY + modH + 78;
   const stripTop = knobY + 78;
   const rowH = 62, gap = 12;
   const cell = (i, count) => {
     const w = (W - pad * 2 - gap * (count - 1)) / count;
     return { x: pad + i * (w + gap), y: stripTop + 14, w, h: rowH };
   };
-  return { pad, headH, modY, modH, knobY, stripTop, rowH, cell };
+  return { pad, headH, btnW, modY, modH, knobY, stripTop, rowH, cell };
 }
 
 /* One cell, not two. It had MODEL in it as well, which is the same control
@@ -116,13 +124,17 @@ export function draw(g, st, live = null) {
 
   /* the model: a stepper either side of the name, like the hardware's
      model button walking a row of LEDs */
-  const btnW = 54;
+  const btnW = L.btnW;
   const m = st.model % MODELS.length;
-  g.fillStyle = C.btn; rr(g, L.pad, L.modY, btnW, L.modH, 10); g.fill();
-  label(g, "◀", L.pad + btnW / 2, L.modY + L.modH / 2, 26, C.dim, "center");
-  g.fillStyle = C.btn; rr(g, L.pad + btnW + 12, L.modY, btnW, L.modH, 10); g.fill();
-  label(g, "▶", L.pad + btnW + 12 + btnW / 2, L.modY + L.modH / 2, 26, C.dim, "center");
-  const tx = L.pad + btnW * 2 + 44;
+  for (const [i, glyph] of [[0, "◀"], [1, "▶"]]) {
+    const bx = L.pad + i * (btnW + 14);
+    g.fillStyle = C.btn; rr(g, bx, L.modY, btnW, L.modH, 14); g.fill();
+    g.strokeStyle = C.line; g.lineWidth = 2;
+    rr(g, bx + 1, L.modY + 1, btnW - 2, L.modH - 2, 13); g.stroke();
+    label(g, glyph, bx + btnW / 2, L.modY + L.modH / 2 - 8, 52, C.text, "center");
+    label(g, "MODEL", bx + btnW / 2, L.modY + L.modH - 22, 14, C.dim, "center");
+  }
+  const tx = L.pad + btnW * 2 + 14 + 40;
   label(g, MODELS[m].name, tx, L.modY + L.modH / 2 - 12, 30, MODEL_COLOR(m));
   label(g, `${MODELS[m].note} · model ${m + 1} of 6`, tx, L.modY + L.modH / 2 + 20, 16, C.dim);
   // six pips, so you can see where you are in the row without counting
@@ -167,10 +179,10 @@ export function draw(g, st, live = null) {
 export function hit(u, v) {
   const px = u * W, py = (1 - v) * H, L = layout();
   if (py < L.headH) return px > W - L.pad - 44 ? { type: "close" } : { type: "none" };
-  const btnW = 54;
+  const btnW = L.btnW;
   if (py >= L.modY && py <= L.modY + L.modH) {
     if (px >= L.pad && px <= L.pad + btnW) return { type: "model", d: -1 };
-    if (px >= L.pad + btnW + 12 && px <= L.pad + btnW * 2 + 12) return { type: "model", d: 1 };
+    if (px >= L.pad + btnW + 14 && px <= L.pad + btnW * 2 + 14) return { type: "model", d: 1 };
   }
   let x = L.pad + 92;
   for (const k of KNOBS) {
@@ -192,9 +204,9 @@ export const SIZE = { w: W, h: H };
    drawing is written in. A test that has to guess where a button is isn't
    testing the button, it's testing the guess. */
 export function centres() {
-  const L = layout(), out = {}, btnW = 54;
+  const L = layout(), out = {}, btnW = L.btnW;
   out.modelDown = [L.pad + btnW / 2, L.modY + L.modH / 2];
-  out.modelUp = [L.pad + btnW + 12 + btnW / 2, L.modY + L.modH / 2];
+  out.modelUp = [L.pad + btnW + 14 + btnW / 2, L.modY + L.modH / 2];
   out.close = [W - L.pad - 22, L.headH / 2];
   let x = L.pad + 92;
   for (const k of KNOBS) { out[k.key] = [x, L.knobY]; x += 232; }
