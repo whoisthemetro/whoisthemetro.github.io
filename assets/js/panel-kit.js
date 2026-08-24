@@ -64,6 +64,46 @@ export function drawKnob(g, cx, cy, rad, frac, color, lbl, val) {
   if (val != null) label(g, val, cx, cy - rad - 16, 16, C.cool, "center");
 }
 
+/* ---------- the octave stepper ----------
+   Both module panels have one now, and they are the same control doing the
+   same job: a minus, a number, a plus. It lives here so the second one
+   couldn't be drawn a different size from the first — the whole reason this
+   file exists. Neither panel has a FREQUENCY knob, because on both the pitch
+   comes from the thing you play; this is the transpose that a fixed keybed
+   or a fixed fretboard otherwise leaves you without. */
+export const OCTAVE_RANGE = [-3, 2];
+export const OCT_BTN = 78;
+
+export function stepOctave(st, d) {
+  st.octave = Math.max(OCTAVE_RANGE[0], Math.min(OCTAVE_RANGE[1], (st.octave | 0) + d));
+  return st.octave;
+}
+
+// r is {x, y, w, h} — the whole stepper, buttons included
+export function drawOctave(g, r, octave, title = "OCTAVE") {
+  const lo = octave <= OCTAVE_RANGE[0], hi = octave >= OCTAVE_RANGE[1];
+  for (const [i, glyph, off] of [[0, "\u2212", lo], [1, "+", hi]]) {
+    const bx = i === 0 ? r.x : r.x + r.w - OCT_BTN;
+    g.fillStyle = C.btn; rr(g, bx, r.y, OCT_BTN, r.h, 10); g.fill();
+    label(g, glyph, bx + OCT_BTN / 2, r.y + r.h / 2, 34, off ? "#3b4048" : C.text, "center");
+  }
+  label(g, title, r.x + r.w / 2, r.y + 17, 15, C.dim, "center");
+  label(g, octave > 0 ? `+${octave}` : String(octave),
+        r.x + r.w / 2, r.y + 44, 24, octave ? C.hot : C.text, "center");
+}
+
+export function hitOctave(px, py, r) {
+  if (py < r.y || py > r.y + r.h) return null;
+  if (px >= r.x && px <= r.x + OCT_BTN) return { type: "octave", d: -1 };
+  if (px >= r.x + r.w - OCT_BTN && px <= r.x + r.w) return { type: "octave", d: 1 };
+  return null;
+}
+
+export const octaveCentres = (r) => ({
+  octaveDown: [r.x + OCT_BTN / 2, r.y + r.h / 2],
+  octaveUp: [r.x + r.w - OCT_BTN / 2, r.y + r.h / 2],
+});
+
 /* Where a grab on the knob face lands, as 0..1 around the same sweep.
    A mouse ignores this — knobs are grabbed and turned, and a tap that
    teleported a value would fire every time you clicked to look away — but

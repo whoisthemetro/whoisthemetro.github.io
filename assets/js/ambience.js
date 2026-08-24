@@ -603,11 +603,14 @@ export function pianoNote(i = 0, voice = 0, vel = 1, when = null, chromatic = fa
   const v = PIANO_VOICES[Math.abs(voice) % PIANO_VOICES.length];
   // schedule slightly ahead — no past-start clicks
   const t = Math.max(ctx.currentTime + 0.005, when || 0);
-  /* 0..60 rather than 0..24: the songs never leave two octaves, but a
-     scale-mapped keybed with the arp stacking octaves on top of it does —
+  /* -36..60 rather than 0..24. The songs never leave two octaves, but a
+     scale-mapped keybed with the arp stacking octaves on top does —
      pentatonic reaches the third octave on its own, and a root of B plus
-     three arp octaves puts the top note five above middle C. */
-  const semi = chromatic ? Math.max(0, Math.min(60, i)) : C_MAJOR[Math.max(0, Math.min(14, i))];
+     three arp octaves puts the top note five above middle C. The floor went
+     NEGATIVE when the panel got a transpose: the frequency is
+     261.63 * 2^(semi/12), which is perfectly happy below middle C, and a
+     clamp at zero silently turned "three octaves down" into "no change". */
+  const semi = chromatic ? Math.max(-36, Math.min(60, i)) : C_MAJOR[Math.max(0, Math.min(14, i))];
   /* PLAITS gets first refusal. If the wasm is up it takes the note and we're
      done; if it isn't, we start fetching it and let the oscillators below
      cover this note — so the first key you press after switching sounds like

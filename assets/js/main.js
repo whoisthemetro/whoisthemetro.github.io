@@ -556,9 +556,13 @@ plaitsApply();
    root turn it into a semitone, so the same fifteen keys are C major or
    B blues depending on what the panel says. Everything that makes a note —
    your hand, the arp, a peer — comes through here. */
+/* What semitone a key IS: the scale and root map it, then the transpose
+   shifts it. ONE function, because the arp reads the same keys and a second
+   copy is how the two end up a register apart. */
+const semiFor = (k) => SynthPanel.keyToSemi(k, synth.scale, synth.root) + (synth.octave | 0) * 12;
+
 function synthKey(key, when = null, broadcast = true) {
-  const semi = SynthPanel.keyToSemi(key, synth.scale, synth.root);
-  synthSemi(semi, key, when, broadcast);
+  synthSemi(semiFor(key), key, when, broadcast);
 }
 /* A key you actually pressed, as opposed to one the arp played. It sounds,
    and if the arp is running it also joins (or leaves) the chord — HOLD is
@@ -608,7 +612,7 @@ function sendSynthNote(key, semi) {
    start again. */
 function arpSeq() {
   if (!synthHeld.length) return [];
-  const base = synthHeld.map(k => ({ key: k, semi: SynthPanel.keyToSemi(k, synth.scale, synth.root) }));
+  const base = synthHeld.map(k => ({ key: k, semi: semiFor(k) }));
   let seq = [];
   for (let o = 0; o < synth.octaves; o++)
     for (const n of base) seq.push({ key: n.key, semi: n.semi + o * 12 });
@@ -663,7 +667,7 @@ function synthLive() {
   const seq = arpSeq();
   return {
     status: plaitsStatus(),
-    held: synthHeld.map(k => SynthPanel.keyToSemi(k, synth.scale, synth.root)),
+    held: synthHeld.map(semiFor),
     total: seq.length, at: seq.length ? arpStep % seq.length : 0,
   };
 }
@@ -689,6 +693,12 @@ function applySynthHit(h) {
       h.key === "scale" ? synth.scale : h.key === "root" ? SynthPanel.ROOT_NAMES[synth.root]
       : h.key === "mode" ? SynthPanel.MODES[synth.mode] : h.key === "rate" ? SynthPanel.RATES[synth.rate].label
       : h.key === "octaves" ? synth.octaves : (synth[h.key] ? "on" : "off")}`);
+    synthDirty();
+  } else if (h.type === "octave") {
+    const was = synth.octave | 0;
+    const now = SynthPanel.stepOctave(synth, h.d);
+    if (now === was) return;                 // already at the end of the range
+    toast(now === 0 ? "octave: normal" : `octave ${now > 0 ? "+" : ""}${now}`);
     synthDirty();
   } else if (h.type === "knob") {
     /* On a mouse, knobs only answer to a drag — a tap that jumped a value
@@ -2501,6 +2511,7 @@ setInterval(() => {
     aimTip.textContent = h.type === "knob" ? (IS_TOUCH || inVR() ? `${TAP} the ring to set it` : "hold and drag to turn")
       : h.type === "close" ? `${TAP} to close`
       : h.type === "engine" ? `${TAP} — next engine`
+      : h.type === "octave" ? `${TAP} — octave ${h.d > 0 ? "up" : "down"}`
       : h.type === "cycle" ? `${TAP} — ${h.key}` : "";
     aimTip.classList.toggle("show", !!aimTip.textContent);
   } else if (hit && hit.object.userData.pianoVoice && hit.distance < 2.4) {

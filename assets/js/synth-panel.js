@@ -31,7 +31,8 @@
    ============================================================ */
 
 import * as THREE from "three";
-import { C, rr, label, drawKnob, grabFrac, clamp01 } from "./panel-kit.js";
+import { C, rr, label, drawKnob, grabFrac, clamp01,
+         OCTAVE_RANGE, stepOctave, drawOctave, hitOctave, octaveCentres } from "./panel-kit.js";
 
 /* ---------- the module, as it ships ---------- */
 
@@ -93,7 +94,14 @@ const DEFAULTS = {
   harm: 0.5, timbre: 0.5, morph: 0.5, decay: 0.6, lpg: 0.4,
   arp: false, hold: false, mode: 0, rate: 1, octaves: 2,
   scale: "major", root: 0, bpm: 112,
+  /* Transpose, in whole octaves — NOT the same thing as `octaves`, which is
+     how many the arp stacks. The keybed is fifteen keys starting at middle C
+     and there is no FREQUENCY knob, because the pitch comes from the keys;
+     this is what lets those fifteen keys be a bass or a lead. Labelled
+     OCTAVE against the arp's ARP OCT so the two can't be confused. */
+  octave: 0,
 };
+export { OCTAVE_RANGE, stepOctave };
 
 export function loadState() {
   let st = { ...DEFAULTS };
@@ -115,7 +123,7 @@ export function saveState(st) {
    number, because a round number left a hand's width of empty panel under
    the last row and the whole thing read as a dialog with something missing
    from it. If you add a row, this moves. */
-const W = 1024, H = 548;
+const W = 1024, H = 566;
 
 /* The palette, the rounded rect, the label and the knob all live in
    panel-kit.js now: this panel and the RINGS one by the guitar are two faces
@@ -134,11 +142,15 @@ function layout() {
   const stripTop = knobY + 78;
   const rowH = 62, gap = 12;
   const rowAY = stripTop + 16, rowBY = rowAY + rowH + gap;
+  // a third row: the transpose stepper, with the held-note chips beside it
+  const rowCY = rowBY + rowH + gap;
+  const octW = 300;
+  const oct = { x: pad, y: rowCY, w: octW, h: rowH };
   const cell = (n, i, y, count) => {
     const w = (W - pad * 2 - gap * (count - 1)) / count;
     return { x: pad + i * (w + gap), y, w, h: rowH };
   };
-  return { pad, headH, engY, engH, knobY, stripTop, rowH, gap, rowAY, rowBY, cell };
+  return { pad, headH, engY, engH, knobY, stripTop, rowH, gap, rowAY, rowBY, rowCY, oct, cell };
 }
 
 // the two button rows. `key` is what the hit test hands back.
@@ -151,7 +163,7 @@ const ROW_A = [
 const ROW_B = [
   { key: "scale", label: "SCALE" },
   { key: "root", label: "ROOT" },
-  { key: "octaves", label: "OCT" },
+  { key: "octaves", label: "ARP OCT" },
   { key: "bpm", label: "TEMPO", knob: true },
 ];
 
@@ -245,12 +257,13 @@ export function draw(ctx2d, st, live = null) {
   g.fillRect(0, L.stripTop, W, 2);
   for (let i = 0; i < ROW_A.length; i++) drawButton(g, L.cell(0, i, L.rowAY, ROW_A.length), ROW_A[i], st, live);
   for (let i = 0; i < ROW_B.length; i++) drawButton(g, L.cell(0, i, L.rowBY, ROW_B.length), ROW_B[i], st, live);
+  drawOctave(g, L.oct, st.octave | 0);
 
   /* what's actually being held, so HOLD isn't a mystery */
-  const y = L.rowBY + L.rowH + 30;
+  const y = L.rowCY + L.rowH / 2;
   if (live && live.held && live.held.length) {
-    label(g, "HOLDING", L.pad, y, 15, C.dim);
-    let hx = L.pad + 96;
+    label(g, "HOLDING", L.oct.x + L.oct.w + 26, y, 15, C.dim);
+    let hx = L.oct.x + L.oct.w + 122;
     for (const semi of live.held) {
       const n = ROOT_NAMES[((semi % 12) + 12) % 12] + (4 + Math.floor(semi / 12));
       g.fillStyle = "#24313f";
@@ -260,7 +273,8 @@ export function draw(ctx2d, st, live = null) {
     }
   } else {
     label(g, st.arp ? "play a key to feed the arp — HOLD keeps the chord"
-                    : "the keys play whatever this panel says", L.pad, y, 15, C.dim);
+                    : "the keys play whatever this panel says",
+          L.oct.x + L.oct.w + 26, y, 15, C.dim);
   }
 }
 
@@ -303,6 +317,8 @@ export function hit(u, v) {
       }
     }
   }
+  const oh = hitOctave(px, py, L.oct);
+  if (oh) return oh;
   return { type: "none" };
 }
 
@@ -326,6 +342,7 @@ export function centres() {
       out[row[i].key] = [r.x + r.w / 2, r.y + r.h / 2];
     }
   }
+  Object.assign(out, octaveCentres(L.oct));
   return out;
 }
 

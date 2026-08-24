@@ -21,7 +21,9 @@
    ============================================================ */
 
 import * as THREE from "three";
-import { C, rr, label, drawKnob, grabFrac, clamp01 } from "./panel-kit.js";
+import { C, rr, label, drawKnob, grabFrac, clamp01,
+         OCTAVE_RANGE, OCT_BTN, stepOctave as kitStepOctave,
+         drawOctave, hitOctave, octaveCentres } from "./panel-kit.js";
 
 export const MODELS = [
   { name: "MODAL",         note: "struck bar" },
@@ -57,7 +59,7 @@ const DEFAULTS = {
      (MODAL, STRING) are a different instrument two octaves down. */
   octave: 0,
 };
-export const OCTAVE_RANGE = [-3, 2];
+export { OCTAVE_RANGE };
 
 export function loadState() {
   let st = { ...DEFAULTS };
@@ -109,7 +111,6 @@ const ROW = [
 ];
 // the octave pair sits beside the polyphony cell rather than in it: it's a
 // stepper, not a cycle, and going DOWN three should not mean pressing up nine
-const OCT_BTN = 78;
 
 const valueOf = (st, key) =>
   key === "polyphony" ? `${st.polyphony} voice${st.polyphony === 1 ? "" : "s"}`
@@ -180,17 +181,7 @@ export function draw(g, st, live = null) {
     if (ROW[i].key === "polyphony")
       label(g, POLY_NOTE[st.polyphony] || "", rc.x + rc.w - 18, rc.y + rc.h / 2 + 2, 15, C.dim, "right");
   }
-  /* OCTAVE: a minus and a plus with the value between them. */
-  const o = L.oct;
-  const lo = st.octave <= OCTAVE_RANGE[0], hi = st.octave >= OCTAVE_RANGE[1];
-  for (const [i, glyph, off] of [[0, "\u2212", lo], [1, "+", hi]]) {
-    const bx = i === 0 ? o.x : o.x + o.w - OCT_BTN;
-    g.fillStyle = C.btn; rr(g, bx, o.y, OCT_BTN, o.h, 10); g.fill();
-    label(g, glyph, bx + OCT_BTN / 2, o.y + o.h / 2, 34, off ? "#3b4048" : C.text, "center");
-  }
-  label(g, "OCTAVE", o.x + o.w / 2, o.y + 17, 15, C.dim, "center");
-  label(g, st.octave > 0 ? `+${st.octave}` : String(st.octave),
-        o.x + o.w / 2, o.y + 44, 24, st.octave ? C.hot : C.text, "center");
+  drawOctave(g, L.oct, st.octave | 0);
   /* Nothing is patched into the module's input, so Rings supplies its own
      pluck — the earlier wording here said the strings fed the resonator,
      which is not what the wrapper does. */
@@ -219,11 +210,8 @@ export function hit(u, v) {
     if (px >= rc.x && px <= rc.x + rc.w && py >= rc.y && py <= rc.y + rc.h)
       return { type: "cycle", key: ROW[i].key };
   }
-  const o = L.oct;
-  if (py >= o.y && py <= o.y + o.h) {
-    if (px >= o.x && px <= o.x + OCT_BTN) return { type: "octave", d: -1 };
-    if (px >= o.x + o.w - OCT_BTN && px <= o.x + o.w) return { type: "octave", d: 1 };
-  }
+  const oh = hitOctave(px, py, L.oct);
+  if (oh) return oh;
   return { type: "none" };
 }
 
@@ -243,15 +231,11 @@ export function centres() {
     const rc = L.cell(i, ROW.length);
     out[ROW[i].key] = [rc.x + rc.w / 2, rc.y + rc.h / 2];
   }
-  out.octaveDown = [L.oct.x + OCT_BTN / 2, L.oct.y + L.oct.h / 2];
-  out.octaveUp = [L.oct.x + L.oct.w - OCT_BTN / 2, L.oct.y + L.oct.h / 2];
+  Object.assign(out, octaveCentres(L.oct));
   return out;
 }
 
-export function stepOctave(st, d) {
-  st.octave = Math.max(OCTAVE_RANGE[0], Math.min(OCTAVE_RANGE[1], st.octave + d));
-  return st.octave;
-}
+export const stepOctave = kitStepOctave;
 export function cycle(st, key, dir = 1) {
   if (key === "model") st.model = (st.model + dir + MODELS.length) % MODELS.length;
   else if (key === "polyphony") {

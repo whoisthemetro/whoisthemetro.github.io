@@ -607,6 +607,31 @@ and the first one is the one that was actually killing her.
   Chrome with clip fetches broken and asserts `speechSynthesis.speak` is
   never called.
 
+## 2026-08-24 — the synth gets octaves too
+
+The same stepper the guitar got, on the keyboard: −3 to +2, on a third row of
+the PLAITS panel with the held-note chips beside it.
+
+**It lives in `panel-kit.js`.** Two panels with the same control drawn twice
+is how they end up different sizes, which is the whole reason that file
+exists — `drawOctave`, `hitOctave`, `stepOctave` and `octaveCentres` are one
+copy now and Rings was moved onto them in the same pass.
+
+**`semiFor(key)` is the one place** that decides what note a key is: scale and
+root map it, then the transpose shifts it. Both the keyboard and the arp read
+it, because a second copy is how the two end up a register apart. Verified:
+octave −1 with two keys held and the arp stacking two octaves gives
+`[-12, -5, 0, 7]` — the base notes transposed, the arp's second octave still
+stacking upward from them.
+
+**The pitch floor went negative.** `pianoNote`'s chromatic clamp was 0..60,
+so "three octaves down" silently became "no change" — the frequency is
+`261.63 * 2^(semi/12)`, which is perfectly happy below middle C. −36..60 now.
+
+The arp's own octave count is labelled **ARP OCT**, because "OCT" sitting two
+buttons from a transpose called "OCTAVE" is two different numbers wearing the
+same word.
+
 ## 2026-08-24 — the layout editor can tilt things, and Rings gets octaves
 
 **Rotation on all three axes.** Yaw was the only one the editor had, which is
