@@ -51,7 +51,13 @@ const DEFAULTS = {
   model: 2,                  // STRING — the one a guitar actually is
   structure: 0.35, brightness: 0.5, damping: 0.7, position: 0.25,
   polyphony: 4,
+  /* Octave shift, in whole octaves. The panel has no FREQUENCY knob because
+     the pitch comes from the fretboard — but a fretboard fixed in one octave
+     is a resonator you can only hear one register of, and the low models
+     (MODAL, STRING) are a different instrument two octaves down. */
+  octave: 0,
 };
+export const OCTAVE_RANGE = [-3, 2];
 
 export function loadState() {
   let st = { ...DEFAULTS };
@@ -73,22 +79,26 @@ function layout() {
   const pad = 26;
   const headH = 56;
   /* The model steppers are the biggest thing on the panel after the knobs.
-     They started at 54x84 and were the hardest control to hit from across a
-     room — you're aiming a crosshair at a guitar from standing height, not
-     clicking with a mouse on a monitor. btnW lives HERE rather than as a
+     They started at 54x84, which was the hardest control to hit from across
+     a room — you're aiming a crosshair at a guitar from standing height, not
+     clicking with a mouse on a monitor. 104 overshot; 86 is the size that's
+     comfortable without being the loudest thing on the panel. btnW lives HERE rather than as a
      local in each function: it was declared three times, in draw, in hit and
      in centres, which is exactly how a button ends up drawn somewhere its
      hit test isn't. */
-  const btnW = 104, modH = 116;
+  const btnW = 86, modH = 100;
   const modY = headH + 20;
   const knobY = modY + modH + 78;
   const stripTop = knobY + 78;
   const rowH = 62, gap = 12;
+  // the strip is one cycling cell plus the octave stepper, side by side
+  const octW = 300;
   const cell = (i, count) => {
-    const w = (W - pad * 2 - gap * (count - 1)) / count;
+    const w = (W - pad * 2 - gap * count - octW) / count;
     return { x: pad + i * (w + gap), y: stripTop + 14, w, h: rowH };
   };
-  return { pad, headH, btnW, modY, modH, knobY, stripTop, rowH, cell };
+  const oct = { x: W - pad - octW, y: stripTop + 14, w: octW, h: rowH };
+  return { pad, headH, btnW, modY, modH, knobY, stripTop, rowH, cell, oct };
 }
 
 /* One cell, not two. It had MODEL in it as well, which is the same control
@@ -97,6 +107,9 @@ function layout() {
 const ROW = [
   { key: "polyphony", label: "POLYPHONY" },
 ];
+// the octave pair sits beside the polyphony cell rather than in it: it's a
+// stepper, not a cycle, and going DOWN three should not mean pressing up nine
+const OCT_BTN = 78;
 
 const valueOf = (st, key) =>
   key === "polyphony" ? `${st.polyphony} voice${st.polyphony === 1 ? "" : "s"}`
@@ -131,8 +144,8 @@ export function draw(g, st, live = null) {
     g.fillStyle = C.btn; rr(g, bx, L.modY, btnW, L.modH, 14); g.fill();
     g.strokeStyle = C.line; g.lineWidth = 2;
     rr(g, bx + 1, L.modY + 1, btnW - 2, L.modH - 2, 13); g.stroke();
-    label(g, glyph, bx + btnW / 2, L.modY + L.modH / 2 - 8, 52, C.text, "center");
-    label(g, "MODEL", bx + btnW / 2, L.modY + L.modH - 22, 14, C.dim, "center");
+    label(g, glyph, bx + btnW / 2, L.modY + L.modH / 2 - 7, 44, C.text, "center");
+    label(g, "MODEL", bx + btnW / 2, L.modY + L.modH - 20, 13, C.dim, "center");
   }
   const tx = L.pad + btnW * 2 + 14 + 40;
   label(g, MODELS[m].name, tx, L.modY + L.modH / 2 - 12, 30, MODEL_COLOR(m));
@@ -167,6 +180,17 @@ export function draw(g, st, live = null) {
     if (ROW[i].key === "polyphony")
       label(g, POLY_NOTE[st.polyphony] || "", rc.x + rc.w - 18, rc.y + rc.h / 2 + 2, 15, C.dim, "right");
   }
+  /* OCTAVE: a minus and a plus with the value between them. */
+  const o = L.oct;
+  const lo = st.octave <= OCTAVE_RANGE[0], hi = st.octave >= OCTAVE_RANGE[1];
+  for (const [i, glyph, off] of [[0, "\u2212", lo], [1, "+", hi]]) {
+    const bx = i === 0 ? o.x : o.x + o.w - OCT_BTN;
+    g.fillStyle = C.btn; rr(g, bx, o.y, OCT_BTN, o.h, 10); g.fill();
+    label(g, glyph, bx + OCT_BTN / 2, o.y + o.h / 2, 34, off ? "#3b4048" : C.text, "center");
+  }
+  label(g, "OCTAVE", o.x + o.w / 2, o.y + 17, 15, C.dim, "center");
+  label(g, st.octave > 0 ? `+${st.octave}` : String(st.octave),
+        o.x + o.w / 2, o.y + 44, 24, st.octave ? C.hot : C.text, "center");
   /* Nothing is patched into the module's input, so Rings supplies its own
      pluck — the earlier wording here said the strings fed the resonator,
      which is not what the wrapper does. */
@@ -195,6 +219,11 @@ export function hit(u, v) {
     if (px >= rc.x && px <= rc.x + rc.w && py >= rc.y && py <= rc.y + rc.h)
       return { type: "cycle", key: ROW[i].key };
   }
+  const o = L.oct;
+  if (py >= o.y && py <= o.y + o.h) {
+    if (px >= o.x && px <= o.x + OCT_BTN) return { type: "octave", d: -1 };
+    if (px >= o.x + o.w - OCT_BTN && px <= o.x + o.w) return { type: "octave", d: 1 };
+  }
   return { type: "none" };
 }
 
@@ -214,9 +243,15 @@ export function centres() {
     const rc = L.cell(i, ROW.length);
     out[ROW[i].key] = [rc.x + rc.w / 2, rc.y + rc.h / 2];
   }
+  out.octaveDown = [L.oct.x + OCT_BTN / 2, L.oct.y + L.oct.h / 2];
+  out.octaveUp = [L.oct.x + L.oct.w - OCT_BTN / 2, L.oct.y + L.oct.h / 2];
   return out;
 }
 
+export function stepOctave(st, d) {
+  st.octave = Math.max(OCTAVE_RANGE[0], Math.min(OCTAVE_RANGE[1], st.octave + d));
+  return st.octave;
+}
 export function cycle(st, key, dir = 1) {
   if (key === "model") st.model = (st.model + dir + MODELS.length) % MODELS.length;
   else if (key === "polyphony") {

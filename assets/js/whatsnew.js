@@ -25,6 +25,7 @@ export const WHATS_NEW = [
   {
     date: "2026-08-22",
     items: [
+      "the guitar's panel has an octave shifter, so the same frets can play three octaves lower or two higher",
       "the guitar has a real module in it now. the same kind of thing as the keyboard's, but a resonator: press the button on its body and you get six models and four knobs, and every fret rings it",
       "the synth button on the keyboard can be moved where metro wants it",
       "the cat has a name. she's called shartacus, it's on her readout, and trinity introduces her properly now",

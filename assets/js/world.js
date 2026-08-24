@@ -10399,7 +10399,8 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
   if (kukoRug) movables.rug = kukoRug;   // headless builds have no renderer, no rug
   const movableHomes = {};
   for (const [id, g] of Object.entries(movables))
-    movableHomes[id] = { p: g.position.toArray(), ry: g.rotation.y, s: g.scale.x };
+    movableHomes[id] = { p: g.position.toArray(), ry: g.rotation.y,
+                         rx: g.rotation.x, rz: g.rotation.z, s: g.scale.x };
   function applyLayout(layout) {
     if (!layout) return;
     for (const [id, t] of Object.entries(layout)) {
@@ -10407,17 +10408,29 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
       if (!g || !t || !Array.isArray(t.p)) continue;
       g.position.fromArray(t.p);
       if (typeof t.ry === "number") g.rotation.y = t.ry;
+      /* rx/rz are read only if the stored layout HAS them. Every layout
+         saved before the editor could pitch and roll carries yaw alone, and
+         a prop's built-in tilt has to survive those — the tele leans -0.16
+         on X because it's on a stand, not because anybody set it. */
+      if (typeof t.rx === "number") g.rotation.x = t.rx;
+      if (typeof t.rz === "number") g.rotation.z = t.rz;
       if (typeof t.s === "number") g.scale.setScalar(t.s);
     }
   }
   function resetMovable(id) {
     const g = movables[id], h = movableHomes[id];
-    if (g && h) { g.position.fromArray(h.p); g.rotation.y = h.ry; g.scale.setScalar(h.s); }
+    if (g && h) {
+      g.position.fromArray(h.p);
+      g.rotation.set(h.rx, h.ry, h.rz);
+      g.scale.setScalar(h.s);
+    }
   }
   function layoutSnapshot() {
     const out = {};
     for (const [id, g] of Object.entries(movables))
-      out[id] = { p: g.position.toArray().map(v => +v.toFixed(4)), ry: +g.rotation.y.toFixed(4), s: +g.scale.x.toFixed(4) };
+      out[id] = { p: g.position.toArray().map(v => +v.toFixed(4)),
+                  ry: +g.rotation.y.toFixed(4), rx: +g.rotation.x.toFixed(4),
+                  rz: +g.rotation.z.toFixed(4), s: +g.scale.x.toFixed(4) };
     return out;
   }
 

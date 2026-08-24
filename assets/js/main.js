@@ -500,6 +500,14 @@ addEventListener("keydown", (e) => {
           PageDown:   () => layoutNudge(0, -fine, 0),
           KeyQ:       () => layoutNudge(0, 0, 0, rot),
           KeyE:       () => layoutNudge(0, 0, 0, -rot),
+          /* Pitch and roll. Yaw was the only axis the editor had, which is
+             fine for furniture standing on a floor and useless for a panel
+             that has to face a person — the Rings one hangs over a leaning
+             guitar and inherits its lean. Z/N tilt it, J/K roll it. */
+          KeyZ:       () => layoutNudge(0, 0, 0, 0, rot),
+          KeyN:       () => layoutNudge(0, 0, 0, 0, -rot),
+          KeyJ:       () => layoutNudge(0, 0, 0, 0, 0, rot),
+          KeyK:       () => layoutNudge(0, 0, 0, 0, 0, -rot),
           Equal:      () => layoutScale(e.shiftKey ? 1.01 : 1.05),
           NumpadAdd:  () => layoutScale(e.shiftKey ? 1.01 : 1.05),
           Minus:      () => layoutScale(e.shiftKey ? 1 / 1.01 : 1 / 1.05),
@@ -708,7 +716,8 @@ const rings = RingsPanel.loadState();
 function ringsApply() {
   setRings({ structure: rings.structure, brightness: rings.brightness,
              damping: rings.damping, position: rings.position,
-             model: rings.model | 0, polyphony: rings.polyphony | 0 });
+             model: rings.model | 0, polyphony: rings.polyphony | 0,
+             octave: rings.octave | 0 });
 }
 function ringsDirty(save = true) {
   world.rings.panel.markDirty();
@@ -2481,6 +2490,7 @@ setInterval(() => {
     aimTip.textContent = h.type === "knob" ? (IS_TOUCH || inVR() ? `${TAP} the ring to set it` : "hold and drag to turn")
       : h.type === "close" ? `${TAP} to close`
       : h.type === "model" ? `${TAP} — next model`
+      : h.type === "octave" ? `${TAP} — octave ${h.d > 0 ? "up" : "down"}`
       : h.type === "cycle" ? `${TAP} — ${h.key}` : "";
     aimTip.classList.toggle("show", !!aimTip.textContent);
   } else if (hit && hit.object.userData.synthBtn && hit.distance < 2.6) {
@@ -3422,6 +3432,13 @@ function applyRingsHit(h) {
     ringsApply();
     toast(RingsPanel.MODELS[rings.model].name);
     ringsDirty();
+  } else if (h.type === "octave") {
+    const was = rings.octave;
+    const now = RingsPanel.stepOctave(rings, h.d);
+    if (now === was) return;                 // already at the end of the range
+    ringsApply();
+    toast(now === 0 ? "octave: normal" : `octave ${now > 0 ? "+" : ""}${now}`);
+    ringsDirty();
   } else if (h.type === "cycle") {
     RingsPanel.cycle(rings, h.key);
     ringsApply();
@@ -3738,10 +3755,12 @@ function layoutScale(f) {
   g.scale.setScalar(Math.max(0.2, Math.min(5, g.scale.x * f)));
   layoutBox?.update();
 }
-function layoutNudge(dx, dy, dz, dry = 0) {
+function layoutNudge(dx, dy, dz, dry = 0, drx = 0, drz = 0) {
   if (!layoutSel) return;
   const g = world.movables[layoutSel];
   if (dry) g.rotation.y += dry;
+  if (drx) g.rotation.x += drx;
+  if (drz) g.rotation.z += drz;
   if (dx || dy || dz) {
     // arrows speak world axes, but a prop may live inside a rotated parent
     // (the instrument rack leans −0.25) — carry the delta into its frame

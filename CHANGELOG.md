@@ -607,6 +607,36 @@ and the first one is the one that was actually killing her.
   Chrome with clip fetches broken and asserts `speechSynthesis.speak` is
   never called.
 
+## 2026-08-24 — the layout editor can tilt things, and Rings gets octaves
+
+**Rotation on all three axes.** Yaw was the only one the editor had, which is
+fine for furniture standing on a floor and useless for a panel that has to
+face a person — the Rings one hangs over a leaning guitar and inherits the
+lean. Q/E yaw as before, **Z/N pitch, J/K roll**. X, T and G were already
+taken (the FX toggle, chat, the club) and the layout branch runs after those
+in the same listener, so the free keys are the ones that got used.
+
+`layoutSnapshot` stores `rx`/`rz` now, and `movableHomes` keeps them so R
+resets all three. **`applyLayout` reads them only if the stored layout has
+them**: every layout saved before today carries yaw alone, and a prop's
+built-in tilt has to survive those — the telecaster leans −0.16 on X because
+it's on a stand, not because anyone set it in an editor.
+
+**The model steppers came back down** — 104 was an overshoot after 54 was too
+small; 86 is comfortable without being the loudest thing on the panel.
+
+**An octave stepper**, −3 to +2, beside the polyphony cell. The panel has no
+FREQUENCY knob because the pitch comes from the fretboard, but a fretboard
+fixed in one octave is a resonator you only ever hear one register of, and
+MODAL or STRING two octaves down is a different instrument.
+
+It's applied in `ambience.js` rather than in the wasm: it's arithmetic on a
+note number and the module has no opinion about it. `ri_set` takes four patch
+values, a model and a polyphony, and adding a seventh argument to a DSP
+wrapper to add twelve to an integer would be the wrong place for it. It's kept
+out of `ringsParams` for the same reason — everything in there is posted to
+the audio thread, and this never needs to go.
+
 ## 2026-08-24 — the Rings panel moves over the headstock
 
 Bigger model steppers (54x84 → 104x116, with the glyph at 52px and MODEL

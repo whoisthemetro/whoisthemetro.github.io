@@ -555,8 +555,17 @@ export async function initRings() {
 // the panel's knobs live here so the node can be handed them the moment it
 // exists — turning one before the wasm lands must not be a lost edit
 let ringsParams = { structure: 0.35, brightness: 0.5, damping: 0.7, position: 0.25, model: 2, polyphony: 4 };
+/* The octave shift is handled HERE rather than in the wasm, because it is
+   arithmetic on a note number and the module has no opinion about it — ri_set
+   takes the four patch values, a model and a polyphony, and adding a seventh
+   argument to a DSP wrapper to add twelve to an integer would be the wrong
+   place for it. Kept out of ringsParams for the same reason: everything in
+   there is posted to the audio thread, and this never needs to go. */
+let ringsOctave = 0;
 export function setRings(p = {}) {
-  ringsParams = { ...ringsParams, ...p };
+  if (typeof p.octave === "number") ringsOctave = p.octave;
+  const { octave, ...patch } = p;
+  ringsParams = { ...ringsParams, ...patch };
   if (ringsNode) ringsNode.port.postMessage({ t: "set", ...ringsParams });
 }
 export function ringsNote(midi, level = 0.7, when = null) {
@@ -1297,7 +1306,7 @@ function pluckString(f, when = null, peak = 0.17, v = GUITAR_VOICES[0]) {
 function ringsFromHz(hz, vel, when) {
   const v = gvoice(RINGS_VOICE);
   if (!v.mi) return false;
-  const midi = 69 + 12 * Math.log2(Math.max(1, hz) / 440);
+  const midi = 69 + 12 * Math.log2(Math.max(1, hz) / 440) + ringsOctave * 12;
   if (ringsNote(midi, 0.55 * Math.max(0.05, vel), when)) return true;
   if (riMode === "off") initRings();
   return false;
