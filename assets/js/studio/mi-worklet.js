@@ -10,6 +10,10 @@
      same nothing-plays-"now" rule as the rest of the studio.
    - "mi-clouds": the granular processor, sitting across the whole
      master bus. Parameters arrive over the port; audio just flows.
+   - "mi-rings": the resonator, as the bedroom telecaster's voice. Same
+     note-with-a-timestamp rule as Plaits. Unlike Plaits it has no
+     voices to allocate — it is ONE instrument with its own internal
+     polyphony, so a note is a strum rather than a slot.
 
    The wasm module is compiled on the main thread and handed over in
    processorOptions; instantiation here is synchronous and cheap.
@@ -105,5 +109,46 @@ class CloudsProcessor extends AudioWorkletProcessor {
   }
 }
 
+/* Rings. One instrument, not a pool: `ri_note_on` re-pitches it and asks for
+   a strum, and the module's own polyphony decides which of its strings takes
+   the note. So there is nothing to allocate and nothing to free — but the
+   TAIL matters, because a resonator that stops being rendered stops ringing.
+   This processor always returns true and always renders, which is right: it
+   is an instrument sitting in a room, not a note that ends. */
+class RingsProcessor extends AudioWorkletProcessor {
+  constructor(options) {
+    super();
+    this.e = makeExports(options.processorOptions.module);
+    this.e.ri_init();
+    // rings renders at a fixed 48k, same as plaits — bend the note the other
+    // way so playback at another rate lands on the pitch that was asked for
+    this.noteComp = 12 * Math.log2(48000 / sampleRate);
+    this.queue = [];
+    this.port.onmessage = (ev) => {
+      const m = ev.data;
+      if (m.t === "set") {
+        this.e.ri_set(m.structure, m.brightness, m.damping, m.position,
+                      m.model | 0, m.polyphony | 0);
+      } else if (m.t === "note") {
+        this.queue.push(m);
+        this.queue.sort((a, b) => a.at - b.at);
+      }
+    };
+  }
+  process(inputs, outputs) {
+    const out = outputs[0][0];
+    const horizon = currentTime + out.length / sampleRate;
+    while (this.queue.length && this.queue[0].at <= horizon) {
+      const n = this.queue.shift();
+      this.e.ri_note_on(n.midi + this.noteComp, n.level);
+    }
+    const ptr = this.e.ri_render(out.length) >> 2;
+    const mem = new Float32Array(this.e.memory.buffer);
+    for (let i = 0; i < out.length; i++) out[i] = mem[ptr + i];
+    return true;
+  }
+}
+
 registerProcessor("mi-plaits", PlaitsProcessor);
+registerProcessor("mi-rings", RingsProcessor);
 registerProcessor("mi-clouds", CloudsProcessor);

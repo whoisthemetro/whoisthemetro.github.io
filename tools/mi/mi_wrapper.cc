@@ -1,10 +1,12 @@
 // THE METRO x Mutable Instruments — wasm wrapper
 //
-// Wraps two of Émilie Gillet's designs (MIT license, github.com/pichenettes/eurorack)
-// for the studio: Plaits (the 24-engine macro-oscillator, firmware 1.2) as a
-// polyphonic synth voice, and Clouds (the granular processor) as an insert on
-// the master bus. Everything is statically allocated — the audio thread never
-// touches malloc.
+// Wraps two of Émilie Gillet's designs (MIT license,
+// github.com/pichenettes/eurorack): Plaits (the 24-engine macro-oscillator,
+// firmware 1.2) as a polyphonic synth voice, and Clouds (the granular
+// processor) as an insert on the master bus. Rings lives in ri_wrapper.cc,
+// in its OWN translation unit — see the note at the top of that file.
+//
+// Everything is statically allocated — the audio thread never touches malloc.
 
 #include <cstring>
 #include <cmath>
@@ -183,5 +185,6 @@ void cl_process(int n) {
     cl_io[3][s] = cl_out_buf[s].r * (1.0f / 32768.0f);
   }
 }
+
 
 }  // extern "C"

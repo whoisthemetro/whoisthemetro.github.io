@@ -30,6 +30,7 @@ import { makeShaderBake } from "./shaderbake.js";
 import { createGraffiti } from "./graffiti.js";
 import { makePanel as makeSynthPanel } from "./synth-panel.js";
 import { makeMonthPlate } from "./wall-months.js";
+import { makePanel as makeRingsPanel } from "./rings-panel.js";
 import { buildRoom as buildStudioRoom } from "./studio/room.js";
 import { buildGarden } from "./garden/room.js";
 import { GARDEN_TRACKS } from "./garden-catalog.js";
@@ -3674,6 +3675,42 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
   }
   // parked in the pocket between the right monitor and the rack —
   // forward of the speaker cab so nothing clips through the body
+  /* --- the RINGS button, and the panel it opens ---
+     The guitar's voice is Émilie Gillet's resonator (see rings-panel.js), and
+     this is the switch. Its own group, registered as a movable, for the same
+     reason the keyboard's is: where a button sits is a thing you want to
+     change after you've stood next to it. It rides on `tele`, so moving the
+     guitar takes its button along and the layout editor then places the
+     button on the guitar. */
+  const ringsBtnGrp = new THREE.Group();
+  ringsBtnGrp.position.set(-0.075, 0.052, 0.05);   // on the horn, clear of the strings
+  tele.add(ringsBtnGrp);
+  const ringsBtn = new THREE.Mesh(
+    new THREE.BoxGeometry(0.042, 0.014, 0.026),
+    new THREE.MeshLambertMaterial({ color: 0x243a2c, emissive: 0x0d2416 }));
+  ringsBtn.userData.ringsBtn = true;
+  ringsBtnGrp.add(ringsBtn);
+  const ringsLed = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.026, 0.007),
+    new THREE.MeshBasicMaterial({ color: 0x2f8f5a }));
+  ringsLed.rotation.x = -Math.PI / 2;
+  ringsLed.position.set(0, 0.0075, 0);
+  ringsBtnGrp.add(ringsLed);
+
+  const ringsPanel = makeRingsPanel();
+  /* Beside the guitar rather than over it: the tele leans on a stand against
+     the east wall, and a panel hung above it would be in the window. Out to
+     the player's left, turned to face where you'd stand to play. */
+  ringsPanel.group.position.set(-0.62, 0.62, 0.22);
+  ringsPanel.group.rotation.y = 0.34;
+  ringsPanel.group.rotation.x = -0.12;
+  tele.add(ringsPanel.group);
+  const setRingsPanelOpen = (on) => {
+    ringsPanel.group.visible = !!on;
+    ringsLed.material.color.setHex(on ? 0x7dffa8 : 0x2f8f5a);
+    if (on) ringsPanel.markDirty();
+  };
+
   tele.position.set(1.58, 0.21, ZF + 0.58);
   tele.rotation.x = -0.16;                 // leaning back on the stand
   tele.rotation.y = 0.3;
@@ -10346,7 +10383,13 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
        the innermost enclosing one, so the order here doesn't decide it — but
        keep them adjacent anyway, because reading them next to each other is
        what tells you the nesting exists. */
-    synthbtn: synthBtnGrp,
+    /* All four module pieces are movable: the two buttons and the two panels
+       they open. Where a control sits is the thing you only know once you're
+       standing next to it, and "I don't like where that is" was the whole
+       reason any of this became movable. The panels are only selectable
+       while they're OPEN — an invisible group has nothing to raycast. */
+    synthbtn: synthBtnGrp, ringsbtn: ringsBtnGrp,
+    synthpanel: synthPanel.group, ringspanel: ringsPanel.group,
     tele, pedalboard, kbpedals: kbPedals, midikeys: midiKeys, radio: laRadio.group,
     lava, mixer, clock: deskClock,
     monitor: deskMonitor, interface: deskInterface, keyboard: deskKeyboard,
@@ -10493,6 +10536,8 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
       redrawSky(true);
     },
     edrumHits, pressEdrum, guitarHits, strumTele, guitarVoiceHits, setGuitarVoiceSwitch,
+    rings: { panel: ringsPanel, btn: ringsBtn, screen: ringsPanel.screen,
+             setOpen: setRingsPanelOpen, isOpen: () => ringsPanel.group.visible },
     addAccessory,
     // how much arcade you should hear from (x, z): 1 inside, a leak
     // through the open closet doorway, near-nothing across the bedroom

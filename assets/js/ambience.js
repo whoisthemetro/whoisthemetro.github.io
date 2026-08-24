@@ -508,6 +508,63 @@ export function plaitsNote(midi, dur = 1.6, level = 0.6, when = null) {
   return true;
 }
 
+/* ---------- RINGS, as the telecaster's voice ----------
+
+   Same shape as initPlaits above and for the same reasons: the worklet and
+   the wasm are shared with the studio, the node belongs to THIS context, and
+   it's lazy because most visits never pick up the guitar.
+
+   The one real difference is that Rings never stops. Plaits renders a note
+   and frees its slot; Rings is a resonator sitting in the room, and a
+   resonator that stops being rendered stops ringing. Its worklet always
+   returns audio, so the node stays connected and quietly outputs silence
+   between plucks. That's an instrument, not a leak. */
+let riMode = "off";
+let ringsNode = null, ringsLevel = null;
+export const ringsStatus = () => riMode;
+export const ringsReady = () => riMode === "on";
+
+export async function initRings() {
+  if (riMode !== "off") return riMode === "on";
+  if (!ctx || !ctx.audioWorklet) { riMode = "failed"; return false; }
+  riMode = "loading";
+  try {
+    const [bytes] = await Promise.all([
+      fetch("/assets/wasm/mi.wasm").then(r => r.arrayBuffer()),
+      ctx.audioWorklet.addModule("/assets/js/studio/mi-worklet.js"),
+    ]);
+    const module = await WebAssembly.compile(bytes);
+    ringsNode = new AudioWorkletNode(ctx, "mi-rings", {
+      numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [1],
+      processorOptions: { module },
+    });
+    ringsLevel = ctx.createGain();
+    ringsLevel.gain.value = 0.5;
+    // into the guitar's own pedal chain, so it lands where the hand-rolled
+    // string lands: overdrive, delay, reverb, and the same bus level
+    ringsNode.connect(ringsLevel).connect(guitarBus || master);
+    riMode = "on";
+    setRings(ringsParams);
+    return true;
+  } catch (e) {
+    riMode = "failed";
+    return false;
+  }
+}
+
+// the panel's knobs live here so the node can be handed them the moment it
+// exists — turning one before the wasm lands must not be a lost edit
+let ringsParams = { structure: 0.35, brightness: 0.5, damping: 0.7, position: 0.25, model: 2, polyphony: 4 };
+export function setRings(p = {}) {
+  ringsParams = { ...ringsParams, ...p };
+  if (ringsNode) ringsNode.port.postMessage({ t: "set", ...ringsParams });
+}
+export function ringsNote(midi, level = 0.7, when = null) {
+  if (!ringsNode || !ctx) return false;
+  ringsNode.port.postMessage({ t: "note", midi, level, at: Math.max(ctx.currentTime + 0.005, when || 0) });
+  return true;
+}
+
 // the audio clock, for anything that wants to schedule against it
 export function audioNow() { return ctx ? ctx.currentTime : 0; }
 
@@ -1177,7 +1234,14 @@ export const GUITAR_VOICES = [
   { name: "NYLON",     damp: 0.994, lp: 3000, dur: 1.5, peak: 0.16, body: { f: 230, q: 1.4, gain: 5 }, soft: 3 },
   // palm-muted chug: choked decay, dark, short — a percussive thunk
   { name: "PALM MUTE", damp: 0.945, lp: 2500, dur: 0.5, peak: 0.2 },
+  /* RINGS is not a plucked delay line like the four above it — it's Émilie
+     Gillet's resonator running as wasm on the audio thread, and it only
+     exists once initRings() has fetched it. The numbers here are what you
+     hear until then, and what you hear forever if the fetch fails: the TELE,
+     so a guitar set to RINGS is never a silent guitar. */
+  { name: "RINGS",     damp: 0.996, lp: 4400, dur: 1.7, peak: 0.17, mi: true },
 ];
+export const RINGS_VOICE = GUITAR_VOICES.findIndex(v => v.mi);
 // pick a voice descriptor safely from any index (matches PIANO_VOICES' guard)
 function gvoice(voice) { return GUITAR_VOICES[Math.abs(voice | 0) % GUITAR_VOICES.length]; }
 // the string itself: pluck a frequency at audio time `when`, peak `peak`,
@@ -1225,14 +1289,31 @@ function pluckString(f, when = null, peak = 0.17, v = GUITAR_VOICES[0]) {
   head.connect(g).connect(guitarBus || master);
   src.start(Math.max(ctx.currentTime + 0.005, when || 0));
 }
+/* Rings gets first refusal on any pluck, exactly the way Plaits does on the
+   keyboard: if the wasm is up it takes the note, and if it isn't we start
+   fetching it and let the delay-line string cover this one. So the first
+   note after switching sounds like the fallback and every one after it is
+   the real module. Rings wants MIDI; the guitar thinks in frequencies. */
+function ringsFromHz(hz, vel, when) {
+  const v = gvoice(RINGS_VOICE);
+  if (!v.mi) return false;
+  const midi = 69 + 12 * Math.log2(Math.max(1, hz) / 440);
+  if (ringsNote(midi, 0.55 * Math.max(0.05, vel), when)) return true;
+  if (riMode === "off") initRings();
+  return false;
+}
 // live play: a fret on the A-minor-pentatonic neck, in the chosen timbre
 export function guitarPluck(n = 0, voice = 0, when = null) {
-  pluckString(PENTA_AM[Math.max(0, Math.min(PENTA_AM.length - 1, n | 0))], when, 0.17, gvoice(voice));
+  const hz = PENTA_AM[Math.max(0, Math.min(PENTA_AM.length - 1, n | 0))];
+  if (gvoice(voice).mi && ringsFromHz(hz, 1, when)) return;
+  pluckString(hz, when, 0.17, gvoice(voice));
 }
 // song play: a chromatic note, `semi` semitones from C4 (negative = lower),
 // so the guitar can track a song's real key instead of the pentatonic frets.
 export function guitarNote(semi = 0, vel = 1, when = null, voice = 0) {
-  pluckString(261.63 * Math.pow(2, semi / 12), when, 0.17 * Math.max(0.05, vel), gvoice(voice));
+  const hz = 261.63 * Math.pow(2, semi / 12);
+  if (gvoice(voice).mi && ringsFromHz(hz, vel, when)) return;
+  pluckString(hz, when, 0.17 * Math.max(0.05, vel), gvoice(voice));
 }
 
 /* ---------------- arena combat: swings, clangs, stuns ---------------- */

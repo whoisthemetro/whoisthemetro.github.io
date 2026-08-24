@@ -55,8 +55,10 @@ import { initPool } from "./pool.js";
 import { initBasket } from "./basketball.js";
 import { makeGymBall } from "./gymball.js";
 import { initDebug } from "./debug.js";
-import { PIANO_VOICES, GUITAR_VOICES, audioGraph, PLAITS_VOICE, initPlaits, setPlaits, plaitsStatus } from "./ambience.js";
+import { PIANO_VOICES, GUITAR_VOICES, audioGraph, PLAITS_VOICE, initPlaits, setPlaits, plaitsStatus,
+         RINGS_VOICE, initRings, setRings, ringsStatus } from "./ambience.js";
 import * as SynthPanel from "./synth-panel.js";
+import * as RingsPanel from "./rings-panel.js";
 import * as MonthPlate from "./wall-months.js";
 import { currentMonthKey, monthLabel, monthKeyOf } from "./notes3d.js";
 import { createRadio, SR_STATIONS, LA_STATIONS } from "./radio.js";
@@ -697,6 +699,25 @@ function applySynthHit(h) {
 // piano voice — sticky per visitor, broadcast with each note
 let pianoVoice = 0;
 try { pianoVoice = (parseInt(localStorage.getItem("metro.voice") || "0", 10) || 0) % PIANO_VOICES.length; } catch (e) {}
+/* ---- RINGS, and the panel by the guitar --------------------------------
+   The telecaster's fifth voice is Émilie Gillet's resonator. Same shape as
+   the keyboard's PLAITS in every respect — local to you, persisted per
+   browser, one road to the audio thread — because they are the same idea
+   applied to the other instrument. */
+const rings = RingsPanel.loadState();
+function ringsApply() {
+  setRings({ structure: rings.structure, brightness: rings.brightness,
+             damping: rings.damping, position: rings.position,
+             model: rings.model | 0, polyphony: rings.polyphony | 0 });
+}
+function ringsDirty(save = true) {
+  world.rings.panel.markDirty();
+  if (save) RingsPanel.saveState(rings);
+}
+const ringsLive = () => ({ status: ringsStatus() });
+// push the saved panel into the parameter cache at boot, same as plaitsApply
+ringsApply();
+
 let guitarVoice = 0;
 try { guitarVoice = (parseInt(localStorage.getItem("metro.gvoice") || "0", 10) || 0) % GUITAR_VOICES.length; } catch (e) {}
 world.setGuitarVoiceSwitch(guitarVoice, GUITAR_VOICES.length);   // flick the blade to the saved voice
@@ -1608,7 +1629,7 @@ function castAt(ndcX, ndcY) {
     raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera);
   }
   // doors are included as blockers so notes can't be pinned onto them
-  const targets = [cat.hitMesh, toyHit, bartender.hitMesh, guide.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.synth.btn, ...(world.synth.isOpen() ? [world.synth.screen] : []), world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, ...world.elevHits, ...world.elevCallHits, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.guitarVoiceHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, world.pool.hit, world.pool.resetHit, world.pool.joinHit, world.pool2.hit, world.pool2.resetHit, world.pool2.joinHit, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.radioHits, ...world.laRadioHits, ...world.filterPedalHit, ...world.vacuumHits, ...world.studio.screens, ...world.studio.doorHits, ...notesWall.raycastTargets(), ...world.monthPlate.meshes, screenMesh, world.gym.joinHit, world.gym.exitHit, ...world.gym.readyHits, ...world.podium.hits, ...world.garden.hits, ...(world.bath ? world.bath.hits : []), ...(world.bath ? world.bath.tags.meshes() : []), ...world.blockers];
+  const targets = [cat.hitMesh, toyHit, bartender.hitMesh, guide.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.synth.btn, ...(world.synth.isOpen() ? [world.synth.screen] : []), world.rings.btn, ...(world.rings.isOpen() ? [world.rings.screen] : []), world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, ...world.elevHits, ...world.elevCallHits, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.guitarVoiceHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, world.pool.hit, world.pool.resetHit, world.pool.joinHit, world.pool2.hit, world.pool2.resetHit, world.pool2.joinHit, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.radioHits, ...world.laRadioHits, ...world.filterPedalHit, ...world.vacuumHits, ...world.studio.screens, ...world.studio.doorHits, ...notesWall.raycastTargets(), ...world.monthPlate.meshes, screenMesh, world.gym.joinHit, world.gym.exitHit, ...world.gym.readyHits, ...world.podium.hits, ...world.garden.hits, ...(world.bath ? world.bath.hits : []), ...(world.bath ? world.bath.tags.meshes() : []), ...world.blockers];
   /* an open in-world window is CAST FIRST and wins outright if it's hit at
      all. it draws with depthTest off — it reads over the room the way a DOM
      overlay does — so sorting it by distance would let anything standing
@@ -2175,8 +2196,26 @@ controls.onAction((ndcX, ndcY) => {
     world.strumTele();
     presence.sendAct({ kind: "guitar", n, voice: guitarVoice });
     aInstrument("guitar");
+  } else if (hit.object.userData.ringsPanel && hit.distance < 3.2 && hit.uv) {
+    applyRingsHit(RingsPanel.hit(hit.uv.x, hit.uv.y));
+  } else if (hit.object.userData.ringsBtn && hit.distance < 2.6) {
+    /* Opens the parameters AND puts the guitar on the voice they describe,
+       for the same reason the keyboard's button does both: a RINGS panel
+       over a guitar playing a plain delay line is a panel that does nothing. */
+    const open = !world.rings.isOpen();
+    world.rings.setOpen(open);
+    if (open) {
+      guitarVoice = RINGS_VOICE;
+      try { localStorage.setItem("metro.gvoice", String(guitarVoice)); } catch (e) {}
+      world.setGuitarVoiceSwitch(guitarVoice, GUITAR_VOICES.length);
+      initRings().then(() => { ringsApply(); world.rings.panel.markDirty(); });
+      ringsApply();
+      toast("RINGS — drag a knob, strum the strings");
+    }
+    ringsDirty(false);
   } else if (hit.object.userData.guitarVoice && hit.distance < 2.4) {
     guitarVoice = (guitarVoice + 1) % GUITAR_VOICES.length;
+    if (guitarVoice === RINGS_VOICE) { initRings().then(ringsApply); ringsApply(); }
     try { localStorage.setItem("metro.gvoice", String(guitarVoice)); } catch (e) {}
     world.setGuitarVoiceSwitch(guitarVoice, GUITAR_VOICES.length);
     // flick the switch — no preview note (the blade shouldn't sound a fret)
@@ -2434,6 +2473,16 @@ setInterval(() => {
   } else if (hit && hit.object.userData.piano && hit.distance < 2.4) {
     aimTip.textContent = `${TAP} the keys to play`;
     aimTip.classList.add("show");
+  } else if (hit && hit.object.userData.ringsBtn && hit.distance < 2.6) {
+    aimTip.textContent = `${TAP} — ${world.rings.isOpen() ? "close the rings panel" : "RINGS · the guitar's resonator"}`;
+    aimTip.classList.add("show");
+  } else if (hit && hit.object.userData.ringsPanel && hit.distance < 3.2 && hit.uv) {
+    const h = RingsPanel.hit(hit.uv.x, hit.uv.y);
+    aimTip.textContent = h.type === "knob" ? (IS_TOUCH || inVR() ? `${TAP} the ring to set it` : "hold and drag to turn")
+      : h.type === "close" ? `${TAP} to close`
+      : h.type === "model" ? `${TAP} — next model`
+      : h.type === "cycle" ? `${TAP} — ${h.key}` : "";
+    aimTip.classList.toggle("show", !!aimTip.textContent);
   } else if (hit && hit.object.userData.synthBtn && hit.distance < 2.6) {
     aimTip.textContent = `${TAP} — ${world.synth.isOpen() ? "close the synth panel" : "PLAITS · the synth panel"}`;
     aimTip.classList.add("show");
@@ -3364,14 +3413,46 @@ function endStudioDrag() {
   else sAct.setParam(d.h.dev, d.h.key, d.value);
   sApplyMixer();
 }
+/* a tap on the RINGS panel */
+function applyRingsHit(h) {
+  if (!h || h.type === "none") return;
+  if (h.type === "close") { world.rings.setOpen(false); return; }
+  if (h.type === "model") {
+    rings.model = (rings.model + h.d + RingsPanel.MODELS.length) % RingsPanel.MODELS.length;
+    ringsApply();
+    toast(RingsPanel.MODELS[rings.model].name);
+    ringsDirty();
+  } else if (h.type === "cycle") {
+    RingsPanel.cycle(rings, h.key);
+    ringsApply();
+    toast(h.key === "model" ? RingsPanel.MODELS[rings.model].name : `${rings.polyphony} voices`);
+    ringsDirty();
+  } else if (h.type === "knob") {
+    // drag-only on a mouse, tap-to-set on touch and in VR — see the synth panel
+    if ((!IS_TOUCH && !inVR()) || h.frac == null) return;
+    RingsPanel.knobWrite(rings, h.key, h.frac);
+    ringsApply();
+    ringsDirty();
+  }
+}
+
 /* ---- turning a knob on the synth panel ----
    The same hardware feel the studio has, and for the same reason: hold the
    mouse on a knob and the CAMERA stops listening while the hand turns the
    control. `controls.dragLock` is what routes the motion here instead of
    into the head. Live preview all the way, one committed value on release. */
+/* One drag for both module panels. They are the same gesture on the same
+   kind of control, and a second copy of it is a second place for the sweep
+   length to drift — the panels already share their drawing for that reason
+   (panel-kit.js). `which` picks the state and the apply. */
 let synthDrag = null;
-function beginSynthDrag(key) {
-  synthDrag = { key, start: SynthPanel.knobFrac(synth, key), moved: false };
+const PANELS = {
+  synth: { mod: SynthPanel, state: () => synth, apply: () => plaitsApply(), dirty: synthDirty },
+  rings: { mod: RingsPanel, state: () => rings, apply: () => ringsApply(), dirty: ringsDirty },
+};
+function beginSynthDrag(key, which = "synth") {
+  const P = PANELS[which];
+  synthDrag = { which, key, start: P.mod.knobFrac(P.state(), key), moved: false };
   controls.dragLock = true;
   controls.dragDX = 0; controls.dragDY = 0;
 }
@@ -3379,25 +3460,31 @@ function tickSynthDrag() {
   if (!synthDrag) return;
   if (Math.abs(controls.dragDX) + Math.abs(controls.dragDY) > 3) synthDrag.moved = true;
   if (!synthDrag.moved) return;
+  const P = PANELS[synthDrag.which];
   // right or up turns it clockwise; 320 px of hand is the whole sweep
-  SynthPanel.knobWrite(synth, synthDrag.key, synthDrag.start + (controls.dragDX - controls.dragDY) / 320);
-  plaitsApply();
-  synthDirty(false);
+  P.mod.knobWrite(P.state(), synthDrag.key, synthDrag.start + (controls.dragDX - controls.dragDY) / 320);
+  P.apply();
+  P.dirty(false);
 }
 function endSynthDrag() {
   if (!synthDrag) return;
-  const moved = synthDrag.moved;
+  const { which, moved } = synthDrag;
   synthDrag = null;
   controls.dragLock = false;
-  if (moved) SynthPanel.saveState(synth);
+  if (moved) PANELS[which].mod.saveState(PANELS[which].state());
 }
 document.addEventListener("mousedown", () => {
   if (inStudio || !controls.locked || modalOpen || renderer.xr.isPresenting) return;
-  if (!world.synth.isOpen()) return;
+  if (!world.synth.isOpen() && !world.rings.isOpen()) return;
   const hit = castAt(0, 0);
-  if (!hit || !hit.object.userData.synthPanel || !hit.uv || hit.distance > 3.2) return;
-  const h = SynthPanel.hit(hit.uv.x, hit.uv.y);
-  if (h.type === "knob") beginSynthDrag(h.key);
+  if (!hit || !hit.uv || hit.distance > 3.2) return;
+  if (hit.object.userData.synthPanel) {
+    const h = SynthPanel.hit(hit.uv.x, hit.uv.y);
+    if (h.type === "knob") beginSynthDrag(h.key, "synth");
+  } else if (hit.object.userData.ringsPanel) {
+    const h = RingsPanel.hit(hit.uv.x, hit.uv.y);
+    if (h.type === "knob") beginSynthDrag(h.key, "rings");
+  }
 });
 document.addEventListener("mouseup", () => endSynthDrag());
 
@@ -5934,6 +6021,14 @@ window.METRO_DEBUG = { renderer, camera, world, controls, xr, disc, hoop: hoopGa
   garden: { enter: enterGarden, leave: leaveGarden, play: playPlant,
             stop: () => gardenPlayer.stop(), playing: () => gardenPlayer.playing(),
             state: () => gardenState, inside: () => inGarden },
+  // a hand on the guitar's resonator, same habit as the synth panel
+  rings: {
+    state: () => rings, status: ringsStatus, init: initRings, apply: ringsApply,
+    open: (v = true) => world.rings.setOpen(v), isOpen: () => world.rings.isOpen(),
+    tapPx: (px, py) => applyRingsHit(RingsPanel.hit(px / RingsPanel.SIZE.w, 1 - py / RingsPanel.SIZE.h)),
+    hitPx: (px, py) => RingsPanel.hit(px / RingsPanel.SIZE.w, 1 - py / RingsPanel.SIZE.h),
+    where: () => RingsPanel.centres(),
+  },
   /* a hand on the wall's months. the plate is addressed in CANVAS PIXELS,
      the coordinates its drawing is written in, so a test doesn't have to
      guess where the arrows are. */
@@ -6078,8 +6173,10 @@ renderer.setAnimationLoop(() => {
   if (bedroomHere()) {
     arpTick();
     if (world.synth.isOpen()) world.synth.panel.render(synth, synthLive);
-  } else if (world.synth.isOpen() || synthHeld.length) {
+    if (world.rings.isOpen()) world.rings.panel.render(rings, ringsLive);
+  } else if (world.synth.isOpen() || world.rings.isOpen() || synthHeld.length) {
     world.synth.setOpen(false);
+    world.rings.setOpen(false);
     arpStop();
   }
   // the VR cabinet panel: the page's rAF sleeps in a session, so the world

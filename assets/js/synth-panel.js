@@ -31,6 +31,7 @@
    ============================================================ */
 
 import * as THREE from "three";
+import { C, rr, label, drawKnob, grabFrac, clamp01 } from "./panel-kit.js";
 
 /* ---------- the module, as it ships ---------- */
 
@@ -110,49 +111,16 @@ export function saveState(st) {
    round number, because a round number left a hand's width of empty panel
    under the last row and the whole thing read as a dialog with something
    missing from it. If you add a row, this moves. */
+/* The canvas is exactly as tall as the layout below needs — not a round
+   number, because a round number left a hand's width of empty panel under
+   the last row and the whole thing read as a dialog with something missing
+   from it. If you add a row, this moves. */
 const W = 1024, H = 548;
-const C = {
-  bg: "#11151b", head: "#1a212b", line: "rgba(126,200,255,0.22)",
-  text: "#e8eef6", dim: "#8ea2b8", cool: "#7ec8ff", hot: "#ff9d5c",
-  btn: "#1e2732", btnOn: "#2b4a63",
-};
 
-const clamp01 = (v) => Math.max(0, Math.min(1, v));
-function rr(g, x, y, w, h, r) {
-  g.beginPath();
-  g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r);
-  g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r);
-  g.arcTo(x, y, x + w, y, r); g.closePath();
-}
-function label(g, t, x, y, size, color, align = "left") {
-  g.fillStyle = color;
-  g.font = `${size}px ui-monospace, Menlo, monospace`;
-  g.textAlign = align;
-  g.textBaseline = "middle";
-  g.fillText(t, x, y);
-}
-
-/* one rotary, 270° from 7:30 round to 4:30 — the studio's, to the degree */
-function drawKnob(g, cx, cy, rad, frac, color, lbl, val) {
-  const a0 = Math.PI * 0.75, a1 = Math.PI * 2.25;
-  g.fillStyle = "#151b23";
-  g.beginPath(); g.arc(cx, cy, rad, 0, Math.PI * 2); g.fill();
-  g.strokeStyle = C.line; g.lineWidth = 3;
-  g.beginPath(); g.arc(cx, cy, rad, 0, Math.PI * 2); g.stroke();
-  g.strokeStyle = "rgba(255,255,255,0.12)"; g.lineWidth = 5;
-  g.beginPath(); g.arc(cx, cy, rad + 7, a0, a1); g.stroke();
-  g.strokeStyle = color; g.lineWidth = 5;
-  g.beginPath(); g.arc(cx, cy, rad + 7, a0, a0 + (a1 - a0) * clamp01(frac)); g.stroke();
-  const a = a0 + (a1 - a0) * clamp01(frac);
-  g.strokeStyle = C.text; g.lineWidth = 4; g.lineCap = "round";
-  g.beginPath();
-  g.moveTo(cx + Math.cos(a) * rad * 0.35, cy + Math.sin(a) * rad * 0.35);
-  g.lineTo(cx + Math.cos(a) * rad * 0.86, cy + Math.sin(a) * rad * 0.86);
-  g.stroke();
-  g.lineCap = "butt";
-  label(g, lbl, cx, cy + rad + 24, 16, C.dim, "center");
-  if (val != null) label(g, val, cx, cy - rad - 16, 16, C.cool, "center");
-}
+/* The palette, the rounded rect, the label and the knob all live in
+   panel-kit.js now: this panel and the RINGS one by the guitar are two faces
+   of the same idea and have to look like it. Two copies of a knob is how
+   they stop looking alike. */
 
 /* ---------- layout, in one place so draw and hit can't disagree ----------
    Every rectangle the panel has is computed here and read by both the
@@ -336,13 +304,6 @@ export function hit(u, v) {
     }
   }
   return { type: "none" };
-}
-
-// where a grab on the knob face lands, as 0..1 around the same 270° sweep
-function grabFrac(cx, cy, px, py) {
-  let a = Math.atan2(py - cy, px - cx);
-  if (a < Math.PI * 0.75 && a > -Math.PI) a += Math.PI * 2;
-  return clamp01((a - Math.PI * 0.75) / (Math.PI * 1.5));
 }
 
 export const SIZE = { w: W, h: H };

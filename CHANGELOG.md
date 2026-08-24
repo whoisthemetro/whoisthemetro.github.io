@@ -607,6 +607,84 @@ and the first one is the one that was actually killing her.
   Chrome with clip fetches broken and asserts `speechSynthesis.speak` is
   never called.
 
+## 2026-08-24 — the guitar gets Rings
+
+The telecaster's voice is now Émilie Gillet's **Rings**, running as wasm on
+the audio thread beside Plaits and Clouds, with a panel on a button on the
+guitar's body.
+
+**It isn't a substitution.** Rings is a resonator: you hit it and it rings. A
+plucked string is its native case, not a clever use of it — which is why this
+is the right module for the guitar and not just the next one along.
+
+### The wasm actually got rebuilt
+
+`assets/wasm/mi.wasm` had only Plaits and Clouds in it. `tools/mi/README.md`
+had the recipe and it worked: clone eurorack + stmlib + emsdk, add the module,
+build, test. 272 KB → 316 KB.
+
+Two things cost a build each:
+
+- **`build_mi.sh` word-splits `$SRC` on purpose** — that's how a newline-
+  separated list becomes an argument list — and this repo lives under "Metro
+  Website". One space and the compiler is looking for a file called
+  `Projects/Metro`. The wrapper is copied into the source tree and referenced
+  relatively now; the only absolute path left is the quoted output.
+- **Rings is in its OWN translation unit.** `rings/resources.h` and
+  `plaits/resources.h` both define `LUT_FM_FREQUENCY_QUANTIZER_SIZE`, and
+  they disagree: 129 against 130. One file compiles with nothing worse than a
+  warning and whichever header lands second silently wins for every inline
+  function in it. Nothing we call happens to index that table, which is the
+  worst kind of safe — one upstream change from an off-by-one into a lookup
+  table, in wasm, on the audio thread. Two files and the question never
+  arises.
+
+Driven the way `rings_test.cc` drives it, which is the only honest
+documentation for using `Part` outside the firmware: note is MIDI minus 12
+with tonic at 0, `strum` true for exactly one block, blocks capped at
+`kMaxBlockSize` (24) so a 128-sample quantum is chopped into six. The
+Strummer is deliberately unused — it exists to find onsets in an audio input,
+and we know exactly when a string was plucked because something in the room
+plucked it. `internal_exciter` is true: nothing is patched into the module's
+input, so Rings supplies its own pluck, as the hardware does with an empty IN
+jack. All six models verified sounding, with attack and tail, before any of it
+reached the room.
+
+### In the room
+
+A fifth entry in `GUITAR_VOICES` whose oscillator fields are the TELE's, so a
+guitar set to RINGS before the wasm lands — or if it never lands — is never a
+silent guitar. Exactly the trick the PLAITS voice uses.
+
+The panel is `rings-panel.js`: six models, the four hardware knobs, and
+polyphony. FREQUENCY is missing for the same reason it's missing from the
+Plaits panel — the pitch comes from the fretboard.
+
+**Both panels now draw from `panel-kit.js`.** Two copies of a knob is how two
+panels stop looking alike: somebody tunes the sweep on one and the other
+quietly disagrees, and the room has two visual languages for one idea. The
+knob drag is shared for the same reason.
+
+### And placement is Metro's
+
+`world.movables` gains four: both buttons and both panels. Where a control
+sits is the thing you only know once you're standing next to it, and "I don't
+like where that button is" was the whole reason.
+
+`layoutClick` had to change for it. Movables NEST now — the synth button is
+inside the MIDI keyboard and both are movable — and it scanned the registry in
+declaration order, taking the first ancestor it found, which is the wrong one.
+It walks up from what the ray hit and takes the first movable it meets: the
+innermost. Nearest wins.
+
+### Corrected while writing it
+
+The panel's own hint line said the strings fed the resonator. They don't —
+`internal_exciter` is true and Rings plucks itself. It says "every fret plucks
+the resonator" now. And the strip carried a MODEL button directly under a
+model stepper showing the same word, which is a second way to do a thing you
+can already see.
+
 ## 2026-08-22 — the tour, shot to Metro's script
 
 Ten beats, 58 seconds, Metro's own words with three fixes: "send me a DM"
