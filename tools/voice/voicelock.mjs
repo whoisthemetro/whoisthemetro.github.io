@@ -94,7 +94,7 @@ check("and she is not mimed after it", say.wasMimed() === false);
 say.stopSpeaking(); FETCH_MODE = "fail";
 say.speak("nobody will hear this.", { clip: "dddd4444" });   // uncached, so the dead fetch bites
 await wait(1500);
-check("a mimed line asks for the card", say.wasMimed() === true, JSON.stringify(say.voiceDiag()));
+check("a mimed line is flagged as mimed", say.wasMimed() === true, JSON.stringify(say.voiceDiag()));
 FETCH_MODE = "ok";
 
 // 6. her level actually reaches the gain node. one number sets how loud she
@@ -105,7 +105,18 @@ say.speak("quieter in here.", { clip: "aaaa1111", volume: 0.5 });
 await wait(200);
 check("volume reaches the gain node", gains.length === 1 && gains[0] === 0.5, `gains=${JSON.stringify(gains)}`);
 
-// 7. a caller with no clip at all still gets the synth (unchanged)
+// 7. preloaded takes play with the network gone. this is the whole reason
+// preloadAll exists: a click must not be a download.
+say.stopSpeaking(); started = []; FETCH_MODE = "ok";
+await say.preloadAll();
+FETCH_MODE = "fail";                    // the network dies after the preload
+say.speak("still here.", { clip: "dddd4444" });
+await wait(200);
+check("a preloaded take plays with no network", started.length === 1 && !say.wasMimed(),
+      `started=${started.length} mimed=${say.wasMimed()}`);
+FETCH_MODE = "ok";
+
+// 8. a caller with no clip at all still gets the synth (unchanged)
 say.stopSpeaking(); synthCalls.length = 0;
 say.speak("no clip for this one.");
 await wait(60);

@@ -335,8 +335,36 @@ async function decodeClip(id, ctx) {
   return buf;
 }
 
-/* Warm a clip before anyone asks for it, so her first line doesn't wait on
-   the network — the hello is the one people hear on a cold cache. */
+/* EVERY TAKE, UP FRONT. This is the difference between a guide who answers
+   and one who doesn't.
+
+   Playing from buffers made each line a fresh network request at the moment
+   you clicked her — fine on a desk, useless on a phone. Measured on a slow
+   connection: nineteen clicks out of twenty made no sound at all, because
+   each new click superseded the previous line while its mp3 was still coming
+   down, so nothing ever finished arriving. Click her twice and she goes mute
+   for the rest of the visit. That is not a fallback problem, it's a latency
+   problem, and the fix is to stop being on the network when she's asked.
+
+   All of her takes together are about 2 MB — smaller than one of the room's
+   models. So they all come down once, in the background, a few at a time so
+   they don't fight the rest of the room for the pipe, and after that a click
+   is a decode from memory and she answers immediately. */
+export function preloadAll(concurrency = 3) {
+  if (!clipSet || !clipSet.size) return Promise.resolve(0);
+  const queue = [...clipSet].filter(id => !bytes.has(id));
+  let done = 0;
+  const worker = async () => {
+    while (queue.length) {
+      const id = queue.shift();
+      try { await fetchClip(id); done++; } catch (e) { /* it'll be retried when asked for */ }
+    }
+  };
+  return Promise.all(Array.from({ length: concurrency }, worker)).then(() => done);
+}
+
+/* Warm particular clips before anyone asks for them — the hello, which is the
+   one people hear before preloadAll has finished. */
 export function preloadClips(ids) {
   // the catch is not decoration: a warm-up nobody awaited still counts as an
   // unhandled rejection if the network is out, and that prints a scary error
@@ -402,6 +430,7 @@ async function playBuffered(id, volume, seq, onDone) {
   src.connect(g); g.connect(an); an.connect(master);
   chain = [src, g, an];                     // held so nothing here can be collected
   srcNode = src;
+  voicing = true;                           // NOW she's making a noise
   src.onended = () => { if (src !== srcNode) return; srcNode = null; onDone(true); };
   src.start();
   why = "";
@@ -437,7 +466,7 @@ function playElement(id, volume, onDone) {
   };
   a.onended = () => done(true);
   a.onerror = () => done(false);
-  a.play().catch(() => done(false));
+  a.play().then(() => { if (a === audio) voicing = true; }).catch(() => done(false));
 }
 
 /* Buffer, then buffer again, then the element. The retry is there because
@@ -531,7 +560,9 @@ export function speak(text, opts = {}) {
       console.warn("[say] no rendered take for", clip, "—", String(text).slice(0, 48));
       return mimeLine(text, seq);
     }
-    voicing = true;
+    // NOT voicing yet — that's "she is making a noise this instant", and until
+    // the clip actually starts she isn't. Setting it here is what made her
+    // mouth flap in silence while a take was still loading.
     silentUntil = performance.now() + 120000;   // the clip's own end event drives it
     playClip(clip, volume, seq, (ok) => {
       if (seq !== speakSeq) return;             // superseded mid-clip; the new line owns her now

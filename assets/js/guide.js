@@ -241,7 +241,6 @@ export class Guide {
     }
 
     this.grp.add(this._tag(this.name));
-    this._buildPanel();
   }
 
   /* ---------- the forms ----------
@@ -394,88 +393,6 @@ export class Guide {
     Object.assign(this, { eyeY: 1.42, faceSize: 0.3, faceZ: 0.235, visorR: 0.15, haloR: 0.34, haloY: 1.82, hit: [0.7, 0.85, 1.42] });
   }
 
-  /* Her words, in the room instead of on the glass.
-
-     A DOM toast is invisible inside a WebXR session — that's the whole
-     reason vrBlocked() exists — so anything she says only reaches a headset
-     if it's actual geometry. This is a canvas on a plane, parented to her
-     group at local +z: she already turns to face you whenever you're near,
-     so it faces you too, and there's no billboard math to run per frame.
-
-     It hangs beside her head rather than over it. Over it and she's talking
-     out of the top of her skull; beside it, you can read the words and still
-     watch her mouth move. */
-  _buildPanel() {
-    /* The card is a FALLBACK now, not the default. Once she had a real
-       recorded voice, printing the same words beside her head was reading
-       out a subtitle to someone who can already hear it — and it ate the
-       room you're trying to look at. So it only appears when there's no
-       audible voice at all: no rendered clips AND no browser synth, which
-       is the case where she'd otherwise mime silently at you.
-
-       Checked live rather than once at boot, so a device that gets its
-       voice late still loses the card on the next line. */
-    this.wantPanel = () => (this.fx.silent ? this.fx.silent() : false);
-    const W = 768, H = 432;
-    const c = document.createElement("canvas");
-    c.width = W; c.height = H;
-    this.panelCanvas = c;
-    this.panelTex = new THREE.CanvasTexture(c);
-    this.panelTex.colorSpace = THREE.SRGBColorSpace;
-    this.panelTex.anisotropy = 4;
-    this.panel = new THREE.Mesh(
-      new THREE.PlaneGeometry(1.04, 0.58),
-      new THREE.MeshBasicMaterial({ map: this.panelTex, transparent: true, opacity: 0, depthWrite: false }));
-    // clear of her head, not over it: the card is 1.04 wide, so its inner edge
-    // has to start past her shoulder or she's talking through the back of it
-    this.panel.position.set(1.02, this.eyeY, 0.1);
-    this.panel.rotation.y = -0.26;        // angled in toward you, like she's holding it
-    this.panel.renderOrder = 15;
-    this.panel.visible = false;
-    this.grp.add(this.panel);
-    this.panelOp = 0;
-  }
-
-  // draw a line onto the panel, wrapped, shrinking the type if it runs long
-  _drawPanel(text) {
-    const c = this.panelCanvas, g = c.getContext("2d"), W = c.width, H = c.height;
-    g.clearRect(0, 0, W, H);
-    // the card: dark glass with her own blue on the edge
-    const r = 26;
-    g.beginPath();
-    g.moveTo(r, 0); g.arcTo(W, 0, W, H, r); g.arcTo(W, H, 0, H, r);
-    g.arcTo(0, H, 0, 0, r); g.arcTo(0, 0, W, 0, r); g.closePath();
-    g.fillStyle = "rgba(6,12,22,0.82)"; g.fill();
-    g.lineWidth = 3; g.strokeStyle = "rgba(53,166,255,0.75)"; g.stroke();
-
-    const PAD = 40, maxW = W - PAD * 2;
-    // try sizes until the whole line fits in the card
-    let size = 46, lines = [];
-    for (; size >= 26; size -= 3) {
-      g.font = `500 ${size}px Archivo, sans-serif`;
-      lines = [];
-      let cur = "";
-      for (const word of String(text).split(/\s+/)) {
-        const t = cur ? cur + " " + word : word;
-        if (g.measureText(t).width > maxW && cur) { lines.push(cur); cur = word; } else cur = t;
-      }
-      if (cur) lines.push(cur);
-      if (lines.length * (size * 1.32) <= H - PAD * 2 - 34) break;
-    }
-    // her name across the top, small, so it's clear who's speaking
-    g.font = "700 24px Archivo, sans-serif";
-    g.fillStyle = "rgba(120,205,255,0.9)";
-    g.textAlign = "left"; g.textBaseline = "top";
-    g.fillText(this.name.toUpperCase(), PAD, 26);
-
-    g.font = `500 ${size}px Archivo, sans-serif`;
-    g.fillStyle = "#eaf6ff";
-    const lh = size * 1.32;
-    let y = 26 + 34 + (H - PAD - 60 - lines.length * lh) / 2;
-    for (const ln of lines) { g.fillText(ln, PAD, y); y += lh; }
-    this.panelTex.needsUpdate = true;
-  }
-
   _tag(text) {
     const c = document.createElement("canvas");
     c.width = 256; c.height = 64;
@@ -494,14 +411,25 @@ export class Guide {
     return sp;
   }
 
+  /* SHE HAS NO CARD.
+
+     There used to be a canvas panel beside her head that printed whatever she
+     was saying, shown whenever the room decided she couldn't be heard. It was
+     built as a kindness and it worked as an alarm: the only time you ever saw
+     it was when something had gone wrong with her voice, so it read as a
+     glitch rather than as a subtitle — and it was the visible half of a bug
+     where a slow connection left her mute (see preloadAll in say.js). Her
+     takes are all in memory before you can click her now, so the case it
+     covered is gone, and printing her lines beside her head was never the
+     room's idea of how she talks. She speaks. That's the whole interface. */
+
   /* ---------- what she does ---------- */
 
   // say a line out loud. the actual speaking belongs to whoever wired
   // fx.say (say.js today); this just runs the mouth and the nod.
   speak(text, clip) {
-    this.lastLine = text;      // the card is a canvas, so this is how a test reads her
+    this.lastLine = text;      // no card any more, but a test still reads her here
     this.nodT = 0.4;
-    this._drawPanel(text);
     const ms = this.fx.say?.(text, clip);
     // if the voice layer told us how long it'll take, trust it; otherwise
     // fall back to a length guess so the mouth doesn't run dry or forever
@@ -706,13 +634,6 @@ export class Guide {
     // a blink shouldn't be a jump cut — she flares for half a second where she
     // lands, so your eye is told something arrived rather than just noticing
     // she's suddenly elsewhere
-    // the card fades with the voice, and hides outright once it's clear —
-    // an invisible plane still costs a draw call and still catches a raycast
-    const wantPanel = (talking && this.wantPanel()) ? 1 : 0;
-    this.panelOp += (wantPanel - this.panelOp) * (talking ? 0.22 : 0.08);
-    this.panel.material.opacity = this.panelOp;
-    this.panel.visible = this.panelOp > 0.01;
-
     const pop = this.popT > 0 ? this.popT / 0.5 : 0;
     /* She glows WITH the words. A flat "brighter while talking" reads as a
        light switch; riding the envelope reads as a voice. The base lift is

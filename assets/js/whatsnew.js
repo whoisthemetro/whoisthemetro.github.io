@@ -25,6 +25,7 @@ export const WHATS_NEW = [
   {
     date: "2026-08-22",
     items: [
+      "trinity answers every time you click her now. she'd go quiet after the first question — she was waiting on the next line to download — and that little card of text that used to appear when she couldn't talk is gone for good. she just talks.",
       "on a phone, the synth and guitar panels now sit at the bottom of the screen where your thumb is. drag the knobs with your finger instead of trying to aim at them",
       "and the phone panel brings a keyboard with it — big keys along the bottom, so you can play while the parameters are up",
       "every setting has a minus and a plus now instead of tapping to cycle forward, so you can go back one scale without going forward through five",

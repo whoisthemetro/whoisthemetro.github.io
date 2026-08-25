@@ -21,7 +21,7 @@ import { startPlanes } from "./planes.js";
 import { Cat } from "./cat.js";
 import { Bartender } from "./bartender.js";
 import { Guide } from "./guide.js";
-import { speak, stopSpeaking, isSpeaking, isVoicing, voiceAvailable, voiceInfo, preferVoices, loadClips, clipsReady, voiceLevel, useAudioGraph, preloadClips, wasMimed, voiceDiag } from "./say.js";
+import { speak, stopSpeaking, isSpeaking, isVoicing, voiceAvailable, voiceInfo, preferVoices, loadClips, clipsReady, voiceLevel, useAudioGraph, preloadClips, preloadAll, wasMimed, voiceDiag } from "./say.js";
 import { GUIDE_LINES, INTRO, ROOM_LINES, TOUR, clipId } from "./lines.js";
 import { whatsNew, dayLabel } from "./whatsnew.js";
 import { makeGardenPlayer } from "./garden/player.js";
@@ -861,16 +861,6 @@ const guide = new Guide(world.scene, { x: 0.2, z: 0.9, yaw: 0.80, name: "Trinity
   speaking: isSpeaking,     // a line is in the air
   voicing: isVoicing,       // she's actually sounding
   level: voiceLevel,        // and THIS loud, right now — drives the mouth and the glow
-  /* When does she need the card? Whenever you can't HEAR this line.
-
-     That used to be answered once, for the whole device — no clips, no card.
-     Too coarse: a phone that loads her takes fine can still fail to play one
-     (a context iOS interrupted, a fetch that died), and she mimes it. A
-     mimed line with no card is a guide standing there moving her mouth at
-     you in total silence, which reads as broken rather than as degraded —
-     it's what "she just stopped talking" turned out to be. So it's asked per
-     LINE now, and the words appear for exactly the ones that didn't sound. */
-  silent: () => !clipsReady() || wasMimed(),
   // one door for everything she says: subtitle it, speak it, and hand back
   // how long it'll take so her mouth runs exactly that long
   // NOT wrapped in bedroomSound — that wrapper swallows the return value and
@@ -1585,6 +1575,13 @@ function enterRoom() {
   });
   entered = true;
   startAmbience();
+  /* Pull down every one of her takes now, in the background. It's ~2 MB, it
+     happens once, and it's what makes clicking her twice in a row work: with
+     the clips already in memory a line starts on the click instead of on a
+     download, and a second click can't cancel a fetch that isn't happening.
+     Deliberately after entry rather than during the warm-up — the door should
+     never wait on this. */
+  loadClips().then(() => preloadAll());
   applyFxStates();                        // restore each stompbox's saved on/off into the new graph
   applyMixLevels();                       // and the mixer's saved channel levels
   applyGuitarFilter();                     // and where the filter treadle was left

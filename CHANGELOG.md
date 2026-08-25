@@ -4,6 +4,41 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-08-22 — she answers every time, and she has no card
+
+Reported as: click her more than once and she says nothing, and the text panel
+comes back. Both symptoms, one cause, and the cause was mine.
+
+- **A click was a download.** Moving her to buffered playback made every line
+  a fresh network request at the moment you clicked. Measured on a throttled
+  phone connection: **nineteen of twenty clicks made no sound**, because each
+  new click superseded the previous line while its mp3 was still arriving, so
+  nothing ever finished coming down. Click her twice and she's mute for the
+  rest of the visit. The card appearing was the same fault seen from the
+  outside — a fetch that eventually died fell to miming, and miming raised the
+  card.
+- **`preloadAll()`** pulls every take down in the background once you're in
+  the room, three at a time so it doesn't fight the rest of the room for the
+  pipe. All 43 of them are ~2 MB, less than one of the models. After that a
+  click is a decode from memory. Verified by **cutting the network off
+  entirely after entry and clicking her twenty times: twenty lines, no
+  silence** — plus the same run on a 180 kbps/400 ms connection.
+- **The card is gone**, not disabled — `_buildPanel`/`_drawPanel` and
+  `fx.silent` are deleted. It was built as a kindness and worked as an alarm:
+  the only time you ever saw it was when her voice had failed, so it read as a
+  glitch. She speaks; that's the whole interface.
+- Her mouth no longer flaps before there's sound. `voicing` was set when a
+  clip was *requested*, not when it started, so a loading take looked like a
+  silent conversation. It's set on `start()` now.
+- `~/metro-smoke/trinityclicks.js` clicks her twenty times through the room's
+  own dispatch and fails on any click that makes no sound or raises a card;
+  `SLOW=1` throttles, `SLOW=off` disconnects. `voicelock.mjs` gained the
+  matching unit case: a preloaded take plays with the network gone.
+- Also fixed in passing: the panel deletion took `_tag()` with it (her floating
+  name), which broke the whole page. Caught by loading the room, not by the
+  syntax check — `node --check` has nothing to say about a method that no
+  longer exists.
+
 ## 2026-08-22 — Trinity stops arguing with herself
 
 Reported as "she's glitching and doesn't have enough space to fly around the
