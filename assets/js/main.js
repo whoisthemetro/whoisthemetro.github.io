@@ -556,7 +556,9 @@ function applyRoomTempo() {
 function synthDirty(save = true) {
   world.synth.panel.markDirty();
   sheetDirty = true;
-  if (save) SynthPanel.saveState(synth);
+  // save === true is a COMMIT (a tap, or a knob released), not a live preview
+  // frame — which is why the room only hears the value you settled on
+  if (save) { SynthPanel.saveState(synth); sharePanel("synth"); }
 }
 /* Push the saved panel into the parameter cache at boot. setPlaits keeps the
    values whether or not the wasm exists yet, and initPlaits sends them the
@@ -742,11 +744,84 @@ function ringsApply() {
 function ringsDirty(save = true) {
   world.rings.panel.markDirty();
   sheetDirty = true;
-  if (save) RingsPanel.saveState(rings);
+  if (save) { RingsPanel.saveState(rings); sharePanel("rings"); }
 }
 const ringsLive = () => ({ status: ringsStatus() });
 // push the saved panel into the parameter cache at boot, same as plaitsApply
 ringsApply();
+
+/* ---- THE INSTRUMENTS ARE THE ROOM'S, NOT YOURS ----
+
+   Both panels were per-browser: your engine, your knobs, your models, saved
+   to your own localStorage. Which meant the keyboard sounded like one thing
+   on a phone and a different thing on the desktop sitting next to it, and two
+   people in the room at once were playing two different instruments while
+   hearing each other's notes. The keyboard by the window is ONE keyboard.
+   Turn a knob on it and it is turned, for everyone, the way the lava lamp and
+   the blinds already work.
+
+   Two paths, because they answer two different questions:
+     · presence `panel` acts — what everyone in the room hears RIGHT NOW.
+     · a room flag — what the instrument is set to when you arrive tomorrow.
+   Same shape as the radio: broadcast for the people here, a flag for the
+   people who aren't yet.
+
+   ARP AND HOLD DO NOT TRAVEL, and not just because they're performance state
+   (that's why they aren't saved). An arp SENDS NOTES. Sync the switch and
+   every client in the room starts its own arpeggiator running its own copy of
+   the same chord and broadcasting it — the same pattern played N times over,
+   slightly out of phase, getting worse with each person who walks in. One
+   hand drives the arp; everyone hears the notes it already sends. */
+const SHARED_PANELS = {
+  synth: { flag: "plaits", st: () => synth, apply: () => { plaitsApply(); applyRoomTempo(); },
+           dirty: (save) => synthDirty(save) },
+  rings: { flag: "rings",  st: () => rings,  apply: () => ringsApply(),
+           dirty: (save) => ringsDirty(save) },
+};
+const PANEL_LOCAL_ONLY = ["arp", "hold"];
+
+/* The re-entry guard. Applying someone else's change calls the same dirty()
+   that broadcasts, so without this two browsers hand one knob back and forth
+   forever. It is set around the APPLY only, never around anything that
+   awaits, so there's no window where a real edit could be swallowed. */
+let applyingPanel = false;
+const panelFlagTimer = {};
+
+function panelPayload(which) {
+  const st = { ...SHARED_PANELS[which].st() };
+  for (const k of PANEL_LOCAL_ONLY) delete st[k];
+  return st;
+}
+
+// one commit = one broadcast + one debounced write. knob drags already commit
+// once on release, so this is not a stream.
+function sharePanel(which) {
+  if (applyingPanel || !SHARED_PANELS[which]) return;
+  const st = panelPayload(which);
+  presence.sendAct({ kind: "panel", which, st });
+  clearTimeout(panelFlagTimer[which]);
+  panelFlagTimer[which] = setTimeout(() => {
+    store.saveRoomFlag(SHARED_PANELS[which].flag, st).catch(() => {});
+  }, 1200);
+}
+
+/* Somebody else moved it — or the room did, at boot. Merge rather than
+   replace: a payload from an older build won't carry a key this one has, and
+   replacing would reset that key to undefined and take the sound with it. */
+function applyPanelState(which, st) {
+  const P = SHARED_PANELS[which];
+  if (!P || !st || typeof st !== "object") return;
+  applyingPanel = true;
+  try {
+    const cur = P.st();
+    for (const k of Object.keys(st)) {
+      if (PANEL_LOCAL_ONLY.includes(k)) continue;
+      if (typeof st[k] === typeof cur[k]) cur[k] = st[k];
+    }
+    P.apply();
+    P.dirty(true);      // redraw, and keep a local copy for the next cold start
+  } finally { applyingPanel = false; }
+}
 
 let guitarVoice = 0;
 try { guitarVoice = (parseInt(localStorage.getItem("metro.gvoice") || "0", 10) || 0) % GUITAR_VOICES.length; } catch (e) {}
@@ -755,8 +830,27 @@ world.setGuitarVoiceSwitch(guitarVoice, GUITAR_VOICES.length);   // flick the bl
 // the stompboxes — each on/off is client-side + sticky (everyone runs their own
 // pedalboard, like the mixer to come). default on. labels for the toast/aim-tip.
 const FX_LABEL = { "kb-chorus": "chorus", "kb-delay": "delay", "kb-reverb": "reverb", "gtr-od": "overdrive", "gtr-delay": "guitar delay", "gtr-reverb": "guitar reverb" };
+/* PEDALS START OFF. They used to default ON — chorus, delay and reverb on the
+   keys, overdrive, delay and reverb on the guitar — so the first note anyone
+   ever played here arrived through six effects nobody had chosen. Both
+   instruments have a real Mutable module in them now (Plaits and Rings), and
+   those want to be heard as themselves; the pedals are something you switch
+   on, not something you switch off. Clouds is the intended replacement for
+   this whole row and isn't wired to the room yet.
+
+   The reset is a VERSION STAMP, not just a changed default: everyone who has
+   been here has "1" saved for all six, so flipping the default alone would
+   have changed nothing for a single existing visitor. Bump FX_RESET to sweep
+   the row again. */
+const FX_RESET = "2026-08-25";
 const fxOn = {};
-for (const id of world.stompIds) { try { fxOn[id] = localStorage.getItem("metro.fx." + id) !== "0"; } catch (e) { fxOn[id] = true; } }
+try {
+  if (localStorage.getItem("metro.fx.reset") !== FX_RESET) {
+    for (const id of world.stompIds) localStorage.removeItem("metro.fx." + id);
+    localStorage.setItem("metro.fx.reset", FX_RESET);
+  }
+} catch (e) {}
+for (const id of world.stompIds) { try { fxOn[id] = localStorage.getItem("metro.fx." + id) === "1"; } catch (e) { fxOn[id] = false; } }
 // push every pedal's state into the audio graph + LEDs (call once audio is up)
 function applyFxStates() { for (const id of world.stompIds) { setFx(id, fxOn[id]); world.setStompLED(id, fxOn[id]); } }
 
@@ -3078,6 +3172,9 @@ function applyRoomFlags(f, withRadio = true) {
   if (typeof f.curtains === "boolean") world.setCurtains(f.curtains);
   if (typeof f.closet === "boolean") world.setCloset(f.closet);
   if (typeof f.lava === "boolean") world.setLava(f.lava);
+  // the instruments as the room left them — see SHARED_PANELS
+  applyPanelState("synth", f.plaits);
+  applyPanelState("rings", f.rings);
   applyGrime(f.grime);   // accumulated dirt + vacuumed lanes, shared across visitors
   if (f.graffiti && world.bath) world.bath.tags.load(f.graffiti);
   if (withRadio && entered) for (const which of ["sr", "la"]) {
@@ -3566,7 +3663,9 @@ function endSynthDrag() {
   const { which, moved } = synthDrag;
   synthDrag = null;
   controls.dragLock = false;
-  if (moved) PANELS[which].mod.saveState(PANELS[which].state());
+  // dirty() rather than saveState(): it is the commit point, and it is what
+  // puts the value on the wire. saveState alone only ever reached this browser.
+  if (moved) PANELS[which].dirty();
 }
 document.addEventListener("mousedown", () => {
   if (inStudio || !controls.locked || modalOpen || renderer.xr.isPresenting) return;
@@ -5829,6 +5928,9 @@ addEventListener("keydown", (e) => {
       toast(p.open ? "someone gathered the blinds" : "someone drew the blinds");
     } else if (p.kind === "lava") {
       world.setLava(p.on);
+    } else if (p.kind === "panel") {
+      // somebody turned a knob on the keyboard or the guitar
+      applyPanelState(p.which, p.st);
     } else if (p.kind === "tag") {
       if (world.bath && p.s) world.bath.tags.add(p.s);
     } else if (p.kind === "untag") {

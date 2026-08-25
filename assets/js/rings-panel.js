@@ -74,10 +74,21 @@ export function saveState(st) {
 
 /* ---------- drawing ---------- */
 
-// shorter than the Plaits panel because it has less on it: four knobs and
-// two buttons, not five knobs and eight. A panel sized to its sibling
-// rather than to its contents is a panel with a hole in it.
-const W = 1024, H = 480;
+/* THE SAME SHAPE AS THE PLAITS PANEL — 1024x560, not 1024x480.
+
+   It was shorter on the theory that a panel should be sized to its contents
+   rather than to its sibling, which is a good rule that was being applied to
+   the wrong measurement. Both panels are drawn to fit the WIDTH of whatever
+   they're shown on, so height is not spare room, it is SCALE: at 480 the
+   Rings panel rendered 183 css px tall on a 390 px phone against the Plaits
+   panel's 213, and every knob, button and word inside it came out 14%
+   smaller. That is what "squished" was. Matching the aspect makes the two
+   the same size on screen, which is the thing you actually see.
+
+   The extra 80 px goes into the GAPS, not the bottom — four blocks here
+   against Plaits' five, so each one gets more air. Pooling it under the last
+   row is the hole the old comment was worried about. */
+const W = 1024, H = 560;
 
 function layout() {
   const pad = 26;
@@ -85,17 +96,19 @@ function layout() {
   /* The model steppers are the biggest thing on the panel after the knobs.
      They started at 54x84, which was the hardest control to hit from across
      a room — you're aiming a crosshair at a guitar from standing height, not
-     clicking with a mouse on a monitor. 104 overshot; 86 is the size that's
-     comfortable without being the loudest thing on the panel. btnW lives HERE rather than as a
-     local in each function: it was declared three times, in draw, in hit and
-     in centres, which is exactly how a button ends up drawn somewhere its
-     hit test isn't. */
-  const btnW = 76, modH = 86;
-  const modY = headH + 14;
-  const knobY = modY + modH + 76;
-  // 92 of clear air under the knob centres: at radius 42 drawKnob's label
-  // lands at cy+66, and 78 put those words on top of the strip below
-  const stripTop = knobY + 92;
+     clicking with a mouse on a monitor. 104 overshot. btnW lives HERE rather
+     than as a local in each function: it was declared three times, in draw,
+     in hit and in centres, which is exactly how a button ends up drawn
+     somewhere its hit test isn't. */
+  const btnW = 76, modH = 92;
+  const modY = headH + 16;
+  /* 64 of air between the model block and the knobs' value text (drawKnob
+     puts that at cy - r - 16, so at radius 42 it's 58 above the centre), and
+     36 between the knobs' labels (cy + 66) and the strip. Plaits runs 18 and
+     26 because it has a row more to fit; this is the same rhythm with the
+     slack shared out. */
+  const knobY = modY + modH + 64 + 58;
+  const stripTop = knobY + 66 + 36;
   const rowH = 62, gap = 12;
   /* The strip is POLYPHONY and OCTAVE, and they get HALF the width EACH.
      Polyphony used to take whatever the 300 px octave left it — 660 px for a
@@ -103,7 +116,7 @@ function layout() {
      stranded in the middle of it. Two equal cells give the strip the same
      rhythm the synth's rows have. */
   const cellW = (W - pad * 2 - gap) / 2;
-  const cell = (i) => ({ x: pad + i * (cellW + gap), y: stripTop + 14, w: cellW, h: rowH });
+  const cell = (i) => ({ x: pad + i * (cellW + gap), y: stripTop + 20, w: cellW, h: rowH });
   const oct = cell(1);
   // four knobs sharing the full width, level and reaching both edges
   const knobX = (i) => pad + (W - pad * 2) / KNOBS.length * (i + 0.5);
@@ -187,8 +200,10 @@ export function draw(g, st, live = null) {
   /* Nothing is patched into the module's input, so Rings supplies its own
      pluck — the earlier wording here said the strings fed the resonator,
      which is not what the wrapper does. */
+  // hung off the BOTTOM of the row, not off stripTop — the row moved down
+  // and this stayed put, which left it floating between the two
   label(g, "play the guitar with this up — every fret plucks the resonator",
-        L.pad, L.stripTop + L.rowH + 44, 15, C.dim);
+        L.pad, L.cell(0).y + L.rowH + 36, 15, C.dim);
 }
 
 /* ---------- hit test ---------- */

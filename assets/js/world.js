@@ -1946,7 +1946,8 @@ export function buildWorld(renderer) {
     {
       voids: [
         { u0: 5.06, u1: 6.14, v0: 0, v1: 2.12 },     // entry door
-        { u0: 4.50, u1: 5.08, v0: 1.26, v1: 1.84 },  // the gold record's spot
+        // the gold record used to hang at u 4.50-5.08 — it's gone, and this
+        // wall is short enough on postable area that its 58 cm goes back
       ],
     });
 
@@ -7056,22 +7057,6 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
       }
       g.position.set(-1.85, 0, 2.6);
       add(g);
-    } else if (id === "gold") {
-      const g = new THREE.Group();
-      const frame = box(0.04, 0.5, 0.5, lam(0x1a1c20));
-      g.add(frame);
-      const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.01, 22),
-        new THREE.MeshStandardMaterial({ color: 0xd8b04a, metalness: 0.8, roughness: 0.3 }));
-      disc.rotation.z = Math.PI / 2;
-      disc.position.x = -0.03;
-      g.add(disc);
-      const label = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.012, 14), lam(0x822));
-      label.rotation.z = Math.PI / 2;
-      label.position.x = -0.032;
-      g.add(label);
-      g.position.set(X - 0.05, 1.55, 1.49);   // the bare strip by the entry door
-      add(g);
-      blockers.push(frame);                    // notes keep off it
     } else if (id === "disco") {
       const g = new THREE.Group();
       const wire = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.18, 5), lam(0x44464c));

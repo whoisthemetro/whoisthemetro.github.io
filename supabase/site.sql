@@ -129,7 +129,10 @@ declare
   v_recent int;
   v_ok boolean;
 begin
-  if p_key not in ('blinds', 'curtains', 'closet', 'lava', 'radio_sr', 'radio_la', 'grime', 'layout', 'studio', 'graffiti') then
+  -- 'plaits' and 'rings' are the two bedroom instrument panels. they are
+  -- shared toys like the lava lamp, not furniture like the layout: the
+  -- keyboard by the window is ONE keyboard, so a knob anyone turns is turned.
+  if p_key not in ('blinds', 'curtains', 'closet', 'lava', 'radio_sr', 'radio_la', 'grime', 'layout', 'studio', 'graffiti', 'plaits', 'rings') then
     raise exception 'unknown room flag: %', p_key;
   end if;
 

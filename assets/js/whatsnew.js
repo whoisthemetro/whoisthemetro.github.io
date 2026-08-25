@@ -25,6 +25,17 @@ export const WHATS_NEW = [
   {
     date: "2026-08-25",
     items: [
+      "the keyboard and the guitar belong to the room now. turn a knob on either one and it's turned for everyone — pick an engine on your phone and it's the same engine on your laptop, and the same one the person standing next to you is playing. it stays that way after everybody leaves, too",
+      "the arpeggiator is the one thing that stays yours. it plays notes, and everyone running their own copy of it would be the same chord four times at once",
+      "the pedals start switched off. six effects nobody chose used to sit between you and the first note you played — flick on the ones you want",
+      "the guitar's panel is the same size as the keyboard's now, and everything on it has room to breathe",
+      "the cat is half as loud",
+      "the gold record by the door has come down, and you can post notes on that stretch of wall again",
+    ],
+  },
+  {
+    date: "2026-08-25",
+    items: [
       "the keyboard on the phone panel is an octave now, c to c. it used to be a flat ten keys, which landed you in the middle of the next octave and never resolved — now it's however many notes the scale has, ending where it started",
       "one tempo for the whole room. change it on the keyboard and the guitar's echo changes with it",
       "the arpeggiator and hold don't come back on when you do. everything else about your sound is still where you left it — the engine, the knobs, the scale — but you don't walk back in to a room already playing itself at you",

@@ -10,13 +10,14 @@
 
 const KEY = "metro.progress";
 
+/* The gold record by the entry door was retired 2026-08-25. Anyone who had
+   already earned it still has "gold" in their unlocked list; nothing looks it
+   up any more, so it reads as a no-op rather than an error. */
 export const ACCESSORIES = [
   { id: "plant",  title: "a snake plant on the windowsill",
     hint: "spend some time here",            test: s => s.seconds >= 600 },
   { id: "yarn",   title: "a yarn ball for the cat",
     hint: "the cat decides this one",        test: s => (s.pets || 0) >= 15 },
-  { id: "gold",   title: "a gold record on the wall",
-    hint: "play that piano",                 test: s => (s.piano || 0) >= 60 },
   { id: "disco",  title: "a disco ball for the arcade",
     hint: "the cabinets remember you",       test: s => (s.arcade || 0) >= 5 },
 ];

@@ -667,6 +667,14 @@ export function beep(freq, dur = 0.1, type = "square", gain = 0.04, slideTo = nu
 
 // A meow, synthesized from scratch with randomized pitch, contour,
 // vibrato and length — no two meows in the room's history are identical.
+/* How loud she is, as one number. Halved on 2026-08-25 — she's the most
+   frequent sound in the room by a distance (she meows when you pet her, when
+   she's hungry, when she wants the litter changed) and at full level she was
+   the loudest thing in it too. Every path out of this function goes through
+   it, sample and synthesised alike, so turning her down is one edit and not
+   six scattered gains that drift apart. */
+const MEOW_LEVEL = 0.5;
+
 export function meow(mood = false) {
   if (!ctx) return;
   // mood: false/undefined = everyday meow, true/"excited" = happy trill,
@@ -679,9 +687,10 @@ export function meow(mood = false) {
     let prof;
     if (angry) {
       // low, loud, clipped — a pissed-off yowl
-      prof = { rate: 0.64 + Math.random() * 0.08, gain: 0.62, attack: 0.003, release: 0.05 };
+      prof = { rate: 0.64 + Math.random() * 0.08, gain: 0.62 * MEOW_LEVEL, attack: 0.003, release: 0.05 };
     } else if (excited) {
-      prof = { rate: 1.12 + Math.random() * 0.14, gain: 0.46 + Math.random() * 0.1, attack: 0.006, release: 0.06 };
+      prof = { rate: 1.12 + Math.random() * 0.14, gain: (0.46 + Math.random() * 0.1) * MEOW_LEVEL,
+               attack: 0.006, release: 0.06 };
     } else {
       // everyday: pick one of a few shapes at random so back-to-back meows differ
       const shapes = [
@@ -693,7 +702,7 @@ export function meow(mood = false) {
       ];
       const s = shapes[Math.floor(Math.random() * shapes.length)];
       prof = { rate: s.rate * (0.96 + Math.random() * 0.08), dur: s.dur,
-               gain: 0.4 + Math.random() * 0.1, attack: 0.008, release: 0.07 };
+               gain: (0.4 + Math.random() * 0.1) * MEOW_LEVEL, attack: 0.008, release: 0.07 };
     }
     playSample(catMeowBuf, prof);
     // excited trills double up; an angry yowl sometimes barks a second time
@@ -723,7 +732,7 @@ export function meow(mood = false) {
   bp.frequency.setValueAtTime(850 + Math.random() * 600, t);
   bp.frequency.linearRampToValueAtTime(450 + Math.random() * 300, t + dur);
   g.gain.setValueAtTime(0.0001, t);
-  g.gain.exponentialRampToValueAtTime(0.05 + Math.random() * 0.025, t + 0.05);
+  g.gain.exponentialRampToValueAtTime((0.05 + Math.random() * 0.025) * MEOW_LEVEL, t + 0.05);
   g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
   osc.start(t); vib.start(t);
   osc.stop(t + dur + 0.05); vib.stop(t + dur + 0.05);

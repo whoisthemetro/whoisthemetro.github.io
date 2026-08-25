@@ -4,6 +4,69 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-08-25 — the instruments belong to the room
+
+Reported as: "when I play the keyboard on my phone it's a different sound on my
+computer, and vice versa. Same with the guitar."
+
+- **BOTH PANELS ARE SHARED STATE NOW.** They were per-browser — your engine,
+  your knobs, your models, in your own localStorage — so the keyboard sounded
+  like one thing on a phone and another on the desktop beside it, and two
+  people in the room at once were playing two different instruments while
+  hearing each other's notes. The keyboard by the window is ONE keyboard.
+  Two paths, answering two different questions: a presence `panel` act for
+  what everyone in the room hears right now, and a room flag (`plaits`,
+  `rings`) for what the instrument is set to when you arrive tomorrow. Same
+  shape as the radio.
+- **ARP and HOLD deliberately do not travel**, and the reason is stronger than
+  "performance state" (which is why they aren't *saved*). An arp SENDS NOTES.
+  Sync the switch and every client starts its own arpeggiator running its own
+  copy of the chord and broadcasting it — the same pattern played N times
+  slightly out of phase, worse with every person who walks in. One hand drives
+  it; everyone hears the notes it already sends.
+- Two details that matter: `applyPanelState` **merges rather than replaces**,
+  so a payload from an older build can't blank a key this one has; and there's
+  a re-entry guard around the apply, because applying a remote change calls the
+  same `dirty()` that broadcasts and two browsers would otherwise hand one knob
+  back and forth forever. A released knob now commits through `dirty()` instead
+  of `saveState()` — `saveState` alone only ever reached this browser, which is
+  why drags would have been the one gesture that didn't sync.
+- `set_room_flag` learns the two new keys (site.sql + applied live). They're
+  shared toys like the lava lamp, not furniture like `layout`, so no passphrase.
+- **The RINGS panel is 1024×560, the same shape as PLAITS.** It was 480 on the
+  theory that a panel should be sized to its contents rather than to its
+  sibling — a good rule applied to the wrong measurement. Both panels are drawn
+  to fit the WIDTH of whatever shows them, so height isn't spare room, it's
+  SCALE: at 480 it rendered 183 css px tall on a 390 px phone against Plaits'
+  213, and every knob, button and word came out 14% smaller. That was
+  "squished". The extra 80 px goes into the gaps (four blocks here against
+  Plaits' five, so each gets more air), not pooled under the last row.
+- **The pedals start OFF**, all six. The first note anyone ever played here
+  arrived through chorus, delay and reverb nobody had chosen. Both instruments
+  have a real Mutable module in them now and want to be heard as themselves;
+  Clouds is the intended replacement for this row and isn't wired to the room
+  yet. The reset is a **version stamp**, not just a changed default — everyone
+  who has been here has `"1"` saved for all six, so flipping the default alone
+  would have changed nothing for a single existing visitor.
+- **The gold record is gone** from the east wall by the entry door: the prop,
+  the `progress.js` reward that placed it, and the 58 cm no-post rect it
+  reserved. That wall is short on postable area, so the space goes back to
+  notes. Anyone who already earned it keeps `"gold"` in their unlocked list;
+  nothing looks it up any more, so it reads as a no-op rather than an error.
+- **The cat is half as loud** — one `MEOW_LEVEL`, applied on every path out of
+  `meow()`, sample and synthesised alike. She's the most frequent sound in the
+  room by a distance and was also the loudest thing in it.
+
+**Harness note, because it cost a detour.** The two-tab sync test showed
+*nothing* on BroadcastChannel and neither tab followed the other — and the
+reason was the test, not the code: `window.METRO_CONFIG = {}` via
+`evaluateOnNewDocument` does NOT force local mode, because config.js assigns
+`METRO_CONFIG` unconditionally and runs afterwards. Both tabs were talking to
+the **live database**. The form that holds is a property whose setter swallows
+the write. Any test that writes should assert `store.mode === "local"` first.
+(And rAF doesn't fire in a backgrounded tab, so a two-page test must not await
+one in the page that isn't in front.)
+
 ## 2026-08-25 — one octave, one tempo, one row of knobs
 
 Seven things off one list, and two of them were bugs hiding behind the
