@@ -23,6 +23,17 @@
 
 export const WHATS_NEW = [
   {
+    date: "2026-08-25",
+    items: [
+      "the keyboard on the phone panel is an octave now, c to c. it used to be a flat ten keys, which landed you in the middle of the next octave and never resolved — now it's however many notes the scale has, ending where it started",
+      "one tempo for the whole room. change it on the keyboard and the guitar's echo changes with it",
+      "the arpeggiator and hold don't come back on when you do. everything else about your sound is still where you left it — the engine, the knobs, the scale — but you don't walk back in to a room already playing itself at you",
+      "no more little words popping up every time you nudge a setting. the panel already says what it is",
+      "the knobs on both panels are the same size and in a straight line, and they reach both edges instead of trailing off",
+      "tapping the guitar's button while the keyboard's panel is up now actually opens the guitar's. it used to leave the old one sitting there, so the button looked broken and every knob you turned belonged to the wrong instrument",
+    ],
+  },
+  {
     date: "2026-08-22",
     items: [
       "trinity answers every time you click her now. she'd go quiet after the first question — she was waiting on the next line to download — and that little card of text that used to appear when she couldn't talk is gone for good. she just talks.",

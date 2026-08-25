@@ -45,13 +45,19 @@ export const ENGINES = [
 ];
 const BANK_COLOR = ["#ffd76a", "#7dffa8", "#ff7d6a"];
 
+/* All five the same size and evenly spaced. Three of them used to be `big`
+   (radius 46, advancing 200) and two small (36, advancing 168), which is how
+   the real module is laid out and reads as a mistake on a flat panel: the
+   row wasn't level, DECAY and LPG were visibly smaller than their
+   neighbours, and the run didn't reach the right edge. */
 const KNOBS = [
-  { key: "harm",   label: "HARMONICS", big: true },
-  { key: "timbre", label: "TIMBRE",    big: true },
-  { key: "morph",  label: "MORPH",     big: true },
+  { key: "harm",   label: "HARMONICS" },
+  { key: "timbre", label: "TIMBRE" },
+  { key: "morph",  label: "MORPH" },
   { key: "decay",  label: "DECAY" },
   { key: "lpg",    label: "LPG" },
 ];
+const KNOB_R = 42;
 
 /* ---------- the arpeggiator ----------
    Scales are the same four the studio knows plus chromatic, and they do
@@ -108,10 +114,17 @@ export function loadState() {
   let st = { ...DEFAULTS };
   try { st = { ...st, ...(JSON.parse(localStorage.getItem(KEY)) || {}) }; } catch (e) {}
   if (!SCALES[st.scale]) st.scale = DEFAULTS.scale;
+  st.arp = false; st.hold = false;      // never restored — see saveState
   return st;
 }
 export function saveState(st) {
-  try { localStorage.setItem(KEY, JSON.stringify(st)); } catch (e) {}
+  /* ARP and HOLD are not saved. They are performance state, not a preset:
+     coming back tomorrow to find an arpeggiator already running and a chord
+     already latched is a room playing itself at you. Everything else — the
+     engine, the knobs, the scale, the transpose — is a sound you chose and
+     should still be there. */
+  const { arp, hold, ...preset } = st;
+  try { localStorage.setItem(KEY, JSON.stringify(preset)); } catch (e) {}
 }
 
 /* ---------- drawing ---------- */
@@ -124,7 +137,7 @@ export function saveState(st) {
    number, because a round number left a hand's width of empty panel under
    the last row and the whole thing read as a dialog with something missing
    from it. If you add a row, this moves. */
-const W = 1024, H = 566;
+const W = 1024, H = 560;
 
 /* The palette, the rounded rect, the label and the knob all live in
    panel-kit.js now: this panel and the RINGS one by the guitar are two faces
@@ -138,20 +151,33 @@ const W = 1024, H = 566;
 function layout() {
   const pad = 26;
   const headH = 56;
-  const engY = headH + 20, engH = 92;
+  // the engine block is smaller and sits higher than it did: it was the most
+  // crowded thing on the panel and it is the least often touched
+  const engY = headH + 14, engH = 76;
+  /* The engine buttons live HERE, not as a local in each function. They were
+     declared three times — draw, hit and centres — and when the block was
+     made smaller two of the three were updated, so centres() went on pointing
+     at where the button used to be. Once is the only number of times. */
+  const engBtnW = 46, engColX = pad + engBtnW + 16;
+  /* 92 of clear air under the knob centres, not 78. drawKnob puts the label
+     at cy + r + 24, so at radius 42 the words ended four pixels above the
+     strip and read as belonging to the row below them. */
   const knobY = engY + engH + 76;
-  const stripTop = knobY + 78;
+  const stripTop = knobY + 92;
   const rowH = 62, gap = 12;
   const rowAY = stripTop + 16, rowBY = rowAY + rowH + gap;
   // a third row: the transpose stepper, with the held-note chips beside it
   const rowCY = rowBY + rowH + gap;
   const octW = 300;
   const oct = { x: pad, y: rowCY, w: octW, h: rowH };
+  // five knobs sharing the full width, so the row is level and reaches both
+  // edges — one function, so draw/hit/centres cannot disagree about it
+  const knobX = (i) => pad + (W - pad * 2) / KNOBS.length * (i + 0.5);
   const cell = (n, i, y, count) => {
     const w = (W - pad * 2 - gap * (count - 1)) / count;
     return { x: pad + i * (w + gap), y, w, h: rowH };
   };
-  return { pad, headH, engY, engH, knobY, stripTop, rowH, gap, rowAY, rowBY, rowCY, oct, cell };
+  return { pad, headH, engY, engH, engBtnW, engColX, knobY, knobX, stripTop, rowH, gap, rowAY, rowBY, rowCY, oct, cell };
 }
 
 // the two button rows. `key` is what the hit test hands back.
@@ -235,11 +261,11 @@ export function draw(ctx2d, st, live = null) {
   label(g, "✕", W - L.pad - 22, L.headH / 2, 22, C.dim, "center");
 
   /* the engine: a button each side of the LED column, like the panel */
-  const btnW = 54, colX = L.pad + btnW + 18;
+  const btnW = L.engBtnW, colX = L.engColX;
   const eng = Math.max(0, Math.min(23, st.engine | 0));
   const bank = Math.floor(eng / 8), idx = eng % 8;
   g.fillStyle = C.btn; rr(g, L.pad, L.engY, btnW, L.engH, 10); g.fill();
-  label(g, "◀", L.pad + btnW / 2, L.engY + L.engH / 2, 26, C.dim, "center");
+  label(g, "◀", L.pad + btnW / 2, L.engY + L.engH / 2, 24, C.dim, "center");
   g.fillStyle = "#161e28";
   rr(g, colX - 3, L.engY, 22, L.engH, 8); g.fill();
   for (let i = 0; i < 8; i++) {
@@ -248,19 +274,15 @@ export function draw(ctx2d, st, live = null) {
     g.beginPath(); g.arc(colX + 8, L.engY + 12 + i * ((L.engH - 24) / 7), on ? 6.5 : 4.5, 0, Math.PI * 2); g.fill();
   }
   g.fillStyle = C.btn; rr(g, colX + 30, L.engY, btnW, L.engH, 10); g.fill();
-  label(g, "▶", colX + 30 + btnW / 2, L.engY + L.engH / 2, 26, C.dim, "center");
-  label(g, ENGINES[eng], colX + 30 + btnW + 34, L.engY + L.engH / 2 - 12, 30, BANK_COLOR[bank]);
-  label(g, `engine ${eng + 1} of 24 · bank ${bank + 1}`, colX + 30 + btnW + 34, L.engY + L.engH / 2 + 20, 16, C.dim);
+  label(g, "▶", colX + 30 + btnW / 2, L.engY + L.engH / 2, 24, C.dim, "center");
+  label(g, ENGINES[eng], colX + 30 + btnW + 30, L.engY + L.engH / 2 - 11, 27, BANK_COLOR[bank]);
+  label(g, `engine ${eng + 1} of 24 · bank ${bank + 1}`, colX + 30 + btnW + 30, L.engY + L.engH / 2 + 17, 15, C.dim);
 
   /* the knobs, in hardware order */
-  const kr = 46, sr = 36;
-  let x = L.pad + 74;
-  for (const k of KNOBS) {
-    const r = k.big ? kr : sr;
-    drawKnob(g, x, L.knobY, r, clamp01(st[k.key]), C.cool, k.label,
+  KNOBS.forEach((k, i) => {
+    drawKnob(g, L.knobX(i), L.knobY, KNOB_R, clamp01(st[k.key]), C.cool, k.label,
              String(Math.round(st[k.key] * 100)));
-    x += k.big ? 200 : 168;
-  }
+  });
 
   /* the arpeggiator */
   g.fillStyle = C.head;
@@ -301,7 +323,7 @@ export function hit(u, v) {
     return { type: "none" };
   }
   // engine steppers
-  const btnW = 54, colX = L.pad + btnW + 18;
+  const btnW = L.engBtnW, colX = L.engColX;
   if (py >= L.engY && py <= L.engY + L.engH) {
     if (px >= L.pad && px <= L.pad + btnW) return { type: "engine", d: -1 };
     if (px >= colX + 30 && px <= colX + 30 + btnW) return { type: "engine", d: 1 };
@@ -309,13 +331,10 @@ export function hit(u, v) {
   // knobs. `frac` is where on the sweep the hand landed — a mouse ignores
   // it (knobs are grabbed and turned, and a tap must not teleport a value)
   // but a touch screen has no drag to offer, so there it IS the gesture.
-  const kr = 46, sr = 36;
-  let x = L.pad + 74;
-  for (const k of KNOBS) {
-    const r = (k.big ? kr : sr) + 20;
-    if (Math.hypot(px - x, py - L.knobY) <= r)
-      return { type: "knob", key: k.key, frac: grabFrac(x, L.knobY, px, py) };
-    x += k.big ? 200 : 168;
+  for (let i = 0; i < KNOBS.length; i++) {
+    const kx = L.knobX(i);
+    if (Math.hypot(px - kx, py - L.knobY) <= KNOB_R + 20)
+      return { type: "knob", key: KNOBS[i].key, frac: grabFrac(kx, L.knobY, px, py) };
   }
   // the two button rows
   const rows = [[ROW_A, L.rowAY], [ROW_B, L.rowBY]];
@@ -342,12 +361,11 @@ export const SIZE = { w: W, h: H };
    the answer comes from the same layout() the painter used. */
 export function centres() {
   const L = layout(), out = {};
-  const btnW = 54, colX = L.pad + btnW + 18;
+  const btnW = L.engBtnW, colX = L.engColX;
   out.engineDown = [L.pad + btnW / 2, L.engY + L.engH / 2];
   out.engineUp = [colX + 30 + btnW / 2, L.engY + L.engH / 2];
   out.close = [W - L.pad - 22, L.headH / 2];
-  let x = L.pad + 74;
-  for (const k of KNOBS) { out[k.key] = [x, L.knobY]; x += k.big ? 200 : 168; }
+  KNOBS.forEach((k, i) => { out[k.key] = [L.knobX(i), L.knobY]; });
   for (const [row, ry] of [[ROW_A, L.rowAY], [ROW_B, L.rowBY]]) {
     for (let i = 0; i < row.length; i++) {
       const r = L.cell(0, i, ry, row.length);

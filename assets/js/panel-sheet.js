@@ -46,11 +46,18 @@ const SHEET_ID = "panel-sheet";
    whole desk. */
 const SWEEP_PX = 180;
 
-/* How many keys the keybed shows. The room's is fifteen, which on a phone
-   would be 26 css px each — narrower than a fingertip. Ten is about 39 px on
-   a 390 px screen, which is a real target, and the OCTAVE stepper on the
-   panel above reaches everything the other five would have. */
-const SHEET_KEYS = 10;
+/* How many keys the keybed shows: ONE OCTAVE of whatever scale the panel is
+   in, C to C. It used to be a flat ten, which is a number with no musical
+   meaning — in major it ran C D E F G A B C D E, so the row ended in the
+   middle of the second octave and the two ends didn't rhyme. An octave is
+   the shape a keyboard has, and it's what makes the OCTAVE stepper above
+   read as a control rather than a mystery.
+
+   The panel owns the count (`keys.count()` — the scale's degrees plus the
+   upper tonic) so this file never learns what a scale is. Clamped because a
+   phone can only spend so many pixels: chromatic is thirteen keys at ~30 css
+   px, which is still a fingertip, and nothing here asks for more. */
+const keyCount = (o) => Math.max(2, Math.min(15, o?.keys?.count?.() ?? 8));
 
 export function createPanelSheet() {
   let host = null, canvas = null, ctx = null;
@@ -147,16 +154,17 @@ export function createPanelSheet() {
 
   const KW = 1024, KH = 260;      // its own canvas, drawn in its own pixels
   const keyIndexAt = (clientX) => {
+    const n = keyCount(open);
     const r = keysCv.getBoundingClientRect();
-    const i = Math.floor(((clientX - r.left) / r.width) * SHEET_KEYS);
-    return Math.max(0, Math.min(SHEET_KEYS - 1, i));
+    const i = Math.floor(((clientX - r.left) / r.width) * n);
+    return Math.max(0, Math.min(n - 1, i));
   };
 
   function paintKeys() {
     if (!open || !open.keys) return;
-    const g = keysCtx, kw = KW / SHEET_KEYS;
+    const n = keyCount(open), g = keysCtx, kw = KW / n;
     g.clearRect(0, 0, KW, KH);
-    for (let i = 0; i < SHEET_KEYS; i++) {
+    for (let i = 0; i < n; i++) {
       const x = i * kw, lit = i === keyDown;
       g.fillStyle = lit ? "#ffb347" : "#f2f2ef";
       g.fillRect(x + 2, 0, kw - 4, KH);
@@ -220,6 +228,8 @@ export function createPanelSheet() {
       host && host.classList.remove("show");
     },
     isOpen: () => !!open,
+    // what the keybed is actually drawing, for the harness
+    keyCount: () => (open ? keyCount(open) : 0),
     // the room changed something (an arp step, the wasm finishing) — repaint
     refresh: paint,
   };

@@ -1478,6 +1478,9 @@ export function audioDebug() {
     roomTone: roomToneGains ? +roomToneGains[0].gain.value.toFixed(5) : null,
     rain: rainNodes ? +rainNodes.g.gain.value.toFixed(5) : null,
     arcade: arcadeZone ? +arcadeZone.out.gain.value.toFixed(3) : null,
+    // every delay line's repeat time — the room's tempo, as heard
+    delays: Object.fromEntries(Object.keys(fxDelays).map(
+      id => [id, +fxDelays[id].delayTime.value.toFixed(4)])),
   };
 }
 

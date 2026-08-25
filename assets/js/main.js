@@ -544,6 +544,15 @@ function plaitsApply() {
               decay: synth.decay, lpg: synth.lpg, engine: synth.engine | 0 });
 }
 let sheetDirty = false;
+/* THE ROOM HAS ONE TEMPO. The synth panel's TEMPO is it: the arp runs on it
+   and so do the delay lines on every instrument — setDelayTempo retunes the
+   keyboard's 1/8 and the guitar's dotted 1/8 together. Change it on the
+   keyboard and the guitar's repeats follow, which is what you would expect
+   of two pedals in one room and was not what happened before. */
+function applyRoomTempo() {
+  setDelayTempo(Math.max(40, Math.min(200, Math.round(synth.bpm))));
+}
+
 function synthDirty(save = true) {
   world.synth.panel.markDirty();
   sheetDirty = true;
@@ -554,6 +563,7 @@ function synthDirty(save = true) {
    moment it does — so a visitor who left the keyboard on PLAITS last time
    gets their own sound back on the first key, not the factory one. */
 plaitsApply();
+applyRoomTempo();      // the delays start on the room's tempo, not a default
 
 /* Playing a key. `key` is the keybed index (0..14); the panel's scale and
    root turn it into a semitone, so the same fifteen keys are C major or
@@ -679,10 +689,12 @@ function synthLive() {
 function applySynthHit(h) {
   if (!h || h.type === "none") return;
   if (h.type === "close") { world.synth.setOpen(false); return; }
+  /* No toasts on any of this. The panel is showing the value you just
+     changed, in words, an inch from your thumb — printing it again in the
+     corner of the screen is the room reading its own label out to you. */
   if (h.type === "engine") {
     synth.engine = Math.max(0, Math.min(23, (synth.engine | 0) + h.d));
     plaitsApply();
-    toast(SynthPanel.ENGINES[synth.engine]);
     synthDirty();
   } else if (h.type === "cycle") {
     const wasHold = synth.hold;
@@ -692,17 +704,11 @@ function applySynthHit(h) {
     if (h.key === "hold" && wasHold && !synth.hold) arpStop();
     if (h.key === "arp" && !synth.arp) arpStop();
     if (h.key === "arp" && synth.arp) arpNext = 0;
-    toast(`${h.key.toUpperCase()}: ${
-      h.key === "scale" ? synth.scale : h.key === "root" ? SynthPanel.ROOT_NAMES[synth.root]
-      : h.key === "mode" ? SynthPanel.MODES[synth.mode] : h.key === "rate" ? SynthPanel.RATES[synth.rate].label
-      : h.key === "octaves" ? synth.octaves : h.key === "bpm" ? `${Math.round(synth.bpm)} bpm`
-      : (synth[h.key] ? "on" : "off")}`);
+    if (h.key === "bpm") applyRoomTempo();
     synthDirty();
   } else if (h.type === "octave") {
     const was = synth.octave | 0;
-    const now = SynthPanel.stepOctave(synth, h.d);
-    if (now === was) return;                 // already at the end of the range
-    toast(now === 0 ? "octave: normal" : `octave ${now > 0 ? "+" : ""}${now}`);
+    if (SynthPanel.stepOctave(synth, h.d) === was) return;   // at the end of the range
     synthDirty();
   } else if (h.type === "knob") {
     /* On a mouse, knobs only answer to a drag — a tap that jumped a value
@@ -3445,19 +3451,15 @@ function applyRingsHit(h) {
   if (h.type === "model") {
     rings.model = (rings.model + h.d + RingsPanel.MODELS.length) % RingsPanel.MODELS.length;
     ringsApply();
-    toast(RingsPanel.MODELS[rings.model].name);
     ringsDirty();
   } else if (h.type === "octave") {
     const was = rings.octave;
-    const now = RingsPanel.stepOctave(rings, h.d);
-    if (now === was) return;                 // already at the end of the range
+    if (RingsPanel.stepOctave(rings, h.d) === was) return;   // at the end of the range
     ringsApply();
-    toast(now === 0 ? "octave: normal" : `octave ${now > 0 ? "+" : ""}${now}`);
     ringsDirty();
   } else if (h.type === "cycle") {
     RingsPanel.cycle(rings, h.key, h.d || 1);
     ringsApply();
-    toast(h.key === "model" ? RingsPanel.MODELS[rings.model].name : `${rings.polyphony} voices`);
     ringsDirty();
   } else if (h.type === "knob") {
     // drag-only on a mouse, tap-to-set on touch and in VR — see the synth panel
@@ -3484,14 +3486,20 @@ const PANELS = {
            /* The sheet's own keybed. It feeds synthPress — the SAME call the
               wooden keyboard in the room makes — so the scale, the root, the
               transpose and the arp all behave exactly as they do up there. */
+           /* C to C: one octave of whatever scale is selected, which is its
+              own length plus the octave note on the end. Not a fixed ten —
+              that landed mid-scale on an arbitrary degree and the keybed
+              never resolved. Major gives eight keys, pentatonic six,
+              chromatic thirteen; OCTAVE moves you between them. */
            keys: { press: (i) => synthPress(i),
+                   count: () => SynthPanel.SCALES[synth.scale].length + 1,
                    label: (i) => SynthPanel.ROOT_NAMES[((semiFor(i) % 12) + 12) % 12] } },
   rings: { mod: RingsPanel, state: () => rings, apply: () => ringsApply(), dirty: ringsDirty,
            tap: applyRingsHit, live: ringsLive, world: () => world.rings,
            // the guitar's frets: guitarPluck walks the pentatonic neck, and
            // the tele wiggles the same way it does when you strum it up there
            keys: { press: (i) => { guitarPluck(i, RINGS_VOICE); world.strumTele?.(); },
-                   label: () => "" } },
+                   count: () => 8, label: () => "" } },
 };
 
 /* THE SAME PANEL, LOCKED TO THE SCREEN, ON TOUCH.
@@ -3499,29 +3507,42 @@ const PANELS = {
    you turn your head, so setting one means landing a tap on an exact point
    of a ring. The sheet draws the identical canvas at the bottom of the
    screen and lets a knob LATCH and follow your finger — see panel-sheet.js.
-   The in-world panel stays up alongside it: other people in the room should
-   still see what you're working on. */
+   The in-world panel is hidden while the sheet is up; it used to stay on the
+   theory that the rest of the room should see what you're working on, which
+   was never true — panel visibility isn't broadcast. */
 const panelSheet = createPanelSheet();
+let sheetWhich = null;              // which panel the sheet is currently drawing
 function openPanelSheet(which) {
   if (!IS_TOUCH) return;
   const P = PANELS[which];
+  sheetWhich = which;
   panelSheet.show({
     mod: P.mod, size: P.mod.SIZE, state: P.state,
     apply: () => P.apply(),
     save: () => P.dirty(),
     // the tap goes through the SAME handler the crosshair uses, so closing,
     // stepping an engine and cycling a scale all behave identically
-    tap: (h) => { P.tap(h); if (!P.world().isOpen()) panelSheet.hide(); else panelSheet.refresh(); },
+    tap: (h) => { P.tap(h);
+                  if (!P.world().isOpen()) { panelSheet.hide(); sheetWhich = null; }
+                  else panelSheet.refresh(); },
     live: P.live,
     keys: P.keys,
   });
 }
-// whichever panel is up owns the sheet; neither means no sheet
+/* Whichever panel is up owns the sheet; neither means no sheet. The
+   `sheetWhich` test is the whole point: "is a sheet open" was not enough,
+   because opening RINGS while the PLAITS sheet was already up left the old
+   drawing sitting there — the guitar's button appeared to do nothing, and
+   every knob you then turned belonged to the keyboard. */
 function syncPanelSheet() {
   if (!IS_TOUCH) return;
   const which = world.synth.isOpen() ? "synth" : world.rings.isOpen() ? "rings" : null;
-  if (!which) { if (panelSheet.isOpen()) panelSheet.hide(); return; }
-  if (!panelSheet.isOpen()) openPanelSheet(which);
+  if (!which) {
+    if (panelSheet.isOpen()) panelSheet.hide();
+    sheetWhich = null;
+    return;
+  }
+  if (!panelSheet.isOpen() || sheetWhich !== which) openPanelSheet(which);
 }
 function beginSynthDrag(key, which = "synth") {
   const P = PANELS[which];
@@ -3537,6 +3558,7 @@ function tickSynthDrag() {
   // right or up turns it clockwise; 320 px of hand is the whole sweep
   P.mod.knobWrite(P.state(), synthDrag.key, synthDrag.start + (controls.dragDX - controls.dragDY) / 320);
   P.apply();
+  if (synthDrag.key === "bpm") applyRoomTempo();
   P.dirty(false);
 }
 function endSynthDrag() {
@@ -6097,7 +6119,7 @@ window.METRO_DEBUG = { renderer, camera, world, controls, xr, disc, hoop: hoopGa
             stop: () => gardenPlayer.stop(), playing: () => gardenPlayer.playing(),
             state: () => gardenState, inside: () => inGarden },
   sheet: { open: openPanelSheet, hide: () => panelSheet.hide(), isOpen: () => panelSheet.isOpen(),
-           sync: syncPanelSheet },
+           sync: syncPanelSheet, keyCount: () => panelSheet.keyCount() },
   // a hand on the guitar's resonator, same habit as the synth panel
   rings: {
     state: () => rings, status: ringsStatus, init: initRings, apply: ringsApply,

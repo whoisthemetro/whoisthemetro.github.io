@@ -4,6 +4,66 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-08-25 — one octave, one tempo, one row of knobs
+
+Seven things off one list, and two of them were bugs hiding behind the
+cosmetics.
+
+- **The phone keybed is ONE OCTAVE, C to C.** It was a flat ten keys, which is
+  a number with no musical meaning: in major it ran C D E F G A B C D E, so the
+  row stopped in the middle of the second octave and the two ends didn't
+  rhyme. It now draws `SCALES[scale].length + 1` — eight for major, six for
+  pentatonic, thirteen for chromatic — and the OCTAVE stepper is what moves you
+  between them.
+- **And the fix had never landed.** `main.js` had grown a `keys.count()` for
+  exactly this and `panel-sheet.js` was still on a hardcoded `SHEET_KEYS = 10`,
+  so the count function was correct and nothing called it. Worth writing down
+  because of how it was found: the harness said `countFn: 8` and the screenshot
+  showed ten keys, and the temptation was to explain away the screenshot as a
+  stale cache. **The screenshot was right.** Verified now through the sheet's
+  own tap path — step the SCALE stepper six times and count runs of key-white
+  in the canvas — so it proves the repaint, not just the arithmetic. 18/18.
+- **ARP and HOLD are no longer saved.** They were in the same blob as the
+  engine and the knobs, so coming back tomorrow meant an arpeggiator already
+  running and a chord already latched — a room playing itself at you. They're
+  performance state, not a preset: `saveState` strips them and `loadState`
+  forces them false. Everything else about your sound persists exactly as
+  before.
+- **Tempo is the ROOM's.** `applyRoomTempo()` drives `setDelayTempo` from the
+  panel's bpm, so the keyboard's delay and the guitar's delay are always on the
+  same clock — and it's called at boot as well, so the delays start on your
+  tempo rather than a default. Verified by reading the actual `delayTime` of
+  both lines: at 138 bpm, `kb-delay` 0.2174 (half a beat) and `gtr-delay`
+  0.3261 (three quarters).
+- **No value toasts.** Every stepper used to raise a line of text on change.
+  The panel already shows the value an inch away from the button you pressed.
+- **All five PLAITS knobs are one size.** Three were radius 46 and two were 36,
+  which is how the real module is laid out and reads as a mistake on a flat
+  panel — the row wasn't level, DECAY and LPG were visibly smaller, and the run
+  didn't reach the right edge. One `KNOB_R` and one `knobX(i)`, so draw, hit
+  and centres can't disagree. The engine block is smaller and higher (it's the
+  least-touched thing on the panel and was the most crowded), and there's 92 px
+  of air under the knob centres instead of 78, because `drawKnob` puts its
+  label at `cy + r + 24` and at radius 42 those words were landing on the strip
+  below.
+- **`centres()` was still on the old engine button width** after the block
+  shrank — 54 where draw and hit had gone to 46. That is precisely the drift
+  the comments in that file warn about, so the geometry now lives in
+  `layout()` (`engBtnW`/`engColX`) and is read three times instead of declared
+  three times.
+- **RINGS: the strip is two equal cells.** POLYPHONY took whatever the 300 px
+  OCTAVE left it — 660 px for a three-value stepper, a cell the width of the
+  panel with its value stranded in the middle. And a "four ring together"
+  caption sat at `y+53` under a value drawn at `y+43`: two strings on top of
+  each other. The caption said what the value already said and is gone.
+- **The sheet never swapped panels.** `syncPanelSheet` asked "is a sheet open"
+  and stopped there, so opening RINGS while the PLAITS sheet was up left the
+  old drawing sitting on screen: the guitar's button appeared to do nothing,
+  and every knob you then turned belonged to the keyboard. It tracks
+  `sheetWhich` now. Found by screenshotting the swap rather than trusting it.
+- `audioDebug()` reports every delay line's repeat time, which is what made the
+  tempo claim testable instead of assertable.
+
 ## 2026-08-22 — she answers every time, and she has no card
 
 Reported as: click her more than once and she says nothing, and the text panel

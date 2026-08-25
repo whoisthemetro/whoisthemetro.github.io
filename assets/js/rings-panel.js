@@ -44,6 +44,7 @@ const KNOBS = [
   { key: "damping",    label: "DAMPING" },
   { key: "position",   label: "POSITION" },
 ];
+const KNOB_R = 42;
 
 export const POLY = [1, 2, 4];
 
@@ -89,19 +90,24 @@ function layout() {
      local in each function: it was declared three times, in draw, in hit and
      in centres, which is exactly how a button ends up drawn somewhere its
      hit test isn't. */
-  const btnW = 86, modH = 100;
-  const modY = headH + 20;
-  const knobY = modY + modH + 78;
-  const stripTop = knobY + 78;
+  const btnW = 76, modH = 86;
+  const modY = headH + 14;
+  const knobY = modY + modH + 76;
+  // 92 of clear air under the knob centres: at radius 42 drawKnob's label
+  // lands at cy+66, and 78 put those words on top of the strip below
+  const stripTop = knobY + 92;
   const rowH = 62, gap = 12;
-  // the strip is one cycling cell plus the octave stepper, side by side
-  const octW = 300;
-  const cell = (i, count) => {
-    const w = (W - pad * 2 - gap * count - octW) / count;
-    return { x: pad + i * (w + gap), y: stripTop + 14, w, h: rowH };
-  };
-  const oct = { x: W - pad - octW, y: stripTop + 14, w: octW, h: rowH };
-  return { pad, headH, btnW, modY, modH, knobY, stripTop, rowH, cell, oct };
+  /* The strip is POLYPHONY and OCTAVE, and they get HALF the width EACH.
+     Polyphony used to take whatever the 300 px octave left it — 660 px for a
+     three-value stepper, a cell the width of the panel with its value
+     stranded in the middle of it. Two equal cells give the strip the same
+     rhythm the synth's rows have. */
+  const cellW = (W - pad * 2 - gap) / 2;
+  const cell = (i) => ({ x: pad + i * (cellW + gap), y: stripTop + 14, w: cellW, h: rowH });
+  const oct = cell(1);
+  // four knobs sharing the full width, level and reaching both edges
+  const knobX = (i) => pad + (W - pad * 2) / KNOBS.length * (i + 0.5);
+  return { pad, headH, btnW, modY, modH, knobY, knobX, stripTop, rowH, cell, oct };
 }
 
 /* One cell, not two. It had MODEL in it as well, which is the same control
@@ -117,9 +123,6 @@ const CELL_BTN = 58;
 const valueOf = (st, key) =>
   key === "polyphony" ? `${st.polyphony} voice${st.polyphony === 1 ? "" : "s"}`
   : MODELS[st.model % MODELS.length].name;
-// how many notes can ring at once — the thing the number actually buys you
-const POLY_NOTE = { 1: "one note at a time", 2: "two ring together", 4: "four ring together" };
-
 export function draw(g, st, live = null) {
   const L = layout();
   g.fillStyle = C.bg;
@@ -147,12 +150,12 @@ export function draw(g, st, live = null) {
     g.fillStyle = C.btn; rr(g, bx, L.modY, btnW, L.modH, 14); g.fill();
     g.strokeStyle = C.line; g.lineWidth = 2;
     rr(g, bx + 1, L.modY + 1, btnW - 2, L.modH - 2, 13); g.stroke();
-    label(g, glyph, bx + btnW / 2, L.modY + L.modH / 2 - 7, 44, C.text, "center");
-    label(g, "MODEL", bx + btnW / 2, L.modY + L.modH - 20, 13, C.dim, "center");
+    label(g, glyph, bx + btnW / 2, L.modY + L.modH / 2 - 6, 38, C.text, "center");
+    label(g, "MODEL", bx + btnW / 2, L.modY + L.modH - 17, 12, C.dim, "center");
   }
   const tx = L.pad + btnW * 2 + 14 + 40;
-  label(g, MODELS[m].name, tx, L.modY + L.modH / 2 - 12, 30, MODEL_COLOR(m));
-  label(g, `${MODELS[m].note} · model ${m + 1} of 6`, tx, L.modY + L.modH / 2 + 20, 16, C.dim);
+  label(g, MODELS[m].name, tx, L.modY + L.modH / 2 - 11, 27, MODEL_COLOR(m));
+  label(g, `${MODELS[m].note} · model ${m + 1} of 6`, tx, L.modY + L.modH / 2 + 16, 15, C.dim);
   // six pips, so you can see where you are in the row without counting
   for (let i = 0; i < MODELS.length; i++) {
     g.fillStyle = i === m ? MODEL_COLOR(i) : "#2b3745";
@@ -161,13 +164,10 @@ export function draw(g, st, live = null) {
   }
 
   /* the four knobs, in hardware order */
-  const r = 46;
-  let x = L.pad + 92;
-  for (const k of KNOBS) {
-    drawKnob(g, x, L.knobY, r, clamp01(st[k.key]), C.cool, k.label,
+  KNOBS.forEach((k, i) => {
+    drawKnob(g, L.knobX(i), L.knobY, KNOB_R, clamp01(st[k.key]), C.cool, k.label,
              String(Math.round(st[k.key] * 100)));
-    x += 232;
-  }
+  });
 
   /* the strip */
   g.fillStyle = C.head;
@@ -176,14 +176,12 @@ export function draw(g, st, live = null) {
   g.fillRect(0, L.stripTop, W, 2);
   // polyphony is a stepper like everything else that isn't an on/off
   for (let i = 0; i < ROW.length; i++) {
-    const rc = L.cell(i, ROW.length);
+    const rc = L.cell(i);
     drawStepper(g, rc, ROW[i].label, valueOf(st, ROW[i].key), {
       btnW: CELL_BTN,
       loOff: st.polyphony <= POLY[0],
       hiOff: st.polyphony >= POLY[POLY.length - 1],
     });
-    label(g, POLY_NOTE[st.polyphony] || "",
-          rc.x + rc.w / 2, rc.y + rc.h - 9, 13, C.dim, "center");
   }
   drawOctave(g, L.oct, st.octave | 0);
   /* Nothing is patched into the module's input, so Rings supplies its own
@@ -203,14 +201,13 @@ export function hit(u, v) {
     if (px >= L.pad && px <= L.pad + btnW) return { type: "model", d: -1 };
     if (px >= L.pad + btnW + 14 && px <= L.pad + btnW * 2 + 14) return { type: "model", d: 1 };
   }
-  let x = L.pad + 92;
-  for (const k of KNOBS) {
-    if (Math.hypot(px - x, py - L.knobY) <= 46 + 20)
-      return { type: "knob", key: k.key, frac: grabFrac(x, L.knobY, px, py) };
-    x += 232;
+  for (let i = 0; i < KNOBS.length; i++) {
+    const kx = L.knobX(i);
+    if (Math.hypot(px - kx, py - L.knobY) <= KNOB_R + 20)
+      return { type: "knob", key: KNOBS[i].key, frac: grabFrac(kx, L.knobY, px, py) };
   }
   for (let i = 0; i < ROW.length; i++) {
-    const rc = L.cell(i, ROW.length);
+    const rc = L.cell(i);
     if (px < rc.x || px > rc.x + rc.w || py < rc.y || py > rc.y + rc.h) continue;
     const d = hitStepper(px, py, rc, CELL_BTN);
     return d ? { type: "cycle", key: ROW[i].key, d } : { type: "none" };
@@ -230,10 +227,9 @@ export function centres() {
   out.modelDown = [L.pad + btnW / 2, L.modY + L.modH / 2];
   out.modelUp = [L.pad + btnW + 14 + btnW / 2, L.modY + L.modH / 2];
   out.close = [W - L.pad - 22, L.headH / 2];
-  let x = L.pad + 92;
-  for (const k of KNOBS) { out[k.key] = [x, L.knobY]; x += 232; }
+  KNOBS.forEach((k, i) => { out[k.key] = [L.knobX(i), L.knobY]; });
   for (let i = 0; i < ROW.length; i++) {
-    const rc = L.cell(i, ROW.length);
+    const rc = L.cell(i);
     const c = stepperCentres(rc, CELL_BTN);
     out[ROW[i].key] = [rc.x + rc.w / 2, rc.y + rc.h / 2];
     out[ROW[i].key + "Down"] = c.down;
