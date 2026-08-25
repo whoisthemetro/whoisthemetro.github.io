@@ -23,7 +23,8 @@
 import * as THREE from "three";
 import { C, rr, label, drawKnob, grabFrac, clamp01,
          OCTAVE_RANGE, OCT_BTN, stepOctave as kitStepOctave,
-         drawOctave, hitOctave, octaveCentres } from "./panel-kit.js";
+         drawOctave, hitOctave, octaveCentres,
+         drawStepper, hitStepper, stepperCentres } from "./panel-kit.js";
 
 export const MODELS = [
   { name: "MODAL",         note: "struck bar" },
@@ -109,6 +110,7 @@ function layout() {
 const ROW = [
   { key: "polyphony", label: "POLYPHONY" },
 ];
+const CELL_BTN = 58;
 // the octave pair sits beside the polyphony cell rather than in it: it's a
 // stepper, not a cycle, and going DOWN three should not mean pressing up nine
 
@@ -172,14 +174,16 @@ export function draw(g, st, live = null) {
   g.fillRect(0, L.stripTop, W, H - L.stripTop);
   g.fillStyle = C.line;
   g.fillRect(0, L.stripTop, W, 2);
+  // polyphony is a stepper like everything else that isn't an on/off
   for (let i = 0; i < ROW.length; i++) {
     const rc = L.cell(i, ROW.length);
-    g.fillStyle = C.btn;
-    rr(g, rc.x, rc.y, rc.w, rc.h, 10); g.fill();
-    label(g, ROW[i].label, rc.x + rc.w / 2, rc.y + 17, 15, C.dim, "center");
-    label(g, valueOf(st, ROW[i].key), rc.x + rc.w / 2, rc.y + 42, 22, C.text, "center");
-    if (ROW[i].key === "polyphony")
-      label(g, POLY_NOTE[st.polyphony] || "", rc.x + rc.w - 18, rc.y + rc.h / 2 + 2, 15, C.dim, "right");
+    drawStepper(g, rc, ROW[i].label, valueOf(st, ROW[i].key), {
+      btnW: CELL_BTN,
+      loOff: st.polyphony <= POLY[0],
+      hiOff: st.polyphony >= POLY[POLY.length - 1],
+    });
+    label(g, POLY_NOTE[st.polyphony] || "",
+          rc.x + rc.w / 2, rc.y + rc.h - 9, 13, C.dim, "center");
   }
   drawOctave(g, L.oct, st.octave | 0);
   /* Nothing is patched into the module's input, so Rings supplies its own
@@ -207,8 +211,9 @@ export function hit(u, v) {
   }
   for (let i = 0; i < ROW.length; i++) {
     const rc = L.cell(i, ROW.length);
-    if (px >= rc.x && px <= rc.x + rc.w && py >= rc.y && py <= rc.y + rc.h)
-      return { type: "cycle", key: ROW[i].key };
+    if (px < rc.x || px > rc.x + rc.w || py < rc.y || py > rc.y + rc.h) continue;
+    const d = hitStepper(px, py, rc, CELL_BTN);
+    return d ? { type: "cycle", key: ROW[i].key, d } : { type: "none" };
   }
   const oh = hitOctave(px, py, L.oct);
   if (oh) return oh;
@@ -229,7 +234,10 @@ export function centres() {
   for (const k of KNOBS) { out[k.key] = [x, L.knobY]; x += 232; }
   for (let i = 0; i < ROW.length; i++) {
     const rc = L.cell(i, ROW.length);
+    const c = stepperCentres(rc, CELL_BTN);
     out[ROW[i].key] = [rc.x + rc.w / 2, rc.y + rc.h / 2];
+    out[ROW[i].key + "Down"] = c.down;
+    out[ROW[i].key + "Up"] = c.up;
   }
   Object.assign(out, octaveCentres(L.oct));
   return out;
@@ -239,8 +247,8 @@ export const stepOctave = kitStepOctave;
 export function cycle(st, key, dir = 1) {
   if (key === "model") st.model = (st.model + dir + MODELS.length) % MODELS.length;
   else if (key === "polyphony") {
-    const i = POLY.indexOf(st.polyphony);
-    st.polyphony = POLY[(i < 0 ? 0 : i + dir + POLY.length) % POLY.length];
+    const i = Math.max(0, POLY.indexOf(st.polyphony));
+    st.polyphony = POLY[Math.max(0, Math.min(POLY.length - 1, i + dir))];
   }
   return st;
 }

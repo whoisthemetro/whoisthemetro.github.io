@@ -23,9 +23,18 @@
    sheet is the drag surface, so your thumb leaving the knob doesn't
    drop the value.
 
-   It sits at the BOTTOM and only as tall as it needs to be, so the
-   instrument is still on screen above it. A panel that covers the room
-   is a panel you can't play under.
+   AND IT BRINGS THE INSTRUMENT WITH IT. The panel covers the desk, so
+   the keyboard it belongs to is behind it and out of reach — a set of
+   parameters for something you can no longer play. So the sheet draws
+   its own keybed underneath: big keys, at the bottom of the screen where
+   a thumb already is, feeding exactly the same synthPress() the wooden
+   one in the room feeds.
+
+   The in-world panel is HIDDEN while the sheet is up. An earlier version
+   left it there on the theory that other people in the room should see
+   what you're working on — which was simply wrong: panel visibility is
+   never broadcast, so nobody has ever seen anyone else's. It was just the
+   same panel drawn twice.
    ============================================================ */
 
 const SHEET_ID = "panel-sheet";
@@ -37,18 +46,35 @@ const SHEET_ID = "panel-sheet";
    whole desk. */
 const SWEEP_PX = 180;
 
+/* How many keys the keybed shows. The room's is fifteen, which on a phone
+   would be 26 css px each — narrower than a fingertip. Ten is about 39 px on
+   a 390 px screen, which is a real target, and the OCTAVE stepper on the
+   panel above reaches everything the other five would have. */
+const SHEET_KEYS = 10;
+
 export function createPanelSheet() {
   let host = null, canvas = null, ctx = null;
+  let keysCv = null, keysCtx = null;
   let open = null;          // the panel spec while one is up
   let drag = null;          // { key, start, x0, y0, moved }
+  let keyDown = -1;         // which key a finger is on, for the lit state
 
   function build() {
     host = document.createElement("div");
     host.id = SHEET_ID;
     canvas = document.createElement("canvas");
     host.appendChild(canvas);
+    keysCv = document.createElement("canvas");
+    keysCv.className = "sheet-keys";
+    host.appendChild(keysCv);
     document.body.appendChild(host);
     ctx = canvas.getContext("2d");
+    keysCtx = keysCv.getContext("2d");
+
+    keysCv.addEventListener("pointerdown", onKeyDown);
+    keysCv.addEventListener("pointermove", onKeyMove);
+    keysCv.addEventListener("pointerup", onKeyUp);
+    keysCv.addEventListener("pointercancel", onKeyUp);
 
     // pointer events, not touch events: one code path for a finger and for
     // a stylus, and it still works if somebody opens this on a tablet
@@ -73,9 +99,16 @@ export function createPanelSheet() {
   // hit() speaks u,v like a raycast does, with v flipped
   const hitAt = (px, py) => open.mod.hit(px / open.size.w, 1 - py / open.size.h, ...(open.hitArgs || []));
 
+  /* Capture the pointer so a drag that leaves the element keeps arriving —
+     but NEVER let it throw. setPointerCapture rejects an id it doesn't
+     consider active, and because it ran first, the exception took the whole
+     handler down with it: the key never sounded and the knob never latched.
+     A capture is an optimisation; the note is the point. */
+  const capture = (el, id) => { try { el.setPointerCapture?.(id); } catch (e) {} };
+
   function onDown(e) {
     if (!open) return;
-    canvas.setPointerCapture?.(e.pointerId);
+    capture(canvas, e.pointerId);
     const { px, py } = toCanvas(e);
     const h = hitAt(px, py);
     if (h && h.type === "knob") {
@@ -110,9 +143,60 @@ export function createPanelSheet() {
     paint();
   }
 
+  /* ---------- the keybed ---------- */
+
+  const KW = 1024, KH = 260;      // its own canvas, drawn in its own pixels
+  const keyIndexAt = (clientX) => {
+    const r = keysCv.getBoundingClientRect();
+    const i = Math.floor(((clientX - r.left) / r.width) * SHEET_KEYS);
+    return Math.max(0, Math.min(SHEET_KEYS - 1, i));
+  };
+
+  function paintKeys() {
+    if (!open || !open.keys) return;
+    const g = keysCtx, kw = KW / SHEET_KEYS;
+    g.clearRect(0, 0, KW, KH);
+    for (let i = 0; i < SHEET_KEYS; i++) {
+      const x = i * kw, lit = i === keyDown;
+      g.fillStyle = lit ? "#ffb347" : "#f2f2ef";
+      g.fillRect(x + 2, 0, kw - 4, KH);
+      // a shadow down the right edge, so a row of white blocks reads as keys
+      g.fillStyle = "rgba(0,0,0,0.16)";
+      g.fillRect(x + kw - 8, 0, 6, KH);
+      const name = open.keys.label ? open.keys.label(i) : "";
+      if (name) {
+        g.fillStyle = lit ? "#6b3b00" : "#8d8d86";
+        g.font = "34px ui-monospace, Menlo, monospace";
+        g.textAlign = "center";
+        g.textBaseline = "alphabetic";
+        g.fillText(name, x + kw / 2, KH - 22);
+      }
+    }
+  }
+
+  function onKeyDown(e) {
+    if (!open || !open.keys) return;
+    capture(keysCv, e.pointerId);
+    keyDown = keyIndexAt(e.clientX);
+    open.keys.press(keyDown);
+    paintKeys();
+  }
+  function onKeyMove(e) {
+    if (!open || !open.keys || keyDown < 0) return;
+    // sliding along the keys plays them, the way a thumb across a keyboard does
+    const i = keyIndexAt(e.clientX);
+    if (i !== keyDown) { keyDown = i; open.keys.press(i); paintKeys(); }
+  }
+  function onKeyUp() {
+    if (keyDown < 0) return;
+    keyDown = -1;
+    paintKeys();
+  }
+
   function paint() {
     if (!open) return;
     open.mod.draw(ctx, open.state(), open.live ? open.live() : null);
+    paintKeys();
   }
 
   return {
@@ -125,11 +209,14 @@ export function createPanelSheet() {
       canvas.width = spec.size.w;
       canvas.height = spec.size.h;
       host.style.setProperty("--sheet-aspect", `${spec.size.w} / ${spec.size.h}`);
+      keysCv.width = KW; keysCv.height = KH;
+      host.classList.toggle("has-keys", !!spec.keys);
       host.classList.add("show");
+      keyDown = -1;
       paint();
     },
     hide() {
-      open = null; drag = null;
+      open = null; drag = null; keyDown = -1;
       host && host.classList.remove("show");
     },
     isOpen: () => !!open,

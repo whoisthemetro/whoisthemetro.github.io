@@ -3716,8 +3716,20 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
   ringsPanel.group.position.set(0, 1.08, 0.05);
   ringsPanel.group.rotation.x = 0.10;
   tele.add(ringsPanel.group);
-  const setRingsPanelOpen = (on) => {
-    ringsPanel.group.visible = !!on;
+  /* OPEN and VISIBLE are two different things, and conflating them cost a
+     debugging pass. `on` is whether the panel is open; `inWorld` is whether
+     the 3D copy should be DRAWN. On a phone the panel lives on a sheet
+     locked to the screen and the 3D one is left undrawn — the same panel
+     twice was exactly what it looked like. Nobody else ever sees it either:
+     panel visibility is never broadcast.
+
+     So the open flag is its own variable rather than being read back off
+     `group.visible`. It used to be the latter, which meant "open but not
+     drawn" reported itself CLOSED and the sheet never appeared. */
+  let ringsOpen = false;
+  const setRingsPanelOpen = (on, inWorld = true) => {
+    ringsOpen = !!on;
+    ringsPanel.group.visible = !!on && !!inWorld;
     ringsLed.material.color.setHex(on ? 0x7dffa8 : 0x2f8f5a);
     if (on) ringsPanel.markDirty();
   };
@@ -6806,8 +6818,20 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
   synthPanel.group.position.set(0, 0.50, -0.06);
   synthPanel.group.rotation.x = -0.20;
   midiKeys.add(synthPanel.group);
-  const setSynthPanelOpen = (on) => {
-    synthPanel.group.visible = !!on;
+  /* OPEN and VISIBLE are two different things, and conflating them cost a
+     debugging pass. `on` is whether the panel is open; `inWorld` is whether
+     the 3D copy should be DRAWN. On a phone the panel lives on a sheet
+     locked to the screen and the 3D one is left undrawn — the same panel
+     twice was exactly what it looked like. Nobody else ever sees it either:
+     panel visibility is never broadcast.
+
+     So the open flag is its own variable rather than being read back off
+     `group.visible`. It used to be the latter, which meant "open but not
+     drawn" reported itself CLOSED and the sheet never appeared. */
+  let synthOpen = false;
+  const setSynthPanelOpen = (on, inWorld = true) => {
+    synthOpen = !!on;
+    synthPanel.group.visible = !!on && !!inWorld;
     synthLed.material.color.setHex(on ? 0x7ec8ff : 0x2b6f9c);
     if (on) synthPanel.markDirty();
   };
@@ -10469,7 +10493,7 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     pianoMesh: midiKeybed, pressPianoKey,
     pianoVoiceMesh: midiBody,
     synth: { panel: synthPanel, btn: synthBtn, screen: synthPanel.screen, setOpen: setSynthPanelOpen,
-             isOpen: () => synthPanel.group.visible },
+             isOpen: () => synthOpen, inWorld: () => synthPanel.group.visible },
     stompHits, setStompLED, stompIds: Object.keys(stompLEDs),
     // the guitar filter treadle (wah-style lowpass) — see main.js openFilter
     filterPedalHit, setGuitarPedalTilt,
@@ -10561,7 +10585,7 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     },
     edrumHits, pressEdrum, guitarHits, strumTele, guitarVoiceHits, setGuitarVoiceSwitch,
     rings: { panel: ringsPanel, btn: ringsBtn, screen: ringsPanel.screen,
-             setOpen: setRingsPanelOpen, isOpen: () => ringsPanel.group.visible },
+             setOpen: setRingsPanelOpen, isOpen: () => ringsOpen, inWorld: () => ringsPanel.group.visible },
     addAccessory,
     // how much arcade you should hear from (x, z): 1 inside, a leak
     // through the open closet doorway, near-nothing across the bedroom

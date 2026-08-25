@@ -607,6 +607,51 @@ and the first one is the one that was actually killing her.
   Chrome with clip fetches broken and asserts `speechSynthesis.speak` is
   never called.
 
+## 2026-08-24 — the phone panel gets a keyboard, and every setting gets a minus
+
+Three things, all from one screenshot of the sheet on a phone.
+
+**The panel was on screen twice.** The sheet was locked to the bottom AND the
+3D one was still hanging over the desk behind it. It had been left up on the
+theory that other people in the room should see what you're working on —
+which was simply wrong. Panel visibility is never broadcast; nobody has ever
+seen anyone else's. `setOpen(on, inWorld)` now draws the 3D copy only when
+there's no sheet.
+
+That needed **open and visible to stop being the same thing**. `isOpen()` was
+`() => group.visible`, so "open but not drawn" reported itself CLOSED and the
+sheet never appeared at all. It's its own flag now, and the places that mean
+"is the 3D one on screen" (the raycast list, the per-frame repaint) ask
+`inWorld()`.
+
+**The panel covers the keyboard it belongs to** — a set of parameters for
+something you can no longer reach. So the sheet carries its own keybed: ten
+keys, 38 × 96 CSS px on a phone, at the bottom where a thumb already is,
+feeding exactly the same `synthPress()` the wooden one in the room feeds, so
+scale, root, transpose and the arp all behave identically. Ten and not the
+room's fifteen because fifteen would be 26 px each, narrower than a
+fingertip, and the OCTAVE stepper reaches everything the other five would
+have. Sliding along them plays them. RINGS gets one too, walking the
+pentatonic neck.
+
+**Every setting is a stepper now** — minus at the left of the cell, plus at
+the right — except ARP and HOLD, which stay taps because a minus and a plus
+on an on/off is two buttons doing one job. Tap-to-cycle meant going back one
+scale was five taps forward, and nothing on the face said a tap did anything.
+Two of them were forward-only in the code as well (`octaves` and, once TEMPO
+stopped being a knob, `bpm`), which is exactly the bug the steppers exist to
+prevent: a minus that silently goes up.
+
+Two smaller things the work turned up:
+
+- **The cells needed bodies.** A minus at one cell's left edge sits right
+  beside the previous cell's plus, so two neighbours read as one run of four
+  buttons. Each cell is drawn as a unit now.
+- **`setPointerCapture` can throw**, and because it ran first, the exception
+  took the whole handler down with it — the key never sounded and the knob
+  never latched. It's wrapped: a capture is an optimisation, the note is the
+  point.
+
 ## 2026-08-24 — one size for both module buttons
 
 The button on the keyboard that opens PLAITS and the button on the guitar

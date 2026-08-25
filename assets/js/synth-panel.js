@@ -32,7 +32,8 @@
 
 import * as THREE from "three";
 import { C, rr, label, drawKnob, grabFrac, clamp01,
-         OCTAVE_RANGE, stepOctave, drawOctave, hitOctave, octaveCentres } from "./panel-kit.js";
+         OCTAVE_RANGE, stepOctave, drawOctave, hitOctave, octaveCentres,
+         drawStepper, hitStepper, stepperCentres } from "./panel-kit.js";
 
 /* ---------- the module, as it ships ---------- */
 
@@ -164,7 +165,7 @@ const ROW_B = [
   { key: "scale", label: "SCALE" },
   { key: "root", label: "ROOT" },
   { key: "octaves", label: "ARP OCT" },
-  { key: "bpm", label: "TEMPO", knob: true },
+  { key: "bpm", label: "TEMPO" },
 ];
 
 function valueOf(st, key) {
@@ -181,7 +182,18 @@ function valueOf(st, key) {
   }
 }
 
+// the −/+ buttons inside a row cell. narrower than the octave stepper's,
+// because a row cell is 234 wide and two 78s would leave no room for a word
+const CELL_BTN = 58;
+
 function drawButton(g, r, b, st, live) {
+  /* Everything that isn't a true on/off is a STEPPER: minus left, plus
+     right, value between. Tap-to-cycle meant going back one scale was five
+     taps forward, and nothing on the face said a tap did anything at all. */
+  if (!b.toggle) {
+    drawStepper(g, r, b.label, valueOf(st, b.key), { btnW: CELL_BTN, valueSize: 20 });
+    return;
+  }
   const on = b.toggle && st[b.key];
   g.fillStyle = on ? C.btnOn : C.btn;
   rr(g, r.x, r.y, r.w, r.h, 10); g.fill();
@@ -309,12 +321,12 @@ export function hit(u, v) {
   const rows = [[ROW_A, L.rowAY], [ROW_B, L.rowBY]];
   for (const [row, ry] of rows) {
     for (let i = 0; i < row.length; i++) {
-      const r = L.cell(0, i, ry, row.length);
-      if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) {
-        return row[i].knob
-          ? { type: "knob", key: row[i].key, frac: (px - r.x) / r.w }
-          : { type: "cycle", key: row[i].key };
-      }
+      const b = row[i], r = L.cell(0, i, ry, row.length);
+      if (px < r.x || px > r.x + r.w || py < r.y || py > r.y + r.h) continue;
+      if (b.toggle) return { type: "cycle", key: b.key };
+      const d = hitStepper(px, py, r, CELL_BTN);
+      // the middle of a stepper is a label, so a tap there does nothing
+      return d ? { type: "cycle", key: b.key, d } : { type: "none" };
     }
   }
   const oh = hitOctave(px, py, L.oct);
@@ -339,7 +351,10 @@ export function centres() {
   for (const [row, ry] of [[ROW_A, L.rowAY], [ROW_B, L.rowBY]]) {
     for (let i = 0; i < row.length; i++) {
       const r = L.cell(0, i, ry, row.length);
+      const c = stepperCentres(r, CELL_BTN);
       out[row[i].key] = [r.x + r.w / 2, r.y + r.h / 2];
+      out[row[i].key + "Down"] = c.down;
+      out[row[i].key + "Up"] = c.up;
     }
   }
   Object.assign(out, octaveCentres(L.oct));
@@ -360,7 +375,10 @@ export function cycle(st, key, dir = 1) {
       break;
     }
     case "root": st.root = (st.root + dir + 12) % 12; break;
-    case "octaves": st.octaves = (st.octaves % 3) + 1; break;
+    // these two were forward-only, which is exactly the thing the steppers
+    // were added to fix — a minus that silently went up isn't a minus
+    case "octaves": st.octaves = Math.max(1, Math.min(3, st.octaves + dir)); break;
+    case "bpm": st.bpm = Math.max(40, Math.min(200, Math.round(st.bpm) + dir * 2)); break;
   }
   return st;
 }

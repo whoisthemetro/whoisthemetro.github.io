@@ -686,7 +686,7 @@ function applySynthHit(h) {
     synthDirty();
   } else if (h.type === "cycle") {
     const wasHold = synth.hold;
-    SynthPanel.cycle(synth, h.key);
+    SynthPanel.cycle(synth, h.key, h.d || 1);
     // letting go of HOLD lets go of the chord — otherwise there's no way
     // back to an empty arp except by un-tapping every key you tapped
     if (h.key === "hold" && wasHold && !synth.hold) arpStop();
@@ -695,7 +695,8 @@ function applySynthHit(h) {
     toast(`${h.key.toUpperCase()}: ${
       h.key === "scale" ? synth.scale : h.key === "root" ? SynthPanel.ROOT_NAMES[synth.root]
       : h.key === "mode" ? SynthPanel.MODES[synth.mode] : h.key === "rate" ? SynthPanel.RATES[synth.rate].label
-      : h.key === "octaves" ? synth.octaves : (synth[h.key] ? "on" : "off")}`);
+      : h.key === "octaves" ? synth.octaves : h.key === "bpm" ? `${Math.round(synth.bpm)} bpm`
+      : (synth[h.key] ? "on" : "off")}`);
     synthDirty();
   } else if (h.type === "octave") {
     const was = synth.octave | 0;
@@ -1652,7 +1653,7 @@ function castAt(ndcX, ndcY) {
     raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera);
   }
   // doors are included as blockers so notes can't be pinned onto them
-  const targets = [cat.hitMesh, toyHit, bartender.hitMesh, guide.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.synth.btn, ...(world.synth.isOpen() ? [world.synth.screen] : []), world.rings.btn, ...(world.rings.isOpen() ? [world.rings.screen] : []), world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, ...world.elevHits, ...world.elevCallHits, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.guitarVoiceHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, world.pool.hit, world.pool.resetHit, world.pool.joinHit, world.pool2.hit, world.pool2.resetHit, world.pool2.joinHit, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.radioHits, ...world.laRadioHits, ...world.filterPedalHit, ...world.vacuumHits, ...world.studio.screens, ...world.studio.doorHits, ...notesWall.raycastTargets(), ...world.monthPlate.meshes, screenMesh, world.gym.joinHit, world.gym.exitHit, ...world.gym.readyHits, ...world.podium.hits, ...world.garden.hits, ...(world.bath ? world.bath.hits : []), ...(world.bath ? world.bath.tags.meshes() : []), ...world.blockers];
+  const targets = [cat.hitMesh, toyHit, bartender.hitMesh, guide.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.synth.btn, ...(world.synth.inWorld() ? [world.synth.screen] : []), world.rings.btn, ...(world.rings.inWorld() ? [world.rings.screen] : []), world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, ...world.elevHits, ...world.elevCallHits, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.guitarVoiceHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, world.pool.hit, world.pool.resetHit, world.pool.joinHit, world.pool2.hit, world.pool2.resetHit, world.pool2.joinHit, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.radioHits, ...world.laRadioHits, ...world.filterPedalHit, ...world.vacuumHits, ...world.studio.screens, ...world.studio.doorHits, ...notesWall.raycastTargets(), ...world.monthPlate.meshes, screenMesh, world.gym.joinHit, world.gym.exitHit, ...world.gym.readyHits, ...world.podium.hits, ...world.garden.hits, ...(world.bath ? world.bath.hits : []), ...(world.bath ? world.bath.tags.meshes() : []), ...world.blockers];
   /* an open in-world window is CAST FIRST and wins outright if it's hit at
      all. it draws with depthTest off — it reads over the room the way a DOM
      overlay does — so sorting it by distance would let anything standing
@@ -2226,7 +2227,7 @@ controls.onAction((ndcX, ndcY) => {
        for the same reason the keyboard's button does both: a RINGS panel
        over a guitar playing a plain delay line is a panel that does nothing. */
     const open = !world.rings.isOpen();
-    world.rings.setOpen(open);
+    world.rings.setOpen(open, !IS_TOUCH);
     if (open) {
       guitarVoice = RINGS_VOICE;
       try { localStorage.setItem("metro.gvoice", String(guitarVoice)); } catch (e) {}
@@ -2300,7 +2301,7 @@ controls.onAction((ndcX, ndcY) => {
        describe. Opening a Plaits panel over a keyboard playing an e-piano
        would be a panel that does nothing. */
     const open = !world.synth.isOpen();
-    world.synth.setOpen(open);
+    world.synth.setOpen(open, !IS_TOUCH);
     if (open) {
       pianoVoice = PLAITS_VOICE;
       try { localStorage.setItem("metro.voice", String(pianoVoice)); } catch (e) {}
@@ -3457,7 +3458,7 @@ function applyRingsHit(h) {
     toast(now === 0 ? "octave: normal" : `octave ${now > 0 ? "+" : ""}${now}`);
     ringsDirty();
   } else if (h.type === "cycle") {
-    RingsPanel.cycle(rings, h.key);
+    RingsPanel.cycle(rings, h.key, h.d || 1);
     ringsApply();
     toast(h.key === "model" ? RingsPanel.MODELS[rings.model].name : `${rings.polyphony} voices`);
     ringsDirty();
@@ -3482,9 +3483,18 @@ function applyRingsHit(h) {
 let synthDrag = null;
 const PANELS = {
   synth: { mod: SynthPanel, state: () => synth, apply: () => plaitsApply(), dirty: synthDirty,
-           tap: applySynthHit, live: synthLive, world: () => world.synth },
+           tap: applySynthHit, live: synthLive, world: () => world.synth,
+           /* The sheet's own keybed. It feeds synthPress — the SAME call the
+              wooden keyboard in the room makes — so the scale, the root, the
+              transpose and the arp all behave exactly as they do up there. */
+           keys: { press: (i) => synthPress(i),
+                   label: (i) => SynthPanel.ROOT_NAMES[((semiFor(i) % 12) + 12) % 12] } },
   rings: { mod: RingsPanel, state: () => rings, apply: () => ringsApply(), dirty: ringsDirty,
-           tap: applyRingsHit, live: ringsLive, world: () => world.rings },
+           tap: applyRingsHit, live: ringsLive, world: () => world.rings,
+           // the guitar's frets: guitarPluck walks the pentatonic neck, and
+           // the tele wiggles the same way it does when you strum it up there
+           keys: { press: (i) => { guitarPluck(i, RINGS_VOICE); world.strumTele?.(); },
+                   label: () => "" } },
 };
 
 /* THE SAME PANEL, LOCKED TO THE SCREEN, ON TOUCH.
@@ -3506,6 +3516,7 @@ function openPanelSheet(which) {
     // stepping an engine and cycling a scale all behave identically
     tap: (h) => { P.tap(h); if (!P.world().isOpen()) panelSheet.hide(); else panelSheet.refresh(); },
     live: P.live,
+    keys: P.keys,
   });
 }
 // whichever panel is up owns the sheet; neither means no sheet
@@ -6241,8 +6252,8 @@ renderer.setAnimationLoop(() => {
      window is right there to open it again. */
   if (bedroomHere()) {
     arpTick();
-    if (world.synth.isOpen()) world.synth.panel.render(synth, synthLive);
-    if (world.rings.isOpen()) world.rings.panel.render(rings, ringsLive);
+    if (world.synth.inWorld()) world.synth.panel.render(synth, synthLive);
+    if (world.rings.inWorld()) world.rings.panel.render(rings, ringsLive);
     // the sheet shows the arp playhead too, so it repaints on the same beat
     // the in-world panel does — markDirty is what says something moved
     if (panelSheet.isOpen() && sheetDirty) { sheetDirty = false; panelSheet.refresh(); }

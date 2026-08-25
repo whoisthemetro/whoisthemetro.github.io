@@ -1102,3 +1102,22 @@ body.tagging #aim-tip { display: none; }
   user-select: none;
   -webkit-touch-callout: none;
 }
+
+/* the sheet's own keybed, under the parameters. big keys, bottom of the
+   screen, because the panel covers the desk and the wooden keyboard with it */
+#panel-sheet .sheet-keys {
+  display: none;
+  width: 100%;
+  aspect-ratio: 1024 / 260;
+  height: auto;
+  margin-top: 6px;
+  border-radius: 12px;
+  border: 1px solid rgba(126, 200, 255, 0.22);
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.55);
+  pointer-events: auto;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+#panel-sheet.has-keys .sheet-keys { display: block; }

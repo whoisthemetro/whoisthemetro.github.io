@@ -26,6 +26,8 @@ export const WHATS_NEW = [
     date: "2026-08-22",
     items: [
       "on a phone, the synth and guitar panels now sit at the bottom of the screen where your thumb is. drag the knobs with your finger instead of trying to aim at them",
+      "and the phone panel brings a keyboard with it — big keys along the bottom, so you can play while the parameters are up",
+      "every setting has a minus and a plus now instead of tapping to cycle forward, so you can go back one scale without going forward through five",
       "both the keyboard and the guitar have an octave shifter now, so the same keys and frets can play three octaves lower or two higher",
       "the guitar has a real module in it now. the same kind of thing as the keyboard's, but a resonator: press the button on its body and you get six models and four knobs, and every fret rings it",
       "the synth button on the keyboard can be moved where metro wants it",

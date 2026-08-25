@@ -79,30 +79,80 @@ export function stepOctave(st, d) {
   return st.octave;
 }
 
-// r is {x, y, w, h} — the whole stepper, buttons included
-export function drawOctave(g, r, octave, title = "OCTAVE") {
-  const lo = octave <= OCTAVE_RANGE[0], hi = octave >= OCTAVE_RANGE[1];
-  for (const [i, glyph, off] of [[0, "\u2212", lo], [1, "+", hi]]) {
-    const bx = i === 0 ? r.x : r.x + r.w - OCT_BTN;
-    g.fillStyle = C.btn; rr(g, bx, r.y, OCT_BTN, r.h, 10); g.fill();
-    label(g, glyph, bx + OCT_BTN / 2, r.y + r.h / 2, 34, off ? "#3b4048" : C.text, "center");
+/* A STEPPER CELL: a minus at the left edge, a plus at the right, the label
+   on top and the value between them.
+
+   Almost every setting on both panels is one of these now. They used to be
+   CYCLE cells — tap anywhere and it advances — which is fine for a two-state
+   toggle and wrong for everything else: going back one scale meant tapping
+   forward through five, and there is no way to discover that a tap even
+   does anything. Only the true toggles (ARP, HOLD) stay taps, because a
+   minus and a plus on an on/off is two buttons doing one job.
+
+   r is {x, y, w, h} — the whole cell, buttons included. */
+export function drawStepper(g, r, title, valueText, opts = {}) {
+  const bw = opts.btnW || OCT_BTN;
+  const hot = opts.hot;
+  /* The whole cell gets a body FIRST. Without it the buttons floated on the
+     strip, and since a minus sits at one cell's left edge and a plus at the
+     previous cell's right edge, two neighbours read as one run of four
+     buttons — you couldn't tell which pair belonged to which word. */
+  g.fillStyle = "#161d26";
+  rr(g, r.x, r.y, r.w, r.h, 10); g.fill();
+  g.strokeStyle = "rgba(126,200,255,0.10)"; g.lineWidth = 1.5;
+  rr(g, r.x + 0.75, r.y + 0.75, r.w - 1.5, r.h - 1.5, 9); g.stroke();
+
+  for (const [i, glyph, off] of [[0, "\u2212", opts.loOff], [1, "+", opts.hiOff]]) {
+    const bx = i === 0 ? r.x : r.x + r.w - bw;
+    g.fillStyle = C.btn; rr(g, bx, r.y, bw, r.h, 10); g.fill();
+    label(g, glyph, bx + bw / 2, r.y + r.h / 2 + 1, Math.min(34, r.h * 0.55),
+          off ? "#3b4048" : C.text, "center");
   }
-  label(g, title, r.x + r.w / 2, r.y + 17, 15, C.dim, "center");
-  label(g, octave > 0 ? `+${octave}` : String(octave),
-        r.x + r.w / 2, r.y + 44, 24, octave ? C.hot : C.text, "center");
+  label(g, title, r.x + r.w / 2, r.y + 17, 14, C.dim, "center");
+
+  /* Fit the value to the gap BETWEEN the buttons. "CHROMATIC" and "AS
+     PLAYED" are long enough to run under them at a fixed size, and a value
+     you can't read is worse than a small one. */
+  const room = r.w - bw * 2 - 12;
+  let size = opts.valueSize || 21;
+  g.font = `${size}px ui-monospace, Menlo, monospace`;
+  while (size > 11 && g.measureText(valueText).width > room) {
+    size -= 1;
+    g.font = `${size}px ui-monospace, Menlo, monospace`;
+  }
+  label(g, valueText, r.x + r.w / 2, r.y + 43, size, hot ? C.hot : C.text, "center");
+}
+
+export function hitStepper(px, py, r, btnW) {
+  const bw = btnW || OCT_BTN;
+  if (py < r.y || py > r.y + r.h || px < r.x || px > r.x + r.w) return null;
+  if (px <= r.x + bw) return -1;
+  if (px >= r.x + r.w - bw) return 1;
+  return 0;                       // the middle: a label, not a control
+}
+
+export const stepperCentres = (r, btnW) => {
+  const bw = btnW || OCT_BTN;
+  return { down: [r.x + bw / 2, r.y + r.h / 2], up: [r.x + r.w - bw / 2, r.y + r.h / 2] };
+};
+
+// the octave stepper is just a stepper that knows its own limits
+export function drawOctave(g, r, octave, title = "OCTAVE") {
+  drawStepper(g, r, title, octave > 0 ? `+${octave}` : String(octave), {
+    loOff: octave <= OCTAVE_RANGE[0], hiOff: octave >= OCTAVE_RANGE[1],
+    hot: !!octave, valueSize: 24,
+  });
 }
 
 export function hitOctave(px, py, r) {
-  if (py < r.y || py > r.y + r.h) return null;
-  if (px >= r.x && px <= r.x + OCT_BTN) return { type: "octave", d: -1 };
-  if (px >= r.x + r.w - OCT_BTN && px <= r.x + r.w) return { type: "octave", d: 1 };
-  return null;
+  const d = hitStepper(px, py, r);
+  return d ? { type: "octave", d } : null;
 }
 
-export const octaveCentres = (r) => ({
-  octaveDown: [r.x + OCT_BTN / 2, r.y + r.h / 2],
-  octaveUp: [r.x + r.w - OCT_BTN / 2, r.y + r.h / 2],
-});
+export const octaveCentres = (r) => {
+  const c = stepperCentres(r);
+  return { octaveDown: c.down, octaveUp: c.up };
+};
 
 /* Where a grab on the knob face lands, as 0..1 around the same sweep.
    A mouse ignores this — knobs are grabbed and turned, and a tap that
