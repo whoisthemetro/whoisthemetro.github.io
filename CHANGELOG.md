@@ -607,6 +607,25 @@ and the first one is the one that was actually killing her.
   Chrome with clip fetches broken and asserts `speechSynthesis.speak` is
   never called.
 
+## 2026-08-24 — one size for both module buttons
+
+The button on the keyboard that opens PLAITS and the button on the guitar
+that opens RINGS are the same control doing the same job on two instruments.
+They were written separately and had drifted — 0.055×0.012×0.03 against
+0.042×0.014×0.026 — which is obvious the moment you look at both in one
+session. `MOD_BTN` in world.js is the one size now, and both read it, so
+neither can wander off again. Colour is the only deliberate difference: blue
+for the synth, green for the resonator.
+
+**That was not the whole difference, though, and the rest isn't code.** The
+saved layout scales `synthbtn` to **1.71×** — somebody sized it up with `+` in
+the editor — while `ringsbtn` sits at 1.0. So the two still render at
+different sizes, and changing the source can't fix it: `applyLayout` restores
+the stored scale over whatever world.js says, exactly as it does for position.
+Same trap as the panel placement earlier today. Evening them up is a layout
+edit: `R` on the synth button drops it back to the shared size, or eleven
+presses of `+` on the guitar's takes it to 1.71 (1.05¹¹ = 1.710).
+
 ## 2026-08-24 — the panels come to the thumb
 
 PLAITS and RINGS hang in the room on a canvas, which is right for a mouse and

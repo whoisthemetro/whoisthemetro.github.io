@@ -31,6 +31,16 @@ import { createGraffiti } from "./graffiti.js";
 import { makePanel as makeSynthPanel } from "./synth-panel.js";
 import { makeMonthPlate } from "./wall-months.js";
 import { makePanel as makeRingsPanel } from "./rings-panel.js";
+
+/* The two module buttons — the one on the keyboard that opens PLAITS and the
+   one on the guitar that opens RINGS — are ONE size, defined here, because
+   they are the same control doing the same job on two instruments. They were
+   written separately and drifted (0.055x0.012x0.03 against 0.042x0.014x0.026),
+   which is visible the moment you look at both in a session. Same reason the
+   panels share panel-kit.js: two copies of a control is two copies that stop
+   matching. Colour is the only thing that differs, and that's deliberate —
+   blue for the synth, green for the resonator. */
+const MOD_BTN = { w: 0.055, h: 0.012, d: 0.03, ledW: 0.034, ledH: 0.008, ledY: 0.0065 };
 import { buildRoom as buildStudioRoom } from "./studio/room.js";
 import { buildGarden } from "./garden/room.js";
 import { GARDEN_TRACKS } from "./garden-catalog.js";
@@ -3686,15 +3696,15 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
   ringsBtnGrp.position.set(-0.075, 0.052, 0.05);   // on the horn, clear of the strings
   tele.add(ringsBtnGrp);
   const ringsBtn = new THREE.Mesh(
-    new THREE.BoxGeometry(0.042, 0.014, 0.026),
+    new THREE.BoxGeometry(MOD_BTN.w, MOD_BTN.h, MOD_BTN.d),
     new THREE.MeshLambertMaterial({ color: 0x243a2c, emissive: 0x0d2416 }));
   ringsBtn.userData.ringsBtn = true;
   ringsBtnGrp.add(ringsBtn);
   const ringsLed = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.026, 0.007),
+    new THREE.PlaneGeometry(MOD_BTN.ledW, MOD_BTN.ledH),
     new THREE.MeshBasicMaterial({ color: 0x2f8f5a }));
   ringsLed.rotation.x = -Math.PI / 2;
-  ringsLed.position.set(0, 0.0075, 0);
+  ringsLed.position.set(0, MOD_BTN.ledY, 0);
   ringsBtnGrp.add(ringsLed);
 
   const ringsPanel = makeRingsPanel();
@@ -6776,16 +6786,16 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
   synthBtnGrp.position.set(-0.42, 0.035, 0.02);   // on the chassis, left of the keys
   midiKeys.add(synthBtnGrp);
   const synthBtn = new THREE.Mesh(
-    new THREE.BoxGeometry(0.055, 0.012, 0.03),
+    new THREE.BoxGeometry(MOD_BTN.w, MOD_BTN.h, MOD_BTN.d),
     new THREE.MeshLambertMaterial({ color: 0x2a3a4a, emissive: 0x0e2233 }));
   synthBtn.userData.synthBtn = true;
   synthBtnGrp.add(synthBtn);
   // a lit strip on the button face, so it reads as a control and not a scuff
   const synthLed = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.034, 0.008),
+    new THREE.PlaneGeometry(MOD_BTN.ledW, MOD_BTN.ledH),
     new THREE.MeshBasicMaterial({ color: 0x2b6f9c }));
   synthLed.rotation.x = -Math.PI / 2;
-  synthLed.position.set(0, 0.0065, 0);
+  synthLed.position.set(0, MOD_BTN.ledY, 0);
   synthBtnGrp.add(synthLed);
 
   const synthPanel = makeSynthPanel();
