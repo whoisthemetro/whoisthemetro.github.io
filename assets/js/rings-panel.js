@@ -21,7 +21,7 @@
    ============================================================ */
 
 import * as THREE from "three";
-import { C, rr, label, drawKnob, grabFrac, clamp01,
+import { C, rr, label, drawKnob, knobReach, grabFrac, clamp01,
          OCTAVE_RANGE, OCT_BTN, stepOctave as kitStepOctave,
          drawOctave, hitOctave, octaveCentres,
          drawStepper, hitStepper, stepperCentres } from "./panel-kit.js";
@@ -44,7 +44,6 @@ const KNOBS = [
   { key: "damping",    label: "DAMPING" },
   { key: "position",   label: "POSITION" },
 ];
-const KNOB_R = 42;
 
 export const POLY = [1, 2, 4];
 
@@ -74,70 +73,96 @@ export function saveState(st) {
 
 /* ---------- drawing ---------- */
 
-/* THE SAME SHAPE AS THE PLAITS PANEL — 1024x560, not 1024x480.
+/* ---------- three shapes of the same panel ----------
+   Same reasoning as the Plaits panel next door (synth-panel.js has the long
+   version): a landscape canvas drawn to fit a phone puts a knob at 31 css px
+   in portrait and pushes the top of the panel off the screen entirely in
+   landscape. So there are three layouts and one drawing, and layout(mode) is
+   the only place any of the geometry lives. */
+const SHEETS = {
+  wide:  { W: 1024, H: 560 },
+  tall:  { W: 720,  H: 1054 },
+  short: { W: 1500, H: 450 },
+};
+export const MODES_AVAILABLE = Object.keys(SHEETS);
+export const sizeOf = (mode = "wide") => ({ w: (SHEETS[mode] || SHEETS.wide).W,
+                                            h: (SHEETS[mode] || SHEETS.wide).H });
 
-   It was shorter on the theory that a panel should be sized to its contents
-   rather than to its sibling, which is a good rule that was being applied to
-   the wrong measurement. Both panels are drawn to fit the WIDTH of whatever
-   they're shown on, so height is not spare room, it is SCALE: at 480 the
-   Rings panel rendered 183 css px tall on a 390 px phone against the Plaits
-   panel's 213, and every knob, button and word inside it came out 14%
-   smaller. That is what "squished" was. Matching the aspect makes the two
-   the same size on screen, which is the thing you actually see.
+const HINT = "play the guitar with this up — every fret plucks the resonator";
 
-   The extra 80 px goes into the GAPS, not the bottom — four blocks here
-   against Plaits' five, so each one gets more air. Pooling it under the last
-   row is the hole the old comment was worried about. */
-const W = 1024, H = 560;
+function layout(mode = "wide") {
+  const M = SHEETS[mode] ? mode : "wide";
+  const { W, H } = SHEETS[M];
+  let pad, headH, headFs, subFs, mod, knobs, stripTop, cellBtn, poly, oct, hint, pips;
 
-function layout() {
-  const pad = 26;
-  const headH = 56;
-  /* The model steppers are the biggest thing on the panel after the knobs.
-     They started at 54x84, which was the hardest control to hit from across
-     a room — you're aiming a crosshair at a guitar from standing height, not
-     clicking with a mouse on a monitor. 104 overshot. btnW lives HERE rather
-     than as a local in each function: it was declared three times, in draw,
-     in hit and in centres, which is exactly how a button ends up drawn
-     somewhere its hit test isn't. */
-  const btnW = 76, modH = 92;
-  const modY = headH + 16;
-  /* 64 of air between the model block and the knobs' value text (drawKnob
-     puts that at cy - r - 16, so at radius 42 it's 58 above the centre), and
-     36 between the knobs' labels (cy + 66) and the strip. Plaits runs 18 and
-     26 because it has a row more to fit; this is the same rhythm with the
-     slack shared out. */
-  const knobY = modY + modH + 64 + 58;
-  const stripTop = knobY + 66 + 36;
-  const rowH = 62, gap = 12;
-  /* The strip is POLYPHONY and OCTAVE, and they get HALF the width EACH.
-     Polyphony used to take whatever the 300 px octave left it — 660 px for a
-     three-value stepper, a cell the width of the panel with its value
-     stranded in the middle of it. Two equal cells give the strip the same
-     rhythm the synth's rows have. */
-  const cellW = (W - pad * 2 - gap) / 2;
-  const cell = (i) => ({ x: pad + i * (cellW + gap), y: stripTop + 20, w: cellW, h: rowH });
-  const oct = cell(1);
-  // four knobs sharing the full width, level and reaching both edges
-  const knobX = (i) => pad + (W - pad * 2) / KNOBS.length * (i + 0.5);
-  return { pad, headH, btnW, modY, modH, knobY, knobX, stripTop, rowH, cell, oct };
+  if (M === "tall") {
+    /* A PHONE HELD UPRIGHT. Two knobs across instead of four, so each one
+       gets a quarter of the canvas rather than an eighth. */
+    pad = 24; headH = 76; headFs = 34; subFs = 19;
+    mod = { x: pad, y: headH + 18, w: W - pad * 2, h: 108, btnW: 92, gap: 16,
+            nameFs: 32, noteFs: 18, glyphFs: 44, capFs: 14 };
+    pips = false;               // the "model 3 of 6" line already says it
+    const r = 74, reach = knobReach(r), inner = W - pad * 2;
+    const cy = [mod.y + mod.h + reach.up + 14];
+    cy.push(cy[0] + reach.down + reach.up + 14);
+    knobs = KNOBS.map((k, i) => ({ x: pad + (inner / 2) * ((i % 2) + 0.5),
+                                   y: cy[Math.floor(i / 2)], r }));
+    stripTop = cy[1] + reach.down + 24;
+    const rowH = 78, gap = 12, top = stripTop + 18;
+    cellBtn = 78;
+    poly = { x: pad, y: top, w: W - pad * 2, h: rowH };
+    oct = { x: pad, y: top + rowH + gap, w: W - pad * 2, h: rowH };
+    hint = { x: pad, y: oct.y + rowH + 26, fs: 17 };
+  } else if (M === "short") {
+    /* A PHONE ON ITS SIDE. Height is the scarce thing at 844x390, so the
+       model block and the knobs share the left column and the two steppers
+       stack down the right. */
+    pad = 22; headH = 54; headFs = 26; subFs = 16;
+    const rightW = 460, colGap = 26;
+    const leftW = W - pad * 2 - colGap - rightW;
+    mod = { x: pad, y: headH + 12, w: leftW, h: 74, btnW: 68, gap: 12,
+            nameFs: 25, noteFs: 15, glyphFs: 34, capFs: 12 };
+    pips = true;
+    /* Bigger than the Plaits panel's 62 because there are four knobs here
+       and five there, and the right column only has two cells to the other's
+       nine — this panel simply has fewer things in it, and sizing them to a
+       sibling's grid left a hole under the OCTAVE row you could park a car
+       in. The two steppers are near-double height for the same reason. */
+    const r = 70, reach = knobReach(r);
+    const cy = mod.y + mod.h + reach.up + 10;
+    knobs = KNOBS.map((k, i) => ({ x: pad + (leftW / KNOBS.length) * (i + 0.5), y: cy, r }));
+    stripTop = null;
+    const rx = W - pad - rightW, rowH = 130, gap = 18, top = headH + 22;
+    cellBtn = 84;
+    poly = { x: rx, y: top, w: rightW, h: rowH };
+    oct = { x: rx, y: top + rowH + gap, w: rightW, h: rowH };
+    hint = { x: pad, y: cy + reach.down + 18, fs: 16 };
+  } else {
+    /* THE WIDE ONE — the panel over the headstock. Hand-tuned; the mode split
+       exists so a phone stops forcing changes to these numbers. */
+    pad = 26; headH = 56; headFs = 26; subFs = 16;
+    mod = { x: pad, y: headH + 16, w: W - pad * 2, h: 92, btnW: 76, gap: 14,
+            nameFs: 27, noteFs: 15, glyphFs: 38, capFs: 12 };
+    pips = true;
+    const r = 42, reach = knobReach(r);
+    const cy = mod.y + mod.h + 64 + reach.up - 26;
+    knobs = KNOBS.map((k, i) => ({ x: pad + (W - pad * 2) / KNOBS.length * (i + 0.5), y: cy, r }));
+    stripTop = cy + reach.down + 36;
+    const rowH = 62, gap = 12, top = stripTop + 20;
+    cellBtn = 58;
+    const cellW = (W - pad * 2 - gap) / 2;
+    poly = { x: pad, y: top, w: cellW, h: rowH };
+    oct = { x: pad + cellW + gap, y: top, w: cellW, h: rowH };
+    hint = { x: pad, y: top + rowH + 36, fs: 15 };
+  }
+  return { mode: M, W, H, pad, headH, headFs, subFs, mod, knobs, stripTop,
+           cellBtn, poly, oct, hint, pips };
 }
 
-/* One cell, not two. It had MODEL in it as well, which is the same control
-   as the stepper directly above showing the same word — a second way to do a
-   thing you can already see, taking up half the strip. */
-const ROW = [
-  { key: "polyphony", label: "POLYPHONY" },
-];
-const CELL_BTN = 58;
-// the octave pair sits beside the polyphony cell rather than in it: it's a
-// stepper, not a cycle, and going DOWN three should not mean pressing up nine
+const valueOf = (st) => `${st.polyphony} voice${st.polyphony === 1 ? "" : "s"}`;
 
-const valueOf = (st, key) =>
-  key === "polyphony" ? `${st.polyphony} voice${st.polyphony === 1 ? "" : "s"}`
-  : MODELS[st.model % MODELS.length].name;
-export function draw(g, st, live = null) {
-  const L = layout();
+export function draw(g, st, live = null, mode = "wide") {
+  const L = layout(mode), { W, H } = L;
   g.fillStyle = C.bg;
   g.fillRect(0, 0, W, H);
 
@@ -146,110 +171,109 @@ export function draw(g, st, live = null) {
   g.fillRect(0, 0, W, L.headH);
   g.fillStyle = C.line;
   g.fillRect(0, L.headH - 2, W, 2);
-  label(g, "RINGS", L.pad, L.headH / 2, 26, C.cool);
+  label(g, "RINGS", L.pad, L.headH / 2, L.headFs, C.cool);
   label(g, live && live.status === "loading" ? "loading…"
         : live && live.status === "failed" ? "wasm failed — running the plain string"
-        : "resonator", L.pad + 112, L.headH / 2 + 1, 16, C.dim);
+        : "resonator", L.pad + L.headFs * 4.3, L.headH / 2 + 1, L.subFs, C.dim);
+  const cw = Math.round(L.headH * 0.79);
   g.fillStyle = C.btn;
-  rr(g, W - L.pad - 44, 10, 44, L.headH - 20, 8); g.fill();
-  label(g, "✕", W - L.pad - 22, L.headH / 2, 22, C.dim, "center");
+  rr(g, W - L.pad - cw, 10, cw, L.headH - 20, 8); g.fill();
+  label(g, "✕", W - L.pad - cw / 2, L.headH / 2, Math.round(L.headH * 0.39), C.dim, "center");
 
   /* the model: a stepper either side of the name, like the hardware's
      model button walking a row of LEDs */
-  const btnW = L.btnW;
-  const m = st.model % MODELS.length;
+  const D = L.mod, m = st.model % MODELS.length;
   for (const [i, glyph] of [[0, "◀"], [1, "▶"]]) {
-    const bx = L.pad + i * (btnW + 14);
-    g.fillStyle = C.btn; rr(g, bx, L.modY, btnW, L.modH, 14); g.fill();
+    const bx = D.x + i * (D.btnW + D.gap);
+    g.fillStyle = C.btn; rr(g, bx, D.y, D.btnW, D.h, 14); g.fill();
     g.strokeStyle = C.line; g.lineWidth = 2;
-    rr(g, bx + 1, L.modY + 1, btnW - 2, L.modH - 2, 13); g.stroke();
-    label(g, glyph, bx + btnW / 2, L.modY + L.modH / 2 - 6, 38, C.text, "center");
-    label(g, "MODEL", bx + btnW / 2, L.modY + L.modH - 17, 12, C.dim, "center");
+    rr(g, bx + 1, D.y + 1, D.btnW - 2, D.h - 2, 13); g.stroke();
+    label(g, glyph, bx + D.btnW / 2, D.y + D.h / 2 - 6, D.glyphFs, C.text, "center");
+    label(g, "MODEL", bx + D.btnW / 2, D.y + D.h - D.capFs - 5, D.capFs, C.dim, "center");
   }
-  const tx = L.pad + btnW * 2 + 14 + 40;
-  label(g, MODELS[m].name, tx, L.modY + L.modH / 2 - 11, 27, MODEL_COLOR(m));
-  label(g, `${MODELS[m].note} · model ${m + 1} of 6`, tx, L.modY + L.modH / 2 + 16, 15, C.dim);
+  const tx = D.x + D.btnW * 2 + D.gap + 40;
+  label(g, MODELS[m].name, tx, D.y + D.h / 2 - D.nameFs * 0.42, D.nameFs, MODEL_COLOR(m));
+  label(g, `${MODELS[m].note} · model ${m + 1} of 6`,
+        tx, D.y + D.h / 2 + D.noteFs * 1.1, D.noteFs, C.dim);
   // six pips, so you can see where you are in the row without counting
-  for (let i = 0; i < MODELS.length; i++) {
-    g.fillStyle = i === m ? MODEL_COLOR(i) : "#2b3745";
-    g.beginPath(); g.arc(W - L.pad - 18 - (5 - i) * 22, L.modY + L.modH / 2, i === m ? 7 : 4.5, 0, Math.PI * 2);
-    g.fill();
+  if (L.pips) {
+    for (let i = 0; i < MODELS.length; i++) {
+      g.fillStyle = i === m ? MODEL_COLOR(i) : "#2b3745";
+      g.beginPath();
+      g.arc(W - L.pad - 18 - (5 - i) * 22, D.y + D.h / 2, i === m ? 7 : 4.5, 0, Math.PI * 2);
+      g.fill();
+    }
   }
 
   /* the four knobs, in hardware order */
   KNOBS.forEach((k, i) => {
-    drawKnob(g, L.knobX(i), L.knobY, KNOB_R, clamp01(st[k.key]), C.cool, k.label,
+    const q = L.knobs[i];
+    drawKnob(g, q.x, q.y, q.r, clamp01(st[k.key]), C.cool, k.label,
              String(Math.round(st[k.key] * 100)));
   });
 
   /* the strip */
-  g.fillStyle = C.head;
-  g.fillRect(0, L.stripTop, W, H - L.stripTop);
-  g.fillStyle = C.line;
-  g.fillRect(0, L.stripTop, W, 2);
-  // polyphony is a stepper like everything else that isn't an on/off
-  for (let i = 0; i < ROW.length; i++) {
-    const rc = L.cell(i);
-    drawStepper(g, rc, ROW[i].label, valueOf(st, ROW[i].key), {
-      btnW: CELL_BTN,
-      loOff: st.polyphony <= POLY[0],
-      hiOff: st.polyphony >= POLY[POLY.length - 1],
-    });
+  if (L.stripTop != null) {
+    g.fillStyle = C.head;
+    g.fillRect(0, L.stripTop, W, H - L.stripTop);
+    g.fillStyle = C.line;
+    g.fillRect(0, L.stripTop, W, 2);
   }
+  drawStepper(g, L.poly, "POLYPHONY", valueOf(st), {
+    btnW: L.cellBtn,
+    loOff: st.polyphony <= POLY[0],
+    hiOff: st.polyphony >= POLY[POLY.length - 1],
+  });
   drawOctave(g, L.oct, st.octave | 0);
   /* Nothing is patched into the module's input, so Rings supplies its own
-     pluck — the earlier wording here said the strings fed the resonator,
+     pluck — an earlier wording here said the strings fed the resonator,
      which is not what the wrapper does. */
-  // hung off the BOTTOM of the row, not off stripTop — the row moved down
-  // and this stayed put, which left it floating between the two
-  label(g, "play the guitar with this up — every fret plucks the resonator",
-        L.pad, L.cell(0).y + L.rowH + 36, 15, C.dim);
+  label(g, HINT, L.hint.x, L.hint.y, L.hint.fs, C.dim);
 }
 
 /* ---------- hit test ---------- */
 
-export function hit(u, v) {
-  const px = u * W, py = (1 - v) * H, L = layout();
-  if (py < L.headH) return px > W - L.pad - 44 ? { type: "close" } : { type: "none" };
-  const btnW = L.btnW;
-  if (py >= L.modY && py <= L.modY + L.modH) {
-    if (px >= L.pad && px <= L.pad + btnW) return { type: "model", d: -1 };
-    if (px >= L.pad + btnW + 14 && px <= L.pad + btnW * 2 + 14) return { type: "model", d: 1 };
+export function hit(u, v, mode = "wide") {
+  const L = layout(mode), { W, H } = L;
+  const px = u * W, py = (1 - v) * H;
+  if (py < L.headH)
+    return px > W - L.pad - Math.round(L.headH * 0.79) ? { type: "close" } : { type: "none" };
+  const D = L.mod;
+  if (py >= D.y && py <= D.y + D.h) {
+    if (px >= D.x && px <= D.x + D.btnW) return { type: "model", d: -1 };
+    const up = D.x + D.btnW + D.gap;
+    if (px >= up && px <= up + D.btnW) return { type: "model", d: 1 };
   }
   for (let i = 0; i < KNOBS.length; i++) {
-    const kx = L.knobX(i);
-    if (Math.hypot(px - kx, py - L.knobY) <= KNOB_R + 20)
-      return { type: "knob", key: KNOBS[i].key, frac: grabFrac(kx, L.knobY, px, py) };
+    const q = L.knobs[i];
+    if (Math.hypot(px - q.x, py - q.y) <= q.r + 20)
+      return { type: "knob", key: KNOBS[i].key, frac: grabFrac(q.x, q.y, px, py) };
   }
-  for (let i = 0; i < ROW.length; i++) {
-    const rc = L.cell(i);
-    if (px < rc.x || px > rc.x + rc.w || py < rc.y || py > rc.y + rc.h) continue;
-    const d = hitStepper(px, py, rc, CELL_BTN);
-    return d ? { type: "cycle", key: ROW[i].key, d } : { type: "none" };
+  const r = L.poly;
+  if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) {
+    const d = hitStepper(px, py, r, L.cellBtn);
+    return d ? { type: "cycle", key: "polyphony", d } : { type: "none" };
   }
   const oh = hitOctave(px, py, L.oct);
   if (oh) return oh;
   return { type: "none" };
 }
 
-export const SIZE = { w: W, h: H };
+export const SIZE = sizeOf("wide");
 
 /* The centre of every control, in canvas pixels — the coordinates the
    drawing is written in. A test that has to guess where a button is isn't
    testing the button, it's testing the guess. */
-export function centres() {
-  const L = layout(), out = {}, btnW = L.btnW;
-  out.modelDown = [L.pad + btnW / 2, L.modY + L.modH / 2];
-  out.modelUp = [L.pad + btnW + 14 + btnW / 2, L.modY + L.modH / 2];
-  out.close = [W - L.pad - 22, L.headH / 2];
-  KNOBS.forEach((k, i) => { out[k.key] = [L.knobX(i), L.knobY]; });
-  for (let i = 0; i < ROW.length; i++) {
-    const rc = L.cell(i);
-    const c = stepperCentres(rc, CELL_BTN);
-    out[ROW[i].key] = [rc.x + rc.w / 2, rc.y + rc.h / 2];
-    out[ROW[i].key + "Down"] = c.down;
-    out[ROW[i].key + "Up"] = c.up;
-  }
+export function centres(mode = "wide") {
+  const L = layout(mode), out = {}, D = L.mod;
+  out.modelDown = [D.x + D.btnW / 2, D.y + D.h / 2];
+  out.modelUp = [D.x + D.btnW + D.gap + D.btnW / 2, D.y + D.h / 2];
+  out.close = [L.W - L.pad - Math.round(L.headH * 0.79) / 2, L.headH / 2];
+  KNOBS.forEach((k, i) => { out[k.key] = [L.knobs[i].x, L.knobs[i].y]; });
+  const c = stepperCentres(L.poly, L.cellBtn);
+  out.polyphony = [L.poly.x + L.poly.w / 2, L.poly.y + L.poly.h / 2];
+  out.polyphonyDown = c.down;
+  out.polyphonyUp = c.up;
   Object.assign(out, octaveCentres(L.oct));
   return out;
 }
@@ -269,6 +293,9 @@ export function knobWrite(st, key, frac) { st[key] = clamp01(frac); return st[ke
 /* ---------- the thing you hang by the guitar ---------- */
 
 export function makePanel() {
+  // the one in the room is always the wide layout — a phone's shapes are the
+  // screen-locked sheet's business, not the guitar's
+  const { w: W, h: H } = sizeOf("wide");
   const cv = document.createElement("canvas");
   cv.width = W; cv.height = H;
   const g = cv.getContext("2d");

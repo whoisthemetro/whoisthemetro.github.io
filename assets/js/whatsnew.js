@@ -25,6 +25,14 @@ export const WHATS_NEW = [
   {
     date: "2026-08-25",
     items: [
+      "the keyboard and guitar panels are built for a phone now. the knobs are more than twice the size they were and the panel fills the screen instead of sitting in a strip along the bottom",
+      "and they work sideways. turn the phone and the panel rearranges itself into two columns — before, turning it pushed the top half of the panel off the screen, so the engine and every knob reading were just gone",
+      "turn the phone back and it rearranges again. whichever way you're holding it, the whole panel is on screen",
+    ],
+  },
+  {
+    date: "2026-08-25",
+    items: [
       "the keyboard and the guitar belong to the room now. turn a knob on either one and it's turned for everyone — pick an engine on your phone and it's the same engine on your laptop, and the same one the person standing next to you is playing. it stays that way after everybody leaves, too",
       "the arpeggiator is the one thing that stays yours. it plays notes, and everyone running their own copy of it would be the same chord four times at once",
       "the pedals start switched off. six effects nobody chose used to sit between you and the first note you played — flick on the ones you want",

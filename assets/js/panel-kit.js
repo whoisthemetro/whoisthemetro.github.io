@@ -24,6 +24,15 @@ export const C = {
 
 export const clamp01 = (v) => Math.max(0, Math.min(1, v));
 
+/* How far a drawn knob reaches above and below its centre, labels included.
+   Layouts used to hard-code "cy + r + 24" and "cy - r - 16" and then add a
+   guessed margin, which is how the wide panel's labels ended up four pixels
+   above the strip below them. Ask here instead. */
+export const knobReach = (rad) => {
+  const fs = Math.max(13, Math.round(rad * 0.38));
+  return { up: rad + fs * 2, down: rad + fs * 2.5 };
+};
+
 // a rounded rect, as a path — callers fill or stroke it
 export function rr(g, x, y, w, h, r) {
   g.beginPath();
@@ -40,6 +49,19 @@ export function label(g, t, x, y, size, color, align = "left",
   g.textBaseline = "middle";
   g.fillText(t, x, y);
 }
+
+/* TYPE SCALES OFF GEOMETRY, never off a per-panel constant.
+
+   Both panels are drawn at three sizes now — the wide one that hangs in the
+   room, a tall one for a phone held upright, a short wide one for a phone on
+   its side — and a fixed 16px label is only correct for one of them. Sized
+   off the thing it labels, the same draw() reads right at every size and
+   there is no table of per-mode font sizes to fall out of step. The
+   coefficients are chosen so the wide layout lands exactly where its
+   hand-tuned numbers already were: at rad 42 this returns 16. */
+const knobFont = (rad) => Math.max(13, Math.round(rad * 0.38));
+const cellFont = (h) => Math.max(12, Math.round(h * 0.225));   // a cell's title
+const cellVal = (h) => Math.max(15, Math.round(h * 0.34));     // and its value
 
 /* One rotary, everywhere: a 270° sweep from 7:30 round to 4:30, which is
    what a Eurorack knob does and what the studio's panels already drew. */
@@ -60,8 +82,9 @@ export function drawKnob(g, cx, cy, rad, frac, color, lbl, val) {
   g.lineTo(cx + Math.cos(a) * rad * 0.86, cy + Math.sin(a) * rad * 0.86);
   g.stroke();
   g.lineCap = "butt";
-  label(g, lbl, cx, cy + rad + 24, 16, C.dim, "center");
-  if (val != null) label(g, val, cx, cy - rad - 16, 16, C.cool, "center");
+  const fs = knobFont(rad);
+  label(g, lbl, cx, cy + rad + fs * 1.5, fs, C.dim, "center");
+  if (val != null) label(g, val, cx, cy - rad - fs, fs, C.cool, "center");
 }
 
 /* ---------- the octave stepper ----------
@@ -108,19 +131,20 @@ export function drawStepper(g, r, title, valueText, opts = {}) {
     label(g, glyph, bx + bw / 2, r.y + r.h / 2 + 1, Math.min(34, r.h * 0.55),
           off ? "#3b4048" : C.text, "center");
   }
-  label(g, title, r.x + r.w / 2, r.y + 17, 14, C.dim, "center");
+  const tf = cellFont(r.h);
+  label(g, title, r.x + r.w / 2, r.y + tf * 1.2, tf, C.dim, "center");
 
   /* Fit the value to the gap BETWEEN the buttons. "CHROMATIC" and "AS
      PLAYED" are long enough to run under them at a fixed size, and a value
      you can't read is worse than a small one. */
   const room = r.w - bw * 2 - 12;
-  let size = opts.valueSize || 21;
+  let size = opts.valueSize || cellVal(r.h);
   g.font = `${size}px ui-monospace, Menlo, monospace`;
   while (size > 11 && g.measureText(valueText).width > room) {
     size -= 1;
     g.font = `${size}px ui-monospace, Menlo, monospace`;
   }
-  label(g, valueText, r.x + r.w / 2, r.y + 43, size, hot ? C.hot : C.text, "center");
+  label(g, valueText, r.x + r.w / 2, r.y + r.h * 0.69, size, hot ? C.hot : C.text, "center");
 }
 
 export function hitStepper(px, py, r, btnW) {
@@ -164,3 +188,5 @@ export function grabFrac(cx, cy, px, py) {
   if (a < Math.PI * 0.75 && a > -Math.PI) a += Math.PI * 2;
   return clamp01((a - Math.PI * 0.75) / (Math.PI * 1.5));
 }
+
+export { knobFont, cellFont, cellVal };

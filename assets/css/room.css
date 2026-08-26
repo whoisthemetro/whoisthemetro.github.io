@@ -1086,9 +1086,29 @@ body.tagging #aim-tip { display: none; }
   pointer-events: none;
 }
 #panel-sheet.show { display: block; }
+
+/* THE SHEET MUST NEVER BE TALLER THAN THE SCREEN.
+
+   It used to be `width: 100%` and nothing else, which is only a rule about
+   width: on a phone turned sideways the panel came out 455 css px tall in a
+   390 px viewport and the keybed added another 211, so the whole thing was
+   672 px of sheet in 390 px of screen and the top of the panel sat at y=-290.
+   The header, the engine block and every knob readout were simply off the
+   top. That was the "squished" landscape.
+
+   So the width is capped by the HEIGHT we're willing to spend: the panel is
+   at most `--sheet-h` tall, and a canvas that tall is `--sheet-h * aspect`
+   wide. Whichever of that and 100% is smaller wins, so neither dimension can
+   run away. Portrait sets --sheet-h high on purpose — high enough that width
+   is the binding constraint, because in portrait the whole point is to use
+   the full width. */
+#panel-sheet { --sheet-h: 78dvh; }
+@media (orientation: landscape) { #panel-sheet { --sheet-h: 58dvh; } }
+
 #panel-sheet canvas {
   display: block;
-  width: 100%;
+  width: min(100%, calc(var(--sheet-h) * var(--sheet-ar, 1.83)));
+  margin: 0 auto;
   aspect-ratio: var(--sheet-aspect, 1024 / 566);
   height: auto;
   border-radius: 12px;
@@ -1107,10 +1127,10 @@ body.tagging #aim-tip { display: none; }
    screen, because the panel covers the desk and the wooden keyboard with it */
 #panel-sheet .sheet-keys {
   display: none;
-  width: 100%;
-  aspect-ratio: 1024 / 260;
+  width: min(100%, calc(var(--sheet-h) * var(--sheet-ar, 1.83)));
+  aspect-ratio: var(--keys-aspect, 1024 / 260);
   height: auto;
-  margin-top: 6px;
+  margin: 6px auto 0;
   border-radius: 12px;
   border: 1px solid rgba(126, 200, 255, 0.22);
   box-shadow: 0 10px 34px rgba(0, 0, 0, 0.55);

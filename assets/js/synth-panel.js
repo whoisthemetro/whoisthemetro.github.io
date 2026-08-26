@@ -31,7 +31,7 @@
    ============================================================ */
 
 import * as THREE from "three";
-import { C, rr, label, drawKnob, grabFrac, clamp01,
+import { C, rr, label, drawKnob, knobReach, grabFrac, clamp01,
          OCTAVE_RANGE, stepOctave, drawOctave, hitOctave, octaveCentres,
          drawStepper, hitStepper, stepperCentres } from "./panel-kit.js";
 
@@ -129,14 +129,12 @@ export function saveState(st) {
 
 /* ---------- drawing ---------- */
 
-/* The canvas is exactly as tall as the layout below needs — 528, not a
-   round number, because a round number left a hand's width of empty panel
-   under the last row and the whole thing read as a dialog with something
-   missing from it. If you add a row, this moves. */
-/* The canvas is exactly as tall as the layout below needs — not a round
-   number, because a round number left a hand's width of empty panel under
-   the last row and the whole thing read as a dialog with something missing
-   from it. If you add a row, this moves. */
+/* The canvas the panel IN THE ROOM is drawn at. Each canvas is exactly as
+   tall as its layout needs — never a round number, because a round number
+   leaves a hand's width of empty panel under the last row and the whole
+   thing reads as a dialog with something missing from it. The phone's two
+   shapes live in SHEETS below; this pair is what makePanel hangs on the wall
+   and what SIZE reports. */
 const W = 1024, H = 560;
 
 /* The palette, the rounded rect, the label and the knob all live in
@@ -148,51 +146,148 @@ const W = 1024, H = 560;
    Every rectangle the panel has is computed here and read by both the
    painter and the hit test. Two copies of these numbers is how a button
    ends up looking like it's somewhere it isn't. */
-function layout() {
-  const pad = 26;
-  const headH = 56;
-  // the engine block is smaller and sits higher than it did: it was the most
-  // crowded thing on the panel and it is the least often touched
-  const engY = headH + 14, engH = 76;
-  /* The engine buttons live HERE, not as a local in each function. They were
-     declared three times — draw, hit and centres — and when the block was
-     made smaller two of the three were updated, so centres() went on pointing
-     at where the button used to be. Once is the only number of times. */
-  const engBtnW = 46, engColX = pad + engBtnW + 16;
-  /* 92 of clear air under the knob centres, not 78. drawKnob puts the label
-     at cy + r + 24, so at radius 42 the words ended four pixels above the
-     strip and read as belonging to the row below them. */
-  const knobY = engY + engH + 76;
-  const stripTop = knobY + 92;
-  const rowH = 62, gap = 12;
-  const rowAY = stripTop + 16, rowBY = rowAY + rowH + gap;
-  // a third row: the transpose stepper, with the held-note chips beside it
-  const rowCY = rowBY + rowH + gap;
-  const octW = 300;
-  const oct = { x: pad, y: rowCY, w: octW, h: rowH };
-  // five knobs sharing the full width, so the row is level and reaches both
-  // edges — one function, so draw/hit/centres cannot disagree about it
-  const knobX = (i) => pad + (W - pad * 2) / KNOBS.length * (i + 0.5);
-  const cell = (n, i, y, count) => {
-    const w = (W - pad * 2 - gap * (count - 1)) / count;
-    return { x: pad + i * (w + gap), y, w, h: rowH };
-  };
-  return { pad, headH, engY, engH, engBtnW, engColX, knobY, knobX, stripTop, rowH, gap, rowAY, rowBY, rowCY, oct, cell };
-}
+/* ---------- three shapes of the same panel ----------
 
-// the two button rows. `key` is what the hit test hands back.
-const ROW_A = [
-  { key: "arp", label: "ARP", toggle: true },
-  { key: "hold", label: "HOLD", toggle: true },
-  { key: "mode", label: "MODE" },
-  { key: "rate", label: "RATE" },
-];
-const ROW_B = [
-  { key: "scale", label: "SCALE" },
-  { key: "root", label: "ROOT" },
-  { key: "octaves", label: "ARP OCT" },
-  { key: "bpm", label: "TEMPO" },
-];
+   A 1024x560 landscape canvas is right on a wall and wrong on a phone. Drawn
+   to fit a 390 px screen it puts a knob at 31 css px — a control you aim at
+   rather than turn — and it uses 37% of the screen to do it. Turn the phone
+   and it's worse: the sheet became 672 px tall in a 390 px viewport, so the
+   header, the engine block and every knob readout sat at a NEGATIVE y. That
+   was the "squished" landscape; nothing was squished, two thirds of the panel
+   was simply off the top of the screen.
+
+   So the panel has three layouts and one drawing:
+
+     wide   1024x560   the panel in the room, and any wide screen
+     tall    720x1178  a phone held upright: knobs in a 3+2 grid, steppers
+                       two to a row, so each control gets a share of the
+                       WIDTH instead of a fifth of it
+     short  1500x430   a phone on its side: two columns side by side, because
+                       the screen is 844x390 and height is the scarce thing
+
+   The trick that makes this cheap is that a control's size on screen is
+   (its canvas size / the canvas WIDTH) x the css width. Making the canvas
+   NARROWER makes everything on it bigger, and making it wider lets a knob
+   grow without costing height. `tall` is 720 wide for the first reason and
+   `short` is 1500 wide for the second: the same 62-radius knob is 69 css px
+   on a landscape phone and would be 45 on the wide layout.
+
+   layout(mode) is the single source for all of it — draw, hit and centres
+   only ever read what it returns, so a mode can't be drawn somewhere its
+   hit test isn't. */
+const SHEETS = {
+  wide:  { W: 1024, H: 560 },
+  tall:  { W: 720,  H: 1190 },
+  short: { W: 1500, H: 430 },
+};
+export const MODES_AVAILABLE = Object.keys(SHEETS);
+export const sizeOf = (mode = "wide") => ({ w: SHEETS[mode] ? SHEETS[mode].W : SHEETS.wide.W,
+                                            h: SHEETS[mode] ? SHEETS[mode].H : SHEETS.wide.H });
+
+// the eight stepper cells, in the order each mode wants them
+const CELL_SPECS = {
+  arp:     { label: "ARP", toggle: true },
+  hold:    { label: "HOLD", toggle: true },
+  mode:    { label: "MODE" },
+  rate:    { label: "RATE" },
+  scale:   { label: "SCALE" },
+  root:    { label: "ROOT" },
+  octaves: { label: "ARP OCT" },
+  bpm:     { label: "TEMPO" },
+};
+const CELL_ORDER = ["arp", "hold", "mode", "rate", "scale", "root", "octaves", "bpm"];
+
+function layout(mode = "wide") {
+  const M = SHEETS[mode] ? mode : "wide";
+  const { W, H } = SHEETS[M];
+  const grid = (x0, w, n, i, gap) => {
+    const cw = (w - gap * (n - 1)) / n;
+    return { x: x0 + i * (cw + gap), w: cw };
+  };
+  const cells = {};
+  let pad, headH, headFs, subFs, eng, knobs, stripTop, cellBtn, oct, hint, chips;
+
+  if (M === "tall") {
+    /* A PHONE HELD UPRIGHT. Everything gets a bigger share of the width
+       because there are fewer things across it: three knobs where the wide
+       layout has five, two stepper cells where it has four. */
+    pad = 24; headH = 76; headFs = 34; subFs = 19;
+    const ebw = 76;
+    eng = { x: pad, y: headH + 18, w: W - pad * 2, h: 104, btnW: ebw,
+            colX: pad + ebw + 18, textX: pad + ebw + 18 + 30 + ebw + 26,
+            nameFs: 32, subFs: 18, ledR: 8 };
+    const r = 64, reach = knobReach(r), engBottom = eng.y + eng.h;
+    // 3 across, then 2 centred under them — which is also how the hardware
+    // groups them: the three macro controls, then the two envelope ones
+    const rowCy = [engBottom + reach.up + 12];
+    rowCy.push(rowCy[0] + reach.down + reach.up + 12);
+    const inner = W - pad * 2;
+    knobs = KNOBS.map((k, i) => (i < 3
+      ? { x: pad + (inner / 3) * (i + 0.5), y: rowCy[0], r }
+      : { x: pad + inner * ((i - 3 + 1) / 3), y: rowCy[1], r }));
+    stripTop = rowCy[1] + reach.down + 24;
+    const rowH = 74, gap = 10, top = stripTop + 16;
+    cellBtn = 74;
+    CELL_ORDER.forEach((key, i) => {
+      const g0 = grid(pad, W - pad * 2, 2, i % 2, gap);
+      cells[key] = { x: g0.x, y: top + Math.floor(i / 2) * (rowH + gap), w: g0.w, h: rowH };
+    });
+    oct = { x: pad, y: top + 4 * (rowH + gap), w: W - pad * 2, h: rowH };
+    hint = { x: pad, y: oct.y + rowH + 22, w: W - pad * 2, fs: 17 };
+    chips = false;              // no room beside the octave; the hint line says it
+  } else if (M === "short") {
+    /* A PHONE ON ITS SIDE. 844x390 — height is what runs out, so the panel
+       becomes two columns and nothing stacks that doesn't have to. The canvas
+       is deliberately WIDE (1500) so a 62-radius knob costs only 8% of the
+       height while still landing at 69 css px. */
+    pad = 22; headH = 54; headFs = 26; subFs = 16;
+    const colGap = 26, rightW = 518;
+    const leftW = W - pad * 2 - colGap - rightW;
+    // 56, not 40: at this canvas width 40 lands as a 22 css px button, which
+    // is under a thumb even when you aim for it
+    const ebw = 56;
+    eng = { x: pad, y: headH + 12, w: leftW, h: 66, btnW: ebw,
+            colX: pad + ebw + 14, textX: pad + ebw + 14 + 30 + ebw + 22,
+            nameFs: 25, subFs: 15, ledR: 6 };
+    const r = 62, reach = knobReach(r);
+    const cy = eng.y + eng.h + reach.up + 10;
+    knobs = KNOBS.map((k, i) => ({ x: pad + (leftW / KNOBS.length) * (i + 0.5), y: cy, r }));
+    stripTop = null;            // no full-width strip: the columns are the layout
+    const rx = W - pad - rightW, rowH = 64, gap = 7, top = headH + 12;
+    cellBtn = 62;
+    CELL_ORDER.forEach((key, i) => {
+      const g0 = grid(rx, rightW, 2, i % 2, gap);
+      cells[key] = { x: g0.x, y: top + Math.floor(i / 2) * (rowH + gap), w: g0.w, h: rowH };
+    });
+    oct = { x: rx, y: top + 4 * (rowH + gap), w: rightW, h: rowH };
+    hint = { x: pad, y: cy + reach.down + 26, w: leftW, fs: 16 };
+    chips = false;
+  } else {
+    /* THE WIDE ONE — the panel in the room. These numbers are hand-tuned and
+       every one of them cost a round of screenshots; the mode split exists so
+       that a phone stops forcing changes to them. */
+    pad = 26; headH = 56; headFs = 26; subFs = 16;
+    const ebw = 46;
+    eng = { x: pad, y: headH + 14, w: W - pad * 2, h: 76, btnW: ebw,
+            colX: pad + ebw + 16, textX: pad + ebw + 16 + 30 + ebw + 30,
+            nameFs: 27, subFs: 15, ledR: 6.5 };
+    const r = 42, reach = knobReach(r);
+    const cy = eng.y + eng.h + 76;
+    knobs = KNOBS.map((k, i) => ({ x: pad + (W - pad * 2) / KNOBS.length * (i + 0.5), y: cy, r }));
+    stripTop = cy + reach.down + 26;
+    const rowH = 62, gap = 12, top = stripTop + 16;
+    cellBtn = 58;
+    CELL_ORDER.forEach((key, i) => {
+      const g0 = grid(pad, W - pad * 2, 4, i % 4, gap);
+      cells[key] = { x: g0.x, y: top + Math.floor(i / 4) * (rowH + gap), w: g0.w, h: rowH };
+    });
+    oct = { x: pad, y: top + 2 * (rowH + gap), w: 300, h: rowH };
+    hint = { x: oct.x + oct.w + 26, y: oct.y + rowH / 2, w: W - oct.x - oct.w - 52, fs: 15 };
+    chips = true;               // the held notes fit beside the octave stepper
+  }
+  return { mode: M, W, H, pad, headH, headFs, subFs, eng, knobs, stripTop,
+           cells, cellBtn, oct, hint, chips };
+}
 
 function valueOf(st, key) {
   switch (key) {
@@ -208,31 +303,31 @@ function valueOf(st, key) {
   }
 }
 
-// the −/+ buttons inside a row cell. narrower than the octave stepper's,
-// because a row cell is 234 wide and two 78s would leave no room for a word
-const CELL_BTN = 58;
-
-function drawButton(g, r, b, st, live) {
+function drawButton(g, r, key, st, live, cellBtn) {
+  const b = CELL_SPECS[key];
   /* Everything that isn't a true on/off is a STEPPER: minus left, plus
      right, value between. Tap-to-cycle meant going back one scale was five
      taps forward, and nothing on the face said a tap did anything at all. */
   if (!b.toggle) {
-    drawStepper(g, r, b.label, valueOf(st, b.key), { btnW: CELL_BTN, valueSize: 20 });
+    drawStepper(g, r, b.label, valueOf(st, key), { btnW: cellBtn });
     return;
   }
-  const on = b.toggle && st[b.key];
+  const on = st[key];
   g.fillStyle = on ? C.btnOn : C.btn;
   rr(g, r.x, r.y, r.w, r.h, 10); g.fill();
   if (on) {
-    g.strokeStyle = b.key === "arp" ? C.hot : C.cool;
+    g.strokeStyle = key === "arp" ? C.hot : C.cool;
     g.lineWidth = 2.5;
     rr(g, r.x + 1.5, r.y + 1.5, r.w - 3, r.h - 3, 9); g.stroke();
   }
-  label(g, b.label, r.x + r.w / 2, r.y + 17, 15, C.dim, "center");
-  const col = on ? (b.key === "arp" ? C.hot : C.cool) : C.text;
-  label(g, valueOf(st, b.key), r.x + r.w / 2, r.y + 42, 22, col, "center");
+  // sized off the cell, so one drawing reads right in all three layouts
+  const tf = Math.max(12, Math.round(r.h * 0.24));
+  label(g, b.label, r.x + r.w / 2, r.y + tf * 1.2, tf, C.dim, "center");
+  const col = on ? (key === "arp" ? C.hot : C.cool) : C.text;
+  label(g, valueOf(st, key), r.x + r.w / 2, r.y + r.h * 0.68,
+        Math.max(16, Math.round(r.h * 0.35)), col, "center");
   // the arp button doubles as the playhead: a bar under it ticking along
-  if (b.key === "arp" && st.arp && live && live.total > 0) {
+  if (key === "arp" && st.arp && live && live.total > 0) {
     const w = (r.w - 20) / live.total;
     g.fillStyle = "#3a2a20";
     g.fillRect(r.x + 10, r.y + r.h - 12, r.w - 20, 5);
@@ -241,8 +336,8 @@ function drawButton(g, r, b, st, live) {
   }
 }
 
-export function draw(ctx2d, st, live = null) {
-  const g = ctx2d, L = layout();
+export function draw(ctx2d, st, live = null, mode = "wide") {
+  const g = ctx2d, L = layout(mode), { W, H } = L;
   g.fillStyle = C.bg;
   g.fillRect(0, 0, W, H);
 
@@ -251,64 +346,72 @@ export function draw(ctx2d, st, live = null) {
   g.fillRect(0, 0, W, L.headH);
   g.fillStyle = C.line;
   g.fillRect(0, L.headH - 2, W, 2);
-  label(g, "PLAITS", L.pad, L.headH / 2, 26, C.cool);
+  label(g, "PLAITS", L.pad, L.headH / 2, L.headFs, C.cool);
   label(g, live && live.status === "loading" ? "loading…"
         : live && live.status === "failed" ? "wasm failed — running the fallback voice"
-        : "macro oscillator", L.pad + 130, L.headH / 2 + 1, 16, C.dim);
-  // close box, top right
+        : "macro oscillator", L.pad + L.headFs * 5, L.headH / 2 + 1, L.subFs, C.dim);
+  // close box, top right — scaled with the header, so a phone's is thumb-sized
+  const cw = Math.round(L.headH * 0.79), ch = L.headH - 20;
   g.fillStyle = C.btn;
-  rr(g, W - L.pad - 44, 10, 44, L.headH - 20, 8); g.fill();
-  label(g, "✕", W - L.pad - 22, L.headH / 2, 22, C.dim, "center");
+  rr(g, W - L.pad - cw, 10, cw, ch, 8); g.fill();
+  label(g, "✕", W - L.pad - cw / 2, L.headH / 2, Math.round(L.headH * 0.39), C.dim, "center");
 
   /* the engine: a button each side of the LED column, like the panel */
-  const btnW = L.engBtnW, colX = L.engColX;
-  const eng = Math.max(0, Math.min(23, st.engine | 0));
+  const E = L.eng, eng = Math.max(0, Math.min(23, st.engine | 0));
   const bank = Math.floor(eng / 8), idx = eng % 8;
-  g.fillStyle = C.btn; rr(g, L.pad, L.engY, btnW, L.engH, 10); g.fill();
-  label(g, "◀", L.pad + btnW / 2, L.engY + L.engH / 2, 24, C.dim, "center");
+  g.fillStyle = C.btn; rr(g, E.x, E.y, E.btnW, E.h, 10); g.fill();
+  label(g, "◀", E.x + E.btnW / 2, E.y + E.h / 2, Math.round(E.h * 0.32), C.dim, "center");
   g.fillStyle = "#161e28";
-  rr(g, colX - 3, L.engY, 22, L.engH, 8); g.fill();
+  rr(g, E.colX - 3, E.y, 22, E.h, 8); g.fill();
   for (let i = 0; i < 8; i++) {
     const on = i === idx;
     g.fillStyle = on ? BANK_COLOR[bank] : "#2b3745";
-    g.beginPath(); g.arc(colX + 8, L.engY + 12 + i * ((L.engH - 24) / 7), on ? 6.5 : 4.5, 0, Math.PI * 2); g.fill();
+    g.beginPath();
+    g.arc(E.colX + 8, E.y + 12 + i * ((E.h - 24) / 7), on ? E.ledR : E.ledR * 0.7, 0, Math.PI * 2);
+    g.fill();
   }
-  g.fillStyle = C.btn; rr(g, colX + 30, L.engY, btnW, L.engH, 10); g.fill();
-  label(g, "▶", colX + 30 + btnW / 2, L.engY + L.engH / 2, 24, C.dim, "center");
-  label(g, ENGINES[eng], colX + 30 + btnW + 30, L.engY + L.engH / 2 - 11, 27, BANK_COLOR[bank]);
-  label(g, `engine ${eng + 1} of 24 · bank ${bank + 1}`, colX + 30 + btnW + 30, L.engY + L.engH / 2 + 17, 15, C.dim);
+  const upX = E.colX + 30;
+  g.fillStyle = C.btn; rr(g, upX, E.y, E.btnW, E.h, 10); g.fill();
+  label(g, "▶", upX + E.btnW / 2, E.y + E.h / 2, Math.round(E.h * 0.32), C.dim, "center");
+  label(g, ENGINES[eng], E.textX, E.y + E.h / 2 - E.nameFs * 0.4, E.nameFs, BANK_COLOR[bank]);
+  label(g, `engine ${eng + 1} of 24 · bank ${bank + 1}`,
+        E.textX, E.y + E.h / 2 + E.subFs * 1.15, E.subFs, C.dim);
 
   /* the knobs, in hardware order */
   KNOBS.forEach((k, i) => {
-    drawKnob(g, L.knobX(i), L.knobY, KNOB_R, clamp01(st[k.key]), C.cool, k.label,
+    const q = L.knobs[i];
+    drawKnob(g, q.x, q.y, q.r, clamp01(st[k.key]), C.cool, k.label,
              String(Math.round(st[k.key] * 100)));
   });
 
   /* the arpeggiator */
-  g.fillStyle = C.head;
-  g.fillRect(0, L.stripTop, W, H - L.stripTop);
-  g.fillStyle = C.line;
-  g.fillRect(0, L.stripTop, W, 2);
-  for (let i = 0; i < ROW_A.length; i++) drawButton(g, L.cell(0, i, L.rowAY, ROW_A.length), ROW_A[i], st, live);
-  for (let i = 0; i < ROW_B.length; i++) drawButton(g, L.cell(0, i, L.rowBY, ROW_B.length), ROW_B[i], st, live);
+  if (L.stripTop != null) {
+    g.fillStyle = C.head;
+    g.fillRect(0, L.stripTop, W, H - L.stripTop);
+    g.fillStyle = C.line;
+    g.fillRect(0, L.stripTop, W, 2);
+  }
+  for (const key of CELL_ORDER) drawButton(g, L.cells[key], key, st, live, L.cellBtn);
   drawOctave(g, L.oct, st.octave | 0);
 
   /* what's actually being held, so HOLD isn't a mystery */
-  const y = L.rowCY + L.rowH / 2;
-  if (live && live.held && live.held.length) {
-    label(g, "HOLDING", L.oct.x + L.oct.w + 26, y, 15, C.dim);
-    let hx = L.oct.x + L.oct.w + 122;
-    for (const semi of live.held) {
+  const held = live && live.held && live.held.length ? live.held : null;
+  if (held && L.chips) {
+    label(g, "HOLDING", L.hint.x, L.hint.y, L.hint.fs, C.dim);
+    let hx = L.hint.x + 96;
+    for (const semi of held) {
       const n = ROOT_NAMES[((semi % 12) + 12) % 12] + (4 + Math.floor(semi / 12));
       g.fillStyle = "#24313f";
-      rr(g, hx, y - 14, 58, 28, 6); g.fill();
-      label(g, n, hx + 29, y + 1, 16, C.cool, "center");
+      rr(g, hx, L.hint.y - 14, 58, 28, 6); g.fill();
+      label(g, n, hx + 29, L.hint.y + 1, 16, C.cool, "center");
       hx += 66;
     }
   } else {
-    label(g, st.arp ? "play a key to feed the arp — HOLD keeps the chord"
-                    : "the keys play whatever this panel says",
-          L.oct.x + L.oct.w + 26, y, 15, C.dim);
+    const words = held
+      ? `holding ${held.map(s => ROOT_NAMES[((s % 12) + 12) % 12]).join(" ")}`
+      : st.arp ? "play a key to feed the arp — HOLD keeps the chord"
+               : "the keys play whatever this panel says";
+    label(g, words, L.hint.x, L.hint.y, L.hint.fs, C.dim);
   }
 }
 
@@ -316,64 +419,64 @@ export function draw(ctx2d, st, live = null) {
 
 // u,v are the raycast's texture coords. v is flipped: 0 is the BOTTOM of a
 // three.js plane and the top of a canvas.
-export function hit(u, v) {
-  const px = u * W, py = (1 - v) * H, L = layout();
+export function hit(u, v, mode = "wide") {
+  const L = layout(mode), { W, H } = L;
+  const px = u * W, py = (1 - v) * H;
   if (py < L.headH) {
-    if (px > W - L.pad - 44) return { type: "close" };
+    const cw = Math.round(L.headH * 0.79);
+    if (px > W - L.pad - cw) return { type: "close" };
     return { type: "none" };
   }
   // engine steppers
-  const btnW = L.engBtnW, colX = L.engColX;
-  if (py >= L.engY && py <= L.engY + L.engH) {
-    if (px >= L.pad && px <= L.pad + btnW) return { type: "engine", d: -1 };
-    if (px >= colX + 30 && px <= colX + 30 + btnW) return { type: "engine", d: 1 };
+  const E = L.eng;
+  if (py >= E.y && py <= E.y + E.h) {
+    if (px >= E.x && px <= E.x + E.btnW) return { type: "engine", d: -1 };
+    if (px >= E.colX + 30 && px <= E.colX + 30 + E.btnW) return { type: "engine", d: 1 };
   }
   // knobs. `frac` is where on the sweep the hand landed — a mouse ignores
   // it (knobs are grabbed and turned, and a tap must not teleport a value)
   // but a touch screen has no drag to offer, so there it IS the gesture.
   for (let i = 0; i < KNOBS.length; i++) {
-    const kx = L.knobX(i);
-    if (Math.hypot(px - kx, py - L.knobY) <= KNOB_R + 20)
-      return { type: "knob", key: KNOBS[i].key, frac: grabFrac(kx, L.knobY, px, py) };
+    const q = L.knobs[i];
+    if (Math.hypot(px - q.x, py - q.y) <= q.r + 20)
+      return { type: "knob", key: KNOBS[i].key, frac: grabFrac(q.x, q.y, px, py) };
   }
-  // the two button rows
-  const rows = [[ROW_A, L.rowAY], [ROW_B, L.rowBY]];
-  for (const [row, ry] of rows) {
-    for (let i = 0; i < row.length; i++) {
-      const b = row[i], r = L.cell(0, i, ry, row.length);
-      if (px < r.x || px > r.x + r.w || py < r.y || py > r.y + r.h) continue;
-      if (b.toggle) return { type: "cycle", key: b.key };
-      const d = hitStepper(px, py, r, CELL_BTN);
-      // the middle of a stepper is a label, so a tap there does nothing
-      return d ? { type: "cycle", key: b.key, d } : { type: "none" };
-    }
+  for (const key of CELL_ORDER) {
+    const r = L.cells[key];
+    if (px < r.x || px > r.x + r.w || py < r.y || py > r.y + r.h) continue;
+    if (CELL_SPECS[key].toggle) return { type: "cycle", key };
+    const d = hitStepper(px, py, r, L.cellBtn);
+    // the middle of a stepper is a label, so a tap there does nothing
+    return d ? { type: "cycle", key, d } : { type: "none" };
   }
   const oh = hitOctave(px, py, L.oct);
   if (oh) return oh;
   return { type: "none" };
 }
 
-export const SIZE = { w: W, h: H };
+export const SIZE = sizeOf("wide");
 
 /* The centre of every control, in canvas pixels. Nothing in the room needs
    this — the hit test does the work — but a test that has to guess where a
    button is isn't testing the button, it's testing the guess. Ask here and
    the answer comes from the same layout() the painter used. */
-export function centres() {
-  const L = layout(), out = {};
-  const btnW = L.engBtnW, colX = L.engColX;
-  out.engineDown = [L.pad + btnW / 2, L.engY + L.engH / 2];
-  out.engineUp = [colX + 30 + btnW / 2, L.engY + L.engH / 2];
-  out.close = [W - L.pad - 22, L.headH / 2];
-  KNOBS.forEach((k, i) => { out[k.key] = [L.knobX(i), L.knobY]; });
-  for (const [row, ry] of [[ROW_A, L.rowAY], [ROW_B, L.rowBY]]) {
-    for (let i = 0; i < row.length; i++) {
-      const r = L.cell(0, i, ry, row.length);
-      const c = stepperCentres(r, CELL_BTN);
-      out[row[i].key] = [r.x + r.w / 2, r.y + r.h / 2];
-      out[row[i].key + "Down"] = c.down;
-      out[row[i].key + "Up"] = c.up;
-    }
+export function centres(mode = "wide") {
+  const L = layout(mode), out = {};
+  out.engineDown = [L.eng.x + L.eng.btnW / 2, L.eng.y + L.eng.h / 2];
+  out.engineUp = [L.eng.colX + 30 + L.eng.btnW / 2, L.eng.y + L.eng.h / 2];
+  out.close = [L.W - L.pad - Math.round(L.headH * 0.79) / 2, L.headH / 2];
+  KNOBS.forEach((k, i) => { out[k.key] = [L.knobs[i].x, L.knobs[i].y]; });
+  for (const key of CELL_ORDER) {
+    const r = L.cells[key];
+    out[key] = [r.x + r.w / 2, r.y + r.h / 2];
+    // a TOGGLE has no minus and no plus — the whole cell is the button. it
+    // used to publish `arpUp`/`arpDown` anyway, coordinates for two controls
+    // that have never been drawn, which is a map with roads on it that aren't
+    // there. anything reading them got a plain toggle back and no direction.
+    if (CELL_SPECS[key].toggle) continue;
+    const c = stepperCentres(r, L.cellBtn);
+    out[key + "Down"] = c.down;
+    out[key + "Up"] = c.up;
   }
   Object.assign(out, octaveCentres(L.oct));
   return out;

@@ -59,12 +59,30 @@ const SWEEP_PX = 180;
    px, which is still a fingertip, and nothing here asks for more. */
 const keyCount = (o) => Math.max(2, Math.min(15, o?.keys?.count?.() ?? 8));
 
+/* WHICH SHAPE OF THE PANEL TO DRAW.
+
+   The panels come in three (see synth-panel.js): the wide one that hangs in
+   the room, a tall one for a phone held upright, a short wide one for a phone
+   on its side. The sheet only ever wants the last two, and which one is
+   simply which way up the phone is. A panel module that predates this — or
+   one that only has the one layout — reports no `sizeOf`, and then the sheet
+   asks for nothing and gets the wide canvas it always got. */
+const sheetMode = () => (window.innerWidth > window.innerHeight ? "short" : "tall");
+
+/* The keybed is SHORTER on its side, and that is a real constraint rather
+   than a taste: landscape leaves about 390 px of screen in total, and a
+   keybed drawn at the portrait aspect would take 211 of them. It is drawn in
+   its own pixels either way, so this is the whole of the difference. */
+const KEY_CANVAS = { tall: { w: 1024, h: 260 }, short: { w: 1024, h: 130 } };
+
 export function createPanelSheet() {
   let host = null, canvas = null, ctx = null;
   let keysCv = null, keysCtx = null;
   let open = null;          // the panel spec while one is up
   let drag = null;          // { key, start, x0, y0, moved }
   let keyDown = -1;         // which key a finger is on, for the lit state
+  let mode = "tall";        // which shape of the panel we're drawing
+  let KW = 1024, KH = 260;  // the keybed's own canvas, in its own pixels
 
   function build() {
     host = document.createElement("div");
@@ -93,18 +111,58 @@ export function createPanelSheet() {
     // not also walk you, and a long press must not offer to copy an image
     for (const ev of ["touchstart", "touchmove", "touchend", "contextmenu"])
       host.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
+
+    addEventListener("resize", onViewport);
+    addEventListener("orientationchange", onViewport);
+    window.visualViewport?.addEventListener("resize", onViewport);
   }
 
   // where a pointer landed, in the panel's OWN canvas pixels
   function toCanvas(e) {
     const r = canvas.getBoundingClientRect();
     return {
-      px: ((e.clientX - r.left) / r.width) * open.size.w,
-      py: ((e.clientY - r.top) / r.height) * open.size.h,
+      px: ((e.clientX - r.left) / r.width) * size().w,
+      py: ((e.clientY - r.top) / r.height) * size().h,
     };
   }
-  // hit() speaks u,v like a raycast does, with v flipped
-  const hitAt = (px, py) => open.mod.hit(px / open.size.w, 1 - py / open.size.h, ...(open.hitArgs || []));
+  // hit() speaks u,v like a raycast does, with v flipped. the MODE goes with
+  // it, or the hit test answers for a layout that isn't on screen
+  const hitAt = (px, py) =>
+    open.mod.hit(px / size().w, 1 - py / size().h, ...(open.hitArgs || []), mode);
+
+  // what canvas this panel wants in this mode
+  const size = () => (open.mod.sizeOf ? open.mod.sizeOf(mode) : open.size);
+
+  /* Re-shape for the mode: a new canvas size, and the two CSS custom
+     properties the stylesheet needs to cap the sheet by height. --sheet-ar is
+     the same ratio as --sheet-aspect, as a bare number, because calc() can
+     multiply by a number and cannot multiply by `1024 / 560`. */
+  function reshape() {
+    if (!open) return;
+    const s = size();
+    if (canvas.width !== s.w || canvas.height !== s.h) {
+      canvas.width = s.w; canvas.height = s.h;
+    }
+    host.style.setProperty("--sheet-aspect", `${s.w} / ${s.h}`);
+    host.style.setProperty("--sheet-ar", String(s.w / s.h));
+    const k = KEY_CANVAS[mode] || KEY_CANVAS.tall;
+    if (KW !== k.w || KH !== k.h) { KW = k.w; KH = k.h; }
+    if (keysCv.width !== KW || keysCv.height !== KH) { keysCv.width = KW; keysCv.height = KH; }
+    host.style.setProperty("--keys-aspect", `${KW} / ${KH}`);
+  }
+
+  /* Turning the phone changes which layout is right, and a rotation fires
+     resize rather than anything panel-shaped, so this is where it's caught.
+     visualViewport is the one that actually moves when the browser chrome
+     slides away on a phone; window.resize alone misses it. */
+  function onViewport() {
+    if (!open) return;
+    const want = sheetMode();
+    if (want === mode) return;
+    mode = want;
+    reshape();
+    paint();
+  }
 
   /* Capture the pointer so a drag that leaves the element keeps arriving —
      but NEVER let it throw. setPointerCapture rejects an id it doesn't
@@ -152,7 +210,6 @@ export function createPanelSheet() {
 
   /* ---------- the keybed ---------- */
 
-  const KW = 1024, KH = 260;      // its own canvas, drawn in its own pixels
   const keyIndexAt = (clientX) => {
     const n = keyCount(open);
     const r = keysCv.getBoundingClientRect();
@@ -173,11 +230,14 @@ export function createPanelSheet() {
       g.fillRect(x + kw - 8, 0, 6, KH);
       const name = open.keys.label ? open.keys.label(i) : "";
       if (name) {
+        // sized off the canvas, not fixed at 34: the landscape keybed is half
+        // as tall, and a 34px letter in it sat almost on the top edge
+        const fs = Math.round(KH * 0.13);
         g.fillStyle = lit ? "#6b3b00" : "#8d8d86";
-        g.font = "34px ui-monospace, Menlo, monospace";
+        g.font = `${fs}px ui-monospace, Menlo, monospace`;
         g.textAlign = "center";
         g.textBaseline = "alphabetic";
-        g.fillText(name, x + kw / 2, KH - 22);
+        g.fillText(name, x + kw / 2, KH - fs * 0.65);
       }
     }
   }
@@ -203,7 +263,7 @@ export function createPanelSheet() {
 
   function paint() {
     if (!open) return;
-    open.mod.draw(ctx, open.state(), open.live ? open.live() : null);
+    open.mod.draw(ctx, open.state(), open.live ? open.live() : null, mode);
     paintKeys();
   }
 
@@ -214,10 +274,8 @@ export function createPanelSheet() {
     show(spec) {
       if (!host) build();
       open = spec;
-      canvas.width = spec.size.w;
-      canvas.height = spec.size.h;
-      host.style.setProperty("--sheet-aspect", `${spec.size.w} / ${spec.size.h}`);
-      keysCv.width = KW; keysCv.height = KH;
+      mode = sheetMode();
+      reshape();
       host.classList.toggle("has-keys", !!spec.keys);
       host.classList.add("show");
       keyDown = -1;
@@ -230,6 +288,7 @@ export function createPanelSheet() {
     isOpen: () => !!open,
     // what the keybed is actually drawing, for the harness
     keyCount: () => (open ? keyCount(open) : 0),
+    mode: () => (open ? mode : null),
     // the room changed something (an arp step, the wasm finishing) — repaint
     refresh: paint,
   };

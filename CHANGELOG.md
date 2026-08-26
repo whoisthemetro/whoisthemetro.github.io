@@ -4,6 +4,70 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-08-25 — one panel, three shapes
+
+Reported as: "the synth and guitar panels are still way too small on mobile,
+and in landscape everything is super squished."
+
+**Measured first, because "squished" turned out to be two different faults.**
+On a 390x844 phone the sheet used **37% of the screen** and drew a knob at
+**31 css px**. Turned sideways it was worse than small: the panel came out
+455 css px tall in a 390 px viewport and the keybed added 211 more, so 672 px
+of sheet was crammed into 390 px of screen and the panel's top edge sat at
+**y = -290**. The header, the engine block and every knob readout were off the
+top of the screen. Nothing was squished; two thirds of it was simply not
+there.
+
+- **A 1024x560 canvas is a landscape shape, and a phone is not.** Both panels
+  now have THREE layouts and one drawing: `wide` 1024x560 (the panel in the
+  room, unchanged and pixel-identical), `tall` 720x1190 for a phone held
+  upright, `short` 1500x430 for one on its side. `layout(mode)` is the only
+  place any of the geometry lives, so a mode cannot be drawn somewhere its hit
+  test isn't.
+- **The trick is that a control's on-screen size is (its canvas size / the
+  canvas WIDTH) x the css width.** So making the canvas NARROWER makes
+  everything on it bigger, and making it WIDER lets a knob grow without
+  costing height. `tall` is 720 wide for the first reason — three knobs across
+  where the wide layout has five, two stepper cells where it has four. `short`
+  is 1500 wide for the second: the same knob is 65 css px on a landscape phone
+  and would be 45 at the wide layout's proportions.
+- Measured after: **knob 31 -> 67 css px in portrait, 31 -> 65 in landscape**,
+  and a stepper's −/+ went 21 -> 39. The sheet uses 86% of the screen in
+  portrait and 85% in landscape, with **nothing off-screen in either**.
+- **The CSS was only ever a rule about width.** `width: 100%` says nothing
+  about height, which is why landscape overflowed. The width is now capped by
+  the height we're willing to spend — `min(100%, var(--sheet-h) * aspect)` —
+  so neither dimension can run away. Portrait deliberately sets `--sheet-h`
+  high, high enough that width is the binding constraint, because in portrait
+  using the full width is the entire point.
+- **Turning the phone re-lays it out live.** A rotation fires `resize`, not
+  anything panel-shaped, and `visualViewport`'s resize is the one that moves
+  when browser chrome slides away — both are listened for. The canvas
+  reshapes, the keybed swaps to its short canvas, and a tap afterwards lands
+  where the new drawing says it does.
+- **Type now scales off geometry** (`panel-kit.js`), never off a per-panel
+  constant: a knob's label is sized from its radius, a cell's from its height.
+  The coefficients are chosen so the wide layout lands exactly on its existing
+  hand-tuned numbers — at radius 42 it still returns 16 — so the panel in the
+  room is byte-for-byte what it was. Without this, three layouts would have
+  needed three tables of font sizes and they would have drifted in a week.
+- `knobReach(rad)` replaces layouts each re-deriving `drawKnob`'s internals
+  and guessing a margin, which is how the wide panel's labels once ended up
+  four pixels above the strip below them.
+- **`centres()` was publishing controls that don't exist**: it emitted
+  `arpUp`/`arpDown` for ARP and HOLD, which are toggles with no minus and no
+  plus. A map with roads on it that aren't there. Toggles now publish only
+  their own centre.
+
+Three new checks, all cheap enough to run every time (`~/metro-smoke/`):
+`panelfit.mjs` proves no layout's last element falls outside its canvas,
+`panelsize.mjs` prints what every control actually measures on screen per
+mode, and `panelagree.mjs` asks `hit()` what is at each of `centres()`'
+coordinates in all six layouts — **99 probes, 0 mismatches**. `rotate.js`
+turns the phone with the panel open and taps afterwards. That last one is the
+one that would have caught a stale mode, which is a panel whose buttons have
+all moved and whose hit test hasn't.
+
 ## 2026-08-25 — the instruments belong to the room
 
 Reported as: "when I play the keyboard on my phone it's a different sound on my

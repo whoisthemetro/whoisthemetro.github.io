@@ -6221,7 +6221,8 @@ window.METRO_DEBUG = { renderer, camera, world, controls, xr, disc, hoop: hoopGa
             stop: () => gardenPlayer.stop(), playing: () => gardenPlayer.playing(),
             state: () => gardenState, inside: () => inGarden },
   sheet: { open: openPanelSheet, hide: () => panelSheet.hide(), isOpen: () => panelSheet.isOpen(),
-           sync: syncPanelSheet, keyCount: () => panelSheet.keyCount() },
+           sync: syncPanelSheet, keyCount: () => panelSheet.keyCount(),
+           mode: () => panelSheet.mode() },
   // a hand on the guitar's resonator, same habit as the synth panel
   rings: {
     state: () => rings, status: ringsStatus, init: initRings, apply: ringsApply,
