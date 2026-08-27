@@ -484,8 +484,8 @@ addEventListener("keydown", (e) => {
       if (to) { e.preventDefault(); adminJump(to); }
     }
   }
-  // admin layout mode: L toggles it; while it's on, the arrows/QE/PgUpDn
-  // move whatever prop is held (repeats allowed — holding an arrow slides)
+  // admin layout mode: L toggles it; while on, movement and all three rotation
+  // axes edit whatever is held (repeats allowed — holding a key keeps moving)
   if (adminMode && entered && !modalOpen && !chatOpen) {
     const ae = document.activeElement;
     if (!ae || (ae.tagName !== "INPUT" && ae.tagName !== "TEXTAREA")) {
@@ -3867,7 +3867,7 @@ function rideElevator(floor) {
 }
 /* --- admin layout editor: press L in #admin to rearrange the props.
    click a prop to grab it (gold box), arrows slide it, PgUp/PgDn raise
-   and lower, Q/E spin, shift makes every move fine, R sends it home.
+   and lower, Q/E yaw, Z/N pitch, J/K roll Z; shift makes moves fine.
    press L again and the layout saves to room_state — the room stays
    that way for everyone, and other visitors see it live. --- */
 let layoutMode = false, layoutSel = null, layoutBox = null;
@@ -3884,7 +3884,7 @@ function setLayoutMode(on) {
   layoutMode = on;
   layoutDrop();
   if (on) {
-    toast("layout mode — click a prop · arrows move · Q/E spin · +/- resize · PgUp/PgDn raise · R home · L saves");
+    toast("layout — arrows move · Q/E Y · Z/N X · J/K Z · +/- size · PgUp/PgDn raise · R home · L saves");
   } else {
     /* the furniture moves for EVERYONE, so the database asks for the passphrase
        and #admin on its own is not enough. a wrong one gets forgotten so the
@@ -3907,7 +3907,7 @@ function layoutSelect(id) {
   layoutSel = id;
   layoutBox = new THREE.BoxHelper(g, 0xffd23c);
   world.scene.add(layoutBox);
-  toast(`holding: ${id} — arrows · Q/E · +/- · PgUp/PgDn · R resets it`);
+  toast(`holding: ${id} — arrows move · Q/E Y · Z/N X · J/K Z · shift = fine · L saves`);
 }
 function layoutClick() {
   layRay.setFromCamera(layCentre, camera);

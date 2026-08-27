@@ -4,6 +4,25 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-08-27 — the real Apollo Twin
+
+- Replaced the two-piece procedural Apollo Twin on the bedroom rack with the
+  detailed Apollo Twin USB GLB. Its exported 0.165 x 0.064 x 0.156 m bounds
+  are already almost identical to the old 0.160 x 0.065 x 0.150 m stand-in, so
+  the loader uses one uniform footprint fit, centres the source pivot and puts
+  its lowest point on the rack top.
+- The old geometry remains until the GLB has loaded and warmed successfully,
+  then swaps out without moving the rack or radio. The clean apollo mount is
+  also exposed to #admin + L for later placement tweaks. The editor now labels all
+  three axes: Q/E rotates Y, Z/N rotates X, and J/K rotates Z; Shift makes
+  any of those a fine adjustment.
+- Processed the source through deduplication, pruning, 512 px texture resizing,
+  WebP conversion and conservative mesh simplification: 7.86 MB / 160k
+  triangles became 2.79 MB / 76k triangles without adding a runtime decoder.
+- Model credit: [Apollo Twin USB](https://sketchfab.com/3d-models/apollo-twin-usb-01ed1cc21e94419697c2a54493315ab0)
+  by [bangviet](https://sketchfab.com/bangviet), used under
+  [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+
 ## 2026-08-27 — Metro's desk moves in
 
 - The procedural bedroom desk has been replaced with Metro's own Blender

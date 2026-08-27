@@ -240,6 +240,12 @@ SETUP.md              connect Supabase + the admin kill switch
   webhook) is gitignored and never committed — only the idempotent public SQL
   and the public anon key ship.
 
+## Model credits
+
+- [Apollo Twin USB](https://sketchfab.com/3d-models/apollo-twin-usb-01ed1cc21e94419697c2a54493315ab0)
+  by [bangviet](https://sketchfab.com/bangviet), licensed under
+  [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+
 ## History
 
 whoisthemetro.com used to be a walk-through music studio with a drum

@@ -5530,6 +5530,7 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     warmPromise = (async () => {
       const models = [
         ["the bedroom desk", () => swapDeskModel()],
+        ["the Apollo Twin", () => swapApolloModel()],
         ["the arcade cabinets", () => swapCabinetModel(tronGrp, "assets/models/tron_cabinet.glb", 1.78)],
         ["the arcade cabinets", () => swapCabinetModel(pacGrp, "assets/models/pac_cabinet.glb", 1.78)],
         ["the arcade cabinets", () => swapCabinetModel(pongGrp, "assets/models/pong_cabinet.glb", 1.78, Math.PI / 2)],
@@ -5538,8 +5539,8 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
         ["the smoking corner", () => swapProp(smokeProps.ashtray, "assets/models/ashtray.glb", { size: 0.155, axis: "xz", tag: "joint" })],
         ["the smoking corner", () => swapProp(smokeProps.joint, "assets/models/joint.glb", { size: 0.095, axis: "max", centre: true, tag: "joint" })],
       ];
-      /* The models are NOT awaited. Roughly 2MB of them, and on a throttled
-         phone that was eighteen seconds of somebody staring at a progress
+      /* The models are NOT awaited. On a throttled phone, waiting for them
+         was eighteen seconds of somebody staring at a progress
          bar, which is a worse experience than the stutter we set out to
          remove. They are cosmetic upgrades over procedural stand-ins that
          already look right, and swapCabinetModel/swapProp each do their own
@@ -7021,16 +7022,63 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     wheel.position.set(cx, 0.035, cz);
     rack.add(wheel);
   }
+  const apolloMount = new THREE.Group();
+  const apolloStandIn = [];
+  apolloMount.position.set(0, 0.62 + 0.06, 0.1); // rack top, old Apollo centre in X/Z
+  rack.add(apolloMount);
   const apollo = caster(box(0.16, 0.065, 0.15, new THREE.MeshStandardMaterial({ color: 0x9aa0a8, metalness: 0.65, roughness: 0.4 })));
-  apollo.position.set(0, 0.62 + 0.06 + 0.0325, 0.1);
-  rack.add(apollo);
+  apollo.position.y = 0.0325;
+  apolloMount.add(apollo);
+  apolloStandIn.push(apollo);
   const apKnob = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 0.018, 18),
     new THREE.MeshStandardMaterial({ color: 0x2c2f34, metalness: 0.7, roughness: 0.35 }));
-  apKnob.position.set(0, 0.62 + 0.06 + 0.068, 0.12);
-  rack.add(apKnob);
+  apKnob.position.set(0, 0.068, 0.02);
+  apolloMount.add(apKnob);
+  apolloStandIn.push(apKnob);
   rack.position.set(2.1, 0, ZF + 0.78);
   rack.rotation.y = -0.25;
   add(rack);
+
+  /* The Sketchfab model is already authored Y-up, facing +Z, and within a
+     few millimetres of the procedural Apollo's real-world envelope. Fit it
+     uniformly to that 0.16 x 0.15 m footprint, centre it over the old spot
+     and put its lowest point on the rack. The outer mount stays transform-
+     clean so #admin + L can move or resize it without inheriting the source
+     model's off-centre pivot. */
+  function swapApolloModel() {
+    return import("three/addons/loaders/GLTFLoader.js").then(({ GLTFLoader }) =>
+      new GLTFLoader().loadAsync("assets/models/apollo_twin.glb")
+    ).then((gltf) => {
+      const model = gltf.scene;
+      const before = new THREE.Box3().setFromObject(model);
+      const size = before.getSize(new THREE.Vector3());
+      if (size.x < 1e-4 || size.y < 1e-4 || size.z < 1e-4) throw new Error("empty Apollo model");
+      model.scale.setScalar(Math.min(0.16 / size.x, 0.15 / size.z));
+      const fitted = new THREE.Box3().setFromObject(model);
+      const centre = fitted.getCenter(new THREE.Vector3());
+      model.position.set(-centre.x, -fitted.min.y, -centre.z);
+      model.traverse((o) => {
+        if (!o.isMesh) return;
+        o.castShadow = true;
+        o.receiveShadow = true;
+        const mats = Array.isArray(o.material) ? o.material : [o.material];
+        for (const m of mats) {
+          if (!m) continue;
+          if (m.transmission > 0) m.transmission = 0;
+          if (m.clearcoat > 0) m.clearcoat = 0;
+          m.needsUpdate = true;
+        }
+      });
+
+      const warm = renderer && renderer.compileAsync
+        ? renderer.compileAsync(model, warmupCam, scene).catch(() => {})
+        : Promise.resolve();
+      return Promise.race([warm, new Promise((ok) => setTimeout(ok, 2000))]).then(() => {
+        apolloMount.add(model);
+        for (const part of apolloStandIn) apolloMount.remove(part);
+      });
+    }).catch(() => {});
+  }
 
   /* --- the lava lamp, left side of the rack top. it works. --- */
   const lava = new THREE.Group();
@@ -10487,7 +10535,7 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     synthbtn: synthBtnGrp, ringsbtn: ringsBtnGrp,
     synthpanel: synthPanel.group, ringspanel: ringsPanel.group,
     tele, pedalboard, kbpedals: kbPedals, midikeys: midiKeys, radio: laRadio.group,
-    desk: deskModelMount,
+    desk: deskModelMount, apollo: apolloMount,
     lava, mixer, clock: deskClock,
     monitor: deskMonitor, interface: deskInterface, keyboard: deskKeyboard,
     trackball: deskTrackball, meters: deskMeters, mug: deskMug, mac: deskMac,

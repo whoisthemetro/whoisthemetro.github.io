@@ -25,6 +25,7 @@ export const WHATS_NEW = [
   {
     date: "2026-08-27",
     items: [
+      "the Apollo Twin on the bedroom rack is the real model now — all the knobs, ports, labels and lights are there",
       "metro's own desk model is in the bedroom now, replacing the temporary one that was built out of boxes",
     ],
   },
