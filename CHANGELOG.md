@@ -4,6 +4,28 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-08-27 — Metro's desk moves in
+
+- The procedural bedroom desk has been replaced with Metro's own Blender
+  model. It is turned and fitted on load to the room's existing 1.90 x 0.78 x
+  0.74 m envelope, so the computer, mixer, keyboard and the rest of the rig
+  keep their carefully placed positions.
+- The model's exported dimensions were about 2.00 x 0.99 x 1.02 m. The fit is
+  deliberately isolated inside a floor-centred outer group, which leaves the
+  admin layout editor a clean movable handle instead of baking corrective
+  transforms into every later adjustment.
+- `#admin` + L can select the desk shell as `desk`. Moving or resizing it
+  does not drag the equipment with it; every loose desk item keeps its own
+  existing layout handle, making it possible to fit the furniture underneath
+  the rig.
+- The old procedural top and legs remain as a load-failure fallback and leave
+  the scene only after the GLB has loaded and warmed successfully.
+- Blender correctly baked Metro's procedural wood to a 2048 px image but
+  repeatedly omitted that image from the GLB. The site now loads the verified
+  bake directly, reduced to a 512 px WebP, and maps it through the tabletop's
+  exported UVs. The model keeps its black legs instead of inheriting the
+  export's gray fallback material.
+
 ## 2026-08-25 — one panel, three shapes
 
 Reported as: "the synth and guitar panels are still way too small on mobile,

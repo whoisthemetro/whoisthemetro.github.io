@@ -5529,6 +5529,7 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     const step = (label, frac) => { try { onStep && onStep(label, frac); } catch (e) {} };
     warmPromise = (async () => {
       const models = [
+        ["the bedroom desk", () => swapDeskModel()],
         ["the arcade cabinets", () => swapCabinetModel(tronGrp, "assets/models/tron_cabinet.glb", 1.78)],
         ["the arcade cabinets", () => swapCabinetModel(pacGrp, "assets/models/pac_cabinet.glb", 1.78)],
         ["the arcade cabinets", () => swapCabinetModel(pongGrp, "assets/models/pong_cabinet.glb", 1.78, Math.PI / 2)],
@@ -6555,15 +6556,90 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
   /* --- the desk rig --- */
   const deskTopY = 0.74;
   const desk = new THREE.Group();
+  const deskStandIn = [];
+  const deskModelMount = new THREE.Group();
+  desk.add(deskModelMount);
 
   const top = caster(box(1.9, 0.04, 0.78, new THREE.MeshLambertMaterial({ map: deskTexture() })));
   top.position.y = deskTopY - 0.02;
   top.receiveShadow = true;
   desk.add(top);
+  deskStandIn.push(top);
   for (const sx of [-0.88, 0.88]) {
     const leg = caster(box(0.05, deskTopY - 0.04, 0.7, lam(0x16181b)));
     leg.position.set(sx, (deskTopY - 0.04) / 2, 0);
     desk.add(leg);
+    deskStandIn.push(leg);
+  }
+
+  /* Metro's Blender desk replaces the procedural shell once it is ready;
+     every instrument and loose item stays where it already lives. The source
+     was exported long-on-Z and a little larger than the room's old desk, so
+     turn it first, then fit each world axis to the 1.90 x 0.78 x 0.74 m
+     envelope. Non-uniform fit lives INSIDE deskModelMount: the admin editor
+     still gets a clean outer handle with uniform scale and a floor-centred
+     pivot. If the file ever fails, the stand-in simply never leaves. */
+  function swapDeskModel() {
+    return Promise.all([
+      import("three/addons/loaders/GLTFLoader.js").then(({ GLTFLoader }) =>
+        new GLTFLoader().loadAsync("assets/models/desk.glb")),
+      new THREE.TextureLoader().loadAsync("assets/img/desk_wood.webp"),
+    ]).then(([gltf, wood]) => {
+      const model = gltf.scene;
+      /* Blender's procedural wood cannot travel in glTF, and its baked image
+         was correct even though Blender omitted it from the GLB. Load that
+         verified bake beside the geometry and map it through the exported UVs. */
+      wood.colorSpace = THREE.SRGBColorSpace;
+      wood.flipY = false;                         // glTF UVs expect an unflipped image
+      if (renderer && renderer.capabilities)
+        wood.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+      wood.needsUpdate = true;
+      model.rotation.y = Math.PI / 2;
+      const before = new THREE.Box3().setFromObject(model);
+      const size = before.getSize(new THREE.Vector3());
+      if (size.x < 1e-4 || size.y < 1e-4 || size.z < 1e-4) throw new Error("empty desk model");
+      /* scale composes before rotation: after the quarter-turn local Z is
+         world X and local X is world Z, so the two horizontal fits cross. */
+      model.scale.set(0.78 / size.z, deskTopY / size.y, 1.9 / size.x);
+
+      const fitted = new THREE.Box3().setFromObject(model);
+      const centre = fitted.getCenter(new THREE.Vector3());
+      model.position.set(-centre.x, -fitted.min.y, -centre.z);
+      const meshes = [];
+      model.traverse((o) => {
+        if (!o.isMesh) return;
+        o.castShadow = true;
+        o.receiveShadow = true;
+        meshes.push(o);
+        if (o.name === "Cube") {
+          const old = o.material;
+          o.material = new THREE.MeshStandardMaterial({
+            map: wood, color: 0xffffff, metalness: 0,
+            roughness: old && typeof old.roughness === "number" ? old.roughness : 0.5,
+            side: THREE.DoubleSide,
+          });
+          if (old && old.dispose) old.dispose();
+        }
+        const mats = Array.isArray(o.material) ? o.material : [o.material];
+        for (const m of mats) {
+          if (!m) continue;
+          if (m.transmission > 0) m.transmission = 0;
+          if (m.clearcoat > 0) m.clearcoat = 0;
+          m.needsUpdate = true;
+        }
+      });
+
+      const warm = renderer && renderer.compileAsync
+        ? renderer.compileAsync(model, warmupCam, scene).catch(() => {})
+        : Promise.resolve();
+      return Promise.race([warm, new Promise((ok) => setTimeout(ok, 2000))]).then(() => {
+        deskModelMount.add(model);
+        for (const part of deskStandIn) desk.remove(part);
+        const oldTop = blockers.indexOf(top);
+        if (oldTop >= 0) blockers.splice(oldTop, 1);
+        blockers.push(...meshes);
+      });
+    }).catch(() => {});
   }
 
   // D-Box MK1
@@ -10411,6 +10487,7 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     synthbtn: synthBtnGrp, ringsbtn: ringsBtnGrp,
     synthpanel: synthPanel.group, ringspanel: ringsPanel.group,
     tele, pedalboard, kbpedals: kbPedals, midikeys: midiKeys, radio: laRadio.group,
+    desk: deskModelMount,
     lava, mixer, clock: deskClock,
     monitor: deskMonitor, interface: deskInterface, keyboard: deskKeyboard,
     trackball: deskTrackball, meters: deskMeters, mug: deskMug, mac: deskMac,

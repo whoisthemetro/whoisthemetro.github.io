@@ -34,7 +34,7 @@ for python-heredoc edits, so **leave them intact.**
 | The bedroom shell, doors, closet, acoustic slabs | 1533–2530 | — |
 | The window, room light, astro ceiling | 2527–2920 | `astro.js` |
 | Instruments — e-kit, telecaster, pedalboard, filter treadle | 2957–3375 | `main.js` 1933–2143, `ambience.js` |
-| The desk rig — mixer, monitors, rack, lava lamp, radio | 5288–5760 | `main.js` 1933–2010, `radio.js` |
+| The desk rig — custom desk model, mixer, monitors, rack, lava lamp, radio | the `desk rig` block @6556 | `assets/models/desk.glb`, `assets/img/desk_wood.webp`, `main.js` 1933–2010, `radio.js` |
 | The telecaster's RINGS voice + its panel | the `tele` block @3521 (button + panel mount, just before `tele.position.set`) | `rings-panel.js`, `panel-kit.js` (shared with the synth panel), `ambience.js` (`initRings`/`ringsNote`/`setRings`, `GUITAR_VOICES`), `main.js` (`applyRingsHit`, the shared knob drag), `tools/mi/ri_wrapper.cc` |
 | The MIDI keyboard, its PLAITS voice + the panel over it | the `midiKeys` block @6637 (chassis, keybed, button, panel mount) | `synth-panel.js` (all of the UI, the scales, the layout), `ambience.js` (`initPlaits`/`plaitsNote`/`setPlaits`, `PIANO_VOICES`), `main.js` (`synthPress`, `arpTick`, `applySynthHit`, the knob drag) |
 | The cat's corner, dimmer, mix & master neon | 5812–5998 | `cat.js` |

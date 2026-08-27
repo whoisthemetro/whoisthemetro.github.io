@@ -23,6 +23,12 @@
 
 export const WHATS_NEW = [
   {
+    date: "2026-08-27",
+    items: [
+      "metro's own desk model is in the bedroom now, replacing the temporary one that was built out of boxes",
+    ],
+  },
+  {
     date: "2026-08-25",
     items: [
       "the keyboard and guitar panels are built for a phone now. the knobs are more than twice the size they were and the panel fills the screen instead of sitting in a strip along the bottom",
