@@ -4,6 +4,17 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-08-28 — Metro's Mac Studio
+
+- Replaced the procedural Mac Studio on the bedroom desk with Metro's model,
+  fitted uniformly to the original 0.20 x 0.20 m desk footprint.
+- The supplied GLB contained the desk it was built on as well as the computer.
+  The site asset retains only the Mac Studio and status light: 4.9 MB becomes
+  30 KB, with the accidental wood texture and extra desk geometry removed.
+- The light is on the source model's local -X side. The loader turns it 90° so
+  the white light faces the chair (+Z), then keeps the existing mac layout
+  handle and computer click target.
+
 ## 2026-08-27 — the real Apollo Twin
 
 - Replaced the two-piece procedural Apollo Twin on the bedroom rack with the

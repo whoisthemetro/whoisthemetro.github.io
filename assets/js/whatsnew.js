@@ -23,6 +23,12 @@
 
 export const WHATS_NEW = [
   {
+    date: "2026-08-28",
+    items: [
+      "the Mac Studio in the bedroom is Metro's model now, with its little white status light facing the chair",
+    ],
+  },
+  {
     date: "2026-08-27",
     items: [
       "the Apollo Twin on the bedroom rack is the real model now — all the knobs, ports, labels and lights are there",

@@ -5530,6 +5530,7 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     warmPromise = (async () => {
       const models = [
         ["the bedroom desk", () => swapDeskModel()],
+        ["the Mac Studio", () => swapMacStudioModel()],
         ["the Apollo Twin", () => swapApolloModel()],
         ["the arcade cabinets", () => swapCabinetModel(tronGrp, "assets/models/tron_cabinet.glb", 1.78)],
         ["the arcade cabinets", () => swapCabinetModel(pacGrp, "assets/models/pac_cabinet.glb", 1.78)],
@@ -6700,11 +6701,56 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
   tbBall.position.set(0.28, deskTopY + 0.045, 0.115);
   desk.add(tbBall);
 
-  // mac studio + portable monitor on top
+  // Mac Studio + portable monitor on top. Its status light is authored on
+  // local -X; a quarter-turn below makes that +Z, facing the chair.
+  const macMount = new THREE.Group();
+  const macStandIn = [];
+  macMount.position.set(-0.7, deskTopY, -0.12);
+  desk.add(macMount);
   const mac = caster(box(0.2, 0.095, 0.2, new THREE.MeshStandardMaterial({ color: 0xc9ccd1, metalness: 0.6, roughness: 0.45 })));
-  mac.position.set(-0.7, deskTopY + 0.0475, -0.12);
+  mac.position.y = 0.0475;
   mac.userData.dm = true;
-  desk.add(mac);
+  macMount.add(mac);
+  macStandIn.push(mac);
+
+  function swapMacStudioModel() {
+    return import("three/addons/loaders/GLTFLoader.js").then(({ GLTFLoader }) =>
+      new GLTFLoader().loadAsync("assets/models/mac_studio.glb")
+    ).then((gltf) => {
+      const model = gltf.scene;
+      model.rotation.y = Math.PI / 2; // source light: local -X → desk user: +Z
+      const before = new THREE.Box3().setFromObject(model);
+      const size = before.getSize(new THREE.Vector3());
+      if (size.x < 1e-4 || size.y < 1e-4 || size.z < 1e-4) throw new Error("empty Mac Studio model");
+      const fit = Math.min(0.2 / size.x, 0.2 / size.z);
+      model.scale.setScalar(fit);
+      const fitted = new THREE.Box3().setFromObject(model);
+      const centre = fitted.getCenter(new THREE.Vector3());
+      model.position.set(-centre.x, -fitted.min.y, -centre.z);
+      model.traverse((o) => {
+        if (!o.isMesh) return;
+        o.castShadow = true;
+        o.receiveShadow = true;
+        o.userData.dm = true;
+        const mats = Array.isArray(o.material) ? o.material : [o.material];
+        for (const m of mats) {
+          if (!m) continue;
+          if (m.transmission > 0) m.transmission = 0;
+          if (m.clearcoat > 0) m.clearcoat = 0;
+          m.needsUpdate = true;
+        }
+      });
+
+      const warm = renderer && renderer.compileAsync
+        ? renderer.compileAsync(model, warmupCam, scene).catch(() => {})
+        : Promise.resolve();
+      return Promise.race([warm, new Promise((ok) => setTimeout(ok, 2000))]).then(() => {
+        macMount.add(model);
+        for (const part of macStandIn) macMount.remove(part);
+      });
+    }).catch(() => {});
+  }
+
   const meterScr = makeMeterScreen();
   const pmBezel = caster(box(0.35, 0.225, 0.012, lam(0x0c0d10)));
   pmBezel.rotation.x = -0.12;
@@ -6811,7 +6857,7 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
   const deskTrackball = wrapDeskItem(0.28, 0.13, tbBase, tbBall);
   const deskMeters = wrapDeskItem(-0.7, -0.14, pmBezel, pmScreen);
   const deskMug = wrapDeskItem(0.49, 0.04, mug, coffee);
-  const deskMac = wrapDeskItem(-0.7, -0.12, mac);
+  const deskMac = macMount;
 
   // midi controller tucked under the desk, keys barely sticking out;
   // its body is the piano-voice selector
