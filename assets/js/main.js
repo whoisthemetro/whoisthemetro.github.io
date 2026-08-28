@@ -492,6 +492,7 @@ addEventListener("keydown", (e) => {
       if (e.code === "KeyL" && !e.repeat) { e.preventDefault(); setLayoutMode(!layoutMode); }
       else if (layoutMode) {
         const fine = e.shiftKey ? 0.01 : 0.05, rot = e.shiftKey ? 0.02 : 0.1;
+        const resize = e.shiftKey ? 1.01 : 1.10;
         const act = {
           ArrowUp:    () => layoutNudge(0, 0, -fine),
           ArrowDown:  () => layoutNudge(0, 0, fine),
@@ -509,12 +510,21 @@ addEventListener("keydown", (e) => {
           KeyN:       () => layoutNudge(0, 0, 0, 0, -rot),
           KeyJ:       () => layoutNudge(0, 0, 0, 0, 0, rot),
           KeyK:       () => layoutNudge(0, 0, 0, 0, 0, -rot),
-          Equal:      () => layoutScale(e.shiftKey ? 1.01 : 1.05),
-          NumpadAdd:  () => layoutScale(e.shiftKey ? 1.01 : 1.05),
-          Minus:      () => layoutScale(e.shiftKey ? 1 / 1.01 : 1 / 1.05),
-          NumpadSubtract: () => layoutScale(e.shiftKey ? 1 / 1.01 : 1 / 1.05),
+          Equal:      () => layoutScale(resize),
+          NumpadAdd:  () => layoutScale(resize),
+          Minus:      () => layoutScale(1 / resize),
+          NumpadSubtract: () => layoutScale(1 / resize),
+          BracketLeft: () => layoutScale(1 / resize, "x"),
+          BracketRight: () => layoutScale(resize, "x"),
+          Comma:      () => layoutScale(1 / resize, "x"),
+          Period:     () => layoutScale(resize, "x"),
           KeyR:       () => { if (layoutSel) { world.resetMovable(layoutSel); layoutBox?.update(); } },
-        }[e.code];
+        }[e.code] || ({
+          "+": () => layoutScale(resize), "=": () => layoutScale(resize),
+          "-": () => layoutScale(1 / resize), "_": () => layoutScale(1 / resize),
+          "[": () => layoutScale(1 / resize, "x"), "]": () => layoutScale(resize, "x"),
+          ",": () => layoutScale(1 / resize, "x"), ".": () => layoutScale(resize, "x"),
+        })[e.key];
         // eat the key so the arrows edit the prop instead of walking you
         if (act) { e.preventDefault(); controls.keys?.delete(e.code); act(); }
       }
@@ -3884,7 +3894,7 @@ function setLayoutMode(on) {
   layoutMode = on;
   layoutDrop();
   if (on) {
-    toast("layout — arrows move · Q/E Y · Z/N X · J/K Z · +/- size · PgUp/PgDn raise · R home · L saves");
+    toast("layout — arrows move · Q/E Y · Z/N X · J/K Z · +/- size · [/] width · PgUp/PgDn raise · R home · L saves");
   } else {
     /* the furniture moves for EVERYONE, so the database asks for the passphrase
        and #admin on its own is not enough. a wrong one gets forgotten so the
@@ -3907,7 +3917,7 @@ function layoutSelect(id) {
   layoutSel = id;
   layoutBox = new THREE.BoxHelper(g, 0xffd23c);
   world.scene.add(layoutBox);
-  toast(`holding: ${id} — arrows move · Q/E Y · Z/N X · J/K Z · shift = fine · L saves`);
+  toast(`holding: ${id} — arrows move · Q/E Y · Z/N X · J/K Z · +/- size · [/] width · shift = fine · L saves`);
 }
 function layoutClick() {
   layRay.setFromCamera(layCentre, camera);
@@ -3921,16 +3931,24 @@ function layoutClick() {
      whichever of its ancestors happened to be listed first. Nearest wins. */
   const owner = new Map(Object.entries(world.movables).map(([id, g]) => [g, id]));
   for (let o = h.object; o; o = o.parent) {
+    // Some controls belong to a larger instrument. Their group can opt out
+    // of being picked by itself so a click on the synth button still moves
+    // its chassis and keybed as one complete instrument.
+    if (o.userData.layoutOwner) { layoutSelect(o.userData.layoutOwner); return; }
     const id = owner.get(o);
     if (id) { layoutSelect(id); return; }
   }
   layoutDrop();
 }
-function layoutScale(f) {
+function layoutScale(f, axis = null) {
   if (!layoutSel) return;
   const g = world.movables[layoutSel];
-  g.scale.setScalar(Math.max(0.2, Math.min(5, g.scale.x * f)));
+  const clamp = (v) => Math.max(0.2, Math.min(5, v));
+  if (axis) g.scale[axis] = clamp(g.scale[axis] * f);
+  else g.scale.set(clamp(g.scale.x * f), clamp(g.scale.y * f), clamp(g.scale.z * f));
   layoutBox?.update();
+  toast("size: " + layoutSel + " — " + g.scale.x.toFixed(2) + " × " +
+    g.scale.y.toFixed(2) + " × " + g.scale.z.toFixed(2));
 }
 function layoutNudge(dx, dy, dz, dry = 0, drx = 0, drz = 0) {
   if (!layoutSel) return;

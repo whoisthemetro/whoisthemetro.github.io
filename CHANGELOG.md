@@ -4,6 +4,19 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-08-28 — desk layout controls
+
+- Layout mode now has independent width controls: `[` / `,` narrow the selected object along its X axis and `]` / `.` widen it; hold Shift for 1% steps. `+` / `-` still resize the whole object proportionally in more visible 10% steps. The selected item now reports its X/Y/Z scale after each resize.
+- The D-Box loader preserves its authored green `Inner Buttons.001` emissive material, set to an intensity that remains visible under the bedroom's low lighting.
+- Scale is now saved as X/Y/Z values, so a deliberately skinnier desk persists instead of being flattened back to one uniform scale. Existing saved layouts with the old scalar size remain compatible.
+- Every desktop item remains an independent layout handle. The synth button and its panel now select the complete `midikeys` instrument, keeping the chassis, keybed, button and panel together when moved or resized. The D-Box selected-item hint now explicitly shows the resize controls.
+
+## 2026-08-28 — Metro's D-Box
+
+- Replaced the procedural D-Box under the bedroom ultrawide with Metro's detailed D-BOX model.
+- Preserved the model's proportions and front-panel orientation, fitting it as a 0.48 x 0.042 x 0.176 m rack unit with its controls facing the chair. The monitor now rests at its actual top height rather than floating at the old placeholder's taller height.
+- The updated 305 KB GLB validates cleanly, preserves the Blender-authored 3.196 emissive strength, strips transmission and clearcoat at runtime, and keeps the existing `#admin` layout handle (`interface`) for moving or rotating it.
+
 ## 2026-08-28 — Metro's Mac Studio
 
 - Replaced the procedural Mac Studio on the bedroom desk with Metro's model,

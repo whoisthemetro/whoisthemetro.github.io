@@ -5530,6 +5530,7 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     warmPromise = (async () => {
       const models = [
         ["the bedroom desk", () => swapDeskModel()],
+        ["the D-Box", () => swapDBoxModel()],
         ["the Mac Studio", () => swapMacStudioModel()],
         ["the Apollo Twin", () => swapApolloModel()],
         ["the arcade cabinets", () => swapCabinetModel(tronGrp, "assets/models/tron_cabinet.glb", 1.78)],
@@ -6645,23 +6646,72 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
   }
 
   // D-Box MK1
-  const dbox = caster(box(0.36, 0.105, 0.26, lam(0x111317)));
-  dbox.position.set(0, deskTopY + 0.0525, -0.2);
-  desk.add(dbox);
+  // Metro's model is a realistic 1U-ish rack unit: 48 cm wide, 4.2 cm high.
+  // The ultrawide is re-seated at that height instead of hovering at the old
+  // placeholder's taller 10.5 cm top.
+  const dboxW = 0.48, dboxH = 0.0423, dboxD = 0.176;
+  const dboxMount = new THREE.Group();
+  const dboxStandIn = [];
+  dboxMount.position.set(0, deskTopY, -0.2);
+  desk.add(dboxMount);
+  const dbox = caster(box(dboxW, dboxH, dboxD, lam(0x111317)));
+  dbox.position.y = dboxH / 2;
+  dboxMount.add(dbox);
+  dboxStandIn.push(dbox);
   const dboxKnob = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.02, 18),
     new THREE.MeshStandardMaterial({ color: 0x3a3f46, metalness: 0.7, roughness: 0.4 }));
   dboxKnob.rotation.x = Math.PI / 2;
-  dboxKnob.position.set(0.09, deskTopY + 0.05, -0.065);
-  desk.add(dboxKnob);
+  dboxKnob.position.set(0.09, dboxH / 2, dboxD / 2 + 0.01);
+  dboxMount.add(dboxKnob);
+  dboxStandIn.push(dboxKnob);
   const dboxLed = box(0.008, 0.008, 0.004, new THREE.MeshBasicMaterial({ color: 0x3be07a }));
-  dboxLed.position.set(-0.12, deskTopY + 0.07, -0.068);
-  desk.add(dboxLed);
+  dboxLed.position.set(-0.12, dboxH / 2 + 0.01, dboxD / 2 + 0.003);
+  dboxMount.add(dboxLed);
+  dboxStandIn.push(dboxLed);
+
+  function swapDBoxModel() {
+    return import("three/addons/loaders/GLTFLoader.js").then(({ GLTFLoader }) =>
+      new GLTFLoader().loadAsync("assets/models/dbox.glb")
+    ).then((gltf) => {
+      const model = gltf.scene;
+      // The source's controls face local -X. A quarter-turn makes them face
+      // the chair (+Z); source Z is then the D-Box's horizontal width.
+      model.rotation.y = Math.PI / 2;
+      const before = new THREE.Box3().setFromObject(model);
+      const size = before.getSize(new THREE.Vector3());
+      if (size.x < 1e-4 || size.y < 1e-4 || size.z < 1e-4) throw new Error("empty D-Box model");
+      model.scale.setScalar(dboxW / size.x);
+      const fitted = new THREE.Box3().setFromObject(model);
+      const centre = fitted.getCenter(new THREE.Vector3());
+      model.position.set(-centre.x, -fitted.min.y, -centre.z);
+      model.traverse((o) => {
+        if (!o.isMesh) return;
+        o.castShadow = true;
+        o.receiveShadow = true;
+        const mats = Array.isArray(o.material) ? o.material : [o.material];
+        for (const m of mats) {
+          if (!m) continue;
+          if (m.transmission > 0) m.transmission = 0;
+          if (m.clearcoat > 0) m.clearcoat = 0;
+          m.needsUpdate = true;
+        }
+      });
+
+      const warm = renderer && renderer.compileAsync
+        ? renderer.compileAsync(model, warmupCam, scene).catch(() => {})
+        : Promise.resolve();
+      return Promise.race([warm, new Promise((ok) => setTimeout(ok, 2000))]).then(() => {
+        dboxMount.add(model);
+        for (const part of dboxStandIn) dboxMount.remove(part);
+      });
+    }).catch(() => {});
+  }
 
   // ultrawide on top of the D-Box
   const daw = makeDawScreen();
   const monW = 0.92, monH = 0.39;
   const monBezel = caster(box(monW + 0.02, monH + 0.02, 0.03, lam(0x0c0d10)));
-  monBezel.position.set(0, deskTopY + 0.105 + monH / 2 + 0.01, -0.21);
+  monBezel.position.set(0, deskTopY + dboxH + monH / 2 + 0.01, -0.21);
   desk.add(monBezel);
   const monScreen = plane(monW, monH, new THREE.MeshBasicMaterial({ map: daw.tex }));
   monScreen.position.set(0, monBezel.position.y, -0.21 + 0.016);
@@ -6851,7 +6901,7 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     for (const p of parts) g.attach(p);
     return g;
   };
-  const deskInterface = wrapDeskItem(0, -0.2, dbox, dboxKnob, dboxLed);
+  const deskInterface = dboxMount;
   const deskMonitor = wrapDeskItem(0, -0.21, monBezel, monScreen, screenGlow);
   const deskKeyboard = wrapDeskItem(-0.04, 0.13, kb, kbTop);
   const deskTrackball = wrapDeskItem(0.28, 0.13, tbBase, tbBall);
@@ -6919,6 +6969,9 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
      rather than the room, so moving the keyboard takes the button with it;
      the layout editor then moves the button WITHIN the keyboard. */
   const synthBtnGrp = new THREE.Group();
+  // Its button is a control on this instrument, not a loose piece of desk gear:
+  // layout mode selects the whole keyboard when this is clicked.
+  synthBtnGrp.userData.layoutOwner = "midikeys";
   synthBtnGrp.position.set(-0.42, 0.035, 0.02);   // on the chassis, left of the keys
   midiKeys.add(synthBtnGrp);
   const synthBtn = new THREE.Mesh(
@@ -6935,6 +6988,7 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
   synthBtnGrp.add(synthLed);
 
   const synthPanel = makeSynthPanel();
+  synthPanel.group.userData.layoutOwner = "midikeys";
   /* Where it sits. Up off the keybed and tilted back toward you, far enough
      forward of the monitor that the two don't fight — and high enough that
      looking down at the keys never has the panel in the way, which is the
@@ -10590,7 +10644,7 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
   const movableHomes = {};
   for (const [id, g] of Object.entries(movables))
     movableHomes[id] = { p: g.position.toArray(), ry: g.rotation.y,
-                         rx: g.rotation.x, rz: g.rotation.z, s: g.scale.x };
+                         rx: g.rotation.x, rz: g.rotation.z, sc: g.scale.toArray() };
   function applyLayout(layout) {
     if (!layout) return;
     for (const [id, t] of Object.entries(layout)) {
@@ -10604,7 +10658,10 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
          on X because it's on a stand, not because anybody set it. */
       if (typeof t.rx === "number") g.rotation.x = t.rx;
       if (typeof t.rz === "number") g.rotation.z = t.rz;
-      if (typeof t.s === "number") g.scale.setScalar(t.s);
+      // `sc` supports deliberate one-axis fits (the desk can be made skinnier).
+      // Older saved layouts carry only scalar `s`, so keep accepting those.
+      if (Array.isArray(t.sc) && t.sc.length === 3) g.scale.fromArray(t.sc);
+      else if (typeof t.s === "number") g.scale.setScalar(t.s);
     }
   }
   function resetMovable(id) {
@@ -10612,7 +10669,7 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     if (g && h) {
       g.position.fromArray(h.p);
       g.rotation.set(h.rx, h.ry, h.rz);
-      g.scale.setScalar(h.s);
+      g.scale.fromArray(h.sc);
     }
   }
   function layoutSnapshot() {
@@ -10620,7 +10677,8 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     for (const [id, g] of Object.entries(movables))
       out[id] = { p: g.position.toArray().map(v => +v.toFixed(4)),
                   ry: +g.rotation.y.toFixed(4), rx: +g.rotation.x.toFixed(4),
-                  rz: +g.rotation.z.toFixed(4), s: +g.scale.x.toFixed(4) };
+                  rz: +g.rotation.z.toFixed(4),
+                  sc: g.scale.toArray().map(v => +v.toFixed(4)) };
     return out;
   }
 

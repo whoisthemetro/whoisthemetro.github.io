@@ -26,6 +26,9 @@ export const WHATS_NEW = [
     date: "2026-08-28",
     items: [
       "the Mac Studio in the bedroom is Metro's model now, with its little white status light facing the chair",
+      "the D-Box underneath the big bedroom monitor is Metro's detailed model now — the front controls face the chair, its green button glows, and the monitor is sitting right on it",
+      "layout mode can make the desk narrower now without squashing it. [ and ] (or , and .) change its width; + and - still resize the whole thing",
+      "the synth’s chassis, keybed and button move together in layout mode, instead of coming apart when you grab the button",
     ],
   },
   {
