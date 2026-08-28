@@ -8,6 +8,10 @@ whoisthemetro.com — "THE METRO", a persistent 3D hangout world built with vani
 
 README.md is the human-facing description and is kept current; CHANGELOG.md is the running history (newest first). **`assets/js/whatsnew.js` is the VISITOR-facing changelog** — read in the room by typing `new` at the computer — and any job that changes something a visitor could NOTICE adds a plain-English line to it in the same commit. It is a translation, not a copy: no jargon, no file names, no how-it-works. A change nobody can see from inside the room stays in CHANGELOG.md only; padding whatsnew.js is how it stops being worth reading. docs/studio.md covers the sequencer room, tools/mi/ covers rebuilding the wasm. **docs/map.md is the job index** — which files a given piece of work actually touches, and where it lives inside the two big files. Open it when you're starting a job and don't already know where that job lives; don't move its contents in here, this brief stays short on purpose. The world is a bedroom home-studio + arcade, plus five other spaces (see Architecture).
 
+## Handoff — ChatGPT work, 2026-08-28
+
+ChatGPT completed and pushed the current bedroom-desk pass in commits `f87c7cc` (desk), `cb60360` (Apollo Twin), `d164dff` (Mac Studio), and `f72835d` (D-Box and layout controls). `main` was verified to serve `assets/models/dbox.glb` from whoisthemetro.com. The detailed D-Box contains its Blender-authored green `Inner Buttons.001` emissive material at strength 3.196; it is retained in the GLB, but its 6.7 mm green mesh sits 1.1 mm behind the opaque white outer button in the exported geometry, so the chair-facing site camera cannot see it. This is an asset-geometry occlusion, not an export, loader, or lighting failure. Do not add a runtime visual workaround unless Metro asks for one.
+
 ## Commands
 
 **One-time setup in a fresh clone:** `git config core.hooksPath .githooks` (see
