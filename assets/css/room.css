@@ -28,6 +28,19 @@ body {
 }
 
 #scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+/* The PS1 lens is intentionally display-side. image-rendering keeps the
+   lower internal buffer as square blocks; the fixed four-pixel pattern gives
+   its limited palette a little of the old display's grain without moving. */
+body.ps1-mode #scene { image-rendering: pixelated; filter: saturate(.82) contrast(1.07); }
+body.ps1-mode::after {
+  content: ""; position: fixed; inset: 0; z-index: 9; pointer-events: none;
+  opacity: .07; mix-blend-mode: soft-light;
+  background-image:
+    linear-gradient(45deg, rgba(255,255,255,.7) 25%, transparent 25%, transparent 75%, rgba(255,255,255,.7) 75%),
+    linear-gradient(45deg, transparent 25%, rgba(0,0,0,.65) 25%, rgba(0,0,0,.65) 75%, transparent 75%);
+  background-size: 4px 4px;
+  background-position: 0 0, 2px 2px;
+}
 
 /* touch-action doesn't inherit, so every full-screen play surface must say it
    itself: no pinch- or double-tap-zoom anywhere in the world or the arcade.
@@ -151,6 +164,31 @@ body {
   animation: pulse 2.4s ease-in-out infinite;
 }
 @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+#ps1-toggle {
+  position: absolute; right: 16px; bottom: 16px; pointer-events: auto;
+  display: flex; align-items: center; gap: 7px; cursor: pointer;
+  padding: 7px 9px; border-radius: 3px;
+  border: 1px solid rgba(155, 166, 180, 0.35); background: rgba(8, 11, 14, 0.72);
+  color: #aeb5be; font: 700 10px/1 "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+  letter-spacing: .08em; text-transform: uppercase;
+}
+#ps1-toggle .ps1-state { color: #64707c; font-weight: 500; }
+#ps1-toggle kbd {
+  padding: 1px 4px; border: 1px solid rgba(174, 181, 190, .34); border-radius: 2px;
+  color: #8d97a2; font: inherit;
+}
+body.ps1-mode #ps1-toggle {
+  border-color: rgba(255, 179, 71, .7); color: #ffcf7c;
+  background: rgba(52, 37, 18, .82); box-shadow: 0 0 12px rgba(255, 179, 71, .18);
+}
+body.ps1-mode #ps1-toggle .ps1-state { color: #ffb347; }
+@media (pointer: coarse) {
+  #ps1-toggle {
+    right: max(10px, env(safe-area-inset-right)); bottom: max(10px, env(safe-area-inset-bottom));
+    min-height: 34px; padding: 8px 10px;
+  }
+  #ps1-toggle kbd { display: none; }
+}
 
 /* ---------- joystick (mobile) ---------- */
 #joystick {

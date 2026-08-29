@@ -4,7 +4,20 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-08-29 — optional PS1 lens
+
+- Added a local, persistent PS1-mode toggle: press \`P\` on desktop or use the
+  small PS1 switch in the HUD. It starts off and affects only the current
+  visitor's display.
+- PS1 mode renders the existing room into a lower-resolution display buffer,
+  adds a stable four-pixel dither and restrained colour treatment, then brings
+  the existing scene fog closer and cooler. It gives the room the rough PS1
+  read without replacing GLB or canvas-authored materials.
+- The room returns exactly to its normal renderer and fog values when toggled
+  off. Resizing keeps the effect at the same display scale.
+
 ## 2026-08-29 — Clouds reverb on the bedroom mixer
+
 
 - The bedroom desk mixer now has a focused `CLOUDS · SYNTH FX` section with
   the first Clouds Blend controls: independent `DRY/WET` and `REVERB` values.

@@ -121,7 +121,8 @@ const renderer = new THREE.WebGLRenderer({
        and a phone pays far more per light than a desktop does.
      · two shadow-casting lights mean two extra passes over the scene.
    A desktop can have all of it. A phone gets a version that does not cook. */
-renderer.setPixelRatio(Math.min(devicePixelRatio, IS_TOUCH ? 1.25 : 2));
+const NORMAL_PIXEL_RATIO = Math.min(devicePixelRatio, IS_TOUCH ? 1.25 : 2);
+renderer.setPixelRatio(NORMAL_PIXEL_RATIO);
 renderer.setSize(innerWidth, innerHeight);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
@@ -153,6 +154,47 @@ const camera = new THREE.PerspectiveCamera(fovFor(innerWidth / innerHeight), inn
 camera.layers.enable(3);   // boat layer
 camera.layers.enable(4);   // arena layer
 const world = buildWorld(renderer);
+
+/* --- optional PS1 lens ----------------------------------------------------
+   The room already has its own mesh fog and cel ramp. This is the old-display
+   half: a lower internal resolution, hard pixel sampling and a light ordered
+   dither overlay. It is local, reversible and never changes an asset. */
+const ps1Fog = world.scene.fog
+  ? { color: world.scene.fog.color.clone(), near: world.scene.fog.near, far: world.scene.fog.far }
+  : null;
+const ps1PixelRatio = () => Math.min(NORMAL_PIXEL_RATIO, 320 / Math.max(1, innerWidth));
+let ps1Mode = false;
+try { ps1Mode = localStorage.getItem("metro.ps1") === "1"; } catch (e) {}
+function setPS1Mode(on, save = true) {
+  ps1Mode = !!on;
+  renderer.setPixelRatio(ps1Mode ? ps1PixelRatio() : NORMAL_PIXEL_RATIO);
+  renderer.setSize(innerWidth, innerHeight);
+  if (world.scene.fog && ps1Fog) {
+    if (ps1Mode) {
+      world.scene.fog.color.set(0x262a32);
+      world.scene.fog.near = 5.5;
+      world.scene.fog.far = 23;
+    } else {
+      world.scene.fog.color.copy(ps1Fog.color);
+      world.scene.fog.near = ps1Fog.near;
+      world.scene.fog.far = ps1Fog.far;
+    }
+  }
+  document.body.classList.toggle("ps1-mode", ps1Mode);
+  const btn = $("#ps1-toggle");
+  if (btn) {
+    btn.setAttribute("aria-pressed", String(ps1Mode));
+    const state = btn.querySelector(".ps1-state");
+    if (state) state.textContent = ps1Mode ? "on" : "off";
+  }
+  if (save) { try { localStorage.setItem("metro.ps1", ps1Mode ? "1" : "0"); } catch (e) {} }
+}
+function togglePS1Mode() {
+  if (inVR()) return toast("ps1 mode needs a flat screen");
+  setPS1Mode(!ps1Mode);
+  toast(ps1Mode ? "ps1 mode on · press P to return" : "ps1 mode off");
+}
+setPS1Mode(ps1Mode, false);
 
 /* --- per-room light culling: keep the mobile shader-uniform budget in check --
    Some GPUs (notably Qualcomm Adreno) cap MAX_FRAGMENT_UNIFORM_VECTORS at 256.
@@ -474,6 +516,15 @@ addEventListener("keydown", (e) => {
   if (e.code === "KeyX" && !e.repeat && !modalOpen && canFX()) {
     const seed = (Math.random() * 1e6) | 0;
     world.clubFireworks(seed); presence.sendAct({ kind: "fireworks", seed }); toast("🎆 fireworks");
+  }
+  // P is deliberately a display preference, not a room-wide switch: it is
+  // possible to be nostalgic without making somebody else's room crunchy.
+  if (e.code === "KeyP" && !e.repeat && entered && !modalOpen && !chatOpen) {
+    const ae = document.activeElement;
+    if (!ae || (ae.tagName !== "INPUT" && ae.tagName !== "TEXTAREA")) {
+      e.preventDefault();
+      togglePS1Mode();
+    }
   }
   // admin quick-travel: 1 venue · 2 desi · 3 crew · 4 home — skip the elevator
   if (adminMode && entered && !modalOpen && !chatOpen && !e.repeat) {
@@ -1634,6 +1685,7 @@ addEventListener("resize", () => {
   camera.aspect = innerWidth / innerHeight;
   camera.fov = fovFor(camera.aspect);       // turning the phone changes the shape of the view
   camera.updateProjectionMatrix();
+  if (ps1Mode) renderer.setPixelRatio(ps1PixelRatio());
   renderer.setSize(innerWidth, innerHeight);
   screen.resize();                         // keep the CSS3D big-screen layer sized to the window
 });
