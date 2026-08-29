@@ -37,6 +37,11 @@ const SYNTH = typeof speechSynthesis !== "undefined" ? speechSynthesis : null;
    recordings ride the same master compressor as the rest of the room. */
 let graph = null;
 export function useAudioGraph(fn) { graph = fn; }
+// A display mode can colour Trinity without colouring the whole room. Her
+// rendered takes are the only sources that ever pass through this little chain.
+let trinityLoFi = false;
+let tone = null;
+export function setTrinityLoFi(on) { trinityLoFi = !!on; applyTone(); }
 
 // voices we like, best first — warm and un-robotic where the OS has one.
 // mac ships Samantha/Alex; chrome adds the Google set; everything else
@@ -401,6 +406,43 @@ function dropChain() {
   if (!chain) return;
   for (const n of chain) { try { n.disconnect(); } catch (e) {} }
   chain = null;
+  tone = null;
+}
+
+// one gentle telephone/speaker chain. The filters stay wired even in the
+// normal room so a PS1 toggle can change a line that is already in progress;
+// their neutral values + a null curve are transparent outside the mode.
+const CRUSH_CURVE = (() => {
+  const a = new Float32Array(2048);
+  for (let i = 0; i < a.length; i++) {
+    const x = i / (a.length - 1) * 2 - 1;
+    a[i] = Math.round(x * 24) / 24;  // light 6-bit-ish amplitude stair-step
+  }
+  return a;
+})();
+function makeTone(ctx) {
+  const hp = ctx.createBiquadFilter();
+  hp.type = "highpass"; hp.Q.value = 0.65;
+  const lp = ctx.createBiquadFilter();
+  lp.type = "lowpass"; lp.Q.value = 0.65;
+  const crush = ctx.createWaveShaper();
+  crush.oversample = "none";
+  tone = { hp, lp, crush };
+  applyTone();
+  return tone;
+}
+function applyTone() {
+  if (!tone) return;
+  const now = tone.hp.context.currentTime;
+  tone.hp.frequency.setTargetAtTime(trinityLoFi ? 310 : 10, now, 0.012);
+  tone.lp.frequency.setTargetAtTime(trinityLoFi ? 3600 : 20000, now, 0.012);
+  tone.crush.curve = trinityLoFi ? CRUSH_CURVE : null;
+}
+function connectTone(input, ctx, an, master) {
+  const t = makeTone(ctx);
+  input.connect(t.hp); t.hp.connect(t.lp); t.lp.connect(t.crush);
+  t.crush.connect(an); an.connect(master);
+  return [t.hp, t.lp, t.crush];
 }
 
 function meter(ctx) {
@@ -427,8 +469,9 @@ async function playBuffered(id, volume, seq, onDone) {
   const g = ctx.createGain();
   g.gain.value = volume;
   const an = meter(ctx);
-  src.connect(g); g.connect(an); an.connect(master);
-  chain = [src, g, an];                     // held so nothing here can be collected
+  src.connect(g);
+  const toneNodes = connectTone(g, ctx, an, master);
+  chain = [src, g, ...toneNodes, an];       // held so nothing here can be collected
   srcNode = src;
   voicing = true;                           // NOW she's making a noise
   src.onended = () => { if (src !== srcNode) return; srcNode = null; onDone(true); };
@@ -455,8 +498,8 @@ function playElement(id, volume, onDone) {
       dropChain();
       const msrc = ctx.createMediaElementSource(a);
       const an = meter(ctx);
-      msrc.connect(an); an.connect(master);
-      chain = [msrc, an];
+      const toneNodes = connectTone(msrc, ctx, an, master);
+      chain = [msrc, ...toneNodes, an];
     }
   } catch (e) { analyser = null; }
   const done = (ok) => {
@@ -646,6 +689,9 @@ export function voiceDiag() {
     speaking, voicing, mimed, why,
     cached: bufs.size, fetched: bytes.size,
     playing: srcNode ? "buffer" : audio ? "element" : "nothing",
+    loFi: trinityLoFi,
+    tone: tone ? { highpass: Math.round(tone.hp.frequency.value),
+                   lowpass: Math.round(tone.lp.frequency.value), crushed: !!tone.crush.curve } : null,
   };
 }
 

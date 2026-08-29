@@ -13,6 +13,10 @@ it says it did.
   adds a stable four-pixel dither and restrained colour treatment, then brings
   the existing scene fog closer and cooler. It gives the room the rough PS1
   read without replacing GLB or canvas-authored materials.
+- Trinity's prerecorded takes now gain their own PS1 speaker treatment with
+  a voice-only 310–3600 Hz band and a gentle amplitude stair-step. The setting
+  changes active takes live and never reaches room audio, music, voice chat,
+  or instruments.
 - The room returns exactly to its normal renderer and fog values when toggled
   off. Resizing keeps the effect at the same display scale.
 

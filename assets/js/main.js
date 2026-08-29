@@ -21,7 +21,7 @@ import { startPlanes } from "./planes.js";
 import { Cat } from "./cat.js";
 import { Bartender } from "./bartender.js";
 import { Guide } from "./guide.js";
-import { speak, stopSpeaking, isSpeaking, isVoicing, voiceAvailable, voiceInfo, preferVoices, loadClips, clipsReady, voiceLevel, useAudioGraph, preloadClips, preloadAll, wasMimed, voiceDiag } from "./say.js";
+import { speak, stopSpeaking, isSpeaking, isVoicing, voiceAvailable, voiceInfo, preferVoices, loadClips, clipsReady, voiceLevel, useAudioGraph, setTrinityLoFi, preloadClips, preloadAll, wasMimed, voiceDiag } from "./say.js";
 import { GUIDE_LINES, INTRO, ROOM_LINES, TOUR, clipId } from "./lines.js";
 import { whatsNew, dayLabel } from "./whatsnew.js";
 import { makeGardenPlayer } from "./garden/player.js";
@@ -181,6 +181,7 @@ function setPS1Mode(on, save = true) {
     }
   }
   document.body.classList.toggle("ps1-mode", ps1Mode);
+  setTrinityLoFi(ps1Mode);
   const btn = $("#ps1-toggle");
   if (btn) {
     btn.setAttribute("aria-pressed", String(ps1Mode));
