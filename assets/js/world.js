@@ -5531,6 +5531,7 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
       const models = [
         ["the bedroom desk", () => swapDeskModel()],
         ["the D-Box", () => swapDBoxModel()],
+        ["the ultrawide monitor", () => swapUltrawideModel()],
         ["the Mac Studio", () => swapMacStudioModel()],
         ["the Apollo Twin", () => swapApolloModel()],
         ["the arcade cabinets", () => swapCabinetModel(tronGrp, "assets/models/tron_cabinet.glb", 1.78)],
@@ -6722,6 +6723,70 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
   const screenGlow = new THREE.PointLight(0x8fb6ff, 3, 2.6, 2);
   screenGlow.position.set(0, deskTopY + 0.45, 0.1);
   desk.add(screenGlow);
+
+  function swapUltrawideModel() {
+    return import("three/addons/loaders/GLTFLoader.js").then(({ GLTFLoader }) =>
+      new GLTFLoader().loadAsync("assets/models/ultrawide_screen.glb")
+    ).then((gltf) => {
+      const model = gltf.scene;
+      let sourceScreen = null;
+      model.traverse((o) => {
+        if (!o.isMesh) return;
+        const mats = Array.isArray(o.material) ? o.material : [o.material];
+        if (/screen/i.test(o.name) || mats.some((m) => /screen/i.test(m?.name || ""))) {
+          sourceScreen = o;
+        }
+      });
+
+      // Fit the physical shell by its full outer width. At this scale the
+      // model's measured screen opening is 0.922 x 0.384 m, effectively the
+      // same proportions as Metro's 0.92 x 0.39 animated DAW canvas.
+      const before = new THREE.Box3().setFromObject(model);
+      const size = before.getSize(new THREE.Vector3());
+      if (size.x < 1e-4 || size.y < 1e-4 || size.z < 1e-4) throw new Error("empty ultrawide model");
+      model.scale.setScalar((monW + 0.02) / size.x);
+      model.updateMatrixWorld(true);
+      const fitted = new THREE.Box3().setFromObject(model);
+      const centre = fitted.getCenter(new THREE.Vector3());
+      // deskMonitor's origin is the desktop directly below the display.
+      // Centre the shell in X/Z and let the stand sit on that surface.
+      model.position.set(-centre.x, -fitted.min.y, -centre.z);
+      model.updateMatrixWorld(true);
+
+      // The downloaded monitor ships with a static image on a dedicated
+      // screen mesh. Measure that exact opening, hide it, and seat Metro's
+      // live DAW plane just proud of the glass so the animation survives.
+      if (sourceScreen) {
+        const aperture = new THREE.Box3().setFromObject(sourceScreen);
+        const apertureSize = aperture.getSize(new THREE.Vector3());
+        const apertureCentre = aperture.getCenter(new THREE.Vector3());
+        monScreen.scale.set(apertureSize.x / monW, apertureSize.y / monH, 1);
+        monScreen.position.set(apertureCentre.x, apertureCentre.y, aperture.max.z + 0.002);
+        sourceScreen.visible = false;
+      }
+
+      model.traverse((o) => {
+        if (!o.isMesh) return;
+        o.castShadow = true;
+        o.receiveShadow = true;
+        const mats = Array.isArray(o.material) ? o.material : [o.material];
+        for (const m of mats) {
+          if (!m) continue;
+          if (m.transmission > 0) m.transmission = 0;
+          if (m.clearcoat > 0) m.clearcoat = 0;
+          m.needsUpdate = true;
+        }
+      });
+
+      const warm = renderer && renderer.compileAsync
+        ? renderer.compileAsync(model, warmupCam, scene).catch(() => {})
+        : Promise.resolve();
+      return Promise.race([warm, new Promise((ok) => setTimeout(ok, 2000))]).then(() => {
+        deskMonitor.add(model);
+        deskMonitor.remove(monBezel);
+      });
+    }).catch(() => {});
+  }
 
   // apple keyboard with numpad + trackball
   const kb = box(0.44, 0.012, 0.115, lam(0xd9dbdd));
