@@ -23,6 +23,12 @@
 
 export const WHATS_NEW = [
   {
+    date: "2026-08-29",
+    items: [
+      "the little mixer on the desk has Clouds now. the synth gets dry/wet, reverb and density controls without touching the guitar, drums or room — density rests at 50% and gets grainy either way",
+    ],
+  },
+  {
     date: "2026-08-28",
     items: [
       "the Mac Studio in the bedroom is Metro's model now, with its little white status light facing the chair",

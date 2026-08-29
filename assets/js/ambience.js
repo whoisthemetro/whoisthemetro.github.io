@@ -431,17 +431,8 @@ export function semitoneToKey(s) {
   return best;
 }
 export const PIANO_VOICES = [
-  { name: "E-PIANO",   parts: [[1, "sine", 1], [2, "triangle", 0.35]], dec: 1.3, peak: 0.07 },
-  { name: "MUSIC BOX", parts: [[1, "sine", 1], [3, "sine", 0.14], [5.04, "sine", 0.05]], dec: 1.9, peak: 0.06 },
-  { name: "8-BIT",     parts: [[1, "square", 0.55]], dec: 0.45, peak: 0.05 },
-  { name: "SYNTH",     parts: [[1, "sawtooth", 0.6], [1.006, "sawtooth", 0.45]], dec: 0.9, peak: 0.05, lp: 1900 },
-  { name: "ORGAN",     parts: [[1, "sine", 0.7], [2, "sine", 0.5], [4, "sine", 0.22]], dec: 0.6, peak: 0.06 },
-  /* PLAITS is not made of oscillators like the five above it — it's Émilie
-     Gillet's macro-oscillator running as wasm on the audio thread, and it
-     only exists once initPlaits() has fetched it. `parts` is what you hear
-     until then, and what you hear forever if the fetch fails: the SYNTH
-     voice, so a keyboard set to PLAITS is never a silent keyboard. */
-  { name: "PLAITS",    parts: [[1, "sawtooth", 0.6], [1.006, "sawtooth", 0.45]], dec: 0.9, peak: 0.05, lp: 1900, mi: true },
+  // The physical keybed is Plaits-only. Its panel holds the remembered sound.
+  { name: "PLAITS", mi: true },
 ];
 export const PLAITS_VOICE = PIANO_VOICES.findIndex(v => v.mi);
 
@@ -454,18 +445,22 @@ export const PLAITS_VOICE = PIANO_VOICES.findIndex(v => v.mi);
    an AudioWorklet registry is per-context, so adding the same module to a
    second context is just a second registration of the same code.
 
-   Lazy on purpose. It's 266 KB of wasm that most visits never ask for, so
-   nothing is fetched until somebody actually reaches for the sound —
-   opening the panel, choosing the voice, or hearing a peer play it.
-
-   Three states and no fourth: "off" (never asked), "loading", "on",
-   "failed". Anything but "on" falls through to the SYNTH oscillators in
-   PIANO_VOICES, which is why a failure here is quiet rather than silent. */
+   Plaits loads on room entry so the first key uses the remembered panel state.
+   There is intentionally no oscillator fallback for the physical keybed. */
 let miMode = "off";
 let plaitsNode = null;
 let plaitsLevel = null;         // its own trim: wasm output is hotter than our oscillators
+// Clouds lives only on the bedroom Plaits signal. It shares the same wasm
+// load as Plaits, with its first Blend controls: Dry/Wet and Reverb.
+let cloudsNode = null;
+let cloudsMode = "off";
+let cloudsParams = {
+  pos: 0, size: 0.5, pitch: 0, dens: 0.5, tex: 0.5,
+  wet: 0, spread: 0.5, fb: 0, verb: 0, freeze: false, mode: 0,
+};
 export const plaitsStatus = () => miMode;
 export const plaitsReady = () => miMode === "on";
+export const cloudsStatus = () => cloudsMode;
 
 export async function initPlaits() {
   if (miMode !== "off") return miMode === "on";
@@ -483,9 +478,23 @@ export async function initPlaits() {
     });
     plaitsLevel = ctx.createGain();
     plaitsLevel.gain.value = 0.22;
-    // into the keyboard's own pedal chain, so it lands where the other five
-    // voices land — chorus, delay, reverb and the level bump, all of it
-    plaitsNode.connect(plaitsLevel).connect(pianoBus || master);
+    plaitsNode.connect(plaitsLevel);
+    // The existing Clouds processor is the actual Mutable Instruments DSP.
+    // Keep it strictly between Plaits and the keyboard bus: guitar, drums,
+    // room tone, and the rest of the room never enter it.
+    try {
+      cloudsNode = new AudioWorkletNode(ctx, "mi-clouds", {
+        numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2],
+        processorOptions: { module },
+      });
+      plaitsLevel.connect(cloudsNode).connect(pianoBus || master);
+      cloudsMode = "on";
+      setClouds(cloudsParams);
+    } catch (e) {
+      // A Clouds failure must not silence the physical keybed.
+      cloudsMode = "failed";
+      plaitsLevel.connect(pianoBus || master);
+    }
     miMode = "on";
     setPlaits(plaitsParams);      // whatever the panel already had on it
     return true;
@@ -501,6 +510,29 @@ let plaitsParams = { harmonics: 0.5, timbre: 0.5, morph: 0.5, decay: 0.6, lpg: 0
 export function setPlaits(p = {}) {
   plaitsParams = { ...plaitsParams, ...p };
   if (plaitsNode) plaitsNode.port.postMessage({ t: "set", ...plaitsParams });
+}
+// Density is centred: .5 is the ungrained resting point, either direction
+// pulls Clouds into grain territory in its own characteristic way.
+export function setCloudsDensity(amount = 0.5) {
+  const dens = Math.max(0, Math.min(1, +amount || 0));
+  cloudsParams = { ...cloudsParams, dens };
+  setClouds(cloudsParams);
+}
+// Keep Clouds focused on its first Blend mode: Dry/Wet decides how much of
+// the processed signal reaches the synth; Reverb sets the wash inside it.
+export function setCloudsWet(amount = 0) {
+  const wet = Math.max(0, Math.min(1, +amount || 0));
+  cloudsParams = { ...cloudsParams, wet };
+  setClouds(cloudsParams);
+}
+export function setCloudsReverb(amount = 0) {
+  const reverb = Math.max(0, Math.min(1, +amount || 0));
+  cloudsParams = { ...cloudsParams, verb: reverb };
+  setClouds(cloudsParams);
+}
+function setClouds(p = {}) {
+  cloudsParams = { ...cloudsParams, ...p };
+  if (cloudsNode) cloudsNode.port.postMessage({ t: "set", ...cloudsParams });
 }
 export function plaitsNote(midi, dur = 1.6, level = 0.6, when = null) {
   if (!plaitsNode || !ctx) return false;
@@ -598,56 +630,19 @@ export function wakeAudio() {
 // i is a white-key index (0..14 → C_MAJOR) for free-play, or a raw
 // chromatic semitone (0..24 from C4) when chromatic=true — the songs use
 // the latter so they can reach accidentals the keybed can't free-play.
-export function pianoNote(i = 0, voice = 0, vel = 1, when = null, chromatic = false, gate = 0) {
+export function pianoNote(i = 0, _voice = PLAITS_VOICE, vel = 1, when = null, chromatic = false, gate = 0) {
   if (!ctx) return;
-  const v = PIANO_VOICES[Math.abs(voice) % PIANO_VOICES.length];
   // schedule slightly ahead — no past-start clicks
   const t = Math.max(ctx.currentTime + 0.005, when || 0);
   /* -36..60 rather than 0..24. The songs never leave two octaves, but a
      scale-mapped keybed with the arp stacking octaves on top does —
      pentatonic reaches the third octave on its own, and a root of B plus
-     three arp octaves puts the top note five above middle C. The floor went
-     NEGATIVE when the panel got a transpose: the frequency is
-     261.63 * 2^(semi/12), which is perfectly happy below middle C, and a
-     clamp at zero silently turned "three octaves down" into "no change". */
+     three arp octaves puts the top note five above middle C. */
   const semi = chromatic ? Math.max(-36, Math.min(60, i)) : C_MAJOR[Math.max(0, Math.min(14, i))];
-  /* PLAITS gets first refusal. If the wasm is up it takes the note and we're
-     done; if it isn't, we start fetching it and let the oscillators below
-     cover this note — so the first key you press after switching sounds like
-     the fallback and every one after it is the real thing. Note that
-     plaitsNote wants MIDI: semitone 0 here is C4, which is 60. */
-  if (v.mi) {
-    if (plaitsNote(60 + semi, gate || 1.4, 0.55 * Math.max(0.05, vel), t)) return;
-    if (miMode === "off") initPlaits();
-  }
-  const f = 261.63 * Math.pow(2, semi / 12);
-  const g = ctx.createGain();
-  let out = g;
-  if (v.lp) {
-    const lp = ctx.createBiquadFilter();
-    lp.type = "lowpass";
-    lp.frequency.value = v.lp;
-    g.connect(lp);
-    out = lp;
-  }
-  // the keyboard runs through its floor pedals (chorus→delay→reverb) on the
-  // way to the bus; falls back to master if the chain hasn't been built yet
-  out.connect(pianoBus || master);
-  for (const [mult, type, amt] of v.parts) {
-    const o = ctx.createOscillator();
-    o.type = type;
-    o.frequency.value = f * mult;
-    const og = ctx.createGain();
-    og.gain.value = amt;
-    o.connect(og).connect(g);
-    o.start(t); o.stop(t + v.dec + 0.08);
-  }
-  // pop-free envelope: true-zero linear attack, exponential decay,
-  // then a short linear tail back to actual zero before the stop
-  g.gain.setValueAtTime(0, t);
-  g.gain.linearRampToValueAtTime(v.peak * Math.max(0.01, vel), t + 0.01);
-  g.gain.exponentialRampToValueAtTime(0.0008, t + v.dec);
-  g.gain.linearRampToValueAtTime(0, t + v.dec + 0.05);
+  // Plaits takes every keyboard note. A very early key may start its load,
+  // but it never substitutes a different oscillator sound.
+  if (plaitsNote(60 + semi, gate || 1.4, 0.55 * Math.max(0.05, vel), t)) return;
+  if (miMode === "off") initPlaits();
 }
 
 // Generic 8-bit blip for the arcade cabinet.

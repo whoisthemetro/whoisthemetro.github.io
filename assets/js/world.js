@@ -5531,6 +5531,7 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
       const models = [
         ["the bedroom desk", () => swapDeskModel()],
         ["the D-Box", () => swapDBoxModel()],
+        ["the keyboard stand", () => swapKeyboardStandModel()],
         ["the ultrawide monitor", () => swapUltrawideModel()],
         ["the Mac Studio", () => swapMacStudioModel()],
         ["the Apollo Twin", () => swapApolloModel()],
@@ -6975,10 +6976,9 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
   const deskMac = macMount;
 
   // midi controller tucked under the desk, keys barely sticking out;
-  // its body is the piano-voice selector
+  // its body is the Plaits controller chassis
   const midiBody = caster(box(0.96, 0.065, 0.27, lam(0x191b1f)));
   midiBody.position.set(0, 0.46, 0.27);
-  midiBody.userData.pianoVoice = true;
   desk.add(midiBody);
   // two playable C major octaves, low on the left → high on the right
   const keysCanvas = document.createElement("canvas");
@@ -7017,6 +7017,45 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
   desk.add(midiKeys);
   midiKeys.attach(midiBody);
   midiKeys.attach(midiKeybed);
+
+  // A separate Admin handle: the stand can be fitted independently without
+  // moving the controller, its button, or its panel.
+  const keyStand = new THREE.Group();
+  keyStand.position.set(0, 0, 0.27);  // centred directly below the keybed
+  desk.add(keyStand);
+  function swapKeyboardStandModel() {
+    return import("three/addons/loaders/GLTFLoader.js").then(({ GLTFLoader }) =>
+      new GLTFLoader().loadAsync("assets/models/keyboard_stand.glb")
+    ).then((gltf) => {
+      const model = gltf.scene;
+      const before = new THREE.Box3().setFromObject(model);
+      const size = before.getSize(new THREE.Vector3());
+      if (size.x < 1e-4 || size.y < 1e-4 || size.z < 1e-4) throw new Error("empty keyboard stand model");
+      // Its 46 cm top meets the controller's existing 46 cm chassis base.
+      model.scale.setScalar(0.46 / size.y);
+      const fitted = new THREE.Box3().setFromObject(model);
+      const centre = fitted.getCenter(new THREE.Vector3());
+      model.position.set(-centre.x, -fitted.min.y, -centre.z);
+      model.traverse((o) => {
+        if (!o.isMesh) return;
+        o.castShadow = true;
+        o.receiveShadow = true;
+        const mats = Array.isArray(o.material) ? o.material : [o.material];
+        for (const m of mats) {
+          if (!m) continue;
+          if (m.transmission > 0) m.transmission = 0;
+          if (m.clearcoat > 0) m.clearcoat = 0;
+          m.needsUpdate = true;
+        }
+      });
+      const warm = renderer && renderer.compileAsync
+        ? renderer.compileAsync(model, warmupCam, scene).catch(() => {})
+        : Promise.resolve();
+      return Promise.race([warm, new Promise((ok) => setTimeout(ok, 2000))]).then(() => {
+        keyStand.add(model);
+      });
+    }).catch(() => {});
+  }
   let keyResetTimer = null;
   function pressPianoKey(i) {
     drawKeys(i);
@@ -10700,6 +10739,7 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     synthbtn: synthBtnGrp, ringsbtn: ringsBtnGrp,
     synthpanel: synthPanel.group, ringspanel: ringsPanel.group,
     tele, pedalboard, kbpedals: kbPedals, midikeys: midiKeys, radio: laRadio.group,
+    keystand: keyStand,
     desk: deskModelMount, apollo: apolloMount,
     lava, mixer, clock: deskClock,
     monitor: deskMonitor, interface: deskInterface, keyboard: deskKeyboard,
@@ -10770,7 +10810,6 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     curtainsClosed: () => curtains.closed,
     monthPlate,
     pianoMesh: midiKeybed, pressPianoKey,
-    pianoVoiceMesh: midiBody,
     synth: { panel: synthPanel, btn: synthBtn, screen: synthPanel.screen, setOpen: setSynthPanelOpen,
              isOpen: () => synthOpen, inWorld: () => synthPanel.group.visible },
     stompHits, setStompLED, stompIds: Object.keys(stompLEDs),

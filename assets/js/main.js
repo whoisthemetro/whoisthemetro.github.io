@@ -10,7 +10,7 @@ import { Ghosts } from "./ghosts.js";
 import { makeLightPool } from "./lightpool.js";
 import { store } from "./store.js";
 import { presence } from "./presence.js";
-import { startAmbience, citySound, pianoNote, semitoneToKey, audioNow, purr, setRain, setWater, setRoomTone, setClubTone, setClubBed, kettleBoil, setThruster, boostSound, discSound, goalHorn, meow, hiss, careSound, drumHit, setArcadeZone, punchSound, shieldClang, stunBuzz, edrumHit, guitarPluck, guitarNote, shotSound, smokeSound, setFx, setDelayTempo, setBusLevel, setGuitarFilter, startVacuum, stopVacuum, beep, fireSound, audioDebug, loadFarts, fartsReady, fart, bathroomSend, loadBathMusic, startBathMusic, setBathMusic, bathMusicOn, loadDJ, wakeAudio } from "./ambience.js";
+import { startAmbience, citySound, pianoNote, semitoneToKey, audioNow, purr, setRain, setWater, setRoomTone, setClubTone, setClubBed, kettleBoil, setThruster, boostSound, discSound, goalHorn, meow, hiss, careSound, drumHit, setArcadeZone, punchSound, shieldClang, stunBuzz, edrumHit, guitarPluck, guitarNote, shotSound, smokeSound, setFx, setDelayTempo, setBusLevel, setGuitarFilter, setCloudsDensity, setCloudsWet, setCloudsReverb, startVacuum, stopVacuum, beep, fireSound, audioDebug, loadFarts, fartsReady, fart, bathroomSend, loadBathMusic, startBathMusic, setBathMusic, bathMusicOn, loadDJ, wakeAudio } from "./ambience.js";
 import { SONGS, playSong, stopSong, currentSongId } from "./songs.js";
 import { progress } from "./progress.js";
 import { voice } from "./voice.js";
@@ -55,7 +55,7 @@ import { initPool } from "./pool.js";
 import { initBasket } from "./basketball.js";
 import { makeGymBall } from "./gymball.js";
 import { initDebug } from "./debug.js";
-import { PIANO_VOICES, GUITAR_VOICES, audioGraph, PLAITS_VOICE, initPlaits, setPlaits, plaitsStatus,
+import { GUITAR_VOICES, audioGraph, PLAITS_VOICE, initPlaits, setPlaits, plaitsStatus,
          RINGS_VOICE, initRings, setRings, ringsStatus } from "./ambience.js";
 import * as SynthPanel from "./synth-panel.js";
 import * as RingsPanel from "./rings-panel.js";
@@ -566,6 +566,7 @@ function applyRoomTempo() {
 function synthDirty(save = true) {
   world.synth.panel.markDirty();
   sheetDirty = true;
+  if (save && !applyingPanel) panelLocalTouched.synth = true;
   // save === true is a COMMIT (a tap, or a knob released), not a live preview
   // frame — which is why the room only hears the value you settled on
   if (save) { SynthPanel.saveState(synth); sharePanel("synth"); }
@@ -736,9 +737,8 @@ function applySynthHit(h) {
   }
 }
 
-// piano voice — sticky per visitor, broadcast with each note
-let pianoVoice = 0;
-try { pianoVoice = (parseInt(localStorage.getItem("metro.voice") || "0", 10) || 0) % PIANO_VOICES.length; } catch (e) {}
+// The bedroom keybed is permanently driven by the current Plaits panel state.
+const pianoVoice = PLAITS_VOICE;
 /* ---- RINGS, and the panel by the guitar --------------------------------
    The telecaster's fifth voice is Émilie Gillet's resonator. Same shape as
    the keyboard's PLAITS in every respect — local to you, persisted per
@@ -754,6 +754,7 @@ function ringsApply() {
 function ringsDirty(save = true) {
   world.rings.panel.markDirty();
   sheetDirty = true;
+  if (save && !applyingPanel) panelLocalTouched.rings = true;
   if (save) { RingsPanel.saveState(rings); sharePanel("rings"); }
 }
 const ringsLive = () => ({ status: ringsStatus() });
@@ -796,6 +797,10 @@ const PANEL_LOCAL_ONLY = ["arp", "hold"];
    awaits, so there's no window where a real edit could be swallowed. */
 let applyingPanel = false;
 const panelFlagTimer = {};
+// A slow room-state fetch is only a boot snapshot. Once you have touched a
+// panel, it is never allowed to arrive late and put an older sound back.
+const panelLocalTouched = { synth: false, rings: false };
+const panelLiveSeen = { synth: false, rings: false };
 
 function panelPayload(which) {
   const st = { ...SHARED_PANELS[which].st() };
@@ -818,9 +823,14 @@ function sharePanel(which) {
 /* Somebody else moved it — or the room did, at boot. Merge rather than
    replace: a payload from an older build won't carry a key this one has, and
    replacing would reset that key to undefined and take the sound with it. */
-function applyPanelState(which, st) {
+function applyPanelState(which, st, persisted = false) {
   const P = SHARED_PANELS[which];
   if (!P || !st || typeof st !== "object") return;
+  // `getRoomFlags()` and its realtime echo are a delayed persisted snapshot,
+  // not a live action. Ignore one if the local hand has already committed a
+  // newer edit; presence panel acts remain immediate room updates.
+  if (persisted && (panelLocalTouched[which] || panelLiveSeen[which])) return;
+  if (!persisted) panelLiveSeen[which] = true;
   applyingPanel = true;
   try {
     const cur = P.st();
@@ -875,7 +885,37 @@ for (const id of MIX_IDS) {
   mixLevel[id] = isFinite(v) ? Math.min(Math.max(v, 0), 150) : 100;
 }
 // push every channel's level into the bus + slide its 3D cap (call once audio is up)
-function applyMixLevels() { for (const id of MIX_IDS) { setBusLevel(id, mixLevel[id]); world.setMixFader(id, mixLevel[id]); } }
+function applyMixLevels() { for (const id of MIX_IDS) { setBusLevel(id, mixLevel[id]); world.setMixFader(id, mixLevel[id]); } setCloudsWetAmount(cloudsWet, false); setCloudsAmount(cloudsReverb, false); setCloudsDensityAmount(cloudsDensity, false); }
+
+// Clouds is deliberately synth-only. Its first Blend mode is separate, so
+// Dry/Wet can make the internal reverb audible without touching other sound.
+let cloudsReverb = 0;
+try { const s = localStorage.getItem("metro.clouds.reverb"); if (s !== null && isFinite(+s)) cloudsReverb = Math.min(Math.max(+s, 0), 100); } catch (e) {}
+let cloudsDensity = 50;
+try { const s = localStorage.getItem("metro.clouds.density"); if (s !== null && isFinite(+s)) cloudsDensity = Math.min(Math.max(+s, 0), 100); } catch (e) {}
+function setCloudsDensityAmount(pct, save) {
+  cloudsDensity = Math.min(Math.max(+pct || 0, 0), 100);
+  setCloudsDensity(cloudsDensity / 100);
+  const val = $("#clouds-density-val");
+  if (val) val.textContent = Math.round(cloudsDensity) + "%";
+  if (save) { try { localStorage.setItem("metro.clouds.density", String(Math.round(cloudsDensity))); } catch (e) {} }
+}
+let cloudsWet = cloudsReverb * 0.58;  // preserve the first version's macro setting
+try { const s = localStorage.getItem("metro.clouds.wet"); if (s !== null && isFinite(+s)) cloudsWet = Math.min(Math.max(+s, 0), 100); } catch (e) {}
+function setCloudsWetAmount(pct, save) {
+  cloudsWet = Math.min(Math.max(+pct || 0, 0), 100);
+  setCloudsWet(cloudsWet / 100);
+  const val = $("#clouds-wet-val");
+  if (val) val.textContent = Math.round(cloudsWet) + "%";
+  if (save) { try { localStorage.setItem("metro.clouds.wet", String(Math.round(cloudsWet))); } catch (e) {} }
+}
+function setCloudsAmount(pct, save) {
+  cloudsReverb = Math.min(Math.max(+pct || 0, 0), 100);
+  setCloudsReverb(cloudsReverb / 100);
+  const val = $("#clouds-reverb-val");
+  if (val) val.textContent = Math.round(cloudsReverb) + "%";
+  if (save) { try { localStorage.setItem("metro.clouds.reverb", String(Math.round(cloudsReverb))); } catch (e) {} }
+}
 
 // the guitar filter treadle: 0..1, 1 = lowpass wide open. client-side + sticky.
 let gtrFilterLevel = 1;
@@ -1685,6 +1725,9 @@ function enterRoom() {
   });
   entered = true;
   startAmbience();
+  // The physical keyboard is Plaits-only, so warm its worklet on entry.
+  // plaitsApply has already restored the saved/shared panel state.
+  initPlaits().then(() => { plaitsApply(); world.synth.panel.markDirty(); });
   /* Pull down every one of her takes now, in the background. It's ~2 MB, it
      happens once, and it's what makes clicking her twice in a row work: with
      the clips already in memory a line starts on the click instead of on a
@@ -1760,7 +1803,7 @@ function castAt(ndcX, ndcY) {
     raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera);
   }
   // doors are included as blockers so notes can't be pinned onto them
-  const targets = [cat.hitMesh, toyHit, bartender.hitMesh, guide.hitMesh, world.pianoMesh, world.pianoVoiceMesh, world.synth.btn, ...(world.synth.inWorld() ? [world.synth.screen] : []), world.rings.btn, ...(world.rings.inWorld() ? [world.rings.screen] : []), world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, ...world.elevHits, ...world.elevCallHits, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.guitarVoiceHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, world.pool.hit, world.pool.resetHit, world.pool.joinHit, world.pool2.hit, world.pool2.resetHit, world.pool2.joinHit, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.radioHits, ...world.laRadioHits, ...world.filterPedalHit, ...world.vacuumHits, ...world.studio.screens, ...world.studio.doorHits, ...notesWall.raycastTargets(), ...world.monthPlate.meshes, screenMesh, world.gym.joinHit, world.gym.exitHit, ...world.gym.readyHits, ...world.podium.hits, ...world.garden.hits, ...(world.bath ? world.bath.hits : []), ...(world.bath ? world.bath.tags.meshes() : []), ...world.blockers];
+  const targets = [cat.hitMesh, toyHit, bartender.hitMesh, guide.hitMesh, world.pianoMesh, world.synth.btn, ...(world.synth.inWorld() ? [world.synth.screen] : []), world.rings.btn, ...(world.rings.inWorld() ? [world.rings.screen] : []), world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, ...world.elevHits, ...world.elevCallHits, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.guitarVoiceHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, world.pool.hit, world.pool.resetHit, world.pool.joinHit, world.pool2.hit, world.pool2.resetHit, world.pool2.joinHit, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.radioHits, ...world.laRadioHits, ...world.filterPedalHit, ...world.vacuumHits, ...world.studio.screens, ...world.studio.doorHits, ...notesWall.raycastTargets(), ...world.monthPlate.meshes, screenMesh, world.gym.joinHit, world.gym.exitHit, ...world.gym.readyHits, ...world.podium.hits, ...world.garden.hits, ...(world.bath ? world.bath.hits : []), ...(world.bath ? world.bath.tags.meshes() : []), ...world.blockers];
   /* an open in-world window is CAST FIRST and wins outright if it's hit at
      all. it draws with depthTest off — it reads over the room the way a DOM
      overlay does — so sorting it by distance would let anything standing
@@ -2280,17 +2323,7 @@ controls.onAction((ndcX, ndcY) => {
   } else if (hit.object.userData.piano && hit.distance < 2.4 && hit.uv) {
     const key = Math.max(0, Math.min(14, Math.floor(hit.uv.x * 15)));
     tourDid("instrument");
-    if (pianoVoice === PLAITS_VOICE) {
-      /* On PLAITS the key goes through the panel: its scale and root decide
-         the pitch, and if the arp is running the key joins (or leaves) the
-         chord rather than just sounding once. It sounds once as well — you
-         should hear what you just added. */
-      synthPress(key);
-    } else {
-      pianoNote(key, pianoVoice);
-      world.pressPianoKey(key);
-      presence.sendNote(key, pianoVoice);
-    }
+    synthPress(key);
     progress.bump("piano");
     aInstrument("piano");
     if (Date.now() - (window.__pianoLogAt || 0) > 60000) {
@@ -2403,27 +2436,16 @@ controls.onAction((ndcX, ndcY) => {
   } else if (hit.object.userData.synthPanel && hit.distance < 3.2 && hit.uv) {
     applySynthHit(SynthPanel.hit(hit.uv.x, hit.uv.y));
   } else if (hit.object.userData.synthBtn && hit.distance < 2.6) {
-    /* The button does two things because they are one thing: it opens the
-       parameters AND puts the keyboard on the voice those parameters
-       describe. Opening a Plaits panel over a keyboard playing an e-piano
-       would be a panel that does nothing. */
+    // The button simply opens the parameters for the keyboard's only voice.
     const open = !world.synth.isOpen();
     world.synth.setOpen(open, !IS_TOUCH);
     if (open) {
-      pianoVoice = PLAITS_VOICE;
-      try { localStorage.setItem("metro.voice", String(pianoVoice)); } catch (e) {}
       initPlaits().then(() => { plaitsApply(); world.synth.panel.markDirty(); });
       plaitsApply();
       toast(IS_TOUCH ? "PLAITS — drag the knobs down there" : "PLAITS — drag a knob, tap the keys");
     }
     syncPanelSheet();
     synthDirty(false);
-  } else if (hit.object.userData.pianoVoice && hit.distance < 2.4) {
-    pianoVoice = (pianoVoice + 1) % PIANO_VOICES.length;
-    if (pianoVoice === PLAITS_VOICE) { initPlaits().then(plaitsApply); plaitsApply(); }
-    try { localStorage.setItem("metro.voice", String(pianoVoice)); } catch (e) {}
-    // just switch the voice — no preview note (clicking the body shouldn't play)
-    toast(`piano voice: ${PIANO_VOICES[pianoVoice].name}`);
   } else if (hit.object.userData.stomp && hit.distance < 2.8) {
     // click a pedal to toggle its effect — bypassed pedals dim their LED
     const id = hit.object.userData.stomp;
@@ -2628,9 +2650,6 @@ setInterval(() => {
       : h.type === "octave" ? `${TAP} — octave ${h.d > 0 ? "up" : "down"}`
       : h.type === "cycle" ? `${TAP} — ${h.key}` : "";
     aimTip.classList.toggle("show", !!aimTip.textContent);
-  } else if (hit && hit.object.userData.pianoVoice && hit.distance < 2.4) {
-    aimTip.textContent = `${TAP} to change the piano sound (${PIANO_VOICES[pianoVoice].name})`;
-    aimTip.classList.add("show");
   } else if (hit && hit.object.userData.stomp && hit.distance < 2.8) {
     const id = hit.object.userData.stomp;
     aimTip.textContent = `${TAP} to ${fxOn[id] ? "bypass" : "switch on"} the ${FX_LABEL[id] || "pedal"}`;
@@ -3073,6 +3092,15 @@ function openMixer() {
     if (sl) sl.value = Math.round(mixLevel[id]);
     setMixChannel(id, mixLevel[id], false);   // refresh the readouts
   }
+  const cloudsWetSlider = $("#clouds-wet");
+  if (cloudsWetSlider) cloudsWetSlider.value = Math.round(cloudsWet);
+  setCloudsWetAmount(cloudsWet, false);
+  const cloudsReverbSlider = $("#clouds-reverb");
+  if (cloudsReverbSlider) cloudsReverbSlider.value = Math.round(cloudsReverb);
+  setCloudsAmount(cloudsReverb, false);
+  const cloudsDensitySlider = $("#clouds-density");
+  if (cloudsDensitySlider) cloudsDensitySlider.value = Math.round(cloudsDensity);
+  setCloudsDensityAmount(cloudsDensity, false);
   show(mixerUI);
 }
 function closeMixer() {
@@ -3085,6 +3113,9 @@ for (const id of MIX_IDS) {
   const sl = $("#mix-" + id);
   if (sl) sl.addEventListener("input", (e) => setMixChannel(id, +e.target.value, true));
 }
+$("#clouds-wet")?.addEventListener("input", (e) => setCloudsWetAmount(+e.target.value, true));
+$("#clouds-reverb")?.addEventListener("input", (e) => setCloudsAmount(+e.target.value, true));
+$("#clouds-density")?.addEventListener("input", (e) => setCloudsDensityAmount(+e.target.value, true));
 
 /* ---------------- the radios (scan through live broadcast) ----------------
    two of them, one shared faceplate overlay. Desi's cabin runs Swedish, the
@@ -3183,8 +3214,8 @@ function applyRoomFlags(f, withRadio = true) {
   if (typeof f.closet === "boolean") world.setCloset(f.closet);
   if (typeof f.lava === "boolean") world.setLava(f.lava);
   // the instruments as the room left them — see SHARED_PANELS
-  applyPanelState("synth", f.plaits);
-  applyPanelState("rings", f.rings);
+  applyPanelState("synth", f.plaits, true);
+  applyPanelState("rings", f.rings, true);
   applyGrime(f.grime);   // accumulated dirt + vacuumed lanes, shared across visitors
   if (f.graffiti && world.bath) world.bath.tags.load(f.graffiti);
   if (withRadio && entered) for (const which of ["sr", "la"]) {

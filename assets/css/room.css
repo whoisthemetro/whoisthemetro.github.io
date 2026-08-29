@@ -355,6 +355,14 @@ textarea:focus, input:focus { border-color: var(--amber); }
   width: 40px; text-align: right; font-size: 11px; letter-spacing: 0.06em;
   color: var(--dim); font-variant-numeric: tabular-nums;
 }
+.mixer-divider {
+  margin: 22px 0 4px; padding-top: 12px; border-top: 1px solid var(--line);
+  color: var(--amber); font-size: 10px; letter-spacing: 0.15em; text-transform: uppercase;
+}
+.clouds-row { margin-bottom: 6px; }
+.clouds-fader { background: linear-gradient(90deg, #15181d, #34466e 55%, #a99cff); }
+.clouds-density-fader { background: linear-gradient(90deg, #a99cff, #15181d 50%, #a99cff); }
+.clouds-note { margin: 0 0 4px 58px; color: var(--dim); font-size: 10px; line-height: 1.35; }
 
 /* ---------- radio tuner ---------- */
 .radio-panel { width: min(92vw, 360px); }
