@@ -163,8 +163,14 @@ const ps1Fog = world.scene.fog
   ? { color: world.scene.fog.color.clone(), near: world.scene.fog.near, far: world.scene.fog.far }
   : null;
 const ps1PixelRatio = () => Math.min(NORMAL_PIXEL_RATIO, 320 / Math.max(1, innerWidth));
-let ps1Mode = false;
-try { ps1Mode = localStorage.getItem("metro.ps1") === "1"; } catch (e) {}
+// PS1 is now the room's native look. A saved preference only exists after a
+// visitor has deliberately used the switch, so it remains an opt-out without
+// making a first visit look like the unstyled renderer.
+let ps1Mode = true;
+try {
+  const saved = localStorage.getItem("metro.ps1");
+  if (saved !== null) ps1Mode = saved === "1";
+} catch (e) {}
 function setPS1Mode(on, save = true) {
   ps1Mode = !!on;
   renderer.setPixelRatio(ps1Mode ? ps1PixelRatio() : NORMAL_PIXEL_RATIO);
@@ -1751,25 +1757,34 @@ const studioDeepLink = /(^|[#,])studio\b/i.test(location.hash);
 const catVolumeAdmin = $("#cat-volume-admin");
 const catVolumeInput = $("#cat-volume");
 const catVolumeValue = $("#cat-volume-value");
-let catVolumePct = 100;
+const CAT_VOLUME_DEFAULT = 12;
+let catVolumePct = CAT_VOLUME_DEFAULT;
 try {
   const saved = Number(localStorage.getItem("metro.cat.volume"));
-  if (Number.isFinite(saved)) catVolumePct = Math.max(0, Math.min(100, saved));
+  // The first version wrote 100% while merely opening #admin. Only retain a
+  // level after the owner has actually touched the control, so that legacy
+  // automatic value becomes the new, much quieter default too.
+  if (localStorage.getItem("metro.cat.volume.touched") === "1" && Number.isFinite(saved)) {
+    catVolumePct = Math.max(0, Math.min(100, saved));
+  }
 } catch (e) {}
 setCatVolume(catVolumePct / 100);
 if (adminMode) {
   catVolumeAdmin.classList.remove("hidden");
-  const applyCatVolume = () => {
+  const applyCatVolume = (save = true) => {
     catVolumePct = Math.max(0, Math.min(100, Number(catVolumeInput.value) || 0));
     catVolumeInput.value = String(catVolumePct);
     catVolumeValue.value = String(catVolumePct) + "%";
     catVolumeValue.textContent = String(catVolumePct) + "%";
     setCatVolume(catVolumePct / 100);
-    try { localStorage.setItem("metro.cat.volume", String(catVolumePct)); } catch (e) {}
+    if (save) try {
+      localStorage.setItem("metro.cat.volume", String(catVolumePct));
+      localStorage.setItem("metro.cat.volume.touched", "1");
+    } catch (e) {}
   };
   catVolumeInput.value = String(catVolumePct);
-  catVolumeInput.addEventListener("input", applyCatVolume);
-  applyCatVolume();
+  catVolumeInput.addEventListener("input", () => applyCatVolume(true));
+  applyCatVolume(false);
 }
 
 function show(el) { el.classList.add("show"); }

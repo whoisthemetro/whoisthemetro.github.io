@@ -25,7 +25,14 @@ export const WHATS_NEW = [
   {
     date: "2026-08-30",
     items: [
+      "the room opens in its chunky PS1 look now. the little switch still takes you back to the clean version whenever you want",
+    ],
+  },
+  {
+    date: "2026-08-30",
+    items: [
       "Shartacus has a volume control for Metro now — it lives only in admin mode, right under her little status readout",
+      "Shartacus has been turned way down by default, so she can keep talking without taking over the room",
     ],
   },
   {

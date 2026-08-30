@@ -4,11 +4,20 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-08-30 — PS1 by default
+
+- The PS1 display treatment is now Metro's default first-visit look. The HUD
+  switch and P shortcut remain an individual persistent opt-out, so anyone
+  who turns it off keeps the clean renderer on later visits.
+
 ## 2026-08-30 — cat volume
 
 - Admin mode now reveals a CAT VOL slider beneath Shartacus's HUD status. It
   is deliberately absent from the normal visitor UI and remembers the level
   on Metro's browser.
+- Shartacus now starts at 12% of the previous level. The automatic 100% value
+  written by the first version of the control is migrated down as well; a level
+  is only preserved after Metro actually moves the slider.
 - The slider controls every meow, purr, and hiss through one shared, smoothed
   gain, whether a sound uses the recorded cat clips or the synthesised fallback.
 
