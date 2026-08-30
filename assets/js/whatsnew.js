@@ -25,6 +25,12 @@ export const WHATS_NEW = [
   {
     date: "2026-08-30",
     items: [
+      "the month scroller above the arcade doorway is lined up with the doorway now",
+    ],
+  },
+  {
+    date: "2026-08-30",
+    items: [
       "PS1 mode is still chunky, but the big desk screen is easier to read now — sharper letters, brighter contrast, fewer mushy pixels",
     ],
   },

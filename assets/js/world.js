@@ -2019,14 +2019,23 @@ export function buildWorld(renderer) {
     const wl = walls.find(w2 => w2.id === wid);
     if (!wl) continue;
     const vC = wl.h * 0.913;
+    // All three anchors are explicit: the back and east plates sit on their
+    // walls' true midpoint; west follows the arcade doorway, 40 cm south of
+    // the wall midpoint. This keeps later doorway/layout work from quietly
+    // making a centered-looking plate drift again.
+    const uC = {
+      back: W / 2,
+      west: D / 2 + 0.4,
+      east: D / 2,
+    }[wid];
     const mesh = monthPlate.makeMesh();
     mesh.position.copy(wl.origin.clone()
-      .addScaledVector(wl.uDir, wl.w / 2)
+      .addScaledVector(wl.uDir, uC)
       .addScaledVector(wl.vDir, vC)
       .addScaledVector(wl.normal, 0.045));
     mesh.lookAt(mesh.position.clone().add(wl.normal));
     add(mesh);
-    wl.voids.push({ u0: wl.w / 2 - monthPlate.width / 2 - 0.06, u1: wl.w / 2 + monthPlate.width / 2 + 0.06,
+    wl.voids.push({ u0: uC - monthPlate.width / 2 - 0.06, u1: uC + monthPlate.width / 2 + 0.06,
                     v0: vC - monthPlate.height / 2 - 0.04, v1: wl.h });
   }
 

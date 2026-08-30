@@ -4,6 +4,14 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-08-30 — month plate doorway alignment
+
+- Shifted only the west-wall month scroller 0.4 m to the arcade doorway's
+  actual centerline. The back and east plates remain centered on their own
+  walls.
+- The three placements now use explicit wall/doorway anchors: back and east
+  use their true wall midpoint; west uses the arcade opening's midpoint.
+
 ## 2026-08-30 — legible PS1 screens
 
 - PS1 mode now renders at a slightly denser 480px internal width instead of
