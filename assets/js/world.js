@@ -295,6 +295,11 @@ function makeDawScreen() {
   const g = c.getContext("2d");
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
+  // This is a legible game UI living inside a deliberately pixelated world:
+  // avoid mip-map interpolation turning its letter shapes into grey mush
+  // before the PS1 framebuffer gets to them.
+  tex.minFilter = tex.magFilter = THREE.NearestFilter;
+  tex.generateMipmaps = false;
 
   const TRACKS = 11;
   const colors = ["#e0653a", "#3be07a", "#5db8ff", "#ffb347", "#c79bff", "#ff6f91", "#7ef5e0"];
@@ -309,13 +314,56 @@ function makeDawScreen() {
   }
   let play = 130;
   const meters = new Array(TRACKS).fill(0.4);
+  const modes = [
+    { id: "daw", label: "the metro session" }, { id: "access", label: "late-night local access" },
+    { id: "radar", label: "weather radar" }, { id: "vhs", label: "VHS clips" },
+    { id: "desktop", label: "fake desktop" }, { id: "visualizer", label: "visualizers" },
+  ];
+  let modeAt = 0;
+  function drawAlt(t) {
+    const mode = modes[modeAt].id;
+    g.fillStyle = "#080a0d"; g.fillRect(0, 0, 1024, 432);
+    if (mode === "access") {
+      g.fillStyle = "#12244b"; g.fillRect(0, 0, 1024, 56);
+      g.fillStyle = "#edf2e7"; g.font = "bold 23px Archivo"; g.fillText("METRO 58  ·  AFTER HOURS", 28, 36);
+      g.fillStyle = "#d65a42"; g.fillRect(0, 56, 1024, 246);
+      g.fillStyle = "#f2ca4b"; g.beginPath(); g.arc(154, 180, 86, 0, Math.PI * 2); g.fill();
+      g.fillStyle = "#17213f"; g.fillRect(300, 105, 634, 144);
+      g.fillStyle = "#e6e0cc"; g.font = "bold 38px Archivo"; g.fillText("LIVE FROM", 334, 158); g.fillText("HAWTHORNE", 334, 206);
+      g.font = "16px Archivo"; g.fillText("public access for people who are still awake", 334, 232);
+      g.fillStyle = "#0e1115"; g.fillRect(0, 302, 1024, 130); g.fillStyle = "#6de0b3"; g.font = "15px monospace";
+      g.fillText("CALL IN  ·  555-METRO     TONIGHT: weather / songs / the cat", 28, 365);
+    } else if (mode === "radar") {
+      const cx = 510, cy = 226, r = 178, a = t * .7;
+      g.fillStyle = "#0b251e"; g.fillRect(0, 0, 1024, 432); g.strokeStyle = "#2b8067"; g.lineWidth = 2;
+      for (let rr = 44; rr <= r; rr += 44) { g.beginPath(); g.arc(cx, cy, rr, 0, Math.PI * 2); g.stroke(); }
+      g.beginPath(); g.moveTo(cx-r,cy); g.lineTo(cx+r,cy); g.moveTo(cx,cy-r); g.lineTo(cx,cy+r); g.stroke();
+      g.save(); g.translate(cx,cy); g.rotate(a); g.fillStyle = "rgba(110,255,170,.25)"; g.beginPath(); g.moveTo(0,0); g.arc(0,0,r,-.1,.1); g.closePath(); g.fill(); g.restore();
+      for (const [x,y,s] of [[430,151,19],[585,193,12],[530,302,23],[369,263,9],[657,272,16]]) { g.fillStyle = s>18?"#e4c84d":"#66d98d"; g.globalAlpha=.42+.4*Math.sin(t*2+x); g.beginPath(); g.arc(x,y,s,0,Math.PI*2); g.fill(); }
+      g.globalAlpha=1; g.fillStyle="#d9f6d8"; g.font="bold 20px monospace"; g.fillText("METRO WEATHER RADAR",26,35); g.font="15px monospace"; g.fillText("HAWTHORNE · 61°F · CLEAR",26,62);
+    } else if (mode === "vhs") {
+      const hues=["#de3d55","#e8b54c","#53c6bd","#6387e5"]; for(let i=0;i<9;i++){g.fillStyle=hues[(i+(t/4|0))%4];g.fillRect(0,i*48,1024,48);}
+      g.fillStyle="rgba(10,12,17,.7)";g.fillRect(135,86,754,260);g.strokeStyle="#f0eee4";g.lineWidth=4;g.strokeRect(135,86,754,260);
+      g.fillStyle="#f5eee0";g.font="bold 54px Archivo";g.fillText("TAPE 03",344,192);g.font="18px monospace";g.fillText("FAMILY NIGHT / METRO ARCHIVE / 1998",278,232);g.fillText("PLAY  ▶     SP     00:"+String((t|0)%60).padStart(2,"0"),286,286);
+      for(let y=0;y<432;y+=7){g.fillStyle="rgba(0,0,0,.11)";g.fillRect(0,y,1024,2);}
+    } else if (mode === "desktop") {
+      g.fillStyle="#1e5488";g.fillRect(0,0,1024,432);g.fillStyle="#6da6d8";g.beginPath();g.arc(810,95,55,0,Math.PI*2);g.fill();
+      for(const [name,x] of [["MIXES",70],["CAT PIX",190],["DO NOT",310],["TOUR",430]]){g.fillStyle="#ecd86a";g.fillRect(x,88,48,34);g.fillStyle="#e8eef4";g.font="14px Archivo";g.fillText(name,x-6,145);}
+      g.fillStyle="rgba(8,12,19,.92)";g.fillRect(476,104,458,206);g.fillStyle="#dce6ed";g.font="16px monospace";g.fillText("visitor@metro:~$",500,140);g.fillStyle="#83e5b0";g.fillText("the room is always on.",500,178);g.fillStyle="#aeb9c2";g.fillText("last login: right now",500,213);g.fillStyle="#f1d36e";g.fillText("█",500,254);
+      g.fillStyle="#d9dde2";g.fillRect(0,396,1024,36);g.fillStyle="#27313b";g.font="14px Archivo";g.fillText("METRO OS     finder     terminal     weather",24,420);
+    } else {
+      g.fillStyle="#07090d";g.fillRect(0,0,1024,432);for(let i=0;i<54;i++){const x=36+i*18,h=35+142*(.35+.65*Math.abs(Math.sin(t*2.1+i*.38)*Math.cos(t*.63+i)));g.fillStyle=i%3===0?"#ffb347":i%3===1?"#5db8ff":"#ff6f91";g.fillRect(x,225-h/2,12,h);}
+      g.strokeStyle="#7ef5e0";g.lineWidth=3;g.beginPath();for(let x=0;x<=1024;x+=7){const y=78+38*Math.sin(x*.018+t*4)*Math.cos(x*.004-t);x?g.lineTo(x,y):g.moveTo(x,y);}g.stroke();g.fillStyle="#dce5ed";g.font="bold 20px monospace";g.fillText("METRO VISUALIZER",28,394);
+    }
+  }
 
   function draw() {
+    if (modeAt) { drawAlt(performance.now()/1000); tex.needsUpdate=true; return; }
     g.fillStyle = "#101216";
     g.fillRect(0, 0, 1024, 432);
     g.fillStyle = "#1a1d23"; g.fillRect(0, 0, 1024, 26);
-    g.fillStyle = "#3be07a"; g.beginPath(); g.moveTo(12, 6); g.lineTo(22, 13); g.lineTo(12, 20); g.fill();
-    g.fillStyle = "#d8dee4"; g.font = "11px Archivo"; g.fillText("the metro session — 96 kHz", 36, 17);
+    g.fillStyle = "#3be07a"; g.beginPath(); g.moveTo(12, 4); g.lineTo(25, 13); g.lineTo(12, 22); g.fill();
+    g.fillStyle = "#f0f3f5"; g.font = "bold 16px Archivo, sans-serif"; g.fillText("THE METRO SESSION  ·  96 kHz", 40, 19);
     const rowH = (432 - 60) / TRACKS;
     for (let i = 0; i < TRACKS; i++) {
       const y = 32 + i * rowH;
@@ -327,7 +375,7 @@ function makeDawScreen() {
       const mh = (rowH - 10) * meters[i];
       g.fillStyle = meters[i] > 0.85 ? "#e05050" : "#3be07a";
       g.fillRect(96, y + 4 + (rowH - 10) - mh, 8, mh);
-      g.fillStyle = "#9aa3ad"; g.font = "10px Archivo"; g.fillText(["kick","snare","hats","808","keys","gtr","vox 1","vox 2","pad","fx","bus"][i] || "trk", 8, y + 14);
+      g.fillStyle = "#d8dee4"; g.font = "bold 15px Archivo, sans-serif"; g.fillText(["KICK","SNARE","HATS","808","KEYS","GTR","VOX 1","VOX 2","PAD","FX","BUS"][i] || "TRK", 8, y + 19);
     }
     for (const cl of clips) {
       const y = 32 + cl.t * rowH;
@@ -351,7 +399,11 @@ function makeDawScreen() {
     tex.needsUpdate = true;
   }
   draw();
-  return { tex, draw };
+  return { tex, draw, cycle() {
+    modeAt = (modeAt + 1) % modes.length;
+    draw();
+    return modes[modeAt];
+  }};
 }
 
 function makeMeterScreen() {
@@ -6815,6 +6867,8 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
   const tbBall = new THREE.Mesh(new THREE.SphereGeometry(0.026, 14, 12),
     new THREE.MeshStandardMaterial({ color: 0x8a1f2d, metalness: 0.2, roughness: 0.25 }));
   tbBall.position.set(0.28, deskTopY + 0.045, 0.115);
+  tbBase.userData.screenMode = true;
+  tbBall.userData.screenMode = true;
   desk.add(tbBall);
 
   // Mac Studio + portable monitor on top. Its status light is authored on
@@ -10963,6 +11017,8 @@ void main() { mainImage(gl_FragColor, vUv * iResolution.xy); }
     cycleClubTheme, clubThemeName,
     setClubTheme: (ix) => applyClubTheme(ix), clubThemeIndex: () => themeIx,
     inClub: (x) => x < -30,
+    screenModeHits: [tbBase, tbBall],
+    cycleDesktopScreen: () => daw.cycle(),
     dmTargets: [monScreen, monBezel, mac],
     // where the cat likes to be
     catSpots: {

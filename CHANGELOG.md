@@ -4,11 +4,22 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
-## 2026-08-30 — PS1 by default
+## 2026-08-30 — legible PS1 screens
 
-- The PS1 display treatment is now Metro's default first-visit look. The HUD
-  switch and P shortcut remain an individual persistent opt-out, so anyone
-  who turns it off keeps the clean renderer on later visits.
+- PS1 mode now renders at a slightly denser 480px internal width instead of
+  320px. The room remains deliberately chunky, but the ultrawide has enough
+  real display pixels for its text to resolve.
+- The ultrawide's canvas uses nearest sampling without mipmaps and larger,
+  higher-contrast UI type, keeping the local-access, radar, desktop, and DAW
+  screens sharp inside the PS1 display treatment.
+
+## 2026-08-30 — desk mouse screen scenes
+
+- Clicking the desk trackball now cycles the ultrawide's local animated idle
+  screen: the Metro DAW session, late-night local access, weather radar, VHS
+  archive, a fake desktop, and a music visualizer.
+- The trackball changes only the current visitor's canvas texture. The monitor
+  itself still opens METRO OS; it is not repurposed as a button.
 
 ## 2026-08-30 — cat volume
 

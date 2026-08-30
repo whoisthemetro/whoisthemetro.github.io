@@ -162,15 +162,14 @@ const world = buildWorld(renderer);
 const ps1Fog = world.scene.fog
   ? { color: world.scene.fog.color.clone(), near: world.scene.fog.near, far: world.scene.fog.far }
   : null;
-const ps1PixelRatio = () => Math.min(NORMAL_PIXEL_RATIO, 320 / Math.max(1, innerWidth));
-// PS1 is now the room's native look. A saved preference only exists after a
-// visitor has deliberately used the switch, so it remains an opt-out without
-// making a first visit look like the unstyled renderer.
-let ps1Mode = true;
-try {
-  const saved = localStorage.getItem("metro.ps1");
-  if (saved !== null) ps1Mode = saved === "1";
-} catch (e) {}
+// 480px keeps the room visibly low-res but gives an in-world screen enough
+// actual display pixels for a title or terminal line to resolve. At 320px the
+// ultrawide's smallest text collapsed into neighbouring pixels before its own
+// crisp canvas texture could ever matter.
+const ps1PixelRatio = () => Math.min(NORMAL_PIXEL_RATIO, 480 / Math.max(1, innerWidth));
+// This is a visitor-selected lens, never the room's forced baseline.
+let ps1Mode = false;
+try { ps1Mode = localStorage.getItem("metro.ps1") === "1"; } catch (e) {}
 function setPS1Mode(on, save = true) {
   ps1Mode = !!on;
   renderer.setPixelRatio(ps1Mode ? ps1PixelRatio() : NORMAL_PIXEL_RATIO);
@@ -1921,7 +1920,7 @@ function castAt(ndcX, ndcY) {
     raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera);
   }
   // doors are included as blockers so notes can't be pinned onto them
-  const targets = [cat.hitMesh, toyHit, bartender.hitMesh, guide.hitMesh, world.pianoMesh, world.synth.btn, ...(world.synth.inWorld() ? [world.synth.screen] : []), world.rings.btn, ...(world.rings.inWorld() ? [world.rings.screen] : []), world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, ...world.elevHits, ...world.elevCallHits, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.guitarVoiceHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, world.pool.hit, world.pool.resetHit, world.pool.joinHit, world.pool2.hit, world.pool2.resetHit, world.pool2.joinHit, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.radioHits, ...world.laRadioHits, ...world.filterPedalHit, ...world.vacuumHits, ...world.studio.screens, ...world.studio.doorHits, ...notesWall.raycastTargets(), ...world.monthPlate.meshes, screenMesh, world.gym.joinHit, world.gym.exitHit, ...world.gym.readyHits, ...world.podium.hits, ...world.garden.hits, ...(world.bath ? world.bath.hits : []), ...(world.bath ? world.bath.tags.meshes() : []), ...world.blockers];
+  const targets = [cat.hitMesh, toyHit, bartender.hitMesh, guide.hitMesh, world.pianoMesh, world.synth.btn, ...(world.synth.inWorld() ? [world.synth.screen] : []), world.rings.btn, ...(world.rings.inWorld() ? [world.rings.screen] : []), world.dimmerHit, world.boatExitHit, world.clubExitHit, world.clubWindowHit, ...world.deckHits, world.volcaHit, world.bottleHit, ...world.elevHits, ...world.elevCallHits, world.discHit, world.blindsHit, world.glassHit, ...world.smokeHits, ...world.edrumHits, ...world.guitarHits, ...world.guitarVoiceHits, ...world.arenaExits, ...world.grabHandles, ...world.kiosks, ...world.arcadeHits, world.pool.hit, world.pool.resetHit, world.pool.joinHit, world.pool2.hit, world.pool2.resetHit, world.pool2.joinHit, ...world.screenModeHits, ...world.dmTargets, ...world.closetHits, ...world.careTargets, ...world.curtainHits, ...world.stompHits, ...world.mixerHits, ...world.radioHits, ...world.laRadioHits, ...world.filterPedalHit, ...world.vacuumHits, ...world.studio.screens, ...world.studio.doorHits, ...notesWall.raycastTargets(), ...world.monthPlate.meshes, screenMesh, world.gym.joinHit, world.gym.exitHit, ...world.podium.hits, ...world.garden.hits, ...(world.bath ? world.bath.hits : []), ...(world.bath ? world.bath.tags.meshes() : []), ...world.blockers];
   /* an open in-world window is CAST FIRST and wins outright if it's hit at
      all. it draws with depthTest off — it reads over the room the way a DOM
      overlay does — so sorting it by distance would let anything standing
@@ -1932,6 +1931,11 @@ function castAt(ndcX, ndcY) {
     const vh = raycaster.intersectObject(vw, false)[0];
     if (vh) return vh;
   }
+  // The trackball sits behind Trinity from the chair. It is a precise, tiny
+  // desk control, so when the ray lands on it it should win over a guide
+  // interaction capsule that happens to be closer to the camera.
+  const screenModeHit = raycaster.intersectObjects(world.screenModeHits, false)[0];
+  if (screenModeHit) return screenModeHit;
   const hits = raycaster.intersectObjects(targets, false);
   return hits[0] || null;
 }
@@ -2435,6 +2439,9 @@ controls.onAction((ndcX, ndcY) => {
   } else if (inStudio && hit.object.userData.exit && hit.distance < 5.5) {
     toast("back through the door…");
     goHome();
+  } else if (hit.object.userData.screenMode && hit.distance < 6) {
+    const mode = world.cycleDesktopScreen();
+    toast("🖱 " + mode.label);
   } else if (hit.object.userData.dm && hit.distance < 3) {
     tourDid("pc");
     openPC();

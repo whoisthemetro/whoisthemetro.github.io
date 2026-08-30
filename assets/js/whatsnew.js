@@ -25,7 +25,7 @@ export const WHATS_NEW = [
   {
     date: "2026-08-30",
     items: [
-      "the room opens in its chunky PS1 look now. the little switch still takes you back to the clean version whenever you want",
+      "PS1 mode is still chunky, but the big desk screen is easier to read now — sharper letters, brighter contrast, fewer mushy pixels",
     ],
   },
   {
