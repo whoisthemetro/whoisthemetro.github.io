@@ -80,6 +80,11 @@
     <svg class="hud-i hud-cat" viewBox="0 0 16 16" aria-label="the cat"><path d="M3.4 6.1 2.6 2.2l3.1 2.1a6.4 6.4 0 0 1 4.6 0l3.1-2.1-.8 3.9a5.6 5.6 0 1 1-9.2 0z"/><circle cx="6.2" cy="8.4" r=".85" fill="#0a0e11"/><circle cx="9.8" cy="8.4" r=".85" fill="#0a0e11"/></svg>
     <span id="cat-meters"></span>
   </div>
+  <label id="cat-volume-admin" class="hidden" for="cat-volume">
+    <span>CAT VOL</span>
+    <input id="cat-volume" type="range" min="0" max="100" value="100" step="1" aria-label="Cat volume">
+    <output id="cat-volume-value" for="cat-volume">100%</output>
+  </label>
   <div id="flight-strip"></div>
   <div id="aim-tip">click to read</div>
   <!-- dj FX panel — shown only to the host / booth-holder in the venue -->
@@ -208,7 +213,7 @@
       <input type="range" id="mix-drum" class="mix-fader" min="0" max="150" value="100">
       <span class="mix-val" id="mix-val-drum">100%</span>
     </div>
-    <div class="mixer-divider">clouds · synth fx</div>
+    <div class="mixer-divider">clouds · instrument fx</div>
     <div class="dim-row clouds-row">
       <span class="dim-label">dry/wet</span>
       <input type="range" id="clouds-wet" class="mix-fader clouds-fader" min="0" max="100" value="0">
@@ -224,7 +229,7 @@
       <input type="range" id="clouds-density" class="mix-fader clouds-fader clouds-density-fader" min="0" max="100" value="50">
       <span class="mix-val" id="clouds-density-val">50%</span>
     </div>
-    <p class="clouds-note">density is neutral at 50% · actual Clouds · Plaits only</p>
+    <p class="clouds-note">density is neutral at 50% · actual Clouds · keys + guitar</p>
   </div>
 </div>
 

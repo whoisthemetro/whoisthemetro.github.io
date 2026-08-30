@@ -23,12 +23,18 @@
 
 export const WHATS_NEW = [
   {
+    date: "2026-08-30",
+    items: [
+      "Shartacus has a volume control for Metro now — it lives only in admin mode, right under her little status readout",
+    ],
+  },
+  {
     date: "2026-08-29",
     items: [
       "the little PS1 switch in the corner works on a phone now — tap it for the chunky room and Trinity's old-game voice, then tap it again to come back",
       "in PS1 mode, Trinity comes through the room like an old game guide: lo-fi speaker colour and a little digital grit, without changing the music or anyone else's voice",
       "press P for a little PS1 lens: the room gets chunky pixels, dithered colour and closer fog. press P again to go back — it only changes your own view",
-      "the little mixer on the desk has Clouds now. the synth gets dry/wet, reverb and density controls without touching the guitar, drums or room — density rests at 50% and gets grainy either way",
+      "the little mixer on the desk has Clouds now. the keys and guitar share dry/wet, reverb and density controls; drums and the room stay dry, and density rests at 50% before getting grainy either way",
     ],
   },
   {

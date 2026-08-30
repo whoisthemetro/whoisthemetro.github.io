@@ -346,6 +346,27 @@ textarea:focus, input:focus { border-color: var(--amber); }
 }
 #cat-pill .low { color: var(--amber); }
 #cat-pill .crit { color: #e07054; }
+/* Owner-only: this sits underneath Shartacus's status rather than becoming
+   another visitor-facing HUD control. The enclosing HUD otherwise ignores
+   pointer input, so the range explicitly opts back in. */
+#cat-volume-admin {
+  position: absolute; left: 16px; top: 58px; z-index: 1;
+  width: 172px; padding: 7px 9px; border: 1px solid var(--line);
+  border-radius: 4px; background: rgba(10, 14, 17, 0.78); color: var(--dim);
+  font: 700 9px/1 "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+  letter-spacing: .08em; pointer-events: auto; cursor: default;
+  display: flex; align-items: center; gap: 7px;
+}
+#cat-volume-admin.hidden { display: none; }
+#cat-volume { min-width: 0; flex: 1; accent-color: var(--amber); cursor: ew-resize; }
+#cat-volume-value { width: 31px; color: var(--amber); text-align: right; font-variant-numeric: tabular-nums; }
+@media (max-width: 900px) and (pointer: coarse) {
+  #cat-volume-admin {
+    left: max(8px, env(safe-area-inset-left)); top: 43px; width: 162px;
+    min-height: 34px; padding: 7px 8px;
+  }
+  #cat-volume { min-height: 24px; }
+}
 /* one icon set for the whole HUD: 16-unit box, filled with currentColor, so
    the low/crit classes tint the glyph and its number together */
 .hud-i { width: 13px; height: 13px; flex: none; fill: currentColor; }

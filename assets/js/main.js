@@ -10,7 +10,7 @@ import { Ghosts } from "./ghosts.js";
 import { makeLightPool } from "./lightpool.js";
 import { store } from "./store.js";
 import { presence } from "./presence.js";
-import { startAmbience, citySound, pianoNote, semitoneToKey, audioNow, purr, setRain, setWater, setRoomTone, setClubTone, setClubBed, kettleBoil, setThruster, boostSound, discSound, goalHorn, meow, hiss, careSound, drumHit, setArcadeZone, punchSound, shieldClang, stunBuzz, edrumHit, guitarPluck, guitarNote, shotSound, smokeSound, setFx, setDelayTempo, setBusLevel, setGuitarFilter, setCloudsDensity, setCloudsWet, setCloudsReverb, startVacuum, stopVacuum, beep, fireSound, audioDebug, loadFarts, fartsReady, fart, bathroomSend, loadBathMusic, startBathMusic, setBathMusic, bathMusicOn, loadDJ, wakeAudio } from "./ambience.js";
+import { startAmbience, citySound, pianoNote, semitoneToKey, audioNow, purr, setRain, setWater, setRoomTone, setClubTone, setClubBed, kettleBoil, setThruster, boostSound, discSound, goalHorn, meow, hiss, careSound, drumHit, setArcadeZone, punchSound, shieldClang, stunBuzz, edrumHit, guitarPluck, guitarNote, shotSound, smokeSound, setFx, setDelayTempo, setBusLevel, setGuitarFilter, setCloudsDensity, setCloudsWet, setCloudsReverb, setCatVolume, startVacuum, stopVacuum, beep, fireSound, audioDebug, loadFarts, fartsReady, fart, bathroomSend, loadBathMusic, startBathMusic, setBathMusic, bathMusicOn, loadDJ, wakeAudio } from "./ambience.js";
 import { SONGS, playSong, stopSong, currentSongId } from "./songs.js";
 import { progress } from "./progress.js";
 import { voice } from "./voice.js";
@@ -527,6 +527,20 @@ addEventListener("keydown", (e) => {
       togglePS1Mode();
     }
   }
+  // Admin has one HUD slider that is deliberately not click-dependent: C puts
+  // keyboard focus on CAT VOL, then the browser's normal arrow-key range
+  // controls adjust it. Controls registered its key listener first, so delete
+  // the key it just saw and keep flight movement out of this interaction.
+  if (adminMode && entered && !modalOpen && !chatOpen && e.code === "KeyC" &&
+      document.activeElement !== catVolumeInput && !e.repeat) {
+    e.preventDefault();
+    controls.keys?.delete(e.code);
+    catVolumeInput.focus({ preventScroll: true });
+    return;
+  }
+  if (document.activeElement === catVolumeInput) {
+    controls.keys?.delete(e.code);
+  }
   // admin quick-travel: 1 venue · 2 desi · 3 crew · 4 home — skip the elevator
   if (adminMode && entered && !modalOpen && !chatOpen && !e.repeat) {
     const ae = document.activeElement;
@@ -907,8 +921,8 @@ const FX_LABEL = { "kb-chorus": "chorus", "kb-delay": "delay", "kb-reverb": "rev
    ever played here arrived through six effects nobody had chosen. Both
    instruments have a real Mutable module in them now (Plaits and Rings), and
    those want to be heard as themselves; the pedals are something you switch
-   on, not something you switch off. Clouds is the intended replacement for
-   this whole row and isn't wired to the room yet.
+   on, not something you switch off. Clouds is the shared instrument wash:
+   deliberate, local and dry until its mixer fader moves.
 
    The reset is a VERSION STAMP, not just a changed default: everyone who has
    been here has "1" saved for all six, so flipping the default alone would
@@ -939,8 +953,9 @@ for (const id of MIX_IDS) {
 // push every channel's level into the bus + slide its 3D cap (call once audio is up)
 function applyMixLevels() { for (const id of MIX_IDS) { setBusLevel(id, mixLevel[id]); world.setMixFader(id, mixLevel[id]); } setCloudsWetAmount(cloudsWet, false); setCloudsAmount(cloudsReverb, false); setCloudsDensityAmount(cloudsDensity, false); }
 
-// Clouds is deliberately synth-only. Its first Blend mode is separate, so
-// Dry/Wet can make the internal reverb audible without touching other sound.
+// Clouds is deliberately instrument-only: the same first Blend controls feed
+// Plaits and the guitar after its own pedalboard, while drums and room sound
+// never enter either processor.
 let cloudsReverb = 0;
 try { const s = localStorage.getItem("metro.clouds.reverb"); if (s !== null && isFinite(+s)) cloudsReverb = Math.min(Math.max(+s, 0), 100); } catch (e) {}
 let cloudsDensity = 50;
@@ -1730,6 +1745,32 @@ const venueDeepLink = /(^|[#,])venue\b/i.test(location.hash);
 // /studio → /#studio : same idea for the sequencer room, so there's a link
 // you can hand a friend instead of teaching them the drum fill
 const studioDeepLink = /(^|[#,])studio\b/i.test(location.hash);
+
+// Shartacus is deliberately the only room sound with an owner-level control.
+// It is only unhidden on an #admin visit and remembers this browser's choice.
+const catVolumeAdmin = $("#cat-volume-admin");
+const catVolumeInput = $("#cat-volume");
+const catVolumeValue = $("#cat-volume-value");
+let catVolumePct = 100;
+try {
+  const saved = Number(localStorage.getItem("metro.cat.volume"));
+  if (Number.isFinite(saved)) catVolumePct = Math.max(0, Math.min(100, saved));
+} catch (e) {}
+setCatVolume(catVolumePct / 100);
+if (adminMode) {
+  catVolumeAdmin.classList.remove("hidden");
+  const applyCatVolume = () => {
+    catVolumePct = Math.max(0, Math.min(100, Number(catVolumeInput.value) || 0));
+    catVolumeInput.value = String(catVolumePct);
+    catVolumeValue.value = String(catVolumePct) + "%";
+    catVolumeValue.textContent = String(catVolumePct) + "%";
+    setCatVolume(catVolumePct / 100);
+    try { localStorage.setItem("metro.cat.volume", String(catVolumePct)); } catch (e) {}
+  };
+  catVolumeInput.value = String(catVolumePct);
+  catVolumeInput.addEventListener("input", applyCatVolume);
+  applyCatVolume();
+}
 
 function show(el) { el.classList.add("show"); }
 function hide(el) { el.classList.remove("show"); }

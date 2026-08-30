@@ -10,6 +10,8 @@ let master = null;
 let pianoBus = null;   // the keyboard's pedal chain feeds in here (chorus→delay→reverb)
 let guitarBus = null;  // the guitar's pedal chain (overdrive→delay→reverb)
 let drumBus = null;    // the e-kit's level handle (so a mixer can ride it)
+let guitarOut = null;  // the guitar pedalboard's final output, rerouted through Clouds when ready
+let catBus = null;     // every meow, purr and hiss — one owner-adjustable level
 let gtrFilter = null;  // the guitar's front-of-chain lowpass, ridden by a draggable pedal
 const busBase = {};    // id → the gain each bus was built at (100% on the mixer)
 const fxStages = {};        // id → {dry, wet, wet0} — a stompbox toggles these to bypass
@@ -29,13 +31,13 @@ async function loadSample(url) {
 }
 // one-shot a decoded buffer through the master bus with a soft envelope.
 // returns { src, g } so a caller could stop it early; null if nothing to play.
-function playSample(buf, { rate = 1, gain = 0.5, attack = 0.01, release = 0.08, dur = null, offset = 0 } = {}) {
+function playSample(buf, { rate = 1, gain = 0.5, attack = 0.01, release = 0.08, dur = null, offset = 0, out = master } = {}) {
   if (!ctx || !buf) return null;
   const t = ctx.currentTime;
   const src = ctx.createBufferSource();
   src.buffer = buf; src.playbackRate.value = rate;
   const g = ctx.createGain();
-  src.connect(g).connect(master);
+  src.connect(g).connect(out);
   const play = dur != null ? dur : buf.duration / rate - offset;
   const rel = Math.min(release, play * 0.5);
   g.gain.setValueAtTime(0.0001, t);
@@ -182,8 +184,10 @@ function buildGuitarFx() {
   const rev = ctx.createConvolver();
   rev.buffer = impulseBuffer();
   node = fxWetDry(node, rev, rev, 0.5, "gtr-reverb");
-
-  node.connect(master);
+  // Clouds is wired later, after its worklet has loaded. Until then the guitar
+  // remains fully playable through its own pedals.
+  guitarOut = node;
+  guitarOut.connect(master);
 }
 
 // click a stompbox: bypass the effect (dry passes at unity) or mix it back in.
@@ -234,6 +238,9 @@ export function startAmbience() {
   comp.attack.value = 0.003;
   comp.release.value = 0.2;
   master.connect(comp).connect(ctx.destination);
+  catBus = ctx.createGain();
+  catBus.gain.value = catVolume;
+  catBus.connect(master);
 
   // pull in the cat's real meow + purr (non-blocking — the synth covers for
   // them until they decode, and forever if the fetch fails)
@@ -450,9 +457,11 @@ export const PLAITS_VOICE = PIANO_VOICES.findIndex(v => v.mi);
 let miMode = "off";
 let plaitsNode = null;
 let plaitsLevel = null;         // its own trim: wasm output is hotter than our oscillators
-// Clouds lives only on the bedroom Plaits signal. It shares the same wasm
-// load as Plaits, with its first Blend controls: Dry/Wet and Reverb.
+// The same Clouds controls sit on two independent instrument inserts: one
+// after Plaits and one after the guitar pedalboard. Separate processors keep
+// each instrument's tail to itself while every mixer control stays shared.
 let cloudsNode = null;
+let guitarCloudsNode = null;
 let cloudsMode = "off";
 let cloudsParams = {
   pos: 0, size: 0.5, pitch: 0, dens: 0.5, tex: 0.5,
@@ -480,14 +489,26 @@ export async function initPlaits() {
     plaitsLevel.gain.value = 0.22;
     plaitsNode.connect(plaitsLevel);
     // The existing Clouds processor is the actual Mutable Instruments DSP.
-    // Keep it strictly between Plaits and the keyboard bus: guitar, drums,
-    // room tone, and the rest of the room never enter it.
+    // It has one shared control set, but two inserts: Plaits still returns to
+    // its own keyboard bus and the guitar keeps its own pedalboard + level.
+    // Drums, room tone and every other room source remain outside both.
     try {
-      cloudsNode = new AudioWorkletNode(ctx, "mi-clouds", {
+      const makeClouds = () => new AudioWorkletNode(ctx, "mi-clouds", {
         numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2],
         processorOptions: { module },
       });
-      plaitsLevel.connect(cloudsNode).connect(pianoBus || master);
+      const plaitsClouds = makeClouds();
+      const guitarClouds = makeClouds();
+      plaitsLevel.connect(plaitsClouds).connect(pianoBus || master);
+      // buildGuitarFx has already given the live guitar a direct master route;
+      // transplant its FINAL output only, so overdrive/delay/reverb and the
+      // guitar fader all stay exactly where they were.
+      if (guitarOut) {
+        guitarOut.disconnect();
+        guitarOut.connect(guitarClouds).connect(master);
+      }
+      cloudsNode = plaitsClouds;
+      guitarCloudsNode = guitarClouds;
       cloudsMode = "on";
       setClouds(cloudsParams);
     } catch (e) {
@@ -533,6 +554,7 @@ export function setCloudsReverb(amount = 0) {
 function setClouds(p = {}) {
   cloudsParams = { ...cloudsParams, ...p };
   if (cloudsNode) cloudsNode.port.postMessage({ t: "set", ...cloudsParams });
+  if (guitarCloudsNode) guitarCloudsNode.port.postMessage({ t: "set", ...cloudsParams });
 }
 export function plaitsNote(midi, dur = 1.6, level = 0.6, when = null) {
   if (!plaitsNode || !ctx) return false;
@@ -669,6 +691,15 @@ export function beep(freq, dur = 0.1, type = "square", gain = 0.04, slideTo = nu
    it, sample and synthesised alike, so turning her down is one edit and not
    six scattered gains that drift apart. */
 const MEOW_LEVEL = 0.5;
+let catVolume = 1;
+// 0..1, shared by all of Shartacus's own sounds. This is intentionally a
+// local owner preference: nobody else's cat gets quieter because Metro is
+// adjusting the room on this browser.
+export function setCatVolume(amount = 1) {
+  catVolume = Math.max(0, Math.min(1, Number(amount) || 0));
+  if (!ctx || !catBus) return;
+  catBus.gain.setTargetAtTime(catVolume, ctx.currentTime, 0.025);
+}
 
 export function meow(mood = false) {
   if (!ctx) return;
@@ -699,7 +730,7 @@ export function meow(mood = false) {
       prof = { rate: s.rate * (0.96 + Math.random() * 0.08), dur: s.dur,
                gain: (0.4 + Math.random() * 0.1) * MEOW_LEVEL, attack: 0.008, release: 0.07 };
     }
-    playSample(catMeowBuf, prof);
+    playSample(catMeowBuf, { ...prof, out: catBus || master });
     // excited trills double up; an angry yowl sometimes barks a second time
     if (excited && Math.random() < 0.7) setTimeout(() => meow(false), 200 + Math.random() * 220);
     else if (angry && Math.random() < 0.5) setTimeout(() => meow("angry"), 150 + Math.random() * 130);
@@ -719,7 +750,7 @@ export function meow(mood = false) {
   bp.type = "bandpass";
   bp.Q.value = 1.8 + Math.random() * 1.4;
   const g = ctx.createGain();
-  osc.connect(bp).connect(g).connect(master);
+  osc.connect(bp).connect(g).connect(catBus || master);
   const rise = 0.2 + Math.random() * 0.3;
   osc.frequency.setValueAtTime(f0 * (0.65 + Math.random() * 0.2), t);
   osc.frequency.linearRampToValueAtTime(f0 * (1.1 + Math.random() * 0.35), t + dur * rise);
@@ -745,7 +776,7 @@ export function hiss() {
   bp.frequency.value = 2400;
   bp.Q.value = 0.8;
   const g = ctx.createGain();
-  src.connect(bp).connect(g).connect(master);
+  src.connect(bp).connect(g).connect(catBus || master);
   g.gain.setValueAtTime(0.0001, t);
   g.gain.exponentialRampToValueAtTime(0.09, t + 0.05);
   g.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
@@ -813,7 +844,7 @@ export function purr(seconds = 1.8) {
     const offset = 0.6 + Math.random() * 1.2;
     const rate = 0.9 + Math.random() * 0.18;
     const dur = Math.min(seconds, (catPurrBuf.duration - offset - 0.1) / rate);
-    playSample(catPurrBuf, { rate, gain: 0.5 + Math.random() * 0.12, attack: 0.14, release: 0.3, dur, offset });
+    playSample(catPurrBuf, { rate, gain: 0.5 + Math.random() * 0.12, attack: 0.14, release: 0.3, dur, offset, out: catBus || master });
     return;
   }
   const t = ctx.currentTime;
@@ -828,7 +859,7 @@ export function purr(seconds = 1.8) {
   const flutterGain = ctx.createGain();
   flutterGain.gain.value = 0.05;
   flutter.connect(flutterGain).connect(g.gain);
-  src.connect(lp).connect(g).connect(master);
+  src.connect(lp).connect(g).connect(catBus || master);
   g.gain.setValueAtTime(0.0001, t);
   g.gain.exponentialRampToValueAtTime(0.09, t + 0.25);
   g.gain.exponentialRampToValueAtTime(0.0001, t + seconds);
@@ -1485,6 +1516,8 @@ export function audioDebug() {
     // every delay line's repeat time — the room's tempo, as heard
     delays: Object.fromEntries(Object.keys(fxDelays).map(
       id => [id, +fxDelays[id].delayTime.value.toFixed(4)])),
+    clouds: { plaits: !!cloudsNode, guitar: !!guitarCloudsNode,
+              mode: cloudsMode, wet: cloudsParams.wet, reverb: cloudsParams.verb },
   };
 }
 

@@ -4,6 +4,14 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-08-30 — cat volume
+
+- Admin mode now reveals a CAT VOL slider beneath Shartacus's HUD status. It
+  is deliberately absent from the normal visitor UI and remembers the level
+  on Metro's browser.
+- The slider controls every meow, purr, and hiss through one shared, smoothed
+  gain, whether a sound uses the recorded cat clips or the synthesised fallback.
+
 ## 2026-08-29 — optional PS1 lens
 
 - Added a local, persistent PS1-mode toggle: press \`P\` on desktop or use the
@@ -27,16 +35,17 @@ it says it did.
 ## 2026-08-29 — Clouds reverb on the bedroom mixer
 
 
-- The bedroom desk mixer now has a focused `CLOUDS · SYNTH FX` section with
+- The bedroom desk mixer now has a focused `CLOUDS · INSTRUMENT FX` section with
   the first Clouds Blend controls: independent `DRY/WET` and `REVERB` values.
   They are local to the visitor, matching the existing channel faders.
 - The controls drive the existing Mutable Instruments Clouds audio worklet on
-  Plaits only. The signal sits between the Plaits output and the keyboard
-  bus, so guitar, drums, room tone, and every other bedroom sound stay dry.
+  independent Plaits and guitar inserts with the same control state. The guitar
+  keeps its own pedals and bus level before it enters Clouds; drums, room tone,
+  and every other bedroom sound stay dry.
 - `DENSITY` is exposed separately and rests at 50%; moving either way adds
   Clouds grains.
 - The other Clouds controls remain deliberately fixed: this is a first-mode
-  Blend control for the bedroom keyboard, not a duplicate of the studio's full
+  Blend control for the bedroom instruments, not a duplicate of the studio's full
   granular processor.
 
 ## 2026-08-28 — desk layout controls
