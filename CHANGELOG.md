@@ -19,6 +19,10 @@ it says it did.
   or instruments.
 - The room returns exactly to its normal renderer and fog values when toggled
   off. Resizing keeps the effect at the same display scale.
+- The mobile HUD control now listens to the real pointer-up gesture rather
+  than relying on a synthetic click that touch-action:none can suppress.
+  The switch is therefore usable on touch devices and cannot leak its tap into
+  the room below it.
 
 ## 2026-08-29 — Clouds reverb on the bedroom mixer
 

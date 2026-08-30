@@ -1695,6 +1695,15 @@ addEventListener("resize", () => {
 const intro = $("#intro"), paused = $("#paused"), hud = $("#hud");
 const composer = $("#composer"), reader = $("#reader");
 const aimTip = $("#aim-tip");
+/* click is not guaranteed after a room touch: touch-action:none is what keeps
+   the world from panning, but some mobile browsers suppress its synthetic
+   click. Pointer-up is the physical gesture we actually want, and keeping it
+   on the button means it never becomes a tap in the room behind it. */
+$("#ps1-toggle")?.addEventListener("pointerup", (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  togglePS1Mode();
+});
 
 let modalOpen = false;
 let pendingPlacement = null;
