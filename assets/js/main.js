@@ -108,9 +108,30 @@ function vrBlocked(what) {
 const canvas = $("#scene");
 // phones: skip MSAA, cap the pixel ratio, take the cheap shadow filter —
 // the room reads the same and the battery lives twice as long
-const renderer = new THREE.WebGLRenderer({
-  canvas, antialias: !IS_TOUCH, powerPreference: "high-performance",
-});
+/* This is the first thing in the whole boot that can fail outright, and it
+   used to fail SILENTLY: a browser that won't hand out a WebGL context throws
+   here, which kills this module before a single line of the loading text is
+   written, so the door reads "waking the room" forever with nothing anywhere
+   saying why. index.html's watchdog is what reports it now; this just makes
+   the reason specific instead of a raw constructor error. */
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({
+    canvas, antialias: !IS_TOUCH, powerPreference: "high-performance",
+  });
+} catch (err) {
+  window.__metroFail && window.__metroFail(
+    "This browser wouldn't give the page a 3D canvas, so the room can't be " +
+    "built. Usually that's hardware acceleration switched off, or a GPU " +
+    "process that needs the browser restarted.", err && err.message);
+  throw err;            // nothing below this can work; the door has been told
+}
+/* And a context can go away AFTER a good start — a GPU driver reset, a laptop
+   waking up, another tab eating the GPU. Left alone the room simply freezes. */
+canvas.addEventListener("webglcontextlost", (e) => {
+  e.preventDefault();
+  try { toast("lost the graphics context — reload to come back"); } catch (e2) {}
+}, false);
 /* MOBILE THERMALS. A phone running this got hot enough to notice, and the
    cause was not one expensive thing, it was three cheap ones multiplied:
      · the loop was UNCAPPED. setAnimationLoop runs at display refresh, so a

@@ -52,6 +52,7 @@
     <div id="boot" class="boot">
       <div class="boot-bar"><div id="boot-fill"></div></div>
       <p class="boot-say" id="boot-say">waking the room</p>
+      <p class="boot-err" id="boot-err" hidden></p>
     </div>
     <p class="mode-badge" id="mode-badge"></p>
   </div>
@@ -467,6 +468,70 @@
 </div>
 
 <script src="assets/js/config.js"></script>
+<script>
+/* ---- the door's dead-man switch --------------------------------------
+   The boot text is written by main.js. If main.js dies before it writes
+   anything, the door reads "waking the room" for as long as you care to
+   wait, with nothing in the page to say why. That happened: the renderer
+   is built on main.js's first screenful and a browser that won't give out
+   a WebGL context throws there, killing the module outright.
+   So: remember the first thing it said, and if that is STILL what it says
+   after a while, admit it. ------------------------------------------- */
+(function () {
+  var FIRST = "waking the room", WAIT = 12000, told = false;
+  var lastErr = null;
+  function say(msg, detail) {
+    if (told) return; told = true;
+    var el = document.getElementById("boot-err"),
+        s  = document.getElementById("boot-say"),
+        f  = document.getElementById("boot-fill");
+    if (s) s.textContent = "the room didn't start";
+    if (f) { f.style.width = "100%"; f.style.background = "#e0533d"; }
+    if (!el) return;
+    el.hidden = false;
+    el.style.cssText = "margin:8px auto 0;max-width:34ch;font-size:10.5px;" +
+      "line-height:1.5;letter-spacing:.04em;color:#e0533d;text-align:left;";
+    el.textContent = msg + (detail ? "  (" + String(detail).slice(0, 160) + ")" : "");
+  }
+  window.addEventListener("error", function (e) {
+    lastErr = (e && (e.message || e.error)) || lastErr;
+  }, true);
+  window.addEventListener("unhandledrejection", function (e) {
+    lastErr = (e && e.reason && (e.reason.message || e.reason)) || lastErr;
+  });
+  // is 3D even available? asked directly, so the answer doesn't depend on
+  // main.js having survived long enough to ask it.
+  window.__metroGL = (function () {
+    try {
+      var c = document.createElement("canvas");
+      /* all three, in three.js's own order — it falls back to
+         "experimental-webgl", so testing only the first two would call a
+         browser 3D-less that can actually run the room fine. */
+      return !!(c.getContext("webgl2") || c.getContext("webgl") ||
+                c.getContext("experimental-webgl"));
+    } catch (err) { return false; }
+  })();
+  window.__metroFail = say;
+  setTimeout(function () {
+    var s = document.getElementById("boot-say");
+    var b = document.getElementById("boot");
+    if (!s || !b) return;
+    if (b.className.indexOf("done") >= 0) return;      // it got in fine
+    if (s.textContent.trim() !== FIRST) return;        // it is moving, just slow
+    if (!window.__metroGL) {
+      say("This browser isn't giving the page a 3D canvas, so the room can't " +
+          "be built. Usually that's hardware acceleration switched off, or a " +
+          "GPU process that needs the browser restarted. In Chrome check " +
+          "chrome://gpu, and Settings \u2192 System \u2192 \u201cUse graphics " +
+          "acceleration when available\u201d.", lastErr);
+    } else {
+      say("Something stopped the room loading before it started. A reload " +
+          "usually clears it; if it doesn't, the browser console has the " +
+          "reason.", lastErr);
+    }
+  }, WAIT);
+})();
+</script>
 <script type="module" src="assets/js/main.js"></script>
 </body>
 </html>

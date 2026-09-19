@@ -4,6 +4,39 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-09-18 — the door admits when it didn't start
+
+Reported as "stuck on the loading message, even in incognito". The site was
+up — verified three ways — but the failure it describes is real and the page
+had no way to report it.
+
+- **`new THREE.WebGLRenderer()` was the first unguarded thing in the boot**
+  (main.js, ~line 111). A browser that won't hand out a WebGL context throws
+  there, which kills the whole module before it writes a single line of
+  loading text. The door then reads **"waking the room" forever**, because
+  that string is the hard-coded default in index.html and nothing was ever
+  alive to replace it. No error, no timeout, no clue. Incognito behaves
+  identically — there is no service worker here, and a private window shares
+  the same GPU process.
+- The report has to come from **outside the module**, since the module is the
+  thing that died. `index.html` now carries a small inline watchdog, declared
+  ahead of the module: it remembers the first boot line, listens for `error`
+  and `unhandledrejection`, and after 12 s — if the text still hasn't moved
+  and the boot isn't `done` — says so, names 3D/hardware acceleration when
+  there's no WebGL, and prints the underlying error.
+- main.js guards the constructor too, so the reason is specific rather than a
+  raw three.js message, and a **`webglcontextlost`** listener now covers a
+  context that dies *after* a good start (driver reset, laptop waking, another
+  tab taking the GPU) — which used to just freeze the room.
+- **Test the whole fallback chain, not the first two links.** The first
+  no-WebGL simulation didn't fire at all: three.js asks for `webgl2`, then
+  `webgl`, then **`experimental-webgl`**, and blocking only the first two left
+  it running happily on the third. The same blind spot was in the watchdog's
+  own capability check, which would have called a browser 3D-less that can
+  actually run the room. Both now test all three, in three.js's order.
+- Verified both paths: a normal load still reaches `ready` and enters, and a
+  context-less one now shows "the room didn't start" with the reason.
+
 ## 2026-08-30 — month plate doorway alignment
 
 - Shifted only the west-wall month scroller 0.4 m to the arcade doorway's
