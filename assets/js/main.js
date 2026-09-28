@@ -6354,11 +6354,18 @@ const xr = setupXR({
     key: (code, down) => arcadeVrKey(code, down),
     close: () => closeArcadeOverlay(),
   },
+  /* the mic question is settled on the FLAT screen, before a session exists —
+     a permission prompt can't be drawn inside one, and asking mid-session is
+     what used to eject you from VR and make you walk back in */
+  mic: {
+    state: () => voice.micPermission(),
+    prime: () => voice.primeMic(),
+  },
   onTalk: (held) => {
     if (held) {
       if (inClub || voice.isOn()) return;
       voice.startTalk(false).then((ok) => {
-        if (!ok) { xrRef && xrRef.note("the mic said no"); return; }
+        if (!ok) { xrRef && xrRef.note("mic blocked — allow it outside vr"); return; }
         xrRef && xrRef.note("🎤 live");
         updateMicUI();
       });

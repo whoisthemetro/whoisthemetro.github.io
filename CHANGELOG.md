@@ -4,6 +4,48 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-09-28 — the mic is settled before the headset, not inside it
+
+Holding B/Y in a session was the FIRST time anything asked for the microphone.
+A permission prompt is DOM, and a headset browser cannot draw one inside an
+immersive session — so Quest ends the session to ask it. You allowed the mic,
+and then had to walk back into VR. That was the whole bug: not a permission
+failure, a *timing* one.
+
+- **`voice.micPermission()`** asks the browser what it already decided, via the
+  Permissions API, WITHOUT prompting. Safari does not implement the query for
+  the mic, so `"unknown"` is returned and treated exactly like `"prompt"` — ask
+  on the flat screen and find out.
+- **`voice.primeMic()`** opens the mic purely to get the ANSWER and stops the
+  tracks again immediately. Entering VR must not light the recording indicator
+  for someone who never speaks; the mic still opens for real on the first press
+  to talk, exactly as it does on a flat screen. The only thing this buys is
+  that the *asking* already happened.
+- **The VR door does it, and it costs one extra tap — once, ever.** It has to:
+  `requestSession` needs fresh user activation and awaiting a permission prompt
+  spends it, so starting the session in the same click would fail with
+  "requires user activation" — a worse bug than the one being fixed. So the
+  first tap asks and relabels (`[ mic ready — enter vr ]` / `[ no mic — enter
+  vr ]`), and the second tap goes in. Permission persists per-origin, so a
+  returning visitor is back to a single tap.
+- Already granted: no prompt, and `prime()` is fired WITHOUT `await` so the
+  activation survives into `requestSession` on the same click. Already denied:
+  no pointless prompt at all, VR just starts without voice, and the wrist says
+  `voice off — the mic was blocked` a moment after you arrive — silence is the
+  one failure nobody can diagnose from inside a headset.
+- The in-session failure note changed from "the mic said no" to "mic blocked —
+  allow it outside vr", which at least says what to do about it.
+
+Nothing changes on a flat screen: `showButton` never runs without WebXR, so
+nothing ever calls either new function there.
+
+New smoke: `~/metro-smoke/vrmic.js` fakes an XR browser and stubs
+`permissions.query` / `getUserMedia` to drive all three states. It asserts the
+ORDER, which is the actual contract — `requestSession` must not be reached
+while a prompt is open, and must be reached on the tap after it. (Note for
+whoever extends it: `page.click("#vr-btn")` silently misses in the headless
+layout; dispatch `.click()` in the page instead.)
+
 ## 2026-09-18 — the door admits when it didn't start
 
 Reported as "stuck on the loading message, even in incognito". The site was

@@ -17,7 +17,7 @@ const SNAP = Math.PI / 6;        // 30° per flick — the comfort standard
 const SPEED = 2.2;               // m/s, gentler than desktop walking
 const DEAD = 0.15;               // stick deadzone
 
-export function setupXR({ renderer, camera, scene, controls, world, onSelect, canEnter = () => true, zerogDisc = null, onTalk = null, arcade = null }) {
+export function setupXR({ renderer, camera, scene, controls, world, onSelect, canEnter = () => true, zerogDisc = null, onTalk = null, arcade = null, mic = null }) {
   if (!("xr" in navigator)) return { presenting: () => false, tick() {}, showButton() {} };
 
   renderer.xr.enabled = true;
@@ -147,6 +147,9 @@ export function setupXR({ renderer, camera, scene, controls, world, onSelect, ca
     rig.add(camera);
     for (const c of controllers) c.visible = true;
     try { renderer.xr.setFoveation(1); } catch (e) {}
+    // a mic that was refused outside is a mic that will never work in here,
+    // and silence is the one failure nobody can diagnose from inside a headset
+    if (micOk === false) setTimeout(() => note("voice off — the mic was blocked"), 1200);
   });
   renderer.xr.addEventListener("sessionend", () => {
     rig.remove(camera);
@@ -535,6 +538,7 @@ export function setupXR({ renderer, camera, scene, controls, world, onSelect, ca
 
   // --- the door into VR: a quiet terminal-style button ---
   let btn = null;
+  let micSettled = false, micOk = null;   // asked once per page load
   async function showButton() {
     let ok = false;
     try { ok = await navigator.xr.isSessionSupported("immersive-vr"); } catch (e) {}
@@ -551,6 +555,36 @@ export function setupXR({ renderer, camera, scene, controls, world, onSelect, ca
         btn.textContent = "[ walk home first ]";   // VR starts from the bedroom
         setTimeout(() => { btn.textContent = "[ enter vr ]"; }, 2000);
         return;
+      }
+      /* --- settle the mic out here, where a prompt can actually be SEEN ---
+         Holding B/Y in a headset used to be the first time anything asked for
+         the mic, and a permission prompt is DOM: the headset browser can't
+         draw one in an immersive session, so Quest ends the session to ask.
+         You allowed it and then had to walk back in.
+
+         So the question gets asked on the flat screen, before the session
+         exists. It costs ONE extra tap, once, ever — and it has to, because
+         `requestSession` needs fresh user activation and awaiting a prompt
+         spends it. Starting the session in the same click would fail with
+         "requires user activation", which is a worse bug than the one being
+         fixed. Hence: ask, relabel, let them tap again. --- */
+      if (mic && !micSettled) {
+        micSettled = true;
+        let state = "unknown";
+        try { state = await mic.state(); } catch (e) {}
+        if (state === "granted") {
+          // nothing to ask — warm it WITHOUT awaiting, so the activation that
+          // requestSession needs is still alive on this same click
+          try { mic.prime(); } catch (e) {}
+        } else if (state !== "denied") {
+          const was = btn.textContent;
+          btn.textContent = "[ allow the mic… ]";
+          let ok = false;
+          try { ok = await mic.prime(); } catch (e) {}
+          btn.textContent = ok ? "[ mic ready — enter vr ]" : "[ no mic — enter vr ]";
+          micOk = ok;
+          return;                      // the next tap carries a fresh gesture
+        }
       }
       try {
         const session = await navigator.xr.requestSession("immersive-vr", {

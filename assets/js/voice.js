@@ -510,6 +510,36 @@ export const voice = {
     return Math.min(1, (sum / n / 255) * 1.8);
   },
 
+  /* --- settling the mic BEFORE a headset session starts ------------------
+     A permission prompt is DOM, and DOM does not exist inside an immersive
+     session — so the first push-to-talk in a headset used to throw the prompt
+     at a browser that couldn't draw it, and Quest's answer is to drop you out
+     of VR to ask. You allowed it, then had to walk back in.
+
+     `micPermission` asks the browser what it already decided, WITHOUT
+     prompting. Safari doesn't implement the query for the mic, and "unknown"
+     is treated exactly like "prompt": ask on the flat screen and find out. --- */
+  async micPermission() {
+    if (micStream) return "granted";
+    try {
+      const st = await navigator.permissions.query({ name: "microphone" });
+      return st.state;
+    } catch (e) { return "unknown"; }
+  },
+  /* Open the mic purely to get the ANSWER, then hold nothing: the stream is
+     stopped again straight away, so entering VR does not light the recording
+     indicator for someone who never speaks. The mic opens for real when you
+     press to talk, exactly as it does on a flat screen — the only thing this
+     bought is that the asking already happened. */
+  async primeMic() {
+    if (micStream) return true;
+    try {
+      const s = await navigator.mediaDevices.getUserMedia({ audio: true });
+      s.getTracks().forEach((t) => { try { t.stop(); } catch (e) {} });
+      return true;
+    } catch (e) { return false; }
+  },
+
   async startTalk(open = false) {
     if (!this.supported()) return false;
     if (!(await ensureMic())) return false;
