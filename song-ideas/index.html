@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="Metro Show Clients listening room"><title>WHO IS THE METRO // SONG IDEAS</title><link rel="stylesheet" href="styles.css"></head>
+<body><main>
+<header><p>WHOISTHEMETRO.COM // ONLINE</p><h1>SONG IDEAS</h1><p>Welcome to the Metro listening room. Instrumentals, sketches, sound design experiments, and collaborations for your project.</p><small>[ 55 FILES AVAILABLE ] [ CLIENT PREVIEW ROOM ]</small></header>
+<section><div class="bar"><div><p>DIRECTORY: /MUSIC/SHOW_CLIENTS</p><h2>TRACK LIST</h2></div><input id="search" type="search" placeholder="SEARCH DIRECTORY..." aria-label="Search tracks"></div><p id="count"></p><ol id="tracks"></ol></section>
+<aside><p>TRANSMISSION COMPLETE</p><h2>HAVE A PROJECT?</h2><p>Tell me what you are making and I’ll send a few things that fit.</p><a href="mailto:whoisthemetro@gmail.com?subject=Song%20ideas">[ EMAIL METRO ]</a></aside>
+</main><footer>© <span id="year"></span> WHO IS THE METRO // ALL SYSTEMS NOMINAL</footer><script src="tracks.js"></script><script>
+const el=document.querySelector('#tracks'),q=document.querySelector('#search'),count=document.querySelector('#count');const time=s=>`${Math.floor(s/60)}:${String(Math.round(s%60)).padStart(2,'0')}`;function render(v=''){const r=tracks.filter(t=>(t.title+t.artist).toLowerCase().includes(v.toLowerCase()));count.textContent=`${r.length} ${r.length===1?'TRACK':'TRACKS'}${v?' FOUND':''}`;el.innerHTML=r.map(t=>`<li><i>${String(t.order).padStart(2,'0')}</i><div><b>${t.title}</b><span>${t.artist}</span></div><time>${time(t.duration)}</time><em>PREVIEW ON REQUEST</em></li>`).join('')}q.oninput=e=>render(e.target.value.trim());document.querySelector('#year').textContent=new Date().getFullYear();render();
+</script></body></html>
