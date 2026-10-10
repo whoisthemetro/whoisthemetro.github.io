@@ -1,0 +1,386 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0c0f">
+  <meta name="description" content="Choose a world from whoistheMETRO.">
+  <title>whoistheMETRO | Select a world</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --ink: #0b0c0f;
+      --iron: #1c2025;
+      --iron-hi: #30363e;
+      --stone: #8d8371;
+      --bone: #e9e1d1;
+      --smoke: #a5a49f;
+      --ember: #e85a25;
+      --gold: #e2ad48;
+      --cyan: #64c8cf;
+      --shadow: rgba(0, 0, 0, .72);
+    }
+    * { box-sizing: border-box; }
+    html { background: var(--ink); }
+    body {
+      min-height: 100vh;
+      margin: 0;
+      overflow-x: hidden;
+      color: var(--bone);
+      background: var(--ink);
+      font-family: "Barlow Condensed", Impact, sans-serif;
+      letter-spacing: 0;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    button, a { -webkit-tap-highlight-color: transparent; }
+    button { font: inherit; }
+
+    .stage {
+      isolation: isolate;
+      min-height: 100vh;
+      padding: 22px clamp(18px, 4vw, 70px) 30px;
+      position: relative;
+      overflow: hidden;
+      background-color: #101215;
+    }
+    .stage::before {
+      content: "";
+      position: fixed;
+      z-index: -3;
+      inset: 0;
+      opacity: .45;
+      background-image: url("../assets/img/echo.jpg");
+      background-position: 52% center;
+      background-size: cover;
+      filter: grayscale(1) contrast(1.35) brightness(.28);
+      transform: scale(1.04);
+    }
+    .stage::after {
+      content: "";
+      position: fixed;
+      z-index: -2;
+      inset: 0;
+      background-color: rgba(7, 8, 10, .72);
+      box-shadow: inset 0 0 180px 42px #07080a;
+      pointer-events: none;
+    }
+    .scanlines {
+      position: fixed;
+      z-index: 5;
+      inset: 0;
+      pointer-events: none;
+      opacity: .16;
+      background-image: repeating-linear-gradient(to bottom, transparent 0 3px, rgba(255,255,255,.08) 4px 5px);
+      mix-blend-mode: soft-light;
+    }
+    .topbar, .screen, .foot { position: relative; z-index: 1; max-width: 1280px; margin-inline: auto; }
+    .topbar {
+      min-height: 42px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      border-bottom: 1px solid rgba(233, 225, 209, .22);
+      font-family: "DM Mono", monospace;
+      font-size: 10px;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+    .brand { color: var(--bone); text-decoration: none; font-size: 12px; font-weight: 500; }
+    .build { color: var(--smoke); white-space: nowrap; }
+    .build b { color: var(--gold); font-weight: 500; }
+
+    .intro {
+      padding: clamp(24px, 5vw, 66px) 0 14px;
+      text-align: center;
+      text-shadow: 0 3px 0 #000, 0 0 26px #000;
+    }
+    .eyebrow {
+      margin: 0 0 9px;
+      color: var(--gold);
+      font-family: "DM Mono", monospace;
+      font-size: clamp(9px, 1.4vw, 12px);
+      letter-spacing: .14em;
+      text-transform: uppercase;
+    }
+    h1 {
+      margin: 0;
+      font-size: clamp(45px, 9vw, 112px);
+      font-weight: 800;
+      line-height: .82;
+      letter-spacing: .035em;
+      text-transform: uppercase;
+    }
+    h1 span { color: var(--ember); }
+    .prompt {
+      margin: 19px 0 0;
+      color: var(--smoke);
+      font-family: "DM Mono", monospace;
+      font-size: clamp(10px, 1.8vw, 13px);
+      letter-spacing: .09em;
+      text-transform: uppercase;
+    }
+    .prompt kbd {
+      display: inline-grid;
+      place-items: center;
+      min-width: 22px;
+      height: 21px;
+      margin-inline: 5px;
+      border: 1px solid rgba(226, 173, 72, .65);
+      color: var(--gold);
+      font-family: "DM Mono", monospace;
+      font-size: 10px;
+    }
+
+    .screen { padding-top: clamp(8px, 2vw, 24px); }
+    .tower {
+      width: min(780px, 100%);
+      margin-inline: auto;
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      grid-template-areas:
+        ". . apex . ."
+        ". upper-left . upper-right ."
+        "mid-left . core . mid-right"
+        ". low-left . low-right ."
+        ". . ground . .";
+      gap: 0;
+      align-items: center;
+      position: relative;
+      padding: 8px 0 12px;
+    }
+    .tower::before {
+      content: "";
+      position: absolute;
+      inset: 12px 13% 8px;
+      border: 1px solid rgba(233, 225, 209, .17);
+      background-color: rgba(15, 17, 21, .66);
+      clip-path: polygon(50% 0, 100% 100%, 0 100%);
+      box-shadow: inset 0 0 48px rgba(0,0,0,.78), 0 18px 40px rgba(0,0,0,.4);
+      pointer-events: none;
+    }
+    .tower::after {
+      content: "";
+      position: absolute;
+      z-index: -1;
+      width: 50%;
+      height: 10px;
+      bottom: 0;
+      left: 25%;
+      background: var(--ember);
+      box-shadow: 0 0 36px 8px rgba(232, 90, 37, .45);
+      opacity: .78;
+    }
+    .fighter { position: relative; z-index: 1; display: flex; justify-content: center; }
+    .fighter:nth-child(1) { grid-area: apex; }
+    .fighter:nth-child(2) { grid-area: upper-left; }
+    .fighter:nth-child(3) { grid-area: upper-right; }
+    .fighter:nth-child(4) { grid-area: mid-left; }
+    .fighter:nth-child(5) { grid-area: core; }
+    .fighter:nth-child(6) { grid-area: mid-right; }
+
+    .tile {
+      --tile: clamp(80px, 13.5vw, 138px);
+      position: relative;
+      width: var(--tile);
+      aspect-ratio: 1;
+      display: grid;
+      place-items: center;
+      border: 2px solid #5e625d;
+      border-radius: 0;
+      color: var(--bone);
+      cursor: pointer;
+      background-color: #1c2024;
+      box-shadow: 0 8px 0 #08090b, 0 11px 18px rgba(0,0,0,.52), inset 0 0 0 4px #101215, inset 0 0 34px rgba(0,0,0,.55);
+      transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease, background-color .16s ease;
+    }
+    .tile::before, .tile::after { content: ""; position: absolute; pointer-events: none; }
+    .tile::before { inset: 7px; border: 1px solid rgba(233,225,209,.2); }
+    .tile::after {
+      inset: 0;
+      background-image: repeating-linear-gradient(135deg, rgba(255,255,255,.035) 0 1px, transparent 1px 5px);
+      mix-blend-mode: screen;
+    }
+    .tile:hover, .tile:focus-visible, .fighter.is-selected .tile {
+      outline: none;
+      transform: translateY(-4px);
+      border-color: var(--gold);
+      background-color: #292d30;
+      box-shadow: 0 11px 0 #08090b, 0 15px 27px rgba(0,0,0,.65), 0 0 0 2px rgba(226,173,72,.42), inset 0 0 0 4px #17191b, inset 0 0 30px rgba(226,173,72,.18);
+    }
+    .fighter.is-selected .tile::before { border-color: rgba(232,90,37,.92); }
+    .fighter.is-selected .tile::after { background-color: rgba(232,90,37,.13); }
+    .fighter.is-selected .tile { animation: select-pulse 1.1s ease-in-out infinite; }
+    @keyframes select-pulse { 50% { filter: brightness(1.2); } }
+    .sigil {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      place-items: center;
+      width: 70%;
+      height: 70%;
+      color: var(--gold);
+      font-family: "Barlow Condensed", sans-serif;
+      font-size: clamp(30px, 6vw, 65px);
+      font-weight: 800;
+      line-height: 1;
+      text-shadow: 2px 3px 0 #000;
+    }
+    .sigil.small { font-size: clamp(22px, 3.5vw, 40px); }
+    .tile-world .sigil { background: url("../assets/img/echo.jpg") center/cover; background-clip: text; -webkit-background-clip: text; color: transparent; -webkit-text-fill-color: transparent; filter: saturate(.6) contrast(1.2); }
+    .tile-mix .sigil { color: var(--cyan); }
+    .tile-3d .sigil { color: var(--ember); }
+    .tile-studio .sigil { color: #d7bdff; }
+    .tile-venue .sigil { color: #f2d96b; }
+    .tile-bfam .sigil { color: #83daaf; }
+    .tile-label {
+      position: absolute;
+      z-index: 2;
+      left: 50%;
+      bottom: -26px;
+      transform: translateX(-50%);
+      width: max-content;
+      max-width: 12ch;
+      color: var(--bone);
+      font-family: "DM Mono", monospace;
+      font-size: clamp(8px, 1.2vw, 10px);
+      letter-spacing: .06em;
+      line-height: 1.15;
+      text-align: center;
+      text-transform: uppercase;
+      text-shadow: 0 2px 3px #000;
+    }
+    .fighter.is-selected .tile-label { color: var(--gold); }
+
+    .selection {
+      width: min(680px, 100%);
+      min-height: 76px;
+      margin: clamp(25px, 5vw, 50px) auto 0;
+      padding: 14px 18px;
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      align-items: center;
+      gap: 14px;
+      border-block: 1px solid rgba(233,225,209,.24);
+      background-color: rgba(10, 11, 14, .68);
+      box-shadow: 0 16px 32px rgba(0,0,0,.36);
+    }
+    .selection-no, .selection-type, .selection-cta { font-family: "DM Mono", monospace; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
+    .selection-no { color: var(--ember); }
+    .selection-copy { min-width: 0; }
+    .selection-name { display: block; color: var(--bone); font-size: clamp(23px, 4vw, 35px); font-weight: 800; line-height: .86; text-transform: uppercase; }
+    .selection-type { display: block; margin-top: 5px; color: var(--smoke); }
+    .selection-cta { color: var(--gold); white-space: nowrap; }
+
+    .foot { margin-top: 16px; display: flex; justify-content: space-between; gap: 18px; color: var(--smoke); font-family: "DM Mono", monospace; font-size: 9px; letter-spacing: .07em; line-height: 1.5; text-transform: uppercase; }
+    .foot a { color: var(--bone); text-decoration: none; }
+    .foot a:hover { color: var(--gold); }
+
+    @media (max-width: 620px) {
+      .stage { padding-inline: 14px; padding-top: 16px; }
+      .topbar { min-height: 34px; }
+      .build { display: none; }
+      .intro { padding-top: 34px; }
+      .tower { width: min(510px, 100%); }
+      .tile { --tile: clamp(65px, 19vw, 98px); }
+      .tile-label { bottom: -23px; font-size: 7px; }
+      .selection { margin-top: 31px; grid-template-columns: auto 1fr; }
+      .selection-cta { display: none; }
+      .foot { margin-top: 12px; }
+    }
+    @media (max-width: 360px) {
+      .tile { --tile: 61px; }
+      .sigil { font-size: 27px; }
+      .intro { padding-top: 25px; }
+    }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+  </style>
+</head>
+<body>
+  <main class="stage">
+    <div class="scanlines" aria-hidden="true"></div>
+    <header class="topbar">
+      <a class="brand" href="/tower/">whoistheMETRO</a>
+      <span class="build">portal build <b>01</b></span>
+    </header>
+
+    <section class="intro" aria-labelledby="page-title">
+      <p class="eyebrow">Choose your next destination</p>
+      <h1 id="page-title">Select <span>a world</span></h1>
+      <p class="prompt">Tap a tile to inspect <kbd>Enter</kbd> to travel</p>
+    </section>
+
+    <section class="screen" aria-label="Destination selection">
+      <div class="tower" id="tower">
+        <article class="fighter is-selected" data-name="The Interactive World" data-type="Multiplayer 3D room" data-url="/" data-number="01">
+          <button class="tile tile-world" type="button" aria-label="Select The Interactive World"><span class="sigil">M</span></button>
+          <span class="tile-label">Interactive<br>World</span>
+        </article>
+        <article class="fighter" data-name="Mix &amp; Master" data-type="Audio services" data-url="/mixandmaster/" data-number="02">
+          <button class="tile tile-mix" type="button" aria-label="Select Mix and Master"><span class="sigil small">MIX</span></button>
+          <span class="tile-label">Mix &amp;<br>Master</span>
+        </article>
+        <article class="fighter" data-name="3D Portfolio" data-type="Visual worlds and films" data-url="/3D/" data-number="03">
+          <button class="tile tile-3d" type="button" aria-label="Select 3D Portfolio"><span class="sigil">3D</span></button>
+          <span class="tile-label">3D<br>Portfolio</span>
+        </article>
+        <article class="fighter" data-name="The Studio" data-type="Shared music room" data-url="/#studio" data-number="04">
+          <button class="tile tile-studio" type="button" aria-label="Select The Studio"><span class="sigil">III</span></button>
+          <span class="tile-label">The<br>Studio</span>
+        </article>
+        <article class="fighter" data-name="The Venue" data-type="Live room and watch space" data-url="/#venue" data-number="05">
+          <button class="tile tile-venue" type="button" aria-label="Select The Venue"><span class="sigil">V</span></button>
+          <span class="tile-label">The<br>Venue</span>
+        </article>
+        <article class="fighter" data-name="BFAM" data-type="Disoriented" data-url="/bfam/" data-number="06">
+          <button class="tile tile-bfam" type="button" aria-label="Select BFAM"><span class="sigil small">BF</span></button>
+          <span class="tile-label">BFAM</span>
+        </article>
+      </div>
+      <div class="selection" aria-live="polite">
+        <span class="selection-no" id="choice-no">01</span>
+        <div class="selection-copy"><strong class="selection-name" id="choice-name">The Interactive World</strong><span class="selection-type" id="choice-type">Multiplayer 3D room</span></div>
+        <span class="selection-cta">Press enter &#8594;</span>
+      </div>
+    </section>
+    <footer class="foot"><span>whoistheMETRO portal</span><a href="mailto:whoisthemetro@gmail.com">Contact</a></footer>
+  </main>
+  <script>
+    (() => {
+      const fighters = [...document.querySelectorAll('.fighter')];
+      const name = document.querySelector('#choice-name');
+      const type = document.querySelector('#choice-type');
+      const number = document.querySelector('#choice-no');
+      let selected = fighters[0];
+
+      function select(fighter) {
+        selected.classList.remove('is-selected');
+        selected = fighter;
+        selected.classList.add('is-selected');
+        name.textContent = fighter.dataset.name;
+        type.textContent = fighter.dataset.type;
+        number.textContent = fighter.dataset.number;
+      }
+      function travel() { window.location.assign(selected.dataset.url); }
+      fighters.forEach((fighter) => {
+        const tile = fighter.querySelector('button');
+        tile.addEventListener('click', () => {
+          if (fighter === selected) travel();
+          else select(fighter);
+        });
+        tile.addEventListener('focus', () => select(fighter));
+        tile.addEventListener('pointerenter', () => select(fighter));
+      });
+      document.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); travel(); }
+        const index = fighters.indexOf(selected);
+        if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') { event.preventDefault(); fighters[(index - 1 + fighters.length) % fighters.length].querySelector('button').focus(); }
+        if (event.key === 'ArrowDown' || event.key === 'ArrowRight') { event.preventDefault(); fighters[(index + 1) % fighters.length].querySelector('button').focus(); }
+      });
+    })();
+  </script>
+</body>
+</html>
