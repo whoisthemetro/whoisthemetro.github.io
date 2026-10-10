@@ -23,6 +23,12 @@
 
 export const WHATS_NEW = [
   {
+    date: "2026-10-09",
+    items: [
+      "there’s a new green-screen listening room at /song-ideas — 55 Metro tracks and collaborations, ready for the next project",
+    ],
+  },
+  {
     date: "2026-09-28",
     items: [
       "in a headset, the mic is sorted out before you go in. it used to throw you back out of vr the first time you tried to talk, so you could answer the permission box, and then you had to walk back in. now it asks at the door — one extra tap, once, and never again",

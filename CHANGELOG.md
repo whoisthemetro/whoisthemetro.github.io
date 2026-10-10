@@ -4,6 +4,16 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-10-09 — add the Song Ideas listening room
+
+- Added a standalone `/song-ideas/` route with the 55-track Show Clients
+  playlist, client-side search, original playlist ordering, durations, and a
+  direct email call to action.
+- Kept audio previews intentionally unavailable until approved hosted preview
+  files exist, so unpublished masters cannot be exposed from the public site.
+- Styled the route as a compact green-phosphor terminal rather than adding it
+  to the 3D world, keeping it fast and directly shareable.
+
 ## 2026-09-28 — the mic is settled before the headset, not inside it
 
 Holding B/Y in a session was the FIRST time anything asked for the microphone.
