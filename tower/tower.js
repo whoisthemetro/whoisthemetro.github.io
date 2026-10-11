@@ -210,6 +210,23 @@
     musicSource.start();
     updateMusicButton();
   }
+  function prepareMusicLoop(buffer) {
+    // This export has 51 ms of leading MP3 padding. Blend only the loop join;
+    // preserve every pause within the longer arrangement.
+    const trim=Math.round(.0513*buffer.sampleRate);
+    const overlap=Math.round(.005*buffer.sampleRate);
+    const length=buffer.length-trim-overlap;
+    const loop=musicContext.createBuffer(buffer.numberOfChannels,length,buffer.sampleRate);
+    for(let channel=0;channel<buffer.numberOfChannels;channel++) {
+      const input=buffer.getChannelData(channel), output=loop.getChannelData(channel);
+      output.set(input.subarray(trim+overlap));
+      for(let i=0;i<overlap;i++) {
+        const blend=i/(overlap-1), at=length-overlap+i;
+        output[at]=output[at]*(1-blend)+input[trim+i]*blend;
+      }
+    }
+    return loop;
+  }
   function startMusic() {
     if(!musicEnabled||leaving||document.hidden)return;
     if(!musicContext) {
@@ -221,10 +238,10 @@
     // Resume synchronously from each gesture, even while the file is loading.
     musicContext.resume().then(playBuffer).catch(()=>{});
     if(!musicLoad) {
-      musicLoad=fetch('./theme-loop.wav')
+      musicLoad=fetch('./theme-long.mp3')
         .then(response=>{if(!response.ok)throw new Error('Music unavailable');return response.arrayBuffer();})
         .then(bytes=>musicContext.decodeAudioData(bytes))
-        .then(buffer=>{musicBuffer=buffer;playBuffer();})
+        .then(buffer=>{musicBuffer=prepareMusicLoop(buffer);playBuffer();})
         .catch(()=>{musicLoad=null;updateMusicButton();});
     }
     playBuffer();
