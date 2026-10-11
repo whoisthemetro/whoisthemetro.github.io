@@ -191,23 +191,67 @@
 
   const plates=[...document.querySelectorAll('.stone')];
   const enter=document.querySelector('#enter');
-  let selected=plates[0];
+  let selected=plates.find(plate=>plate.dataset.art==='world');
   function select(plate) {
     selected=plate;
     plates.forEach(p=>{p.classList.toggle('selected',p===plate);p.setAttribute('aria-pressed',String(p===plate));});
     enter.href=plate.dataset.url;
     const name=plate.querySelector('.name').innerText.replace(/\n/g,' ');
     document.querySelector('#destination-status').textContent=`${name} selected`;
-    enter.firstChild.textContent=plate===plates[0]?'Enter World ':`Enter ${name} `;
+    enter.firstChild.textContent=plate.dataset.art==='world'?'Enter World ':`Enter ${name} `;
+  }
+  function step(direction) {
+    const index=Math.max(0,Math.min(plates.length-1,plates.indexOf(selected)+direction));
+    if(plates[index]===selected)return;
+    select(plates[index]);
   }
   plates.forEach(plate=>{
     portrait(plate.querySelector('canvas'),plate.dataset.art);
     plate.addEventListener('click',()=>{if(plate===selected)location.assign(plate.dataset.url);else select(plate);});
     plate.addEventListener('keydown',event=>{
       const directions={ArrowUp:-1,ArrowLeft:-1,ArrowDown:1,ArrowRight:1};
-      if(event.key in directions){event.preventDefault();const next=plates[(plates.indexOf(plate)+directions[event.key]+plates.length)%plates.length];select(next);next.focus();}
+      if(event.key in directions){event.preventDefault();step(directions[event.key]);selected.focus({preventScroll:true});}
     });
   });
+  const surface=document.querySelector('main');
+  let wheelTotal=0, wheelLast=0, wheelStep=0;
+  surface.addEventListener('wheel',event=>{
+    if(event.ctrlKey||event.metaKey||Math.abs(event.deltaX)>Math.abs(event.deltaY))return;
+    event.preventDefault();
+    const now=performance.now();
+    const delta=event.deltaY*(event.deltaMode===1?16:event.deltaMode===2?innerHeight:1);
+    if(now-wheelLast>160||Math.sign(delta)!==Math.sign(wheelTotal))wheelTotal=0;
+    wheelLast=now;
+    if(now-wheelStep<260)return;
+    wheelTotal+=delta;
+    if(Math.abs(wheelTotal)>=24){step(Math.sign(wheelTotal));wheelTotal=0;wheelStep=now;}
+  },{passive:false});
+
+  let swipe=null, suppressClickUntil=0;
+  surface.addEventListener('pointerdown',event=>{
+    if(event.pointerType!=='touch')return;
+    if(!event.isPrimary){swipe=null;return;}
+    swipe={id:event.pointerId,x:event.clientX,y:event.clientY,lastY:event.clientY,moved:false};
+  });
+  surface.addEventListener('pointermove',event=>{
+    if(!swipe||event.pointerId!==swipe.id)return;
+    const dy=event.clientY-swipe.lastY, dx=event.clientX-swipe.x;
+    if(Math.abs(dy)<42||(!swipe.moved&&Math.abs(dy)<Math.abs(dx)*1.2))return;
+    step(Math.sign(dy));
+    swipe.lastY=event.clientY;swipe.moved=true;
+    suppressClickUntil=performance.now()+500;
+    surface.setPointerCapture(event.pointerId);
+  });
+  const endSwipe=event=>{
+    if(!swipe||event.pointerId!==swipe.id)return;
+    if(swipe.moved)suppressClickUntil=performance.now()+500;
+    swipe=null;
+  };
+  surface.addEventListener('pointerup',endSwipe);
+  surface.addEventListener('pointercancel',endSwipe);
+  surface.addEventListener('click',event=>{
+    if(performance.now()<suppressClickUntil){event.preventDefault();event.stopImmediatePropagation();}
+  },true);
   let resizeTimer;
   addEventListener('resize',()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(resize,100);});
   reduceMotion.addEventListener('change',()=>render(0));

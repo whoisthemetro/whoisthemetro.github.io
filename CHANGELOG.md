@@ -6,6 +6,8 @@ it says it did.
 
 ## 2026-10-11 — a retro destiny tower
 
+- The tower starts at the bottom with Interactive World, then climbs through
+  the destinations. Mouse-wheel and vertical touch swipes move the selection.
 - Rebuilt `/tower/` with a narrow weathered stone stack, pixel-art destination
   portraits, a slowly swirling low-resolution sky, rocky terrain, leaning
   ruins, and drifting embers. Animation respects reduced-motion preferences.
