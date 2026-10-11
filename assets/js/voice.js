@@ -110,6 +110,7 @@ const GATE_ON = 0.055;      // mic RMS that counts as somebody speaking
 const GATE_OFF = 0.030;     // ...and where it lets go (hysteresis, no chatter)
 const DUCK_AT = 0.045;      // a peer this loud is audibly in the room with you
 let chunkPeak = 0, gateOpen = false, duckedChunk = false, suppressed = 0;
+let sentChunks = 0, sendFailures = 0;
 
 function rmsOf(ana, buf) {
   ana.getByteTimeDomainData(buf);
@@ -140,14 +141,19 @@ function recordLoop() {
     // fail OPEN: if the analyser never got built we cannot measure anything,
     // and a gate that can't measure must not be the reason nobody can talk
     const canMeasure = !!selfAna;
-    const speech = !canMeasure || chunkPeak > (gateOpen ? GATE_OFF : GATE_ON);
+    /* Push-to-talk is an explicit choice to transmit. Headset microphones can
+       report a much lower RMS level than desktop mics, so making a held B/Y
+       press clear the open-mic speech gate could turn a real voice into
+       silence. The gate still protects open mic; PTT sends while held. */
+    const speech = mode === "ptt" || !canMeasure || chunkPeak > (gateOpen ? GATE_OFF : GATE_ON);
     gateOpen = speech;
     const feedback = mode === "open" && duckedChunk;   // see "feedback control"
     if (parts.length && mode !== "off" && speech && !feedback) {
       const blob = new Blob(parts, { type: rec.mimeType });
       if (blob.size > 200 && blob.size < 48000 && sendFn) {
         const data = await blobToB64(blob);
-        try { sendFn({ uid: myUid, mime: rec.mimeType, data }); } catch (e) {}
+        try { await sendFn({ uid: myUid, mime: rec.mimeType, data }); sentChunks++; }
+        catch (e) { sendFailures++; }
       }
     } else if (feedback) { suppressed++; }
     recordLoop();          // straight into the next chunk
@@ -370,6 +376,7 @@ export const voice = {
   // how many chunks the anti-feedback duck has swallowed. main.js watches this
   // to tell you your speaker is looping back into your mic.
   suppressedCount: () => suppressed,
+  transportStats: () => ({ sent: sentChunks, failed: sendFailures }),
   setArenaFx(on) { arenaFx = !!on; },
   /* main.js knows where everyone is standing; it tells us, per uid, per frame.
      `send` is the node ambience hands back for its tiled-room convolver — we

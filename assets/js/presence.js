@@ -231,8 +231,8 @@ export const presence = {
   sendVoice(payload) {
     if (!me) return;
     const msg = { ...payload, uid: me.uid };
-    if (chan) chan.send({ type: "broadcast", event: "voice", payload: msg });
-    else bc?.postMessage({ type: "voice", payload: msg });
+    if (chan) return chan.send({ type: "broadcast", event: "voice", payload: msg });
+    bc?.postMessage({ type: "voice", payload: msg });
   },
   // webrtc signaling for the venue screen-share (offer/answer/ice/hello/bye/live)
   onSignal: fn => { signalListeners.add(fn); return () => signalListeners.delete(fn); },
