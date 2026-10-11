@@ -191,32 +191,55 @@
 
   const plates=[...document.querySelectorAll('.stone')];
   const enter=document.querySelector('#enter');
-  const music=document.querySelector('#tower-music');
   const musicToggle=document.querySelector('#music-toggle');
-  let musicEnabled=true, leaving=false, playPending=false;
+  let musicEnabled=true, leaving=false;
+  let musicContext=null, musicBuffer=null, musicSource=null, musicLoad=null;
   function updateMusicButton() {
-    const playing=!music.paused;
+    const playing=!!musicSource&&musicContext?.state==='running';
     musicToggle.classList.toggle('playing',playing);
     musicToggle.setAttribute('aria-pressed',String(playing));
     musicToggle.setAttribute('aria-label',playing?'Mute music':'Play music');
     musicToggle.title=playing?'Mute music':'Play music';
   }
-  async function startMusic() {
-    if(!musicEnabled||leaving||document.hidden||playPending||!music.paused)return;
-    playPending=true;
-    try { await music.play(); } catch { /* A later user gesture can unlock playback. */ }
-    finally { playPending=false;updateMusicButton(); }
+  function playBuffer() {
+    if(!musicEnabled||leaving||document.hidden||musicSource||!musicBuffer||musicContext.state!=='running')return;
+    musicSource=musicContext.createBufferSource();
+    musicSource.buffer=musicBuffer;
+    musicSource.loop=true;
+    musicSource.connect(musicContext.destination);
+    musicSource.start();
+    updateMusicButton();
+  }
+  function startMusic() {
+    if(!musicEnabled||leaving||document.hidden)return;
+    if(!musicContext) {
+      const AudioContext=window.AudioContext||window.webkitAudioContext;
+      if(!AudioContext)return;
+      musicContext=new AudioContext();
+      musicContext.addEventListener('statechange',()=>{playBuffer();updateMusicButton();});
+    }
+    // Resume synchronously from each gesture, even while the file is loading.
+    musicContext.resume().then(playBuffer).catch(()=>{});
+    if(!musicLoad) {
+      musicLoad=fetch('./theme-loop.wav')
+        .then(response=>{if(!response.ok)throw new Error('Music unavailable');return response.arrayBuffer();})
+        .then(bytes=>musicContext.decodeAudioData(bytes))
+        .then(buffer=>{musicBuffer=buffer;playBuffer();})
+        .catch(()=>{musicLoad=null;updateMusicButton();});
+    }
+    playBuffer();
+  }
+  function pauseMusic() {
+    if(musicSource){musicSource.stop();musicSource.disconnect();musicSource=null;}
+    updateMusicButton();
   }
   function stopMusic() {
     leaving=true;
-    music.pause();
-    music.currentTime=0;
+    pauseMusic();
   }
   function travel(url) { stopMusic();location.assign(url); }
-  music.addEventListener('play',updateMusicButton);
-  music.addEventListener('pause',updateMusicButton);
   musicToggle.addEventListener('click',()=>{
-    if(!music.paused){musicEnabled=false;music.pause();}
+    if(musicSource){musicEnabled=false;pauseMusic();}
     else {musicEnabled=true;startMusic();}
   });
   const unlockMusic=event=>{
@@ -228,7 +251,7 @@
     if(!event.defaultPrevented&&event.target.closest('a[href]'))stopMusic();
     else if(!musicToggle.contains(event.target))startMusic();
   });
-  document.addEventListener('visibilitychange',()=>{if(document.hidden)music.pause();else startMusic();});
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)pauseMusic();else startMusic();});
   addEventListener('pagehide',stopMusic);
   addEventListener('pageshow',()=>{leaving=false;startMusic();});
   startMusic();

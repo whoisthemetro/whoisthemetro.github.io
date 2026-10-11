@@ -6,6 +6,8 @@ it says it did.
 
 ## 2026-10-11 — a retro destiny tower
 
+- Removed the soundtrack's leading silent padding and blended the loop join;
+  continuous audio-buffer playback eliminates the MP3 player's restart gap.
 - Added Metro's supplied music loop to the tower, with a mute control and
   immediate stop when entering a destination. Playback starts on interaction
   where browsers block automatic audio.
