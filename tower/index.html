@@ -3,102 +3,30 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#1b0806">
-  <meta name="description" content="Choose a world from whoistheMETRO.">
+  <meta name="theme-color" content="#1c0908">
+  <meta name="description" content="Choose your destiny. Enter the worlds of whoistheMETRO.">
   <title>whoistheMETRO | Choose Your Destiny</title>
+  <link rel="icon" href="../assets/img/favicon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Anton&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <style>
-    :root { --ember:#ff6b16; --hot:#ffbd29; --bone:#f2dfc3; --stone:#353431; --deep:#180604; --line:rgba(255,224,178,.22); }
-    * { box-sizing:border-box; }
-    html { background:#160604; }
-    body { min-width:320px; min-height:100vh; margin:0; overflow-x:hidden; color:var(--bone); background:#160604; font-family:"DM Mono", monospace; user-select:none; -webkit-user-select:none; }
-    button { font:inherit; -webkit-tap-highlight-color:transparent; }
-    .stage { isolation:isolate; position:relative; display:grid; grid-template-rows:auto 1fr auto; min-height:100vh; padding:clamp(20px,4vw,46px) 18px 18px; overflow:hidden; background:#1b0705; }
-    .stage::before { content:""; position:absolute; z-index:-7; inset:0; background:radial-gradient(ellipse at 50% 42%, #79200d 0 4%, #461208 18%, #230806 47%, #100304 100%); }
-    .stage::after { content:""; position:absolute; z-index:8; inset:0; pointer-events:none; opacity:.2; background:repeating-linear-gradient(to bottom, transparent 0 3px, rgba(255,238,191,.2) 4px 5px); mix-blend-mode:soft-light; }
-    .rift { position:absolute; z-index:-4; left:50%; top:43%; width:min(96vw,1110px); aspect-ratio:1.5; border-radius:50%; transform:translate(-50%,-50%); opacity:.93; background:repeating-radial-gradient(ellipse at center, #fff1a1 0 1.4%, #ffbe24 1.6% 4.5%, #e9540d 4.7% 8%, #8e270c 8.2% 11.5%, #421006 11.8% 15%), #250705; filter:saturate(1.25) contrast(1.2) blur(.18px); box-shadow:0 0 96px 28px rgba(239,75,10,.33); }
-    .rift::after { content:""; position:absolute; inset:-6%; border-radius:50%; background:repeating-conic-gradient(from 18deg, transparent 0 7deg, rgba(68,7,2,.56) 9deg 17deg, transparent 19deg 31deg); mix-blend-mode:multiply; transform:rotate(-10deg) scaleX(1.28); }
-    .haze { position:absolute; z-index:-3; inset:auto 0 0; height:42vh; opacity:.5; background:linear-gradient(transparent, rgba(9,2,1,.92) 75%); }
-    .ruins { position:absolute; z-index:-2; right:0; bottom:12vh; left:0; height:180px; opacity:.8; background:linear-gradient(70deg, transparent 0 5%, #1b1715 5.2% 7%, transparent 7.2% 21%, #1b1715 21.2% 24.5%, transparent 24.8% 72%, #1b1715 72.2% 75%, transparent 75.2% 87%, #1b1715 87.2% 91%, transparent 91.2%); clip-path:polygon(0 100%, 5% 91%, 7% 91%, 8% 33%, 10% 33%, 11% 100%, 22% 100%, 24% 57%, 26% 57%, 29% 100%, 72% 100%, 75% 16%, 78% 16%, 80% 100%, 87% 100%, 89% 46%, 93% 46%, 95% 100%, 100% 100%); }
-    .ground { position:absolute; z-index:-1; right:0; bottom:0; left:0; height:26vh; background:repeating-linear-gradient(165deg, #170a07 0 6px, #2a100a 7px 9px, #120504 10px 18px); border-top:1px solid rgba(255,131,34,.28); }
-    header { position:relative; z-index:1; text-align:center; }
-    h1 { max-width:900px; margin:0 auto; color:#fff6de; font-family:Anton, Impact, sans-serif; font-size:clamp(2.5rem,7vw,6.4rem); font-style:italic; font-weight:400; line-height:.9; letter-spacing:.045em; text-transform:uppercase; text-shadow:3px 3px 0 #46100a, 5px 5px 0 #120303, 0 0 26px rgba(255,124,24,.26); transform:skewX(-7deg); }
-    .subtitle { margin:13px 0 0; color:#ffc671; font-size:clamp(.59rem,1.3vw,.77rem); letter-spacing:.18em; text-transform:uppercase; text-shadow:0 1px #310802; }
-    .screen { position:relative; z-index:1; display:grid; place-items:center; min-height:0; padding:clamp(24px,5vh,54px) 0 16px; }
-    .tower { position:relative; width:min(100%,520px); filter:drop-shadow(0 19px 12px rgba(0,0,0,.55)); }
-    .tower::before, .tower::after { content:""; position:absolute; z-index:-1; top:3%; bottom:3%; width:21px; background:linear-gradient(90deg,#111,#5e5b53 42%,#1d1d1c 78%); box-shadow:inset 1px 0 #858075, inset -2px 0 #090909; }
-    .tower::before { left:-16px; transform:skewY(-5deg); }
-    .tower::after { right:-16px; transform:skewY(5deg); }
-    .fighter { position:relative; display:grid; grid-template-columns:82px minmax(0,1fr); min-height:clamp(67px,8.2vh,84px); margin-top:-1px; background:repeating-linear-gradient(165deg,#3e3e3a 0 3px,#343430 4px 8px,#2b2b28 9px 13px); border:2px solid #171716; border-bottom-color:#0d0d0c; box-shadow:inset 1px 1px rgba(233,222,194,.28), inset -2px -3px #151514, 0 2px 0 rgba(0,0,0,.7); transition:transform .12s ease, filter .12s ease; }
-    .fighter::after { content:attr(data-number); position:absolute; right:11px; top:8px; color:rgba(255,238,194,.23); font-size:.58rem; letter-spacing:.08em; }
-    .fighter:hover, .fighter:focus-within, .fighter.is-selected { z-index:2; transform:translateX(9px); filter:brightness(1.16); }
-    .fighter.is-selected { background:repeating-linear-gradient(165deg,#56554d 0 3px,#41413b 4px 8px,#34342f 9px 13px); outline:1px solid rgba(255,183,55,.72); }
-    .tile { position:relative; width:100%; min-height:100%; padding:0; cursor:pointer; color:#ffe2a4; border:0; border-right:2px solid #171716; background:linear-gradient(135deg,rgba(255,185,52,.16),transparent 44%), repeating-linear-gradient(45deg,#242421 0 3px,#2f2e2a 4px 8px); text-shadow:1px 1px #120400; }
-    .tile:focus-visible { outline:3px solid #fff1bd; outline-offset:-5px; }
-    .glyph { display:grid; place-items:center; width:45px; height:45px; margin:auto; border:2px solid rgba(255,209,109,.42); background:#240d08; box-shadow:inset 0 0 0 3px #63200e, 2px 2px 0 #140503; color:#ffc049; font-family:Anton, Impact, sans-serif; font-size:1.08rem; letter-spacing:.04em; line-height:1; }
-    .world .glyph { color:#62d2db; background:#0a2c37; box-shadow:inset 0 0 0 3px #135161,2px 2px 0 #140503; }
-    .mix .glyph { color:#ffad52; }
-    .portfolio .glyph { color:#b4a7ff; background:#211234; box-shadow:inset 0 0 0 3px #463072,2px 2px 0 #140503; }
-    .studio .glyph { color:#7de46c; background:#143214; box-shadow:inset 0 0 0 3px #24652c,2px 2px 0 #140503; }
-    .venue .glyph { color:#f06569; background:#3a0d10; box-shadow:inset 0 0 0 3px #772129,2px 2px 0 #140503; }
-    .bfam .glyph { color:#f4e4bd; background:#3a3527; box-shadow:inset 0 0 0 3px #766543,2px 2px 0 #140503; }
-    .destination { align-self:center; min-width:0; padding:10px 36px 9px 15px; text-align:left; pointer-events:none; }
-    .destination strong { display:block; overflow:hidden; color:#f9e8cd; font-family:Anton, Impact, sans-serif; font-size:clamp(1.03rem,3vw,1.55rem); font-weight:400; letter-spacing:.035em; line-height:1; text-overflow:ellipsis; text-transform:uppercase; text-shadow:1px 1px #120302; white-space:nowrap; }
-    .destination span { display:block; margin-top:5px; color:#c9b89f; font-size:clamp(.53rem,1.4vw,.64rem); letter-spacing:.07em; line-height:1.2; text-transform:uppercase; }
-    .cursor { position:absolute; top:50%; left:-36px; width:22px; height:29px; opacity:0; transform:translateY(-50%) skewX(-12deg); background:linear-gradient(90deg,#ffdf64,#ff6b0e); box-shadow:0 0 12px rgba(255,106,15,.8); transition:opacity .1s ease; clip-path:polygon(0 0,100% 50%,0 100%,22% 50%); }
-    .is-selected .cursor { opacity:1; }
-    .selection { min-height:38px; margin:18px auto 0; padding:10px 15px; text-align:center; color:#fff1d2; border-top:1px solid var(--line); border-bottom:1px solid var(--line); background:rgba(15,4,3,.54); box-shadow:0 0 18px rgba(0,0,0,.3); font-size:clamp(.63rem,1.7vw,.76rem); letter-spacing:.12em; text-transform:uppercase; }
-    .selection strong { color:#ffc353; font-weight:500; }
-    footer { position:relative; z-index:1; display:flex; justify-content:space-between; gap:18px; max-width:860px; width:100%; margin:auto; color:rgba(255,231,188,.64); font-size:.55rem; letter-spacing:.1em; text-transform:uppercase; }
-    @media (max-width:600px) { .stage { min-height:100svh; padding-inline:26px; } .rift { top:45%; width:150vw; } .ruins { bottom:13vh; } .tower { width:min(100%,430px); } .tower::before,.tower::after { width:14px; } .tower::before{left:-10px}.tower::after{right:-10px} .fighter { grid-template-columns:69px minmax(0,1fr); min-height:64px; } .glyph { width:39px; height:39px; font-size:.9rem; } .cursor { left:-29px; width:18px; } .destination { padding-left:12px; } .selection { margin-top:14px; font-size:.59rem; } footer { display:block; text-align:center; line-height:1.8; } footer span { display:block; } }
-    @media (prefers-reduced-motion:reduce) { * { transition:none !important; } }
-  </style>
+  <link href="https://fonts.googleapis.com/css2?family=Trade+Winds&family=Oswald:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./tower.css?v=2">
 </head>
 <body>
-  <main class="stage">
-    <div class="rift" aria-hidden="true"></div>
-    <div class="haze" aria-hidden="true"></div>
-    <div class="ruins" aria-hidden="true"></div>
-    <div class="ground" aria-hidden="true"></div>
-    <header>
-      <h1 id="page-title">Choose Your Destiny</h1>
-      <p class="subtitle">Select a path to enter</p>
-    </header>
-    <section class="screen" aria-labelledby="page-title">
-      <div class="tower" id="tower">
-        <article class="fighter world is-selected" data-name="The Interactive World" data-type="Multiplayer 3D room" data-url="/" data-number="01"><button class="tile" type="button" aria-label="Select The Interactive World"><span class="glyph">M</span></button><div class="destination"><strong>Interactive World</strong><span>Multiplayer 3D room</span></div><i class="cursor" aria-hidden="true"></i></article>
-        <article class="fighter mix" data-name="Mix &amp; Master" data-type="Audio services" data-url="/mixandmaster/" data-number="02"><button class="tile" type="button" aria-label="Select Mix and Master"><span class="glyph">MM</span></button><div class="destination"><strong>Mix &amp; Master</strong><span>Audio services</span></div><i class="cursor" aria-hidden="true"></i></article>
-        <article class="fighter portfolio" data-name="3D Portfolio" data-type="Visual worlds and films" data-url="/3D/" data-number="03"><button class="tile" type="button" aria-label="Select 3D Portfolio"><span class="glyph">3D</span></button><div class="destination"><strong>3D Portfolio</strong><span>Visual worlds and films</span></div><i class="cursor" aria-hidden="true"></i></article>
-        <article class="fighter studio" data-name="The Studio" data-type="Shared music room" data-url="/#studio" data-number="04"><button class="tile" type="button" aria-label="Select The Studio"><span class="glyph">III</span></button><div class="destination"><strong>The Studio</strong><span>Shared music room</span></div><i class="cursor" aria-hidden="true"></i></article>
-        <article class="fighter venue" data-name="The Venue" data-type="Live room and watch space" data-url="/#venue" data-number="05"><button class="tile" type="button" aria-label="Select The Venue"><span class="glyph">V</span></button><div class="destination"><strong>The Venue</strong><span>Live room and watch space</span></div><i class="cursor" aria-hidden="true"></i></article>
-        <article class="fighter bfam" data-name="BFAM" data-type="Disoriented" data-url="/bfam/" data-number="06"><button class="tile" type="button" aria-label="Select BFAM"><span class="glyph">BF</span></button><div class="destination"><strong>BFAM</strong><span>Disoriented</span></div><i class="cursor" aria-hidden="true"></i></article>
-      </div>
-      <div class="selection" aria-live="polite">Selected: <strong id="selected-name">The Interactive World</strong></div>
-    </section>
-    <footer><span>Use arrows to choose &middot; enter to travel</span><span>Tap a plate to inspect &middot; tap again to enter</span></footer>
+  <canvas id="landscape" aria-hidden="true"></canvas>
+  <main>
+    <header><h1>Choose Your Destiny</h1></header>
+    <nav class="tower" aria-label="Choose a destination">
+      <button class="stone selected" data-art="world" data-url="/" aria-pressed="true"><span class="name">Interactive<br>World</span><canvas class="portrait" width="40" height="48" aria-hidden="true"></canvas><span class="marker" aria-hidden="true"></span></button>
+      <button class="stone" data-art="mix" data-url="/mixandmaster/" aria-pressed="false"><span class="name">Mix &amp;<br>Master</span><canvas class="portrait" width="40" height="48" aria-hidden="true"></canvas><span class="marker" aria-hidden="true"></span></button>
+      <button class="stone" data-art="portfolio" data-url="/3D/" aria-pressed="false"><span class="name">3D<br>Portfolio</span><canvas class="portrait" width="40" height="48" aria-hidden="true"></canvas><span class="marker" aria-hidden="true"></span></button>
+      <button class="stone" data-art="studio" data-url="/#studio" aria-pressed="false"><span class="name">The<br>Studio</span><canvas class="portrait" width="40" height="48" aria-hidden="true"></canvas><span class="marker" aria-hidden="true"></span></button>
+      <button class="stone" data-art="venue" data-url="/#venue" aria-pressed="false"><span class="name">The<br>Venue</span><canvas class="portrait" width="40" height="48" aria-hidden="true"></canvas><span class="marker" aria-hidden="true"></span></button>
+      <button class="stone" data-art="bfam" data-url="/bfam/" aria-pressed="false"><span class="name">BFAM</span><canvas class="portrait" width="40" height="48" aria-hidden="true"></canvas><span class="marker" aria-hidden="true"></span></button>
+    </nav>
+    <a id="enter" class="enter" href="/">Enter World <span aria-hidden="true">&#9656;</span></a>
+    <footer><a href="/">whoistheMETRO</a><span id="destination-status" class="sr-only" aria-live="polite">Interactive World selected</span></footer>
   </main>
-  <script>
-    const fighters = [...document.querySelectorAll('.fighter')];
-    const selectedName = document.getElementById('selected-name');
-    let selected = fighters[0];
-    function select(fighter) {
-      selected = fighter;
-      fighters.forEach((item) => item.classList.toggle('is-selected', item === fighter));
-      selectedName.textContent = fighter.dataset.name;
-    }
-    function travel() { window.location.assign(selected.dataset.url); }
-    fighters.forEach((fighter) => {
-      const tile = fighter.querySelector('button');
-      tile.addEventListener('click', () => fighter === selected ? travel() : select(fighter));
-    });
-    document.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); travel(); return; }
-      const current = fighters.indexOf(selected);
-      if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') { event.preventDefault(); const next = fighters[(current + fighters.length - 1) % fighters.length]; select(next); next.querySelector('button').focus(); }
-      if (event.key === 'ArrowDown' || event.key === 'ArrowRight') { event.preventDefault(); const next = fighters[(current + 1) % fighters.length]; select(next); next.querySelector('button').focus(); }
-    });
-  </script>
+  <script src="./tower.js?v=2" defer></script>
 </body>
 </html>

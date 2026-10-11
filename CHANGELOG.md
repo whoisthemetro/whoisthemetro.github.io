@@ -4,6 +4,13 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-10-11 — a retro destiny tower
+
+- Rebuilt `/tower/` with a narrow weathered stone stack, pixel-art destination
+  portraits, a slowly swirling low-resolution sky, rocky terrain, leaning
+  ruins, and drifting embers. Animation respects reduced-motion preferences.
+- Kept full-plate touch and keyboard selection with an explicit entry link.
+
 ## 2026-10-09 — add the Song Ideas listening room
 
 - Added a standalone `/song-ideas/` route with the 55-track Show Clients

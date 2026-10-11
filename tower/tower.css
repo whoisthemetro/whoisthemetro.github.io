@@ -1,0 +1,34 @@
+* { box-sizing: border-box; }
+html { background: #1c0908; color: #eee9db; }
+body { margin: 0; min-width: 320px; -webkit-user-select: none; user-select: none; }
+body::after { content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 5; box-shadow: inset 0 0 90px #0903038c; }
+#landscape { position: fixed; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; pointer-events: none; }
+main { position: relative; min-height: 100svh; display: flex; align-items: center; flex-direction: column; padding: 25px 16px 18px; }
+header { margin: 0 0 24px; text-align: center; }
+h1 { margin: 0; font: 40px/1.2 "Trade Winds", Impact, sans-serif; text-transform: uppercase; letter-spacing: 0; color: #f3f0e6; text-shadow: 2px 2px #67625a, 4px 4px #171715, -1px -1px #bdb8a6; }
+.tower { width: 238px; position: relative; filter: drop-shadow(9px 10px 2px #130908a3); }
+.tower::before { content: ""; position: absolute; left: -7px; right: -7px; height: 8px; top: -7px; background: #62615a; clip-path: polygon(4% 0,97% 0,100% 100%,0 100%); border-top: 2px solid #89877b; }
+.tower::after { content: ""; position: absolute; left: -10px; right: -10px; bottom: -8px; height: 12px; background: var(--stone-texture, #434440); border: 2px solid #262724; border-top-color: #747469; z-index: -1; }
+.stone { display: flex; align-items: center; justify-content: space-between; position: relative; width: 100%; height: 85px; padding: 8px 17px 8px 17px; border: 0; border-radius: 0; background: var(--stone-texture, #434440); background-size: 119px 43px; color: #d6d3c4; cursor: pointer; box-shadow: inset 2px 2px #a3a391, inset -3px -3px #171b18, inset 5px 5px #62675a, inset -6px -6px #30362d; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+.stone:nth-child(even) { background-position: 39px 13px; }
+.stone:nth-child(3n) { background-position: 13px 25px; }
+.stone::after { content: ""; position: absolute; inset: 5px; pointer-events: none; border: 1px solid #171b184f; }
+.name { font: 700 20px/1.08 "Oswald", Impact, sans-serif; text-transform: uppercase; text-align: left; letter-spacing: 0; text-shadow: 2px 2px #10130f; }
+.portrait { flex: 0 0 auto; width: 48px; height: 58px; image-rendering: pixelated; background: #101311; border: 2px solid #111813; outline: 1px solid #939582; box-shadow: 2px 2px #20231d; }
+.stone.selected .name { color: #fff3c5; }
+.stone.selected .portrait { outline: 2px solid #e0c16b; }
+.stone:hover .name { color: #fff; }
+.stone:focus-visible { outline: 2px solid #fce7a1; outline-offset: 2px; z-index: 2; }
+.marker { display: none; position: absolute; left: -36px; top: 24px; width: 24px; height: 36px; background: #b2a276; clip-path: polygon(0 0,100% 50%,0 100%,18% 50%); box-shadow: inset 5px 0 #fff5b6; }
+.selected .marker { display: block; animation: beckon 1.4s steps(5) infinite; }
+.enter { margin-top: 28px; color: #eee9dc; font: 700 23px/1 "Oswald", Impact, sans-serif; text-transform: uppercase; text-decoration: none; text-shadow: 2px 2px #292319, 3px 3px #000; letter-spacing: 0; }
+.enter span { color: #ddc074; padding-left: 5px; }
+.enter:hover, .enter:focus-visible { color: #ffe594; }
+footer { padding-top: 28px; margin-top: auto; font: 12px/1.4 "Oswald", sans-serif; }
+footer a { color: #c2b59e; text-decoration: none; text-shadow: 1px 1px #080705; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+@keyframes beckon { 50% { transform: translateX(5px); } }
+@media (min-height: 850px) and (min-width: 650px) { main { padding-top: 32px; } header { margin-bottom: 30px; } .stone { height: 99px; } .tower { width: 252px; } .portrait { width: 54px; height: 65px; } .marker { top: 32px; } }
+@media (max-width: 600px) { main { padding-top: 23px; } h1 { font-size: 27px; } header { margin-bottom: 25px; } .tower { width: 212px; } .stone { height: 78px; padding-inline: 14px; } .name { font-size: 18px; } .portrait { width: 44px; height: 53px; } .marker { top: 21px; left: -30px; width: 21px; } }
+@media (max-height: 720px) { main { padding-top: 15px; } header { margin-bottom: 19px; } h1 { font-size: 27px; } .stone { height: 69px; } .portrait { width: 40px; height: 48px; } .marker { top: 17px; } .enter { margin-top: 23px; } footer { padding-top: 18px; } }
+@media (prefers-reduced-motion: reduce) { .selected .marker { animation: none; } }
