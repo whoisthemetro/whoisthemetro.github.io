@@ -191,6 +191,47 @@
 
   const plates=[...document.querySelectorAll('.stone')];
   const enter=document.querySelector('#enter');
+  const music=document.querySelector('#tower-music');
+  const musicToggle=document.querySelector('#music-toggle');
+  let musicEnabled=true, leaving=false, playPending=false;
+  function updateMusicButton() {
+    const playing=!music.paused;
+    musicToggle.classList.toggle('playing',playing);
+    musicToggle.setAttribute('aria-pressed',String(playing));
+    musicToggle.setAttribute('aria-label',playing?'Mute music':'Play music');
+    musicToggle.title=playing?'Mute music':'Play music';
+  }
+  async function startMusic() {
+    if(!musicEnabled||leaving||document.hidden||playPending||!music.paused)return;
+    playPending=true;
+    try { await music.play(); } catch { /* A later user gesture can unlock playback. */ }
+    finally { playPending=false;updateMusicButton(); }
+  }
+  function stopMusic() {
+    leaving=true;
+    music.pause();
+    music.currentTime=0;
+  }
+  function travel(url) { stopMusic();location.assign(url); }
+  music.addEventListener('play',updateMusicButton);
+  music.addEventListener('pause',updateMusicButton);
+  musicToggle.addEventListener('click',()=>{
+    if(!music.paused){musicEnabled=false;music.pause();}
+    else {musicEnabled=true;startMusic();}
+  });
+  const unlockMusic=event=>{
+    if(!musicToggle.contains(event.target))startMusic();
+  };
+  document.addEventListener('pointerup',unlockMusic);
+  document.addEventListener('keydown',unlockMusic);
+  document.addEventListener('click',event=>{
+    if(!event.defaultPrevented&&event.target.closest('a[href]'))stopMusic();
+    else if(!musicToggle.contains(event.target))startMusic();
+  });
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)music.pause();else startMusic();});
+  addEventListener('pagehide',stopMusic);
+  addEventListener('pageshow',()=>{leaving=false;startMusic();});
+  startMusic();
   let selected=plates.find(plate=>plate.dataset.art==='world');
   function select(plate) {
     selected=plate;
@@ -207,7 +248,7 @@
   }
   plates.forEach(plate=>{
     portrait(plate.querySelector('canvas'),plate.dataset.art);
-    plate.addEventListener('click',()=>{if(plate===selected)location.assign(plate.dataset.url);else select(plate);});
+    plate.addEventListener('click',()=>{if(plate===selected)travel(plate.dataset.url);else select(plate);});
     plate.addEventListener('keydown',event=>{
       const directions={ArrowUp:-1,ArrowLeft:-1,ArrowDown:1,ArrowRight:1};
       if(event.key in directions){event.preventDefault();step(directions[event.key]);selected.focus({preventScroll:true});}

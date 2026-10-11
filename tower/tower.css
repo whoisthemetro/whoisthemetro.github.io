@@ -27,6 +27,10 @@ h1 { margin: 0; font: 40px/1.2 "Trade Winds", Impact, sans-serif; text-transform
 footer { padding-top: 28px; margin-top: auto; font: 12px/1.4 "Oswald", sans-serif; }
 footer a { color: #c2b59e; text-decoration: none; text-shadow: 1px 1px #080705; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+#music-toggle { position: fixed; right: 16px; bottom: max(16px, env(safe-area-inset-bottom)); z-index: 6; width: 42px; height: 42px; padding: 0; border: 1px solid #81735c; border-radius: 0; background: #211b16; color: #e5d9b9; font-size: 26px; cursor: pointer; touch-action: manipulation; }
+#music-toggle::after { content: ""; position: absolute; left: 9px; top: 20px; width: 24px; height: 2px; background: #e5d9b9; transform: rotate(-45deg); }
+#music-toggle.playing::after { display: none; }
+#music-toggle:focus-visible { outline: 2px solid #ffe594; outline-offset: 3px; }
 @keyframes beckon { 50% { transform: translateX(5px); } }
 @media (min-height: 850px) and (min-width: 650px) { main { padding-top: 32px; } header { margin-bottom: 30px; } .stone { height: 99px; } .tower { width: 252px; } .portrait { width: 54px; height: 65px; } .marker { top: 32px; } }
 @media (max-width: 600px) { main { padding-top: 23px; } h1 { font-size: 27px; } header { margin-bottom: 25px; } .tower { width: 212px; } .stone { height: 78px; padding-inline: 14px; } .name { font-size: 18px; } .portrait { width: 44px; height: 53px; } .marker { top: 21px; left: -30px; width: 21px; } }

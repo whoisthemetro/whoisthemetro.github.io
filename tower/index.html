@@ -10,9 +10,11 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Trade+Winds&family=Oswald:wght@600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="./tower.css?v=3">
+  <link rel="stylesheet" href="./tower.css?v=4">
 </head>
 <body>
+  <audio id="tower-music" src="./theme.mp3" preload="auto" loop></audio>
+  <button id="music-toggle" type="button" aria-label="Play music" title="Play music" aria-pressed="false"><span aria-hidden="true">&#9835;</span></button>
   <canvas id="landscape" aria-hidden="true"></canvas>
   <main>
     <header><h1>Choose Your Destiny</h1></header>
@@ -27,6 +29,6 @@
     <a id="enter" class="enter" href="/">Enter World <span aria-hidden="true">&#9656;</span></a>
     <footer><a href="/">whoistheMETRO</a><span id="destination-status" class="sr-only" aria-live="polite">Interactive World selected</span></footer>
   </main>
-  <script src="./tower.js?v=3" defer></script>
+  <script src="./tower.js?v=4" defer></script>
 </body>
 </html>
