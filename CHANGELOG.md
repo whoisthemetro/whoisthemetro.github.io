@@ -4,6 +4,12 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-10-12 — a tower diorama
+
+- Cursor movement gently steers the tower scene, with separate sky, terrain,
+  ruins, and ember layers moving at different depths. The camera eases back
+  to center when the pointer leaves; touch selection and reduced motion remain supported.
+
 ## 2026-10-11 — a retro destiny tower
 
 - Replaced the short soundtrack with Metro's longer `MK Website2` arrangement,

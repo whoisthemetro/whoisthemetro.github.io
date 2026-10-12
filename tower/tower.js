@@ -2,9 +2,26 @@
   'use strict';
   const canvas = document.querySelector('#landscape');
   const ctx = canvas.getContext('2d', { alpha: false });
-  const scenery = document.createElement('canvas');
-  const ground = scenery.getContext('2d');
+  const scenery = Array.from({length:3},(_,index)=>{
+    const layer=document.createElement('canvas');
+    layer.className='depth-layer';
+    layer.dataset.depth=String([12,24,40][index]);
+    layer.setAttribute('aria-hidden','true');
+    canvas.parentNode.insertBefore(layer,document.querySelector('main'));
+    return layer;
+  });
+  const particles=document.createElement('canvas');
+  particles.className='depth-layer';
+  particles.dataset.depth='48';
+  particles.setAttribute('aria-hidden','true');
+  canvas.parentNode.insertBefore(particles,document.querySelector('main'));
+  const sparks=particles.getContext('2d');
+  let ground;
   const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
+  const finePointer=matchMedia('(hover: hover) and (pointer: fine)');
+  const camera={x:0,y:0,targetX:0,targetY:0,time:0};
+  const tower=document.querySelector('.tower');
+  const depthLayers=[{element:canvas,depth:5},...scenery.map((element,index)=>({element,depth:[12,24,40][index]})),{element:particles,depth:48}];
   let width, height, sky, radius, angle, grain, clouds, last = 0;
 
   function hash(x, y) {
@@ -52,9 +69,11 @@
   }
 
   function buildScenery() {
-    scenery.width = width; scenery.height = height;
+    scenery.forEach(layer=>{layer.width=width;layer.height=height;});
+    particles.width=width;particles.height=height;
     const horizon = height * .76;
     for (let layer = 0; layer < 3; layer++) {
+      ground=scenery[layer].getContext('2d');
       const ridge = [[0,height]];
       for (let x = 0; x <= width + 4; x += 4) {
         const peak = noise(x / (width * .14) + layer * 9, layer + 3);
@@ -71,9 +90,11 @@
       }
       ground.restore();
     }
-    pillar(width*.075,height*.90,height*.23,width*.023,-.025,12);
+    ground=scenery[1].getContext('2d');
     pillar(width*.245,height*.86,height*.15,width*.016,-.20,38);
     pillar(width*.755,height*.89,height*.29,width*.030,.16,59);
+    ground=scenery[2].getContext('2d');
+    pillar(width*.075,height*.90,height*.23,width*.023,-.025,12);
     pillar(width*.90,height*.94,height*.39,width*.037,-.055,83);
     // Broken masonry at the feet gives the silhouettes a grounded, ruined base.
     for (let i = 0; i < 260; i++) {
@@ -118,19 +139,46 @@
       data[k+3]=255;
     }
     ctx.putImageData(sky,0,0);
-    ctx.drawImage(scenery,0,0);
+    sparks.clearRect(0,0,width,height);
     // Sparse one-pixel embers move in discrete frames, like palette-era effects.
     for(let i=0;i<27;i++) {
       const life=(t*.012+hash(i,42))%1;
       const x=hash(i,7)*width+Math.sin(t*.12+i*3)*4;
       const y=height*(1-life*.68);
-      ctx.fillStyle = i%3 ? '#aa713c' : '#dfaa62';
-      ctx.globalAlpha=Math.sin(life*Math.PI)*.7;
-      ctx.fillRect(Math.round(x),Math.round(y),1,1);
+      sparks.fillStyle = i%3 ? '#aa713c' : '#dfaa62';
+      sparks.globalAlpha=Math.sin(life*Math.PI)*.7;
+      sparks.fillRect(Math.round(x),Math.round(y),1,1);
     }
-    ctx.globalAlpha=1;
+    sparks.globalAlpha=1;
   }
+  function moveCamera(now) {
+    const dt=Math.min((now-camera.time)/1000,.05);
+    camera.time=now;
+    const enabled=!reduceMotion.matches&&finePointer.matches;
+    const ease=1-Math.exp(-dt*8);
+    camera.x=enabled?camera.x+(camera.targetX-camera.x)*ease:0;
+    camera.y=enabled?camera.y+(camera.targetY-camera.y)*ease:0;
+    const travelX=camera.x*Math.min(1,innerWidth/900);
+    const travelY=camera.y*Math.min(1,innerHeight/500);
+    for(const {element,depth} of depthLayers) {
+      const x=-travelX*depth, y=-travelY*depth*.55;
+      element.style.transform=`translate(${x.toFixed(3)}px,${y.toFixed(3)}px) scale(1.12)`;
+    }
+    tower.style.transform=`translate(${(-travelX*22).toFixed(3)}px,${(-travelY*12).toFixed(3)}px)`;
+    tower.style.filter=`drop-shadow(${(9+camera.x*5).toFixed(2)}px ${(10+camera.y*3).toFixed(2)}px 2px #130908a3)`;
+  }
+  const centerCamera=()=>{camera.targetX=0;camera.targetY=0;};
+  addEventListener('pointermove',event=>{
+    if(event.pointerType==='touch'||!finePointer.matches||reduceMotion.matches)return;
+    camera.targetX=Math.max(-1,Math.min(1,event.clientX/innerWidth*2-1));
+    camera.targetY=Math.max(-1,Math.min(1,event.clientY/innerHeight*2-1));
+  });
+  document.documentElement.addEventListener('pointerleave',centerCamera);
+  addEventListener('blur',centerCamera);
+  document.addEventListener('visibilitychange',centerCamera);
+  finePointer.addEventListener('change',centerCamera);
   function frame(now) {
+    if(!document.hidden)moveCamera(now);
     if(!document.hidden && !reduceMotion.matches && now-last>83) { render(now/1000); last=now; }
     requestAnimationFrame(frame);
   }
@@ -335,6 +383,6 @@
   },true);
   let resizeTimer;
   addEventListener('resize',()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(resize,100);});
-  reduceMotion.addEventListener('change',()=>render(0));
+  reduceMotion.addEventListener('change',()=>{centerCamera();moveCamera(performance.now());render(0);});
   stoneTexture(); resize(); requestAnimationFrame(frame);
 })();
