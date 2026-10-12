@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<!-- Keep the world's document-relative asset URLs anchored at the site root. -->
+<base href="/">
+<link rel="canonical" href="https://whoisthemetro.com/metroworld/">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<script>
+  // iOS Safari ignores user-scalable=no, so swat its pinch gesture directly.
+  // only an orientation flip may ever change the world's dimensions.
+  ["gesturestart", "gesturechange", "gestureend"].forEach((g) =>
+    document.addEventListener(g, (e) => e.preventDefault(), { passive: false }));
+</script>
+<title>METRO</title>
+<meta name="description" content="METRO — a multiplayer interactive 3D room.">
+<meta property="og:title" content="METRO">
+<meta property="og:description" content="a multiplayer interactive 3D room">
+<!-- the door sign, shrunk to a tab: the hand-drawn METRO M with the same
+     shader poured through it, and nothing else in the square. this static
+     frame is what Safari and every bookmark gets; on Chrome/Firefox
+     title.js takes the link over while the door screen is up and runs it
+     live. -->
+<link rel="icon" href="assets/img/favicon.png">
+<link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png">
+<meta name="theme-color" content="#07090b">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Archivo:wght@400;600;800&family=Six+Caps&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/room.css">
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+
+<canvas id="scene"></canvas>
+
+<!-- ====== intro ====== -->
+<div id="intro" class="overlay show">
+  <div class="intro-card">
+    <!-- the title is a live shader masked to the hand-drawn letters (title.js) -->
+    <canvas id="title-fx" width="900" height="280" aria-label="METRO"></canvas>
+    <p class="login-line">guest@metro:~$ login</p>
+    <input type="text" id="visitor-name" maxlength="24" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="name">
+    <button id="enter-btn">[ enter ]</button>
+    <!-- the room warms itself up behind this: shaders compiled, textures
+         uploaded, models loaded. usually finished before anyone has typed
+         a name, so most people never see it move. -->
+    <div id="boot" class="boot">
+      <div class="boot-bar"><div id="boot-fill"></div></div>
+      <p class="boot-say" id="boot-say">waking the room</p>
+      <p class="boot-err" id="boot-err" hidden></p>
+    </div>
+    <p class="mode-badge" id="mode-badge"></p>
+  </div>
+</div>
+
+<!-- ====== paused (pointer lock lost) ====== -->
+<div id="paused" class="overlay">
+  <div class="intro-card small">
+    <h2 class="metro-sub">stepped out</h2>
+    <button id="resume-btn">go back in</button>
+  </div>
+</div>
+
+<!-- ====== HUD ====== -->
+<div id="hud">
+  <div id="crosshair">+</div>
+  <!-- both pills read as icons + numbers now. the words were being sliced in
+       half on a portrait phone, and "people know what food and water look
+       like" is exactly right. -->
+  <div id="online-pill">
+    <span class="dot"></span>
+    <svg class="hud-i" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="5" r="2.7"/><path d="M2.6 14.2c0-3 2.4-5.1 5.4-5.1s5.4 2.1 5.4 5.1z"/></svg>
+    <span id="online-count">1</span>
+  </div>
+  <div id="cat-pill">
+    <svg class="hud-i hud-cat" viewBox="0 0 16 16" aria-label="the cat"><path d="M3.4 6.1 2.6 2.2l3.1 2.1a6.4 6.4 0 0 1 4.6 0l3.1-2.1-.8 3.9a5.6 5.6 0 1 1-9.2 0z"/><circle cx="6.2" cy="8.4" r=".85" fill="#0a0e11"/><circle cx="9.8" cy="8.4" r=".85" fill="#0a0e11"/></svg>
+    <span id="cat-meters"></span>
+  </div>
+  <label id="cat-volume-admin" class="hidden" for="cat-volume">
+    <span>CAT VOL</span>
+    <input id="cat-volume" type="range" min="0" max="100" value="100" step="1" aria-label="Cat volume">
+    <output id="cat-volume-value" for="cat-volume">100%</output>
+  </label>
+  <div id="flight-strip"></div>
+  <div id="aim-tip">click to read</div>
+  <!-- dj FX panel — shown only to the host / booth-holder in the venue -->
+  <div id="fx-panel">
+    <div class="fx-title">FX</div>
+    <div class="fx-row"><span class="fx-key">F</span> fog cannon</div>
+    <div class="fx-row"><span class="fx-key">X</span> fireworks</div>
+    <div class="fx-row"><span class="fx-key">G</span> change the look</div>
+  </div>
+  <button id="ps1-toggle" type="button" aria-pressed="false" title="Toggle PS1 mode (P)">
+    <span>PS1</span>
+    <span class="ps1-state">off</span>
+    <kbd>P</kbd>
+  </button>
+</div>
+
+<!-- mobile joysticks: left = move (everywhere), right = look (the gym only) -->
+<div id="joystick"><div id="joystick-nub"></div></div>
+<div id="joystick-r"><div id="joystick-r-nub"></div></div>
+
+<!-- ====== composer ====== -->
+<div id="composer" class="overlay">
+  <div class="panel">
+    <div class="panel-head">
+      <div class="tabs">
+        <button class="tab active" data-kind="note">note</button>
+        <button class="tab" data-kind="photo">photo</button>
+        <button class="tab" data-kind="link">link</button>
+      </div>
+      <button class="x" id="composer-close">×</button>
+    </div>
+
+    <div class="kind-pane" id="pane-note">
+      <textarea id="note-text" maxlength="280" rows="5"
+        placeholder="say something to everyone who will ever stand here…"></textarea>
+      <div class="char-count"><span id="char-count">0</span>/280</div>
+      <div class="swatches" id="swatches"></div>
+    </div>
+
+    <div class="kind-pane hidden" id="pane-photo">
+      <label class="file-drop" id="file-drop">
+        <input type="file" id="photo-input" accept="image/*">
+        <span id="file-drop-label">tap to choose a picture</span>
+        <img id="photo-preview" class="hidden" alt="">
+      </label>
+      <input type="text" id="photo-caption" maxlength="120" placeholder="caption (optional)">
+    </div>
+
+    <div class="kind-pane hidden" id="pane-link">
+      <input type="url" id="link-url" maxlength="500" placeholder="https://…">
+      <input type="text" id="link-title" maxlength="80" placeholder="what is it? (optional)">
+    </div>
+
+    <button id="post-btn">stick it on the wall</button>
+    <p class="fine-print">it stays here forever. be kind to the future.</p>
+  </div>
+</div>
+
+<!-- ====== reader ====== -->
+<div id="reader" class="overlay">
+  <div class="panel reader-panel">
+    <button class="x" id="reader-close">×</button>
+    <div id="reader-content"></div>
+    <div class="reader-meta" id="reader-meta"></div>
+    <a id="reader-visit" class="hidden" target="_blank" rel="noopener noreferrer nofollow">visit link ↗</a>
+    <button id="reader-move" class="hidden">✋ pick up & move this</button>
+    <button id="reader-delete" class="hidden danger">remove from the wall</button>
+  </div>
+</div>
+
+<div id="toast"></div>
+<div id="scratch"></div>
+<div id="high"></div>
+
+<!-- venue: friendly nudge that pops in front of you (wherever you're looking)
+     when the big-screen stream hitches and won't come back on its own -->
+<div id="venue-help">
+  <div class="vh-card">
+    <div class="vh-title">📺 lost the stream?</div>
+    <div class="vh-msg">the picture hitched and isn't coming back on its own. a quick reload almost always fixes it — you'll drop right back into the venue.</div>
+    <div class="vh-actions">
+      <button id="venue-help-reload" class="vh-btn">reload the page</button>
+      <button id="venue-help-dismiss" class="vh-x">dismiss</button>
+    </div>
+  </div>
+</div>
+
+<!-- ====== light dimmer ====== -->
+<div id="dimmer-ui" class="overlay">
+  <div class="panel dim-panel">
+    <div class="panel-head">
+      <span class="tab active">room lights</span>
+      <button class="x" id="dimmer-close">×</button>
+    </div>
+    <div class="dim-row">
+      <span class="dim-label">color</span>
+      <input type="range" id="dim-hue" min="0" max="360" value="40">
+    </div>
+    <div class="dim-row">
+      <span class="dim-label">level</span>
+      <input type="range" id="dim-level" min="0" max="100" value="0">
+    </div>
+    <div class="dim-preview" id="dim-preview"></div>
+  </div>
+</div>
+
+<!-- ====== channel mixer (keys · guitar · drums) ====== -->
+<div id="mixer-ui" class="overlay">
+  <div class="panel dim-panel">
+    <div class="panel-head">
+      <span class="tab active">channel mixer</span>
+      <button class="x" id="mixer-close">×</button>
+    </div>
+    <div class="dim-row">
+      <span class="dim-label">keys</span>
+      <input type="range" id="mix-piano" class="mix-fader" min="0" max="150" value="100">
+      <span class="mix-val" id="mix-val-piano">100%</span>
+    </div>
+    <div class="dim-row">
+      <span class="dim-label">guitar</span>
+      <input type="range" id="mix-guitar" class="mix-fader" min="0" max="150" value="100">
+      <span class="mix-val" id="mix-val-guitar">100%</span>
+    </div>
+    <div class="dim-row">
+      <span class="dim-label">drums</span>
+      <input type="range" id="mix-drum" class="mix-fader" min="0" max="150" value="100">
+      <span class="mix-val" id="mix-val-drum">100%</span>
+    </div>
+    <div class="mixer-divider">clouds · instrument fx</div>
+    <div class="dim-row clouds-row">
+      <span class="dim-label">dry/wet</span>
+      <input type="range" id="clouds-wet" class="mix-fader clouds-fader" min="0" max="100" value="0">
+      <span class="mix-val" id="clouds-wet-val">0%</span>
+    </div>
+    <div class="dim-row clouds-row">
+      <span class="dim-label">reverb</span>
+      <input type="range" id="clouds-reverb" class="mix-fader clouds-fader" min="0" max="100" value="0">
+      <span class="mix-val" id="clouds-reverb-val">0%</span>
+    </div>
+    <div class="dim-row clouds-row">
+      <span class="dim-label">density</span>
+      <input type="range" id="clouds-density" class="mix-fader clouds-fader clouds-density-fader" min="0" max="100" value="50">
+      <span class="mix-val" id="clouds-density-val">50%</span>
+    </div>
+    <p class="clouds-note">density is neutral at 50% · actual Clouds · keys + guitar</p>
+  </div>
+</div>
+
+<!-- ====== radio tuner (live Sveriges Radio streams) ====== -->
+<div id="radio-ui" class="overlay">
+  <div class="panel dim-panel radio-panel">
+    <div class="panel-head">
+      <span class="tab active">radio</span>
+      <button class="x" id="radio-close">×</button>
+    </div>
+    <div class="radio-readout">
+      <span class="radio-hz" id="radio-hz">100.2</span>
+      <div class="radio-meta">
+        <span class="radio-name" id="radio-name">P4 Gotland</span>
+        <span class="radio-tag" id="radio-tag">the island</span>
+      </div>
+      <span class="radio-state" id="radio-state">off air</span>
+    </div>
+    <input type="range" id="radio-dial" class="radio-dial" min="0" max="9" step="1" value="5">
+    <div class="radio-btns">
+      <button class="radio-btn" id="radio-prev">◀ scan</button>
+      <button class="radio-btn radio-power" id="radio-power">power</button>
+      <button class="radio-btn" id="radio-next">scan ▶</button>
+    </div>
+    <div class="dim-row">
+      <span class="dim-label">volume</span>
+      <input type="range" id="radio-vol" min="0" max="100" value="82">
+    </div>
+  </div>
+</div>
+
+<!-- ====== guitar filter treadle (wah-style lowpass) ====== -->
+<div id="filter-ui" class="overlay">
+  <div class="panel filter-panel">
+    <div class="panel-head">
+      <span class="tab active">guitar filter</span>
+      <button class="x" id="filter-close">×</button>
+    </div>
+    <div class="filter-body">
+      <span class="filter-mark filter-top">open</span>
+      <input type="range" id="filter-slider" min="0" max="100" value="100">
+      <span class="filter-mark filter-bot">100 Hz</span>
+    </div>
+    <div class="mix-val" id="filter-val" style="width:100%;text-align:center;">open</div>
+  </div>
+</div>
+
+<!-- room chat: press T, or the bubble on mobile. the log lives at the
+     body level so messages stay visible over the arcade and in the arena -->
+<div id="chat-log"></div>
+<button id="chat-btn">💬</button>
+<button id="mic-btn" title="hold to talk, tap to leave it open">🎙️</button>
+<div id="chat-bar">
+  <input type="text" id="chat-input" maxlength="200" placeholder="say something to the room… (enter sends · esc or click away leaves)">
+</div>
+
+<!-- arena lobby music (hidden, faint, looped) -->
+<div id="arena-music" style="position:fixed;left:-9999px;top:0;width:2px;height:2px;opacity:0.01;pointer-events:none;"></div>
+
+<!-- room-change fade -->
+<div id="fade"></div>
+
+<!-- ====== message in a bottle ====== -->
+<div id="bottle" class="overlay">
+  <div class="panel">
+    <div class="panel-head">
+      <span class="tab active">🍾 washed up against the hull</span>
+      <button class="x" id="bottle-close">×</button>
+    </div>
+    <div id="bottle-msg" class="bottle-msg">…</div>
+    <textarea id="bottle-text" maxlength="200" rows="3"
+      placeholder="cork your own message and throw it back… (one a day)"></textarea>
+    <button id="bottle-send">throw it into the sea</button>
+  </div>
+</div>
+
+<!-- ====== pick a locker room ====== -->
+<div id="team" class="overlay">
+  <div class="panel">
+    <div class="panel-head">
+      <span class="tab active">ECHO ARENA — pick your locker room</span>
+      <button class="x" id="team-close">×</button>
+    </div>
+    <div class="team-row">
+      <button class="team-btn team-o" id="team-o">ORANGE</button>
+      <button class="team-btn team-b" id="team-b">BLUE</button>
+    </div>
+    <p class="fine-print">fly the launch tubes out to MID · ready up at your kiosk to start a match</p>
+  </div>
+</div>
+
+<!-- ====== the booth: pick a source and go live ====== -->
+<div id="dj" class="overlay">
+  <div class="panel">
+    <div class="panel-head">
+      <span class="tab active">THE BOOTH — pick a source</span>
+      <button class="x" id="dj-close">×</button>
+    </div>
+    <div id="dj-list"></div>
+    <p class="fine-print">tip: sharing a tab needs no setup. for a hardware/DJ-app feed, a loopback input (BlackHole, Soundflower…) shows up in the list too.</p>
+  </div>
+</div>
+
+<!-- ====== the booth: host controls (admin only) ====== -->
+<div id="booth" class="overlay">
+  <div class="panel">
+    <div class="panel-head">
+      <span class="tab active">THE BOOTH — host controls</span>
+      <button class="x" id="booth-close">×</button>
+    </div>
+    <button class="pc-item" id="booth-power"></button>
+    <button class="pc-item" id="booth-self"></button>
+    <div class="pc-sec">on the decks<span class="pc-hint" id="booth-now"></span></div>
+    <div id="booth-peers"></div>
+    <div id="booth-screen" class="hidden">
+      <div class="pc-sec">the big screen<span class="pc-hint" id="booth-screen-now"></span></div>
+      <button class="pc-item" id="booth-screen-share">🖥️ share my screen / tab</button>
+      <button class="pc-item" id="booth-screen-set">🔗 …or paste a stream URL</button>
+      <button class="pc-item hidden" id="booth-screen-clear">✖ clear the screen</button>
+      <p class="fine-print">paste a stream URL — a CORS HLS (.m3u8) or .mp4. it plays on the wall for everyone, in sync, no clicking. for a twitch/youtube stream, have the streamer add an OBS output to Cloudflare Stream and paste its HLS link.</p>
+    </div>
+    <p class="fine-print" id="booth-count"></p>
+  </div>
+</div>
+
+<!-- ====== the computer screen: METRO OS, a terminal now ====== -->
+<div id="pc" class="overlay">
+  <div class="term-shell">
+    <div class="term-head">
+      <span class="term-title">METRO OS · tty1</span>
+      <button class="x" id="pc-close">×</button>
+    </div>
+    <div class="term-out" id="term-out"></div>
+    <div class="term-line" id="term-line">
+      <span class="term-prompt" id="term-prompt">visitor@metro:~$</span>
+      <input id="term-in" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="send">
+    </div>
+  </div>
+</div>
+
+<!-- ====== private note to metro ====== -->
+<div id="dm" class="overlay">
+  <div class="panel">
+    <div class="panel-head">
+      <span class="tab active" id="dm-title">private note to metro</span>
+      <button class="x" id="dm-close">×</button>
+    </div>
+    <div class="kind-pane" id="dm-compose">
+      <textarea id="dm-text" maxlength="500" rows="4"
+        placeholder="this lands on metro's computer — nobody else ever sees it. drop a track, a demo, a thought…"></textarea>
+      <input type="url" id="dm-url" maxlength="500" placeholder="https:// (optional link)">
+      <label class="file-drop" id="dm-file-drop">
+        <input type="file" id="dm-file" accept="audio/*">
+        <span id="dm-file-label">or attach an audio file (≤ 25 MB)</span>
+      </label>
+      <input type="text" id="dm-name" maxlength="40" placeholder="who are you? (optional)">
+      <button id="dm-send">send to metro</button>
+      <p class="fine-print">private — only metro can read these.</p>
+    </div>
+    <div class="kind-pane hidden" id="dm-inbox"></div>
+  </div>
+</div>
+
+<!-- ====== the pads: an MPC for the drum machine (studio only) ====== -->
+<div id="pads" class="overlay">
+  <div class="pads-shell">
+    <div class="pads-head">
+      <span class="pads-title">PADS</span>
+      <span class="pads-midi" id="pads-midi">no midi</span>
+      <button class="x" id="pads-close">×</button>
+    </div>
+
+    <div class="pads-row">
+      <div class="pads-pats" id="pads-pats"></div>
+      <div class="pads-steps">
+        <button class="pads-btn" id="pads-step-down">−</button>
+        <span class="pads-stepnum" id="pads-stepnum">16</span>
+        <button class="pads-btn" id="pads-step-up">+</button>
+      </div>
+    </div>
+
+    <!-- a slice of the sequencer: the row you last struck, so you can see
+         where your hits are landing (and tap to fix one) -->
+    <div class="pads-seq">
+      <span class="pads-seq-label" id="pads-seq-label">KICK</span>
+      <div class="pads-seq-cells" id="pads-seq-cells"></div>
+    </div>
+
+    <div class="pads-grid" id="pads-grid"></div>
+
+    <div class="pads-controls">
+      <button class="pads-btn rec" id="pads-rec">● REC</button>
+      <button class="pads-btn" id="pads-metro">METRO</button>
+      <button class="pads-btn" id="pads-mute">MUTE</button>
+    </div>
+    <div class="pads-controls">
+      <button class="pads-btn" id="pads-undo">UNDO</button>
+      <button class="pads-btn" id="pads-clear">CLEAR</button>
+      <button class="pads-btn danger" id="pads-clear-all">CLR ALL</button>
+    </div>
+  </div>
+
+  <!-- press-and-hold on a pad: dress it in a sample, then trim it -->
+  <div class="pads-shell sampler" id="sampler">
+    <div class="pads-head">
+      <span class="pads-title" id="sampler-title">KICK</span>
+      <span class="pads-midi" id="sampler-file">built-in</span>
+      <button class="x" id="sampler-close">×</button>
+    </div>
+    <div class="sampler-list" id="sampler-list"></div>
+    <canvas id="sampler-wave" width="480" height="64"></canvas>
+    <div class="sampler-row"><span>START</span><input type="range" id="smp-start" min="0" max="97" value="0"><b id="smp-start-v">0%</b></div>
+    <div class="sampler-row"><span>END</span><input type="range" id="smp-end" min="3" max="100" value="100"><b id="smp-end-v">100%</b></div>
+    <div class="sampler-row"><span>PITCH</span><input type="range" id="smp-pitch" min="-12" max="12" value="0"><b id="smp-pitch-v">0</b></div>
+    <div class="sampler-row"><span>VOL</span><input type="range" id="smp-gain" min="0" max="150" value="100"><b id="smp-gain-v">100%</b></div>
+    <div class="pads-controls">
+      <button class="pads-btn" id="smp-play">▶ PLAY</button>
+      <button class="pads-btn" id="smp-builtin">BUILT-IN</button>
+    </div>
+  </div>
+</div>
+
+<!-- ====== the cabinet in the closet ====== -->
+<div id="arcade" class="overlay">
+  <div class="arcade-shell">
+    <button class="x" id="arcade-close">×</button>
+    <canvas id="arcade-canvas" width="640" height="400"></canvas>
+    <p class="arcade-help">← → thrust · ↑ ↓ move · SPACE fire · B smart bomb · ESC to walk away</p>
+    <!-- per-game touch controls are built into these two thumb zones by arcade.js -->
+    <div class="arcade-pads" id="arcade-pads">
+      <div class="pad-zone" id="pad-left"></div>
+      <div class="pad-zone" id="pad-right"></div>
+    </div>
+  </div>
+</div>
+
+<script src="assets/js/config.js"></script>
+<script>
+/* ---- the door's dead-man switch --------------------------------------
+   The boot text is written by main.js. If main.js dies before it writes
+   anything, the door reads "waking the room" for as long as you care to
+   wait, with nothing in the page to say why. That happened: the renderer
+   is built on main.js's first screenful and a browser that won't give out
+   a WebGL context throws there, killing the module outright.
+   So: remember the first thing it said, and if that is STILL what it says
+   after a while, admit it. ------------------------------------------- */
+(function () {
+  var FIRST = "waking the room", WAIT = 12000, told = false;
+  var lastErr = null;
+  function say(msg, detail) {
+    if (told) return; told = true;
+    var el = document.getElementById("boot-err"),
+        s  = document.getElementById("boot-say"),
+        f  = document.getElementById("boot-fill");
+    if (s) s.textContent = "the room didn't start";
+    if (f) { f.style.width = "100%"; f.style.background = "#e0533d"; }
+    if (!el) return;
+    el.hidden = false;
+    el.style.cssText = "margin:8px auto 0;max-width:34ch;font-size:10.5px;" +
+      "line-height:1.5;letter-spacing:.04em;color:#e0533d;text-align:left;";
+    el.textContent = msg + (detail ? "  (" + String(detail).slice(0, 160) + ")" : "");
+  }
+  window.addEventListener("error", function (e) {
+    lastErr = (e && (e.message || e.error)) || lastErr;
+  }, true);
+  window.addEventListener("unhandledrejection", function (e) {
+    lastErr = (e && e.reason && (e.reason.message || e.reason)) || lastErr;
+  });
+  // is 3D even available? asked directly, so the answer doesn't depend on
+  // main.js having survived long enough to ask it.
+  window.__metroGL = (function () {
+    try {
+      var c = document.createElement("canvas");
+      /* all three, in three.js's own order — it falls back to
+         "experimental-webgl", so testing only the first two would call a
+         browser 3D-less that can actually run the room fine. */
+      return !!(c.getContext("webgl2") || c.getContext("webgl") ||
+                c.getContext("experimental-webgl"));
+    } catch (err) { return false; }
+  })();
+  window.__metroFail = say;
+  setTimeout(function () {
+    var s = document.getElementById("boot-say");
+    var b = document.getElementById("boot");
+    if (!s || !b) return;
+    if (b.className.indexOf("done") >= 0) return;      // it got in fine
+    if (s.textContent.trim() !== FIRST) return;        // it is moving, just slow
+    if (!window.__metroGL) {
+      say("This browser isn't giving the page a 3D canvas, so the room can't " +
+          "be built. Usually that's hardware acceleration switched off, or a " +
+          "GPU process that needs the browser restarted. In Chrome check " +
+          "chrome://gpu, and Settings \u2192 System \u2192 \u201cUse graphics " +
+          "acceleration when available\u201d.", lastErr);
+    } else {
+      say("Something stopped the room loading before it started. A reload " +
+          "usually clears it; if it doesn't, the browser console has the " +
+          "reason.", lastErr);
+    }
+  }, WAIT);
+})();
+</script>
+<script type="module" src="assets/js/main.js"></script>
+</body>
+</html>

@@ -6,6 +6,9 @@ it says it did.
 
 ## 2026-10-12 — a tower diorama
 
+- Made the destination tower the homepage and moved the interactive world to
+  `/metroworld/`. Preserved legacy room/admin/moderation links, kept world assets
+  rooted at the same URLs, and redirected the old `/tower/` address home.
 - Four original pixel-art arcade fighters dance among the ruins and at the
   foreground edges, with eight-frame loops and depth-matched camera movement.
 - Cursor movement gently steers the tower scene, with separate sky, terrain,

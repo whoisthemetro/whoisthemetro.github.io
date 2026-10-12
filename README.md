@@ -1,6 +1,7 @@
 # THE METRO
 
-The room is always on — [whoisthemetro.com](https://whoisthemetro.com)
+Choose a destination at [whoisthemetro.com](https://whoisthemetro.com).
+The room is always on at [whoisthemetro.com/metroworld/](https://whoisthemetro.com/metroworld/).
 
 Walk into a living 3D studio in your browser. Read the wall. Leave a note,
 a photo, or a link — it stays there forever, for everyone who comes after

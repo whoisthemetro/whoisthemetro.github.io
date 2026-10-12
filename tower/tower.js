@@ -298,7 +298,7 @@ import { createDancers } from './dancers.js?v=1';
     // Resume synchronously from each gesture, even while the file is loading.
     musicContext.resume().then(playBuffer).catch(()=>{});
     if(!musicLoad) {
-      musicLoad=fetch('./theme-long.mp3')
+      musicLoad=fetch(new URL('./theme-long.mp3',import.meta.url))
         .then(response=>{if(!response.ok)throw new Error('Music unavailable');return response.arrayBuffer();})
         .then(bytes=>musicContext.decodeAudioData(bytes))
         .then(buffer=>{musicBuffer=prepareMusicLoop(buffer);playBuffer();})

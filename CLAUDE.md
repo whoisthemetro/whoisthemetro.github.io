@@ -14,6 +14,12 @@ ChatGPT completed and pushed the current bedroom-desk pass in commits `f87c7cc` 
 
 ## Commands
 
+The homepage is the destination tower. The interactive world's HTML entry is
+`metroworld/index.html`, served at `/metroworld/`, with `<base href="/">` so
+existing asset paths stay rooted at the site origin. Use `/metroworld/` for
+world smoke tests. `/tower/` redirects home; old homepage hashes redirect to
+the world, and `/studio/` and `/venue/` enter their rooms there directly.
+
 **One-time setup in a fresh clone:** `git config core.hooksPath .githooks` (see
 "Two chats, one repo" below). Hooks aren't version-controlled by default, so this
 line is what turns the pre-push guard on.

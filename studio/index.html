@@ -9,13 +9,13 @@
 <meta property="og:description" content="Walk in. The loop is already running. Everyone hears the same bar." />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2307090b'/%3E%3Crect x='7' y='13' width='4' height='6' fill='%23ff4d2e'/%3E%3Crect x='14' y='9' width='4' height='14' fill='%235db8ff'/%3E%3Crect x='21' y='15' width='4' height='4' fill='%237ef5e0'/%3E%3C/svg%3E" />
 <!-- the studio is a room in the 3D world now, not its own page. bounce
-     everyone to the root world with the #studio hash, which main.js reads on
+     everyone to /metroworld/ with the #studio hash, which main.js reads on
      entry to walk you straight in instead of starting in the bedroom (same
      trick /venue uses). carry an #admin through so /studio#admin still works. -->
-<meta http-equiv="refresh" content="0; url=/#studio" />
+<meta http-equiv="refresh" content="0; url=/metroworld/#studio" />
 <script>
   var admin = /admin/i.test(location.hash);
-  location.replace("/#studio" + (admin ? ",admin" : ""));
+  location.replace("/metroworld/" + location.search + "#studio" + (admin ? ",admin" : ""));
 </script>
 <style>
   html, body { margin: 0; height: 100%; background: #07090b; color: #7ef5e0;
@@ -25,6 +25,6 @@
 </head>
 <body>
   <p>THE STUDIO has moved into the room.</p>
-  <p><a href="/#studio">step inside →</a></p>
+  <p><a href="/metroworld/#studio">step inside →</a></p>
 </body>
 </html>
