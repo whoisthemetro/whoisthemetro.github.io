@@ -6,6 +6,8 @@ it says it did.
 
 ## 2026-10-12 — a tower diorama
 
+- Four original pixel-art arcade fighters dance among the ruins and at the
+  foreground edges, with eight-frame loops and depth-matched camera movement.
 - Cursor movement gently steers the tower scene, with separate sky, terrain,
   ruins, and ember layers moving at different depths. The camera eases back
   to center when the pointer leaves; touch selection and reduced motion remain supported.

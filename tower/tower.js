@@ -1,3 +1,5 @@
+import { createDancers } from './dancers.js?v=1';
+
 (() => {
   'use strict';
   const canvas = document.querySelector('#landscape');
@@ -16,12 +18,21 @@
   particles.setAttribute('aria-hidden','true');
   canvas.parentNode.insertBefore(particles,document.querySelector('main'));
   const sparks=particles.getContext('2d');
+  const dancerLayers=[24,44].map((depth,index)=>{
+    const layer=document.createElement('canvas');
+    layer.className='depth-layer dancers';
+    layer.dataset.depth=String(depth);
+    layer.setAttribute('aria-hidden','true');
+    canvas.parentNode.insertBefore(layer,index===0?scenery[2]:particles);
+    return layer;
+  });
+  const drawDancers=createDancers(...dancerLayers);
   let ground;
   const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
   const finePointer=matchMedia('(hover: hover) and (pointer: fine)');
   const camera={x:0,y:0,targetX:0,targetY:0,time:0};
   const tower=document.querySelector('.tower');
-  const depthLayers=[{element:canvas,depth:5},...scenery.map((element,index)=>({element,depth:[12,24,40][index]})),{element:particles,depth:48}];
+  const depthLayers=[{element:canvas,depth:5},...scenery.map((element,index)=>({element,depth:[12,24,40][index]})),...dancerLayers.map((element,index)=>({element,depth:[24,44][index]})),{element:particles,depth:48}];
   let width, height, sky, radius, angle, grain, clouds, last = 0;
 
   function hash(x, y) {
@@ -150,6 +161,7 @@
       sparks.fillRect(Math.round(x),Math.round(y),1,1);
     }
     sparks.globalAlpha=1;
+    drawDancers(width,height,t);
   }
   function moveCamera(now) {
     const dt=Math.min((now-camera.time)/1000,.05);
