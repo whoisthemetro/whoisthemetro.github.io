@@ -4,6 +4,43 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-10-13 — /3D/ joins the rest of the site
+
+The reel page was built elsewhere and looked it. Restyled to the room's own
+language, and made a great deal lighter on the way.
+
+- **The tell was one line of CSS**: it had redefined `--amber` as `#35d7ff`.
+  The single colour the whole site is built on had been swapped for its
+  opposite, which is why nothing about the page felt like Metro however good
+  the content was. It now uses the real tokens from `assets/css/room.css` —
+  amber `#ffb347`, neon `#ff4d2e`, `--ink`/`--dim`/`--panel`/`--line` — plus
+  the login line's green `#7ec97e`.
+- Arial out, the room's three faces in: **Archivo** for text, **Six Caps**
+  for the shouting, **Caveat** for the sign. Same Google Fonts request the
+  world makes, so arriving from `/metroworld/` they are already cached.
+- **It wears the actual door sign.** `title.js`'s recipe is ported inline —
+  the Balatro shader (2 KB) on a WebGL canvas, the Caveat letters at their own
+  angles, `source-in` to keep the colour inside the ink, and the same glow
+  filter. The letter angles matter: M -4 deg, E +2, T -2, R +3, O -3, 190px,
+  10px apart. Retyping METRO in Caveat does not give you the sign.
+- The sign only animates while it is ON SCREEN (IntersectionObserver). A
+  portfolio is a scrolling document and a shader running under the footer is
+  somebody's battery for nothing. No WebGL falls back to the word in amber.
+- Dot grid out, the room's light in: warm radial pools and a 3px scanline.
+- **Eleven YouTube embeds became eleven posters.** Each card is a thumbnail
+  and only becomes a player when clicked — the same bargain the room makes
+  everywhere else. Measured, same machine, same viewport:
+  **147 requests / 13.12 MB / 11 players on load  ->  10 requests / 0.31 MB /
+  0 players.** Scrolling the whole page and loading every poster still only
+  reaches 18 requests and 0.66 MB. maxresdefault with an hqdefault fallback;
+  all 11 verified 200.
+- Favicon redrawn from the real Caveat M (outlines, fitted inside the tile so
+  the glyph's overshoot can't clip), amber-to-neon. The social card was a
+  screenshot of the old cyan page — rebuilt around the live sign, quantized to
+  256 colours (388 KB -> 166 KB, 0.40% mean colour error) and bumped to `?v=3`
+  so the platforms re-scrape.
+- Every word of copy, every video, both link lists and all the meta kept.
+
 ## 2026-10-12 — a tower diorama
 
 - Made the destination tower the homepage and moved the interactive world to
