@@ -108,7 +108,8 @@ nav a:hover { color: var(--amber); }
 
 /* ---------- the sign ---------- */
 .hero { padding: 54px 0 96px; }
-.sign-wrap { text-align: center; margin-bottom: 54px; }
+.sign-wrap { text-align: center; margin-bottom: 40px; }
+.sign-wrap .term { margin-top: 14px; }
 /* the exact glow the door wears (room.css #title-fx) */
 #title-fx {
   width: min(88vw, 520px); height: auto; display: block; margin: 0 auto 10px;
@@ -120,29 +121,8 @@ nav a:hover { color: var(--amber); }
   font-family: "Six Caps", sans-serif; font-size: 50px; letter-spacing: .12em;
   color: var(--ink); line-height: .9; margin-top: 2px;
 }
-.hero-grid { display: grid; grid-template-columns: 1.02fr .98fr; gap: 46px; align-items: center; }
-h1 {
-  font-family: "Six Caps", sans-serif; font-weight: 400;
-  font-size: clamp(76px, 10.5vw, 148px); line-height: .82; letter-spacing: .02em;
-  margin: 14px 0 0;
-}
-h1 .hot { color: var(--neon); text-shadow: 0 0 34px rgba(255, 77, 46, .45); }
-.intro { color: var(--dim); max-width: 46ch; margin-top: 20px; font-size: 16.5px; }
-.actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 30px; }
-/* the door's own button, brackets and all */
-.btn {
-  font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
-  font-size: 13px; letter-spacing: .1em; font-weight: 600;
-  padding: 15px 30px; border-radius: 2px; cursor: pointer; display: inline-block;
-  transition: transform .12s ease, box-shadow .12s ease, color .12s ease, border-color .12s ease;
-}
-.btn.primary {
-  background: var(--neon); color: #14060a; border: none;
-  box-shadow: 0 0 24px rgba(255, 77, 46, .35);
-}
-.btn.primary:hover { transform: translateY(-1px); box-shadow: 0 0 40px rgba(255, 77, 46, .55); }
-.btn.ghost { border: 1px solid var(--line); color: var(--dim); }
-.btn.ghost:hover { color: var(--amber); border-color: var(--amber); }
+.featured { width: min(820px, 100%); margin: 0 auto; }
+.featured .tech { text-align: center; }
 
 /* ---------- panels + video ---------- */
 .panel { background: var(--panel); border: 1px solid var(--line); position: relative; }
@@ -184,15 +164,8 @@ h1 .hot { color: var(--neon); text-shadow: 0 0 34px rgba(255, 77, 46, .45); }
 
 /* ---------- sections ---------- */
 section { position: relative; z-index: 1; }
-.bio { border-block: 1px solid var(--line); background: rgba(255,255,255,.018); }
-.bio .shell { display: grid; grid-template-columns: .62fr 1.38fr; gap: 46px; padding: 70px 0; }
-.bio h2 {
-  font-family: "Six Caps", sans-serif; font-weight: 400;
-  font-size: clamp(44px, 5.6vw, 82px); line-height: .88; letter-spacing: .015em; max-width: 16ch;
-}
-.bio p { color: var(--dim); max-width: 58ch; margin-top: 18px; }
-.work { padding: 92px 0; }
-.work h2, .studies h2 {
+.work { padding: 74px 0; }
+.work h2 {
   font-family: "Six Caps", sans-serif; font-weight: 400;
   font-size: clamp(54px, 7vw, 96px); line-height: .86; letter-spacing: .02em; margin-top: 10px;
 }
@@ -221,9 +194,7 @@ footer small { color: var(--dim); font-size: 10px; letter-spacing: .14em; text-t
 @media (max-width: 860px) {
   .shell { width: min(100% - 28px, 1180px); }
   nav { display: none; }
-  .hero-grid, .bio .shell { grid-template-columns: 1fr; gap: 34px; }
   .hero { padding: 34px 0 64px; }
-  .bio .shell { padding: 54px 0; }
   .grid { grid-template-columns: 1fr; }
   .work { padding: 64px 0; }
   footer .shell { flex-direction: column; align-items: start; }
@@ -241,7 +212,6 @@ footer small { color: var(--dim); font-size: 10px; letter-spacing: .14em; text-t
     <a class="brand" href="#top"><img src="./favicon.svg" alt="" width="30" height="30"><span>whoistheMETRO</span></a>
     <nav>
       <a href="#work">Work</a>
-      <a href="#bio">Bio</a>
       <a href="/metroworld/">The World ↗</a>
       <a href="mailto:whoisthemetro@gmail.com">Contact</a>
     </nav>
@@ -256,19 +226,11 @@ footer small { color: var(--dim); font-size: 10px; letter-spacing: .14em; text-t
            shader. 900x280 is its native size; CSS scales it down. -->
       <canvas id="title-fx" width="900" height="280" aria-label="METRO"></canvas>
       <p class="sub">VISUALIZATION ARTIST</p>
+      <!-- reads as a caption into the film now that it sits above it -->
+      <p class="term">guest@metro:~$ ./reel --play<span class="cur"></span></p>
     </div>
 
-    <div class="hero-grid">
-      <div>
-        <p class="term">guest@metro:~$ ./reel --play<span class="cur"></span></p>
-        <h1>Create the shot.<br><span class="hot">Build the world.</span></h1>
-        <p class="intro">I create cinematic and psychedelic worlds for music and film.</p>
-        <div class="actions">
-          <a class="btn primary" href="#work">[ see the work ]</a>
-          <a class="btn ghost" href="mailto:whoisthemetro@gmail.com">[ start a conversation ]</a>
-        </div>
-      </div>
-
+    <div class="featured">
       <div>
         <article class="panel">
           <div class="panel-top"><span>Featured / fartGOD</span><b>01 — 01</b></div>
@@ -288,19 +250,8 @@ footer small { color: var(--dim); font-size: 10px; letter-spacing: .14em; text-t
     </div>
   </section>
 
-  <section class="bio" id="bio">
-    <div class="shell">
-      <p class="eyebrow">Bio</p>
-      <div>
-        <h2>A visual artist who uses the latest tech to bring ideas to life.</h2>
-        <p>3D world builder, analog and digital DP, lighting, animation — and overall just a techy dude.</p>
-      </div>
-    </div>
-  </section>
-
   <section class="shell work" id="work">
     <p class="eyebrow">Portfolio</p>
-    <h2>Selected work.</h2>
     <div class="grid" id="work-grid"></div>
 
     <div class="studies">

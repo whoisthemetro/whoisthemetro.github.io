@@ -40,6 +40,18 @@ language, and made a great deal lighter on the way.
   256 colours (388 KB -> 166 KB, 0.40% mean colour error) and bumped to `?v=3`
   so the platforms re-scrape.
 - Every word of copy, every video, both link lists and all the meta kept.
+- **Then cut back, same day, on Metro's call.** The hero headline, the intro
+  line and both buttons are gone; the fartGOD film moves to the middle of the
+  page directly under VISUALIZATION ARTIST, capped at 820px so it reads rather
+  than stretches. The bio section is gone entirely (and the nav's `#bio` link
+  with it — a nav item that scrolls nowhere is worse than no nav item). The
+  "Selected work." heading is gone; the small PORTFOLIO marker stays, because
+  the grid still needs saying what it is.
+- The `guest@metro:~$ ./reel --play` line survived the cut and moved under the
+  sub, centred, where it now reads as a caption into the film.
+- Every rule those blocks used went with them — `h1`, `.intro`, `.actions`,
+  `.btn`/`.primary`/`.ghost`, all of `.bio`, `.hero-grid` and their two mobile
+  overrides. Dead CSS is a trap for whoever reads this next.
 
 ## 2026-10-12 — a tower diorama
 
