@@ -49,6 +49,9 @@ language, and made a great deal lighter on the way.
   the grid still needs saying what it is.
 - The `guest@metro:~$ ./reel --play` line survived the cut and moved under the
   sub, centred, where it now reads as a caption into the film.
+- Want (Club) 1.0 added to the grid, second, beside the other Business Trip
+  film. Title taken from YouTube's oEmbed rather than invented, and the card
+  numbers renumber themselves off the array index.
 - Every rule those blocks used went with them — `h1`, `.intro`, `.actions`,
   `.btn`/`.primary`/`.ghost`, all of `.bio`, `.hero-grid` and their two mobile
   overrides. Dead CSS is a trap for whoever reads this next.
