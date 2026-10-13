@@ -4,6 +4,37 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-10-13 — one film at a time, and the furniture gets out of the way
+
+- **Only one video runs now.** Starting a film closes whatever was playing and
+  puts that card back to its poster — the player is DESTROYED, not paused, so
+  a film you have moved on from stops costing anything at all. Escape closes
+  the one that is running.
+- That needs the **IFrame Player API** (a plain `<iframe>` cannot be told to
+  stop from outside), and it is fetched on the **first click, never on load** —
+  the page is still ~10 requests until somebody asks for a film. If the API
+  can't be fetched, `playFlat()` drops a normal embed in and the page carries
+  on without the extras.
+- **Why YouTube's furniture was sticking around**: the player keeps its title
+  bar and controls up while it is the FOCUSED element, and clicking elsewhere
+  on a page does not take focus off an iframe by itself. It does now — focus
+  is handed back on `pointerdown` anywhere outside the card, and again right
+  after the player reports ready. That is the whole of what a page is allowed
+  to do about someone else's document on someone else's origin.
+- Also `iv_load_policy=3` (no annotation cards over the picture) and autoplay
+  driven through `onReady -> playVideo()`, which actually starts rather than
+  hoping the iframe's `autoplay=1` survives Chrome's gesture rules.
+- **What could NOT be fixed, and why it was worth proving**: YouTube shows its
+  controls for about three seconds when playback starts, and there is no
+  parameter for that timer. The clever-looking way round — start the film
+  behind the poster, let the chrome expire, then `seekTo(0)` and reveal — was
+  built and tested, and **seeking brings the entire bar straight back**. The
+  only remaining way to have zero chrome is to stop using YouTube and serve
+  the files ourselves, the way the garden serves its audio.
+- Renamed the handler off `open()`: a top-level `function open()` in a classic
+  script REPLACES `window.open`, and the YouTube API is third-party code
+  sharing that global.
+
 ## 2026-10-13 — /3D/ joins the rest of the site
 
 The reel page was built elsewhere and looked it. Restyled to the room's own

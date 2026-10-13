@@ -494,20 +494,119 @@ document.querySelectorAll(".vid").forEach((el) => {
   img.onerror = () => { if (!img.dataset.fell) { img.dataset.fell = "1"; img.src = `https://i.ytimg.com/vi/${id}/hqdefault.jpg`; } };
   img.src = `https://i.ytimg.com/vi/${id}/maxresdefault.jpg`;
   el.prepend(img);
-
-  const play = () => {
-    if (el.dataset.live) return;
-    el.dataset.live = "1";
-    const f = document.createElement("iframe");
-    f.src = `https://www.youtube-nocookie.com/embed/${id}?autoplay=1&rel=0`;
-    f.title = el.dataset.title;
-    f.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture";
-    f.allowFullscreen = true;
-    el.replaceChildren(f);
-  };
-  el.addEventListener("click", play);
-  el.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); play(); } });
+  el.addEventListener("click", () => playCard(el));
+  el.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); playCard(el); }
+  });
 });
+
+/* -----------------------------------------------------------------
+   ONE AT A TIME
+
+   Eleven films on a page means eleven ways to end up with two playing
+   over each other. Starting one now closes whatever was running and
+   puts that card back to its poster — the player is destroyed, not
+   paused, so it stops costing anything the moment you move on.
+
+   The IFrame API is what makes that possible (a plain iframe can't be
+   told to stop from outside), and it is fetched on the FIRST CLICK,
+   never on load — the page is still 10 requests until somebody asks
+   for a film. If it can't be fetched at all, playFlat() puts a normal
+   embed in and the page carries on without the extras.
+   ----------------------------------------------------------------- */
+const PARAMS = {
+  autoplay: 1,
+  rel: 0,              // "related" is same-channel only these days, not off
+  playsinline: 1,      // ios: play in the card, don't hijack the screen
+  iv_load_policy: 3,   // no annotation cards over the picture
+  modestbranding: 1,
+};
+
+let ytAPI = null;
+function youtubeAPI() {
+  if (ytAPI) return ytAPI;
+  ytAPI = new Promise((resolve, reject) => {
+    if (window.YT && window.YT.Player) return resolve(window.YT);
+    const before = window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady = () => {
+      if (before) { try { before(); } catch (e) {} }
+      resolve(window.YT);
+    };
+    const s = document.createElement("script");
+    s.src = "https://www.youtube.com/iframe_api";
+    s.onerror = reject;
+    document.head.appendChild(s);
+    setTimeout(() => reject(new Error("iframe api timed out")), 6000);
+  });
+  return ytAPI;
+}
+
+let live = null;   // { el, shell, player }
+
+function closeCard(entry) {
+  if (!entry) return;
+  if (live === entry) live = null;
+  try { entry.player && entry.player.destroy(); } catch (e) {}
+  entry.el.replaceChildren(...entry.shell);   // poster and play button, back as they were
+  delete entry.el.dataset.live;
+}
+
+function playCard(el) {
+  if (el.dataset.live) return;                // already running; let it be
+  closeCard(live);                                // whatever was playing, isn't now
+  el.dataset.live = "1";
+  const shell = [...el.childNodes];
+  const entry = { el, shell, player: null };
+  live = entry;
+
+  const mount = document.createElement("div");
+  el.replaceChildren(mount);
+
+  youtubeAPI().then((YT) => {
+    if (live !== entry) return;               // they clicked elsewhere while it loaded
+    entry.player = new YT.Player(mount, {
+      videoId: el.dataset.yt,
+      host: "https://www.youtube-nocookie.com",
+      playerVars: PARAMS,
+      events: {
+        onReady: (e) => {
+          e.target.playVideo();
+          // hand focus back to the page. a focused player keeps its title
+          // bar and controls up; once it is not the focused element they
+          // fade on their own.
+          requestAnimationFrame(() => { try { e.target.getIframe().blur(); } catch (err) {} });
+        },
+      },
+    });
+  }).catch(() => { if (live === entry) playFlat(entry, mount); });
+}
+
+// no API — a normal embed still plays, it just can't be stopped from here
+function playFlat(entry, mount) {
+  const f = document.createElement("iframe");
+  const q = Object.entries(PARAMS).map(([k, v]) => `${k}=${v}`).join("&");
+  f.src = `https://www.youtube-nocookie.com/embed/${entry.el.dataset.yt}?${q}`;
+  f.title = entry.el.dataset.title;
+  f.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture";
+  f.allowFullscreen = true;
+  mount.replaceWith(f);
+}
+
+/* Clicking off the film should get YouTube's furniture out of the way.
+   Its title bar and controls stay up while the player is the focused
+   element, and a click elsewhere on the page does not take focus off an
+   iframe by itself — so take it off here. We cannot reach inside the
+   player (it is someone else's document on someone else's origin); this
+   is the whole of what the page is allowed to do about it. */
+document.addEventListener("pointerdown", (e) => {
+  if (!live) return;
+  if (live.el.contains(e.target)) return;
+  const a = document.activeElement;
+  if (a && a.tagName === "IFRAME") a.blur();
+}, true);
+
+// esc closes the film and gives you the page back
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && live) closeCard(live); });
 </script>
 </body>
 </html>
