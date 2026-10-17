@@ -4,6 +4,28 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-10-16 — song ideas: a waveform you can loop, and a download button
+
+- **The seek bar is a waveform now** (`song-ideas/player.js`, split out of the
+  inline script). Tap to jump, drag across it to mark a loop, drag the A/B flags
+  to move them. Zoom with − / + (or pinch on a trackpad) down to two seconds
+  across; the strip underneath is the whole song, and dragging it moves the view.
+- **Fine control**: ‹ › beside A and B move a point 10 ms per tap and speed up
+  when held. On release you HEAR the result — A plays from A, B plays the last
+  two seconds into the turnaround. I / O set A / B at the playhead, L loops,
+  SPACE plays. LOOP with no region repeats the whole song.
+- **Each song remembers its own loop** (localStorage), so a section marked at
+  home is still marked at the client's.
+- The loop is checked every frame and jumps on CROSSING B, not on being past
+  it, so clicking after B still plays from there. It's a seek, so there may be a
+  hair of a gap at the turnaround.
+- Waveforms are `song-ideas/peaks/NN.bin`, one byte per 1/50 s (~8 KB a song,
+  fetched per song), built by `tools/song-ideas/peaks.py` — peak/RMS blend,
+  per-track normalize, gamma, because a raw peak envelope of a master is a brick.
+- **DOWNLOAD** links the song with Supabase's `?download=` param, which answers
+  with `content-disposition: attachment` — a real download, named
+  "Metro - Title.mp3", with no fetch-into-memory first.
+
 ## 2026-10-16 — song ideas: quiet songs come up, and a volume that goes past zero
 
 - **Auto level** on /song-ideas/. Every 320k mp3 was measured (ffmpeg
