@@ -4,6 +4,21 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-10-16 — song ideas: quiet songs come up, and a volume that goes past zero
+
+- **Auto level** on /song-ideas/. Every 320k mp3 was measured (ffmpeg
+  `ebur128`, integrated LUFS — stored per track in `tracks.js`) and anything
+  quieter than -12 LUFS gets lifted up to it, capped at +12 dB. Loud songs are
+  never turned DOWN; a lift is the only direction. A limiter at the end of the
+  chain (-1 dB, 20:1) catches the peaks a lift pushes over. It's a toggle, and
+  the choice is remembered.
+- **Volume slider, -40 to +12 dB**, with a tick at unity; double-click snaps it
+  back to 0 dB. Remembered between visits.
+- Both ride Web Audio (`MediaElementSource` → lift → volume → limiter), which
+  needs `crossorigin="anonymous"` on the `<audio>` — Supabase storage sends
+  `access-control-allow-origin: *`, so the graph isn't tainted.
+- PLAY after a PAUSE now resumes instead of restarting the song from the top.
+
 ## 2026-10-13 — one film at a time, and the furniture gets out of the way
 
 - **Only one video runs now.** Starting a film closes whatever was playing and

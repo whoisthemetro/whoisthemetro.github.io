@@ -1,1 +1,60 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>song ideas</title><link rel="stylesheet" href="styles.css"></head><body><main><h1>SONG IDEAS</h1><section class="player"><div class="lcd"><span id="now">SELECT A SONG</span><b id="clock">0:00 / 0:00</b></div><div class="controls"><button id="prev">|&lt;</button><button id="play">PLAY</button><button id="next">&gt;|</button><input id="seek" type="range" min="0" max="100" value="0"></div><button id="browse">BROWSE SONGS</button><audio id="audio"></audio></section><section id="queue" hidden><p>PLAYLIST // SHOW CLIENTS</p><ol id="list"></ol></section><p class="mail"><a href="mailto:whoisthemetro@gmail.com?subject=Song%20ideas">EMAIL METRO</a></p></main><script src="tracks.js"></script><script>const a=document.querySelector('#audio'),l=document.querySelector('#list'),n=document.querySelector('#now'),c=document.querySelector('#clock'),s=document.querySelector('#seek'),p=document.querySelector('#play'),q=document.querySelector('#queue'),b=document.querySelector('#browse');let i=0;const f=x=>`${Math.floor(x/60)}:${String(Math.floor(x%60)).padStart(2,'0')}`;function go(x){i=(x+tracks.length)%tracks.length;let t=tracks[i];a.src=t.url;n.textContent=`${String(t.order).padStart(2,'0')} // ${t.title.toUpperCase()} — ${t.artist.toUpperCase()}`;[...l.children].forEach((e,j)=>e.classList.toggle('on',j===i));a.play().catch(()=>{});}l.innerHTML=tracks.map((t,j)=>`<li><button data-n="${j}"><i>${String(t.order).padStart(2,'0')}</i><span>${t.title}<small>${t.artist}</small></span><em>${f(t.duration)}</em></button></li>`).join('');b.onclick=()=>{q.hidden=!q.hidden;b.textContent=q.hidden?'BROWSE SONGS':'CLOSE SONG LIST'};l.onclick=e=>{let x=e.target.closest('button');if(x)go(+x.dataset.n)};p.onclick=()=>a.paused?go(i):a.pause();document.querySelector('#prev').onclick=()=>go(i-1);document.querySelector('#next').onclick=()=>go(i+1);a.onplay=()=>p.textContent='PAUSE';a.onpause=()=>p.textContent='PLAY';a.ontimeupdate=()=>{s.value=a.duration?a.currentTime/a.duration*100:0;c.textContent=`${f(a.currentTime)} / ${f(a.duration||0)}`};s.oninput=()=>a.duration&&(a.currentTime=s.value/100*a.duration);a.onended=()=>go(i+1);</script></body></html>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>song ideas</title><link rel="stylesheet" href="styles.css"></head><body><main><h1>SONG IDEAS</h1><section class="player"><div class="lcd"><span id="now">SELECT A SONG</span><b id="clock">0:00 / 0:00</b></div><div class="controls"><button id="prev">|&lt;</button><button id="play">PLAY</button><button id="next">&gt;|</button><input id="seek" type="range" min="0" max="100" value="0"></div><div class="vol"><label for="vol">VOL</label><span class="volwrap"><input id="vol" type="range" min="-40" max="12" step="0.5" value="0" title="double-click for unity"></span><b id="volout">0 dB</b><button id="lvl" title="lift quiet songs up to the level of the rest">AUTO LEVEL: ON</button></div><button id="browse">BROWSE SONGS</button><audio id="audio" crossorigin="anonymous" preload="none"></audio></section><section id="queue" hidden><p>PLAYLIST // SHOW CLIENTS</p><ol id="list"></ol></section><p class="mail"><a href="mailto:whoisthemetro@gmail.com?subject=Song%20ideas">EMAIL METRO</a></p></main><script src="tracks.js"></script><script>
+const $=q=>document.querySelector(q);
+const a=$('#audio'),l=$('#list'),n=$('#now'),c=$('#clock'),s=$('#seek'),p=$('#play'),q=$('#queue'),b=$('#browse');
+const vol=$('#vol'),volout=$('#volout'),lvl=$('#lvl');
+let i=0;
+const f=x=>`${Math.floor(x/60)}:${String(Math.floor(x%60)).padStart(2,'0')}`;
+
+// leveling: quiet songs get lifted up to TARGET, loud ones are left alone.
+// the lift is capped, and a limiter at the end of the chain catches the peaks a lift pushes over 0 dBFS.
+const TARGET=-12,MAX_LIFT=12;
+const lift=t=>Math.min(MAX_LIFT,Math.max(0,TARGET-t.lufs));
+const db=x=>Math.pow(10,x/20);
+const store={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
+let auto=store.get('si-auto')!=='off';
+vol.value=store.get('si-vol')??0;
+
+// web audio is built on the first play (browsers only allow it after a tap)
+let ctx,trackGain,userGain;
+function graph(){
+  if(ctx)return;
+  try{navigator.audioSession&&(navigator.audioSession.type='playback')}catch(e){}  // iOS: don't obey the silent switch
+  ctx=new (window.AudioContext||window.webkitAudioContext)();
+  trackGain=ctx.createGain();userGain=ctx.createGain();
+  const lim=ctx.createDynamicsCompressor();
+  lim.threshold.value=-1;lim.knee.value=0;lim.ratio.value=20;lim.attack.value=0.002;lim.release.value=0.15;
+  ctx.createMediaElementSource(a).connect(trackGain).connect(userGain).connect(lim).connect(ctx.destination);
+  apply();
+}
+function apply(){
+  const v=+vol.value;
+  volout.textContent=v<=-40?'MUTE':`${v>0?'+':''}${v} dB`;
+  lvl.textContent=`AUTO LEVEL: ${auto?'ON':'OFF'}`;lvl.classList.toggle('off',!auto);
+  if(!ctx)return;
+  const now=ctx.currentTime;
+  userGain.gain.setTargetAtTime(v<=-40?0:db(v),now,0.02);
+  trackGain.gain.setTargetAtTime(auto?db(lift(tracks[i])):1,now,0.02);
+}
+vol.oninput=()=>{store.set('si-vol',vol.value);apply()};
+vol.ondblclick=()=>{vol.value=0;vol.oninput()};
+lvl.onclick=()=>{auto=!auto;store.set('si-auto',auto?'on':'off');apply()};
+
+function go(x){
+  graph();ctx.resume();
+  i=(x+tracks.length)%tracks.length;let t=tracks[i];
+  a.src=t.url;apply();
+  n.textContent=`${String(t.order).padStart(2,'0')} // ${t.title.toUpperCase()} — ${t.artist.toUpperCase()}`;
+  [...l.children].forEach((e,j)=>e.classList.toggle('on',j===i));
+  a.play().catch(()=>{});
+}
+l.innerHTML=tracks.map((t,j)=>`<li><button data-n="${j}"><i>${String(t.order).padStart(2,'0')}</i><span>${t.title}<small>${t.artist}</small></span><em>${f(t.duration)}</em></button></li>`).join('');
+b.onclick=()=>{q.hidden=!q.hidden;b.textContent=q.hidden?'BROWSE SONGS':'CLOSE SONG LIST'};
+l.onclick=e=>{let x=e.target.closest('button');if(x)go(+x.dataset.n)};
+p.onclick=()=>{if(!a.paused)return a.pause();if(a.src){ctx.resume();a.play()}else go(i)};
+$('#prev').onclick=()=>go(i-1);$('#next').onclick=()=>go(i+1);
+a.onplay=()=>p.textContent='PAUSE';a.onpause=()=>p.textContent='PLAY';
+a.ontimeupdate=()=>{s.value=a.duration?a.currentTime/a.duration*100:0;c.textContent=`${f(a.currentTime)} / ${f(a.duration||0)}`};
+s.oninput=()=>a.duration&&(a.currentTime=s.value/100*a.duration);
+a.onended=()=>go(i+1);
+apply();
+</script></body></html>
