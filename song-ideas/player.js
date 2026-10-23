@@ -9,6 +9,7 @@ const fc=x=>x==null?'-:--.--':`${f(x)}.${pad2(Math.floor((x%1)*100+1e-6))}`;
 const clamp=(x,lo,hi)=>Math.max(lo,Math.min(hi,x));
 const store={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
 let i=0;
+const VER=3;   // bump with the ?v= in index.html
 
 /* --- level + volume --- */
 // quiet songs get lifted up to TARGET, loud ones are left alone. the lift is capped,
@@ -20,7 +21,7 @@ let auto=store.get('si-auto')!=='off';
 vol.value=store.get('si-vol')??0;
 
 // web audio is built on the first play (browsers only allow it after a tap)
-let ctx,trackGain,userGain;
+let ctx,trackGain,userGain,analyser;
 function graph(){
   if(ctx)return;
   try{navigator.audioSession&&(navigator.audioSession.type='playback')}catch(e){}  // iOS: don't obey the silent switch
@@ -29,6 +30,7 @@ function graph(){
   const lim=ctx.createDynamicsCompressor();
   lim.threshold.value=-1;lim.knee.value=0;lim.ratio.value=20;lim.attack.value=0.002;lim.release.value=0.15;
   ctx.createMediaElementSource(a).connect(trackGain).connect(userGain).connect(lim).connect(ctx.destination);
+  analyser=ctx.createAnalyser();analyser.fftSize=1024;analyser.smoothingTimeConstant=0.72;trackGain.connect(analyser);
   apply();
 }
 function apply(){
@@ -47,7 +49,8 @@ lvl.onclick=()=>{auto=!auto;store.set('si-auto',auto?'on':'off');apply()};
 /* --- transport --- */
 // a seek before the song has loaded is held here and applied once it has
 let pending=null;
-const D=()=>a.duration||tracks[i].duration;
+// a streamed mp3 can report NaN or Infinity before it knows; the list's length is the fallback
+const D=()=>isFinite(a.duration)&&a.duration>0?a.duration:tracks[i].duration;
 const T=()=>pending??a.currentTime;
 function seek(t){
   t=clamp(t,0,D());prevT=t;
@@ -65,9 +68,15 @@ function cue(x,go){
   [...list.children].forEach((e,j)=>e.classList.toggle('on',j===i));
   dl.href=`${t.url}?download=${encodeURIComponent(fileName(t))}`;  // supabase answers ?download with content-disposition: attachment
   zoom=1;loadLoop();apply();
-  peaks=new Uint8Array(0);
-  fetch(`peaks/${pad2(t.order)}.bin`).then(r=>r.ok?r.arrayBuffer():null).then(b=>{if(b&&tracks[i]===t)peaks=new Uint8Array(b)}).catch(()=>{});
+  peaks=new Uint8Array(0);loadPeaks(t,0);
   if(go)start();
+}
+// a waveform that fails to arrive (a dropped request on a phone, a hiccup at the CDN) is retried
+// rather than left blank for the rest of the song
+function loadPeaks(t,tries){
+  fetch(`peaks/${pad2(t.order)}.bin?v=${VER}`).then(r=>{if(!r.ok)throw r.status;return r.arrayBuffer()})
+    .then(b=>{if(tracks[i]===t&&b.byteLength)peaks=new Uint8Array(b);else if(tracks[i]===t)throw 'empty'})
+    .catch(()=>{if(tracks[i]===t&&tries<6)setTimeout(()=>tracks[i]===t&&!peaks.length&&loadPeaks(t,tries+1),500*2**tries)});
 }
 list.innerHTML=tracks.map((t,j)=>`<li><button data-n="${j}"><i>${pad2(t.order)}</i><span>${t.title}<small>${t.artist}</small></span><em>${f(t.duration)}</em></button></li>`).join('');
 browse.onclick=()=>{queue.hidden=!queue.hidden;browse.textContent=queue.hidden?'BROWSE SONGS':'CLOSE SONG LIST'};
@@ -171,7 +180,8 @@ function drawWave(){
     g.fillStyle=loop.on?'rgba(255,90,162,.22)':'rgba(160,170,200,.12)';
     g.fillRect(X(loop.a),top,X(loop.b)-X(loop.a),h-top);
   }
-  bars(g,w,h,viewStart,len,top,'#b8ff73','#3b5583');
+  if(peaks.length)bars(g,w,h,viewStart,len,top,'#b8ff73','#3b5583');
+  else{g.fillStyle='#3b5583';g.fillRect(0,(h+top)/2-d/2,w,d);g.fillStyle='#6f7fa6';g.font=`${11*d}px "Courier New",monospace`;g.fillText('LOADING WAVEFORM…',8*d,top+6*d)}
   for(const k of ['a','b'])if(loop[k]!=null){   // the flags you drag
     const x=Math.round(X(loop[k]));
     g.fillStyle=loop.on?'#ff5aa2':'#9aa3bd';g.fillRect(x-d,top,2*d,h-top);
@@ -258,6 +268,10 @@ document.addEventListener('click',e=>{if(e.detail>0){const b=e.target.closest('b
 
 /* --- every frame --- */
 function frame(){
+  requestAnimationFrame(frame);
+  try{tick()}catch(e){console.error(e)}
+}
+function tick(){
   enforce();
   // while playing zoomed in, the view pages along with the playhead
   if(zoom>1&&!drag&&!overDrag&&!a.paused){const t=T();if(t<viewStart||t>viewStart+viewLen())viewStart=clamp(t-viewLen()*0.1,0,D()-viewLen())}
@@ -266,6 +280,5 @@ function frame(){
   aout.textContent=fc(loop.a);bout.textContent=fc(loop.b);
   loopBtn.textContent=`LOOP: ${loop.on?'ON':'OFF'}`;loopBtn.classList.toggle('on',loop.on);
   drawWave();drawOver();
-  requestAnimationFrame(frame);
 }
 cue(0,false);apply();frame();

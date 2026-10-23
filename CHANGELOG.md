@@ -4,6 +4,26 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-10-23 — song ideas: a visualizer, and the waveform stops going missing
+
+- **VIS** (or V) opens a Winamp/MilkDrop-style visualizer above the waveform
+  (`song-ideas/vis.js`). It's a feedback loop: each frame the last one is drawn
+  back zoomed, turned, faded and hue-shifted, and the music goes on top — six
+  looks (tunnel, spiral, kaleido, ripple, nebula, stargate), tap for the next,
+  and it wanders on its own every 24 s. Double-click or ⛶ for full screen: the
+  real Fullscreen API where there is one, a fixed overlay everywhere (iPhone
+  Safari only fullscreens `<video>`). It listens BEFORE the volume, so turning
+  down doesn't dim the picture, and breathes by itself while paused.
+  Shapes size off the shorter side so a phone held upright doesn't crop them.
+- **Missing waveform**: the case actually seen was the local preview server
+  dying under a page that kept playing (the audio is on Supabase, the peaks
+  were on localhost) — but the live page had the same shape of bug: one failed
+  peaks request and the song stayed blank. Peaks now retry with backoff, show
+  "LOADING WAVEFORM…" instead of nothing, a NaN/Infinity `audio.duration` falls
+  back to the list's length (Infinity also hung the ruler loop), and the draw
+  loop survives a thrown frame instead of stopping for good.
+- Asset URLs carry `?v=3` so a cached old script can't sit under a new page.
+
 ## 2026-10-16 — song ideas: a waveform you can loop, and a download button
 
 - **The seek bar is a waveform now** (`song-ideas/player.js`, split out of the

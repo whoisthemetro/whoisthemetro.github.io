@@ -1,11 +1,12 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>song ideas</title><link rel="stylesheet" href="styles.css"></head><body><main><h1>SONG IDEAS</h1>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>song ideas</title><link rel="stylesheet" href="styles.css?v=3"></head><body><main><h1>SONG IDEAS</h1>
 <section class="player">
   <div class="lcd"><span id="now">SELECT A SONG</span><b id="clock">0:00 / 0:00</b></div>
+  <div id="vis" hidden><canvas id="viscv" title="tap: next look · double-click: full screen"></canvas><span id="visname"></span><button id="visfull" title="full screen (double-click)">⛶</button></div>
   <canvas id="wave" title="click to jump · drag to loop a section · drag the A/B flags to adjust"></canvas>
   <canvas id="over" title="whole song — drag to move the zoomed view"></canvas>
   <div class="controls">
     <button id="prev" title="previous">|&lt;</button><button id="play">PLAY</button><button id="next" title="next">&gt;|</button>
-    <span class="grow"></span>
+    <button id="visbtn" title="visualizer (V)">VIS</button><span class="grow"></span>
     <button id="zout" title="zoom out (-)">−</button><button id="zin" title="zoom in (+)">+</button>
     <button id="loop" title="loop (L)">LOOP: OFF</button>
   </div>
@@ -18,7 +19,7 @@
   <div class="row"><button id="browse">BROWSE SONGS</button><a id="dl" class="btn" download title="download this song">DOWNLOAD</a></div>
   <audio id="audio" crossorigin="anonymous" preload="none"></audio>
 </section>
-<p class="keys">SPACE play · I / O set A / B · L loop · + / − zoom</p>
+<p class="keys">SPACE play · I / O set A / B · L loop · + / − zoom · V visualizer</p>
 <section id="queue" hidden><p>PLAYLIST // SHOW CLIENTS</p><ol id="list"></ol></section>
 <p class="mail"><a href="mailto:whoisthemetro@gmail.com?subject=Song%20ideas">EMAIL METRO</a></p></main>
-<script src="tracks.js"></script><script src="player.js"></script></body></html>
+<script src="tracks.js?v=3"></script><script src="player.js?v=3"></script><script src="vis.js?v=3"></script></body></html>
