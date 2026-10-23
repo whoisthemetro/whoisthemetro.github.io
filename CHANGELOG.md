@@ -22,7 +22,11 @@ it says it did.
   "LOADING WAVEFORM…" instead of nothing, a NaN/Infinity `audio.duration` falls
   back to the list's length (Infinity also hung the ruler loop), and the draw
   loop survives a thrown frame instead of stopping for good.
-- Asset URLs carry `?v=3` so a cached old script can't sit under a new page.
+- **The A/B row is gone** — nudge arrows, times, SET and CLEAR. The loop is
+  something you SEE and drag on the waveform, so exact numbers were clutter;
+  LOOP turns it on and off. (I / O still set A / B at the playhead from the
+  keyboard.)
+- Asset URLs carry `?v=4` so a cached old script can't sit under a new page.
 
 ## 2026-10-16 — song ideas: a waveform you can loop, and a download button
 

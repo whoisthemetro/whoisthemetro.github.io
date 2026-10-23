@@ -2,14 +2,14 @@
 const $=q=>document.querySelector(q);
 const a=$('#audio'),list=$('#list'),now=$('#now'),clock=$('#clock'),play=$('#play'),queue=$('#queue'),browse=$('#browse');
 const vol=$('#vol'),volout=$('#volout'),lvl=$('#lvl'),dl=$('#dl');
-const wave=$('#wave'),over=$('#over'),loopBtn=$('#loop'),aout=$('#aout'),bout=$('#bout');
+const wave=$('#wave'),over=$('#over'),loopBtn=$('#loop');
 const pad2=x=>String(x).padStart(2,'0');
 const f=x=>`${Math.floor(x/60)}:${pad2(Math.floor(x%60))}`;
 const fc=x=>x==null?'-:--.--':`${f(x)}.${pad2(Math.floor((x%1)*100+1e-6))}`;
 const clamp=(x,lo,hi)=>Math.max(lo,Math.min(hi,x));
 const store={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
 let i=0;
-const VER=3;   // bump with the ?v= in index.html
+const VER=4;   // bump with the ?v= in index.html
 
 /* --- level + volume --- */
 // quiet songs get lifted up to TARGET, loud ones are left alone. the lift is capped,
@@ -116,25 +116,6 @@ function enforce(){
   prevT=t;
 }
 loopBtn.onclick=()=>{loop.on=!loop.on;if(loop.on&&region()&&(T()<loop.a||T()>=loop.b))seek(loop.a);saveLoop()};
-$('#seta').onclick=()=>setPoint('a',T());
-$('#setb').onclick=()=>setPoint('b',T());
-$('#clear').onclick=()=>{loop={on:false,a:null,b:null};saveLoop()};
-// nudge: a tap moves 10 ms, holding speeds up. on release you hear the result —
-// A plays from A, B plays the last two seconds into the turnaround.
-document.querySelectorAll('[data-nudge]').forEach(btn=>{
-  const [h,dir]=btn.dataset.nudge.split(',');let timer,count=0;
-  const step=()=>{
-    if(loop[h]==null)return;
-    loop[h]=clamp(loop[h]+dir*(count<8?0.01:count<30?0.05:0.25),0,D());
-    if(region()&&loop.a>loop.b)loop[h]=h==='a'?loop.b:loop.a;  // flags don't cross while you nudge
-    count++;timer=setTimeout(step,count===1?380:60);
-  };
-  btn.onpointerdown=e=>{e.preventDefault();count=0;step()};
-  const stop=()=>{if(timer==null)return;clearTimeout(timer);timer=null;saveLoop();
-    if(loop[h]!=null&&!a.paused)seek(h==='a'?loop.a:Math.max(loop.a??0,loop.b-2))};
-  btn.onpointerup=btn.onpointerleave=btn.onpointercancel=stop;
-});
-
 /* --- waveform --- */
 const PER_SEC=50;   // peaks/NN.bin is one byte per 1/50 s (tools/song-ideas/peaks.py)
 let peaks=new Uint8Array(0),zoom=1,viewStart=0;
@@ -277,7 +258,6 @@ function tick(){
   if(zoom>1&&!drag&&!overDrag&&!a.paused){const t=T();if(t<viewStart||t>viewStart+viewLen())viewStart=clamp(t-viewLen()*0.1,0,D()-viewLen())}
   if(zoom<=1)viewStart=0;
   clock.textContent=`${f(T())} / ${f(D())}`+(region()?`   ${loop.on?'LOOP':'loop'} ${fc(loop.a)}–${fc(loop.b)}`:loop.on?'   LOOP SONG':'');
-  aout.textContent=fc(loop.a);bout.textContent=fc(loop.b);
   loopBtn.textContent=`LOOP: ${loop.on?'ON':'OFF'}`;loopBtn.classList.toggle('on',loop.on);
   drawWave();drawOver();
 }
