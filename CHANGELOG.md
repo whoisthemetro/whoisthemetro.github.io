@@ -4,6 +4,16 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-10-23 — song ideas: just the player, floating in Star Nest
+
+- The SONG IDEAS banner, the keyboard-hint line and the EMAIL METRO link are
+  gone; the page is the player and nothing else.
+- The background is **Star Nest** by Pablo Roman Andrioli (Shadertoy, MIT),
+  run unmodified in `song-ideas/bg.js` with `iMouse` pinned to zero. It's
+  20 volume steps x 17 folds per pixel, so it renders at most 760 px wide
+  (420 on touch) and is stretched to the window, steps at ~30 fps, and stops
+  while the tab is hidden or the visualizer is full screen. No WebGL = black.
+
 ## 2026-10-23 — song ideas: a visualizer, and the waveform stops going missing
 
 - **VIS** (or V) opens a Winamp/MilkDrop-style visualizer above the waveform

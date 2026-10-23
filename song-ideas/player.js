@@ -9,7 +9,7 @@ const fc=x=>x==null?'-:--.--':`${f(x)}.${pad2(Math.floor((x%1)*100+1e-6))}`;
 const clamp=(x,lo,hi)=>Math.max(lo,Math.min(hi,x));
 const store={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
 let i=0;
-const VER=4;   // bump with the ?v= in index.html
+const VER=5;   // bump with the ?v= in index.html
 
 /* --- level + volume --- */
 // quiet songs get lifted up to TARGET, loud ones are left alone. the lift is capped,
