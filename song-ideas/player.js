@@ -36,7 +36,7 @@ function graph(){
 function apply(){
   const v=+vol.value;
   volout.textContent=v<=-40?'MUTE':`${v>0?'+':''}${v} dB`;
-  lvl.textContent=`AUTO LEVEL: ${auto?'ON':'OFF'}`;lvl.classList.toggle('off',!auto);
+  lvl.classList.toggle('off',!auto);
   if(!ctx)return;
   const t=ctx.currentTime;
   userGain.gain.setTargetAtTime(v<=-40?0:db(v),t,0.02);
@@ -64,7 +64,8 @@ const fileName=t=>`${t.artist} - ${t.title}`.replace(/[\\/:*?"<>|]/g,'').replace
 function cue(x,go){
   i=(x+tracks.length)%tracks.length;const t=tracks[i];
   a.src=t.url;pending=null;prevT=0;
-  now.textContent=`${pad2(t.order)} // ${t.title.toUpperCase()} — ${t.artist.toUpperCase()}`;
+  now.textContent=`${t.title.toUpperCase()} — ${t.artist.toUpperCase()}`;
+  $('#chan').textContent=`CH ${pad2(t.order)}/${tracks.length}`;
   [...list.children].forEach((e,j)=>e.classList.toggle('on',j===i));
   dl.href=`${t.url}?download=${encodeURIComponent(fileName(t))}`;  // supabase answers ?download with content-disposition: attachment
   zoom=1;loadLoop();apply();
@@ -84,7 +85,7 @@ list.onclick=e=>{const x=e.target.closest('button');if(x)cue(+x.dataset.n,true)}
 const toggle=()=>a.paused?start():a.pause();
 play.onclick=toggle;
 $('#prev').onclick=()=>cue(i-1,true);$('#next').onclick=()=>cue(i+1,true);
-a.onplay=()=>play.textContent='PAUSE';a.onpause=()=>play.textContent='PLAY';
+a.onplay=()=>{play.textContent='PAUSE';play.classList.add('live')};a.onpause=()=>{play.textContent='PLAY';play.classList.remove('live')};
 a.onended=()=>{
   if(loop.on){seek(region()?loop.a:0);a.play();return}  // looping a region that runs to the very end, or the whole song
   cue(i+1,true);
@@ -145,38 +146,39 @@ function bars(g,w,h,t0,len,top,col,dim){
     g.fillStyle=s<played?col:dim;g.fillRect(x,mid-y,1,y*2);
   }
 }
+const MONO='"Share Tech Mono",ui-monospace,Menlo,monospace';
 const TICKS=[0.05,0.1,0.25,0.5,1,2,5,10,15,30,60];
 function drawWave(){
   const [g,w,h,d]=fit(wave),len=viewLen(),X=t=>(t-viewStart)/len*w,top=14*d;
-  g.fillStyle='#05070c';g.fillRect(0,0,w,h);
+  g.fillStyle='#02040a';g.fillRect(0,0,w,h);
   // time ruler
   const step=TICKS.find(s=>len/s<=8)||60;
-  g.font=`${10*d}px "Courier New",monospace`;g.textBaseline='top';
+  g.font=`${10*d}px ${MONO}`;g.textBaseline='top';
   for(let t=Math.ceil(viewStart/step)*step;t<viewStart+len;t+=step){
     const x=Math.round(X(t));
-    g.fillStyle='#22304d';g.fillRect(x,top,1,h-top);
-    g.fillStyle='#6f7fa6';g.fillText(step<1?fc(t).slice(0,-1):f(t),x+3*d,2*d);
+    g.fillStyle='rgba(127,224,255,.08)';g.fillRect(x,top,1,h-top);
+    g.fillStyle='#4f6d8f';g.fillText(step<1?fc(t).slice(0,-1):f(t),x+3*d,2*d);
   }
   if(region()){
-    g.fillStyle=loop.on?'rgba(255,90,162,.22)':'rgba(160,170,200,.12)';
+    g.fillStyle=loop.on?'rgba(255,181,71,.14)':'rgba(140,170,210,.07)';
     g.fillRect(X(loop.a),top,X(loop.b)-X(loop.a),h-top);
   }
-  if(peaks.length)bars(g,w,h,viewStart,len,top,'#b8ff73','#3b5583');
-  else{g.fillStyle='#3b5583';g.fillRect(0,(h+top)/2-d/2,w,d);g.fillStyle='#6f7fa6';g.font=`${11*d}px "Courier New",monospace`;g.fillText('LOADING WAVEFORM…',8*d,top+6*d)}
+  if(peaks.length)bars(g,w,h,viewStart,len,top,'#bdeeff','#2a4a6c');
+  else{g.fillStyle='#2a4a6c';g.fillRect(0,(h+top)/2-d/2,w,d);g.fillStyle='#4f6d8f';g.font=`${11*d}px ${MONO}`;g.fillText('ACQUIRING SIGNAL…',8*d,top+6*d)}
   for(const k of ['a','b'])if(loop[k]!=null){   // the flags you drag
     const x=Math.round(X(loop[k]));
-    g.fillStyle=loop.on?'#ff5aa2':'#9aa3bd';g.fillRect(x-d,top,2*d,h-top);
+    g.fillStyle=loop.on?'#ffb547':'#5f7c9c';g.fillRect(x-d,top,2*d,h-top);
     g.fillRect(k==='a'?x-d:x-12*d+d,top,12*d,12*d);
-    g.fillStyle='#05070c';g.font=`bold ${10*d}px Arial`;g.fillText(k.toUpperCase(),k==='a'?x+2*d:x-9*d,top+1*d);
+    g.fillStyle='#02040a';g.font=`${10*d}px ${MONO}`;g.fillText(k.toUpperCase(),k==='a'?x+2*d:x-9*d,top+1*d);
   }
-  const p=Math.round(X(T()));g.fillStyle='#fff';g.fillRect(p-d/2,top,Math.max(1,d),h-top);
+  const p=Math.round(X(T()));g.fillStyle='rgba(127,224,255,.25)';g.fillRect(p-2*d,top,4*d,h-top);g.fillStyle='#fff';g.fillRect(p-d/2,top,Math.max(1,d),h-top);
 }
 function drawOver(){
   const [g,w,h,d]=fit(over),dur=D(),X=t=>t/dur*w;
-  g.fillStyle='#05070c';g.fillRect(0,0,w,h);
-  if(region()){g.fillStyle=loop.on?'rgba(255,90,162,.35)':'rgba(160,170,200,.2)';g.fillRect(X(loop.a),0,X(loop.b)-X(loop.a),h)}
-  bars(g,w,h,0,dur,0,'#7aa84d','#2a3b5c');
-  if(zoom>1){g.strokeStyle='#83b8ff';g.lineWidth=d;g.strokeRect(X(viewStart)+d/2,d/2,X(viewLen())-d,h-d)}
+  g.fillStyle='#02040a';g.fillRect(0,0,w,h);
+  if(region()){g.fillStyle=loop.on?'rgba(255,181,71,.28)':'rgba(140,170,210,.12)';g.fillRect(X(loop.a),0,X(loop.b)-X(loop.a),h)}
+  bars(g,w,h,0,dur,0,'#5fb4d6','#1b3150');
+  if(zoom>1){g.strokeStyle='#7fe0ff';g.lineWidth=d;g.strokeRect(X(viewStart)+d/2,d/2,X(viewLen())-d,h-d)}
   g.fillStyle='#fff';g.fillRect(Math.round(X(T())),0,Math.max(1,d),h);
 }
 
@@ -247,6 +249,41 @@ document.addEventListener('keydown',e=>{
 // a clicked button keeps focus, and then SPACE would press it again instead of playing
 document.addEventListener('click',e=>{if(e.detail>0){const b=e.target.closest('button');b&&b.blur()}});
 
+/* --- the panel: readouts, lamps, level meter --- */
+const $clock=$('#clock'),$dur=$('#dur'),$tele=$('#tele'),$met=$('#met'),meter=$('#meter');
+const ledSig=$('#ledsig'),ledLoop=$('#ledloop'),ledLvl=$('#ledlvl'),boot=performance.now();
+const td=new Uint8Array(1024);
+let level=0,peakHold=0,peakAt=0,lastTele='';
+const sgn=x=>`${x>0?'+':x<0?'−':''}${Math.abs(x).toFixed(1)}`;
+function panel(){
+  const t=T(),now=performance.now();
+  $clock.textContent=`${f(t)}.${Math.floor((t%1)*10)}`;
+  $dur.textContent=`/ ${f(D())}`;
+  const s=Math.floor((now-boot)/1000);
+  $met.textContent=`MET ${pad2(Math.floor(s/3600))}:${pad2(Math.floor(s/60)%60)}:${pad2(s%60)}`;
+  // level: time-domain amplitude (frequency bytes are a dB scale and would sit pinned)
+  let rms=0;
+  if(analyser&&!a.paused){analyser.getByteTimeDomainData(td);for(let k=0;k<td.length;k++){const v=(td[k]-128)/128;rms+=v*v}rms=Math.sqrt(rms/td.length)}
+  const target=Math.min(1,rms*2.6);
+  level=target>level?target:level*0.9+target*0.1;
+  if(level>=peakHold||now-peakAt>900){peakHold=level;peakAt=now}
+  ledSig.classList.toggle('on',level>0.08);ledSig.style.opacity=a.paused?1:0.45+level*0.8;
+  ledLoop.classList.toggle('on',loop.on);ledLoop.classList.toggle('blink',loop.on&&!a.paused);
+  const lifted=auto?lift(tracks[i]):0;
+  ledLvl.classList.toggle('on',lifted>0);
+  const tele=`LIFT <b>${auto?(lifted?sgn(lifted)+' dB':'0.0 dB'):'OFF'}</b> · GAIN <b>${+vol.value<=-40?'MUTE':sgn(+vol.value)+' dB'}</b> · `+
+    (region()?`LOOP <b class="${loop.on?'am':''}">${fc(loop.a)}→${fc(loop.b)}</b>`:`LOOP <b>${loop.on?'SONG':'---'}</b>`)+(zoom>1?` · ZOOM <b>×${zoom<10?zoom.toFixed(1):Math.round(zoom)}</b>`:'');
+  if(tele!==lastTele){$tele.innerHTML=tele;lastTele=tele}
+  // segmented meter: cyan, amber near the top, red only at the very end
+  const [g,w,h,d]=fit(meter),N=24,gap=2*d,sw=(w-gap*(N-1))/N,lit=Math.round(level*N),pk=Math.min(N-1,Math.round(peakHold*N)-1);
+  g.clearRect(0,0,w,h);
+  for(let k=0;k<N;k++){
+    const c=k>=N-2?'255,77,94':k>=N-6?'255,181,71':'127,224,255';
+    g.fillStyle=`rgba(${c},${k<lit?0.95:k===pk&&peakHold>0.05?0.8:0.1})`;
+    g.fillRect(k*(sw+gap),0,sw,h);
+  }
+}
+
 /* --- every frame --- */
 function frame(){
   requestAnimationFrame(frame);
@@ -257,8 +294,8 @@ function tick(){
   // while playing zoomed in, the view pages along with the playhead
   if(zoom>1&&!drag&&!overDrag&&!a.paused){const t=T();if(t<viewStart||t>viewStart+viewLen())viewStart=clamp(t-viewLen()*0.1,0,D()-viewLen())}
   if(zoom<=1)viewStart=0;
-  clock.textContent=`${f(T())} / ${f(D())}`+(region()?`   ${loop.on?'LOOP':'loop'} ${fc(loop.a)}–${fc(loop.b)}`:loop.on?'   LOOP SONG':'');
-  loopBtn.textContent=`LOOP: ${loop.on?'ON':'OFF'}`;loopBtn.classList.toggle('on',loop.on);
+  loopBtn.classList.toggle('on',loop.on);
+  panel();
   drawWave();drawOver();
 }
 cue(0,false);apply();frame();

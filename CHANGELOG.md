@@ -4,6 +4,21 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-10-23 — song ideas: the player becomes a console
+
+- Restyled to sit in the Star Nest instead of on top of it: dark smoked glass
+  (backdrop blur), hairline borders, corner brackets, Share Tech Mono
+  throughout. Cyan is the system, AMBER is anything you set (the loop, the
+  unity tick, DOWNLOAD), red only ever appears at the top of the meter.
+- A status strip of lamps — PWR, SIG (breathes with the music), LOOP (amber,
+  blinking while it's looping), A-LVL (lit when auto level is actually lifting
+  this song) — plus CH nn/55 and a MET clock counting since you opened it.
+- The readout: track, a big T+ clock to tenths, a 24-segment level meter with
+  peak hold (time-domain RMS — frequency bytes are dB and would sit pinned),
+  and a telemetry line: lift, gain, loop points, zoom.
+- Waveform and overview repainted to match: cyan-white played, steel unplayed,
+  amber loop and flags, a glow on the playhead. Buttons read PREV / PLAY / NEXT.
+
 ## 2026-10-23 — song ideas: just the player, floating in Star Nest
 
 - The SONG IDEAS banner, the keyboard-hint line and the EMAIL METRO link are
