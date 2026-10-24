@@ -4,7 +4,7 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
-## 2026-10-24 — song ideas: stems (pilot — code shipped, files not hosted yet)
+## 2026-10-24 — song ideas: stems
 
 - **STEMS** opens a four-strip mixer — DRUMS · BASS · VOCALS · OTHER — in the
   waveform's place (the overview strip stays for moving around): a fader
@@ -26,10 +26,12 @@ it says it did.
   as mix − drums − bass − vocals — htdemucs_ft is four specialist models and
   their parts only nulled the mix by 10–23 dB. After: ~80 dB, and in the
   browser stems-at-unity measure within 0.1 dB of the mp3 at the same spot.
-- **Not live yet:** the packed files are ~2 Mbps (38 MB for 2½ minutes), over
-  the `demos` bucket's 25 MB cap and Supabase's 50 MB one, so they need R2.
-  Until `STEMS_BASE` in `stems.js` points somewhere, production hides the
-  button. Locally they're served from :8124. Pilot songs: 17, 38, 42.
+- **Hosted on R2.** The packed files are ~2 Mbps (38 MB for 2½ minutes), past
+  the `demos` bucket's 25 MB cap and Supabase's 50 MB one, so they live in the
+  `metro-media` R2 bucket at **media.whoisthemetro.com** (custom domain, CORS
+  for whoisthemetro.com / songs. / localhost:8123, Range works). Uploaded by
+  `tools/song-ideas/r2put.sh`; the Cloudflare token is in
+  `~/.config/metro/cloudflare.env`. Pilot songs live: 17, 38, 42.
 - **Song links:** `…/song-ideas/#17` opens on song 17; songs.whoisthemetro.com
   passes the `#` through to the player.
 
