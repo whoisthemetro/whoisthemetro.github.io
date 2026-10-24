@@ -12,7 +12,7 @@
 <link rel="icon" type="image/png" href="favicon.png"><link rel="apple-touch-icon" href="apple-touch-icon.png">
 
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap">
-<link rel="stylesheet" href="styles.css?v=11"></head><body><canvas id="bg"></canvas><main>
+<link rel="stylesheet" href="styles.css?v=12"></head><body><canvas id="bg"></canvas><main>
 <section class="player">
   <span class="cn tl"></span><span class="cn tr"></span><span class="cn bl"></span><span class="cn br"></span>
   <header class="hud">
@@ -31,6 +31,7 @@
   </div>
   <div id="vis" hidden title="tap anywhere to go back"><canvas id="viscv"></canvas><span id="visname"></span><span class="visbtns"><button id="visnext" title="next look">›</button><button id="visfull" title="full screen">⛶</button></span></div>
   <canvas id="wave" title="click to jump · drag to loop a section · drag the A/B flags to adjust"></canvas>
+  <div id="mixer" hidden></div>
   <canvas id="over" title="whole song — drag to move the zoomed view"></canvas>
   <div class="controls">
     <button id="prev" title="previous">PREV</button><button id="play">PLAY</button><button id="next" title="next">NEXT</button><button id="shuf" title="shuffle (S)">SHUF</button>
@@ -39,9 +40,9 @@
     <button id="loop" title="loop (L)">LOOP</button>
   </div>
   <div class="vol"><label for="vol">GAIN</label><span class="volwrap"><input id="vol" type="range" min="-40" max="12" step="0.5" value="0" title="double-click for unity"></span><b id="volout">0 dB</b><button id="lvl" title="lift quiet songs up to the level of the rest">AUTO LVL</button></div>
-  <div class="row"><button id="browse">BROWSE SONGS</button><a id="dl" class="btn" download title="download this song">DOWNLOAD</a></div>
+  <div class="row"><button id="browse">BROWSE SONGS</button><button id="stemsbtn" title="drums · bass · vocals · other" hidden>STEMS</button><a id="dl" class="btn" download title="download this song">DOWNLOAD</a></div>
   <audio id="audio" crossorigin="anonymous" preload="none"></audio>
 </section>
 <section id="queue" hidden><p>CATALOG · SHOW CLIENTS · 55</p><ol id="list"></ol></section>
 </main>
-<script src="tracks.js?v=11"></script><script src="player.js?v=11"></script><script src="vis.js?v=11"></script><script src="bg.js?v=11"></script></body></html>
+<script src="tracks.js?v=12"></script><script src="player.js?v=12"></script><script src="stems.js?v=12"></script><script src="mixer.js?v=12"></script><script src="vis.js?v=12"></script><script src="bg.js?v=12"></script></body></html>

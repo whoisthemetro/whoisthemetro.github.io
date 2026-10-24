@@ -9,7 +9,7 @@ const fc=x=>x==null?'-:--.--':`${f(x)}.${pad2(Math.floor((x%1)*100+1e-6))}`;
 const clamp=(x,lo,hi)=>Math.max(lo,Math.min(hi,x));
 const store={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
 let i=0;
-const VER=11;   // bump with the ?v= in index.html
+const VER=12;   // bump with the ?v= in index.html
 
 /* --- level + volume --- */
 // quiet songs get lifted up to TARGET, loud ones are left alone. the lift is capped,
@@ -21,7 +21,7 @@ let auto=store.get('si-auto')!=='off';
 vol.value=store.get('si-vol')??0;
 
 // web audio is built on the first play (browsers only allow it after a tap)
-let ctx,trackGain,userGain,analyser;
+let ctx,trackGain,userGain,analyser,srcNode,mixPath;
 function graph(){
   if(ctx)return;
   try{navigator.audioSession&&(navigator.audioSession.type='playback')}catch(e){}  // iOS: don't obey the silent switch
@@ -29,7 +29,13 @@ function graph(){
   trackGain=ctx.createGain();userGain=ctx.createGain();
   const lim=ctx.createDynamicsCompressor();
   lim.threshold.value=-1;lim.knee.value=0;lim.ratio.value=20;lim.attack.value=0.002;lim.release.value=0.15;
-  ctx.createMediaElementSource(a).connect(trackGain).connect(userGain).connect(lim).connect(ctx.destination);
+  // the element feeds two routes into trackGain: mixPath for the normal stereo mp3, and the
+  // stems route (mixer.js), which splits an 8-channel FLAC into four stereo parts. only one is
+  // ever open. mixPath is pinned to 2 channels so an 8-channel file can't leak through it.
+  srcNode=ctx.createMediaElementSource(a);
+  mixPath=ctx.createGain();mixPath.channelCount=2;mixPath.channelCountMode='explicit';mixPath.channelInterpretation='speakers';
+  srcNode.connect(mixPath).connect(trackGain);
+  trackGain.connect(userGain).connect(lim).connect(ctx.destination);
   analyser=ctx.createAnalyser();analyser.fftSize=1024;analyser.smoothingTimeConstant=0.72;trackGain.connect(analyser);
   apply();
 }
@@ -64,6 +70,7 @@ const fileName=t=>`${t.artist} - ${t.title}`.replace(/[\\/:*?"<>|]/g,'').replace
 function cue(x,go){
   i=(x+tracks.length)%tracks.length;const t=tracks[i];
   if(typeof deck!=='undefined')deck=deck.filter(j=>j!==i);
+  if(typeof desk!=='undefined')desk.leave();   // a new song always starts on its mp3
   a.src=t.url;pending=null;prevT=0;
   now.textContent=`${t.title.toUpperCase()} — ${t.artist.toUpperCase()}`;
   $('#chan').textContent=`CH ${pad2(t.order)}/${tracks.length}`;
@@ -71,6 +78,7 @@ function cue(x,go){
   dl.href=`${t.url}?download=${encodeURIComponent(fileName(t))}`;  // supabase answers ?download with content-disposition: attachment
   zoom=1;loadLoop();apply();
   peaks=new Uint8Array(0);loadPeaks(t,0);
+  if(typeof desk!=='undefined')desk.track();
   if(go)start();
 }
 // a waveform that fails to arrive (a dropped request on a phone, a hiccup at the CDN) is retried
@@ -292,7 +300,8 @@ function panel(){
   ledLvl.classList.toggle('on',lifted>0);
   ledShuf.classList.toggle('on',shuffle);
   const tele=`LIFT <b>${auto?(lifted?sgn(lifted)+' dB':'0.0 dB'):'OFF'}</b> · GAIN <b>${+vol.value<=-40?'MUTE':sgn(+vol.value)+' dB'}</b> · `+
-    (region()?`LOOP <b class="${loop.on?'am':''}">${fc(loop.a)}→${fc(loop.b)}</b>`:`LOOP <b>${loop.on?'SONG':'---'}</b>`)+(zoom>1?` · ZOOM <b>×${zoom<10?zoom.toFixed(1):Math.round(zoom)}</b>`:'');
+    (region()?`LOOP <b class="${loop.on?'am':''}">${fc(loop.a)}→${fc(loop.b)}</b>`:`LOOP <b>${loop.on?'SONG':'---'}</b>`)+(zoom>1?` · ZOOM <b>×${zoom<10?zoom.toFixed(1):Math.round(zoom)}</b>`:'')+
+    (typeof desk!=='undefined'&&desk.on()?` · SRC <b class="am">${desk.loading()?'LOADING STEMS…':'STEMS'}</b>`:'');
   if(tele!==lastTele){$tele.innerHTML=tele;lastTele=tele}
   // segmented meter: cyan, amber near the top, red only at the very end
   const [g,w,h,d]=fit(meter),N=24,gap=2*d,sw=(w-gap*(N-1))/N,lit=Math.round(level*N),pk=Math.min(N-1,Math.round(peakHold*N)-1);
@@ -318,4 +327,6 @@ function tick(){
   panel();
   drawWave();drawOver();
 }
-setShuffle(shuffle);cue(shuffle?Math.floor(Math.random()*tracks.length):0,false);apply();frame();
+// a link can open on one song: …/song-ideas/#17 (handy for texting a client one particular idea)
+const deep=parseInt(location.hash.slice(1),10);
+setShuffle(shuffle);cue(deep>=1&&deep<=tracks.length?deep-1:shuffle?Math.floor(Math.random()*tracks.length):0,false);apply();frame();

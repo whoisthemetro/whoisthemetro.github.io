@@ -1,0 +1,43 @@
+<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>8ch test</title>
+<style>body{font:15px monospace;background:#000;color:#cfe;padding:12px}button{font:20px monospace;padding:14px 24px}pre{white-space:pre-wrap}</style>
+<!-- which packed 8-channel format does this browser stream with all 8 channels intact and in order?
+     channel k carries a 300*(k+1) Hz tone; a pass reads 300 600 900 1200 1500 1800 2100 2400.
+     results 2026-10-24: FLAC passes on Chrome AND iPhone Safari (18.1). octagonal AAC passes on
+     Chrome but won't play on iPhone; 7.1 AAC/opus drop channel 4 as LFE (and iPhone reorders
+     AAC); opus in webm/ogg/mp4 doesn't play on iPhone. the media isn't committed — rebuild it:
+       ffmpeg $(for k in 0 1 2 3 4 5 6 7; do printf -- "-f lavfi -i sine=frequency=%d:duration=8 " $((300*(k+1))); done) \
+         -filter_complex "amerge=inputs=8,volume=0.5" src.wav
+       ffmpeg -i src.wav -c:a flac flac8.flac            (and -c:a aac -af channelmap=channel_layout=octagonal aacoct.m4a, …) -->
+<button id="go">RUN TEST</button><pre id="o"></pre>
+<script>
+const o=document.getElementById('o'),log=s=>{o.textContent+=s+'\n'};
+const FILES=['opus255.mp4','aacoct.m4a','opus255.caf','flac8.flac'].filter(f=>!location.search.includes('x'+f));
+const TYPES={'mp4':'audio/mp4; codecs=opus','caf':'audio/x-caf; codecs=opus','webm':'audio/webm; codecs=opus','ogg':'audio/ogg; codecs=opus','m4a':'audio/mp4; codecs=mp4a.40.2','flac':'audio/flac'};
+document.getElementById('go').onclick=async()=>{
+  o.textContent='';log(navigator.userAgent);
+  // iOS only lets media start inside the tap itself — so every element is created and started
+  // right here, synchronously, which unlocks it for the rest of the test
+  const ctx=new (window.AudioContext||window.webkitAudioContext)();ctx.resume();
+  const els={};for(const f of FILES){const a=new Audio();a.crossOrigin='anonymous';a.src=f;a.muted=true;a.play().catch(()=>{});els[f]=a}
+  await new Promise(r=>setTimeout(r,300));for(const f of FILES){els[f].pause();els[f].currentTime=0;els[f].muted=false}
+  for(const f of FILES){
+    const ext=f.split('.').pop();log(`\n${f}  canPlay=${new Audio().canPlayType(TYPES[ext])||'no'}`);
+    try{
+      const a=els[f];
+      const src=ctx.createMediaElementSource(a),sp=ctx.createChannelSplitter(8),an=[];
+      src.connect(sp);
+      for(let k=0;k<8;k++){const x=ctx.createAnalyser();x.fftSize=4096;sp.connect(x,k);an.push(x)}
+      const ok=await Promise.race([a.play().then(()=>true),new Promise(r=>setTimeout(()=>r(false),8000))]);
+      if(!ok){log('  did not play');continue}
+      await new Promise(r=>setTimeout(r,1500));
+      const res=an.map(x=>{const d=new Float32Array(x.frequencyBinCount);x.getFloatFrequencyData(d);let m=-1e9,b=0;for(let j=1;j<d.length;j++)if(d[j]>m){m=d[j];b=j}return m<-90?'---':Math.round(b*ctx.sampleRate/x.fftSize)});
+      a.pause();src.disconnect();
+      const want=[300,600,900,1200,1500,1800,2100,2400];
+      const pass=res.every((v,k)=>v!=='---'&&Math.abs(v-want[k])<30);
+      log(`  ${pass?'PASS':'FAIL'}  ${res.join(' ')}`);
+    }catch(e){log('  error '+e.message)}
+  }
+  log('\nDONE');document.title='DONE';
+};
+</script>

@@ -69,6 +69,20 @@ button:active,.btn:active{background:rgba(127,224,255,.22)}
 #visbtn.on{color:var(--ink);background:var(--cyan);border-color:var(--cyan)}
 #lvl{font-size:11px;padding:5px 8px}#lvl:not(.off){color:var(--cyan);border-color:var(--cyan)}#lvl.off{color:var(--dim)}
 
+/* stems mixer — takes the waveform's place; the overview strip stays so you can still move around */
+.player.mixing #wave{display:none}
+#mixer{margin-top:10px;padding:6px 8px;border:1px solid var(--hair);background:var(--ink);display:grid;gap:4px}
+#mixer[hidden]{display:none}
+.strip{display:grid;grid-template-columns:62px 26px 26px 1fr 40px 54px;gap:6px;align-items:center;font-size:11px}
+.strip .sn{color:var(--text);letter-spacing:.14em}
+.strip button{padding:3px 0;font-size:11px}
+.strip .solo.on{color:var(--ink);background:var(--amber);border-color:var(--amber)}
+.strip .mute.on{color:#fff;background:#b8323f;border-color:#ff4d5e}
+.strip .sdb{font-weight:400;color:var(--cyan);text-align:right}
+.strip .sm{width:100%;height:10px}
+.strip.quiet .sn,.strip.quiet .sdb{opacity:.35}
+.strip.empty .sn{opacity:.3;text-decoration:line-through}
+#stemsbtn.on{color:var(--ink);background:var(--amber);border-color:var(--amber)}
 /* gain */
 .vol{display:flex;gap:10px;align-items:center;margin-top:10px;font-size:11px}
 .vol label{color:var(--dim)}
@@ -101,6 +115,7 @@ li em{color:var(--cyan-dim);font-style:normal;font-size:12px;text-align:right}
   button,.btn{padding:6px 6px;font-size:11px;letter-spacing:.06em}#play{min-width:58px}
   .controls{flex-wrap:nowrap;gap:4px}#zout,#zin{min-width:26px}
   .vol{gap:6px}#volout{min-width:48px}#lvl{padding:4px 6px;font-size:10px}
+  .strip{grid-template-columns:54px 24px 24px 1fr 34px 40px;gap:4px}
   .hud{padding-bottom:8px}.lcd{padding:8px 10px}#wave{height:84px}
   #met{display:none}
 }
