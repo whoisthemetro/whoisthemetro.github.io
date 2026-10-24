@@ -4,6 +4,15 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-10-24 — song ideas: shuffle
+
+- **SHUF** (or S) beside NEXT, with its own lamp. It's a shuffled DECK, not a
+  dice roll: every song plays once before any comes round again (tested: 55
+  NEXTs, 55 different songs), and PREV walks back through what actually played
+  instead of to the song numbered one lower. Picking a song from the list
+  counts as dealt. Remembered between visits; with shuffle on, the page opens
+  on a random song.
+
 ## 2026-10-23 — song ideas: the visuals take the whole console, and hear three bands
 
 - **VIS covers the player** instead of pushing it down: `#vis` is absolute over

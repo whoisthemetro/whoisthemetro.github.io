@@ -12,7 +12,7 @@
 <link rel="icon" type="image/png" href="favicon.png"><link rel="apple-touch-icon" href="apple-touch-icon.png">
 
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap">
-<link rel="stylesheet" href="styles.css?v=10"></head><body><canvas id="bg"></canvas><main>
+<link rel="stylesheet" href="styles.css?v=11"></head><body><canvas id="bg"></canvas><main>
 <section class="player">
   <span class="cn tl"></span><span class="cn tr"></span><span class="cn bl"></span><span class="cn br"></span>
   <header class="hud">
@@ -20,6 +20,7 @@
     <span class="lamp"><i class="led" id="ledsig"></i>SIG</span>
     <span class="lamp"><i class="led amber" id="ledloop"></i>LOOP</span>
     <span class="lamp"><i class="led" id="ledlvl"></i>A-LVL</span>
+    <span class="lamp"><i class="led" id="ledshuf"></i>SHUF</span>
     <span class="grow"></span>
     <span class="ro" id="chan">CH 01/55</span><span class="ro dim" id="met">MET 00:00:00</span>
   </header>
@@ -32,7 +33,7 @@
   <canvas id="wave" title="click to jump · drag to loop a section · drag the A/B flags to adjust"></canvas>
   <canvas id="over" title="whole song — drag to move the zoomed view"></canvas>
   <div class="controls">
-    <button id="prev" title="previous">PREV</button><button id="play">PLAY</button><button id="next" title="next">NEXT</button>
+    <button id="prev" title="previous">PREV</button><button id="play">PLAY</button><button id="next" title="next">NEXT</button><button id="shuf" title="shuffle (S)">SHUF</button>
     <button id="visbtn" title="visualizer (V)">VIS</button><span class="grow"></span>
     <button id="zout" title="zoom out (-)">−</button><button id="zin" title="zoom in (+)">+</button>
     <button id="loop" title="loop (L)">LOOP</button>
@@ -43,4 +44,4 @@
 </section>
 <section id="queue" hidden><p>CATALOG · SHOW CLIENTS · 55</p><ol id="list"></ol></section>
 </main>
-<script src="tracks.js?v=10"></script><script src="player.js?v=10"></script><script src="vis.js?v=10"></script><script src="bg.js?v=10"></script></body></html>
+<script src="tracks.js?v=11"></script><script src="player.js?v=11"></script><script src="vis.js?v=11"></script><script src="bg.js?v=11"></script></body></html>

@@ -9,7 +9,7 @@ const fc=x=>x==null?'-:--.--':`${f(x)}.${pad2(Math.floor((x%1)*100+1e-6))}`;
 const clamp=(x,lo,hi)=>Math.max(lo,Math.min(hi,x));
 const store={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
 let i=0;
-const VER=5;   // bump with the ?v= in index.html
+const VER=11;   // bump with the ?v= in index.html
 
 /* --- level + volume --- */
 // quiet songs get lifted up to TARGET, loud ones are left alone. the lift is capped,
@@ -63,6 +63,7 @@ const fileName=t=>`${t.artist} - ${t.title}`.replace(/[\\/:*?"<>|]/g,'').replace
 
 function cue(x,go){
   i=(x+tracks.length)%tracks.length;const t=tracks[i];
+  if(typeof deck!=='undefined')deck=deck.filter(j=>j!==i);
   a.src=t.url;pending=null;prevT=0;
   now.textContent=`${t.title.toUpperCase()} — ${t.artist.toUpperCase()}`;
   $('#chan').textContent=`CH ${pad2(t.order)}/${tracks.length}`;
@@ -84,11 +85,28 @@ browse.onclick=()=>{queue.hidden=!queue.hidden;browse.textContent=queue.hidden?'
 list.onclick=e=>{const x=e.target.closest('button');if(x)cue(+x.dataset.n,true)};
 const toggle=()=>a.paused?start():a.pause();
 play.onclick=toggle;
-$('#prev').onclick=()=>cue(i-1,true);$('#next').onclick=()=>cue(i+1,true);
+/* --- shuffle --- */
+// a shuffled DECK, not a dice roll: every song once before any comes round again, and PREV
+// walks back through what actually played rather than to the song numbered one lower
+let shuffle=store.get('si-shuf')==='on',deck=[],hist=[];
+const shufBtn=$('#shuf');
+function deal(){
+  deck=tracks.map((_,j)=>j).filter(j=>j!==i);
+  for(let k=deck.length-1;k>0;k--){const r=Math.floor(Math.random()*(k+1));[deck[k],deck[r]]=[deck[r],deck[k]]}
+}
+function goNext(){
+  if(!shuffle)return cue(i+1,true);
+  if(!deck.length)deal();
+  hist.push(i);cue(deck.shift(),true);
+}
+function goPrev(){shuffle&&hist.length?cue(hist.pop(),true):cue(i-1,true)}
+function setShuffle(v){shuffle=v;store.set('si-shuf',v?'on':'off');shufBtn.classList.toggle('on',v);deck=[];hist=[]}
+shufBtn.onclick=()=>setShuffle(!shuffle);
+$('#prev').onclick=goPrev;$('#next').onclick=goNext;
 a.onplay=()=>{play.textContent='PAUSE';play.classList.add('live')};a.onpause=()=>{play.textContent='PLAY';play.classList.remove('live')};
 a.onended=()=>{
   if(loop.on){seek(region()?loop.a:0);a.play();return}  // looping a region that runs to the very end, or the whole song
-  cue(i+1,true);
+  goNext();
 };
 
 /* --- loop --- */
@@ -243,6 +261,7 @@ document.addEventListener('keydown',e=>{
   else if(k==='i')setPoint('a',T());
   else if(k==='o')setPoint('b',T());
   else if(k==='l')loopBtn.click();
+  else if(k==='s')shufBtn.click();
   else if(k==='='||k==='+')$('#zin').click();
   else if(k==='-'||k==='_')$('#zout').click();
 });
@@ -251,7 +270,7 @@ document.addEventListener('click',e=>{if(e.detail>0){const b=e.target.closest('b
 
 /* --- the panel: readouts, lamps, level meter --- */
 const $clock=$('#clock'),$dur=$('#dur'),$tele=$('#tele'),$met=$('#met'),meter=$('#meter');
-const ledSig=$('#ledsig'),ledLoop=$('#ledloop'),ledLvl=$('#ledlvl'),boot=performance.now();
+const ledSig=$('#ledsig'),ledLoop=$('#ledloop'),ledLvl=$('#ledlvl'),ledShuf=$('#ledshuf'),boot=performance.now();
 const td=new Uint8Array(1024);
 let level=0,peakHold=0,peakAt=0,lastTele='';
 const sgn=x=>`${x>0?'+':x<0?'−':''}${Math.abs(x).toFixed(1)}`;
@@ -271,6 +290,7 @@ function panel(){
   ledLoop.classList.toggle('on',loop.on);ledLoop.classList.toggle('blink',loop.on&&!a.paused);
   const lifted=auto?lift(tracks[i]):0;
   ledLvl.classList.toggle('on',lifted>0);
+  ledShuf.classList.toggle('on',shuffle);
   const tele=`LIFT <b>${auto?(lifted?sgn(lifted)+' dB':'0.0 dB'):'OFF'}</b> · GAIN <b>${+vol.value<=-40?'MUTE':sgn(+vol.value)+' dB'}</b> · `+
     (region()?`LOOP <b class="${loop.on?'am':''}">${fc(loop.a)}→${fc(loop.b)}</b>`:`LOOP <b>${loop.on?'SONG':'---'}</b>`)+(zoom>1?` · ZOOM <b>×${zoom<10?zoom.toFixed(1):Math.round(zoom)}</b>`:'');
   if(tele!==lastTele){$tele.innerHTML=tele;lastTele=tele}
@@ -298,4 +318,4 @@ function tick(){
   panel();
   drawWave();drawOver();
 }
-cue(0,false);apply();frame();
+setShuffle(shuffle);cue(shuffle?Math.floor(Math.random()*tracks.length):0,false);apply();frame();
