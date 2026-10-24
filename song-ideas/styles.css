@@ -15,7 +15,7 @@ main{width:min(640px,calc(100% - 28px));margin:12px auto 40px}
 .player{position:sticky;top:0;z-index:5;padding:12px;background:rgba(4,7,14,.88);border:1px solid var(--hair);
   -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);box-shadow:0 0 40px rgba(0,0,0,.6),inset 0 0 0 1px rgba(0,0,0,.4)}
 /* corner brackets — the panel is bolted in, not floating */
-.cn{position:absolute;width:12px;height:12px;border:0 solid var(--cyan);opacity:.7;pointer-events:none}
+.cn{position:absolute;z-index:11;width:12px;height:12px;border:0 solid var(--cyan);opacity:.7;pointer-events:none}
 .tl{left:-1px;top:-1px;border-left-width:2px;border-top-width:2px}.tr{right:-1px;top:-1px;border-right-width:2px;border-top-width:2px}
 .bl{left:-1px;bottom:-1px;border-left-width:2px;border-bottom-width:2px}.br{right:-1px;bottom:-1px;border-right-width:2px;border-bottom-width:2px}
 
@@ -48,11 +48,12 @@ main{width:min(640px,calc(100% - 28px));margin:12px auto 40px}
 /* screens */
 #wave,#over{display:block;width:100%;margin-top:10px;border:1px solid var(--hair);background:var(--ink);touch-action:pan-y;cursor:crosshair}
 #wave{height:120px}#over{height:22px;margin-top:4px;cursor:pointer}
-#vis{position:relative;margin-top:10px;aspect-ratio:16/9;border:1px solid var(--hair);background:#000;overflow:hidden}
-#vis[hidden]{display:none}#viscv{display:block;width:100%;height:100%;cursor:pointer}
+#vis{position:absolute;inset:0;z-index:10;background:#000;overflow:hidden;cursor:pointer}#vis[hidden]{display:none}#viscv{display:block;width:100%;height:100%}
 #visname{position:absolute;left:10px;top:8px;color:var(--cyan);font-size:11px;letter-spacing:.2em;text-shadow:0 0 6px #000;transition:opacity .6s;pointer-events:none}
-#visfull{position:absolute;right:8px;bottom:8px;padding:2px 7px;font-size:14px;opacity:.55}#visfull:hover{opacity:1}
-#vis.big{position:fixed;inset:0;z-index:50;margin:0;border:0;aspect-ratio:auto}body.visbig{overflow:hidden}
+.visbtns{position:absolute;right:8px;bottom:8px;display:flex;gap:4px}.visbtns button{padding:3px 9px;font-size:14px;background:rgba(0,0,0,.45);opacity:.55}.visbtns button:hover{opacity:1}#vis.big{position:fixed;inset:0;z-index:50}
+/* a backdrop-filter makes the player the containing block for fixed children, which would keep
+   the "full screen" overlay inside the panel — drop it while the visuals have the screen */
+body.visbig .player{-webkit-backdrop-filter:none;backdrop-filter:none}body.visbig{overflow:hidden}
 
 /* switches */
 button,.btn{font:12px var(--mono);letter-spacing:.12em;cursor:pointer;color:var(--text);background:rgba(127,224,255,.04);

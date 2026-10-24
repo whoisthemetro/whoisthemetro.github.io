@@ -4,6 +4,22 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-10-23 — song ideas: the visuals take the whole console, and hear three bands
+
+- **VIS covers the player** instead of pushing it down: `#vis` is absolute over
+  the whole `.player`, the corner brackets stay on top to frame it, and a tap
+  ANYWHERE puts the player back. Two small buttons survive in the corner —
+  › next look, ⛶ full screen. Full screen drops the panel's backdrop-filter
+  while it's up, because a backdrop-filter makes its element the containing
+  block for `position: fixed` children and kept the "full screen" in the box.
+- **Low / mid / high** (1024-pt FFT at 48k, ~47 Hz a bin: 45–280 Hz,
+  280 Hz–4 kHz, 4–15 kHz), each normalised against its own recent average so a
+  quiet song moves as much as a loud one, each with a hit envelope. LOWS kick
+  the zoom and pulse the shapes, MIDS drive spin speed, line weight and
+  amplitude, HIGHS race the hue and throw sparks.
+- The kick flash fires only on the frame a kick arrives: drawn every frame it
+  went round the feedback loop and flooded the screen cyan.
+
 ## 2026-10-23 — song ideas: the console stays put
 
 - The player is `position: sticky` at the top edge; the catalog scrolls up
