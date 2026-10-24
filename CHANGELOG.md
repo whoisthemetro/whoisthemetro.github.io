@@ -4,6 +4,16 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-10-24 — song ideas: stems on all 55
+
+- The other 52 songs ran through `tools/song-ideas/stems.py --upload` in one
+  ~hour pass; every song now has a STEMS mixer. 1.7 GB in R2 for the set.
+- Only one needed an alignment shift (41, 23 ms — split from an mp3); the
+  rest came from WAV masters or mp3 masters identical to the site copy.
+- The leakage detector greys out what isn't there: 25 songs have no real
+  vocal (they're beats and jams), a handful have no bass or no drums
+  (14, 28, 29, 36 are mostly "other").
+
 ## 2026-10-24 — song ideas: stems
 
 - **STEMS** opens a four-strip mixer — DRUMS · BASS · VOCALS · OTHER — in the
