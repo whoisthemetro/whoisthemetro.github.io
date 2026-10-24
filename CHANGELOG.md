@@ -4,6 +4,15 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-10-23 — song ideas: the console stays put
+
+- The player is `position: sticky` at the top edge; the catalog scrolls up
+  underneath it (the panel went more opaque, 0.88, with a heavier blur, so
+  rows passing under it read as glass rather than as clutter).
+- Phone layout tightened so the pinned panel costs ~46% of the screen, not
+  60%: the transport row no longer wraps LOOP onto its own line, AUTO LVL sits
+  beside the gain readout, and the wave is 84 px tall.
+
 ## 2026-10-23 — song ideas: its own address, and a link preview worth sending
 
 - **songs.whoisthemetro.com** — a separate repo (`whoisthemetro/songs`), because

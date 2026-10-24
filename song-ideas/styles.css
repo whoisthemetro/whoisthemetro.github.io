@@ -10,10 +10,10 @@
 *{box-sizing:border-box}
 body{margin:0;background:#000;color:var(--text);font:14px var(--mono);letter-spacing:.04em}
 #bg{position:fixed;inset:0;width:100vw;height:100vh;z-index:-1;display:block}
-main{width:min(640px,calc(100% - 28px));margin:40px auto}
+main{width:min(640px,calc(100% - 28px));margin:12px auto 40px}
 
-.player{position:relative;padding:12px;background:var(--glass);border:1px solid var(--hair);
-  -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);box-shadow:0 0 40px rgba(0,0,0,.6),inset 0 0 0 1px rgba(0,0,0,.4)}
+.player{position:sticky;top:0;z-index:5;padding:12px;background:rgba(4,7,14,.88);border:1px solid var(--hair);
+  -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);box-shadow:0 0 40px rgba(0,0,0,.6),inset 0 0 0 1px rgba(0,0,0,.4)}
 /* corner brackets — the panel is bolted in, not floating */
 .cn{position:absolute;width:12px;height:12px;border:0 solid var(--cyan);opacity:.7;pointer-events:none}
 .tl{left:-1px;top:-1px;border-left-width:2px;border-top-width:2px}.tr{right:-1px;top:-1px;border-right-width:2px;border-top-width:2px}
@@ -93,10 +93,12 @@ li small{display:block;color:var(--dim);margin-top:2px;font-size:11px}
 li em{color:var(--cyan-dim);font-style:normal;font-size:12px;text-align:right}
 
 @media(max-width:480px){
-  main{width:calc(100% - 16px);margin:10px auto}
+  main{width:calc(100% - 16px);margin:6px auto 24px}
   .player{padding:10px}
   #clock{font-size:26px}
-  #wave{height:100px}
-  .vol{flex-wrap:wrap}#lvl{flex-basis:100%}
+  button,.btn{padding:6px 7px;font-size:11px;letter-spacing:.08em}#play{min-width:58px}
+  .controls{flex-wrap:nowrap;gap:4px}#zout,#zin{min-width:26px}
+  .vol{gap:6px}#volout{min-width:48px}#lvl{padding:4px 6px;font-size:10px}
+  .hud{padding-bottom:8px}.lcd{padding:8px 10px}#wave{height:84px}
   #met{display:none}
 }
