@@ -4,6 +4,21 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-10-23 — song ideas: its own address, and a link preview worth sending
+
+- **songs.whoisthemetro.com** — a separate repo (`whoisthemetro/songs`), because
+  a Pages repo gets one custom domain and this one has whoisthemetro.com. Its
+  page is a full-window iframe of /song-ideas/, so the player still lives in
+  exactly one place. DNS is Cloudflare (the domain is only REGISTERED at
+  Namecheap): CNAME `songs` → `whoisthemetro.github.io`, grey cloud, and
+  GitHub's certificate needed the domain detached and re-attached to issue.
+- **Link preview**: Open Graph + twitter tags on both pages, pointing at
+  `song-ideas/card.jpg` — 1200x630, the real Star Nest shader behind a console
+  panel with a real waveform (track 17) and an amber loop on it. Plus an icon:
+  an event horizon with an amber accretion line (`apple-touch-icon.png`,
+  `favicon.png`). Rendered from `tools/song-ideas/card.html` by `card.js`;
+  `bg.js` grew `BG_MAXW`/`BG_TIME` so a still can be sharp and repeatable.
+
 ## 2026-10-23 — song ideas: the player becomes a console
 
 - Restyled to sit in the Star Nest instead of on top of it: dark smoked glass

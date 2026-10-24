@@ -1,0 +1,56 @@
+<!doctype html><html><head><meta charset="utf-8">
+<!-- the link-preview image for song ideas (and its app icon with ?icon). rendered to png by
+     tools/song-ideas/card.js — the same Star Nest and console look as the page itself. -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=block">
+<style>
+:root{--cyan:#7fe0ff;--amber:#ffb547;--hair:rgba(140,200,255,.22);--dim:#6f8db0;--mono:"Share Tech Mono",monospace}
+*{box-sizing:border-box}html,body{margin:0;background:#000;overflow:hidden;font-family:var(--mono);color:#dff1ff}
+#bg{position:fixed;inset:0;width:100vw;height:100vh;z-index:-1;display:block}
+.vig{position:fixed;inset:0;background:radial-gradient(ellipse at 50% 50%,transparent 35%,rgba(0,0,0,.65) 100%)}
+.panel{position:absolute;left:70px;right:70px;top:70px;bottom:70px;border:1px solid var(--hair);background:rgba(4,8,16,.55);backdrop-filter:blur(3px);padding:44px 56px}
+.cn{position:absolute;width:26px;height:26px;border:0 solid var(--cyan)}
+.tl{left:-1px;top:-1px;border-left-width:3px;border-top-width:3px}.tr{right:-1px;top:-1px;border-right-width:3px;border-top-width:3px}
+.bl{left:-1px;bottom:-1px;border-left-width:3px;border-bottom-width:3px}.br{right:-1px;bottom:-1px;border-right-width:3px;border-bottom-width:3px}
+.hud{display:flex;gap:30px;align-items:center;font-size:20px;color:var(--dim);letter-spacing:.12em}
+.hud i{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:10px;vertical-align:1px}
+.g{background:#7dffb2;box-shadow:0 0 10px #7dffb2}.c{background:var(--cyan);box-shadow:0 0 10px var(--cyan)}.a{background:var(--amber);box-shadow:0 0 10px var(--amber)}
+.hud .r{margin-left:auto;color:var(--cyan)}
+h1{margin:34px 0 0;font-weight:400;font-size:108px;line-height:1;letter-spacing:.14em;color:#eaf8ff;text-shadow:0 0 28px rgba(127,224,255,.55)}
+.sub{margin-top:18px;font-size:26px;letter-spacing:.32em;color:var(--cyan)}
+.sub b{font-weight:400;color:var(--dim)}
+canvas#w{position:absolute;left:56px;right:56px;bottom:40px;height:92px;width:calc(100% - 112px)}
+/* icon */
+body.icon .panel,body.icon canvas#w{display:none}
+.ring{display:none}
+body.icon .ring{display:block;position:fixed;left:50%;top:50%;width:62%;height:62%;transform:translate(-50%,-50%);border-radius:50%;
+  background:radial-gradient(circle closest-side,#000 0 97%,transparent 100%);box-shadow:0 0 0 3px var(--cyan),0 0 40px 8px rgba(127,224,255,.6),inset 0 0 30px rgba(127,224,255,.5)}
+body.icon .ring:after{content:"";position:absolute;left:-30%;right:-30%;top:50%;height:4px;margin-top:-2px;background:linear-gradient(90deg,transparent,var(--amber) 30%,#fff 50%,var(--amber) 70%,transparent);box-shadow:0 0 18px var(--amber);transform:rotate(-14deg)}
+</style></head><body>
+<canvas id="bg"></canvas><div class="vig"></div><div class="ring"></div>
+<div class="panel"><span class="cn tl"></span><span class="cn tr"></span><span class="cn bl"></span><span class="cn br"></span>
+  <div class="hud"><span><i class="g"></i>PWR</span><span><i class="c"></i>SIG</span><span><i class="a"></i>LOOP</span><span class="r">CH 01—55</span></div>
+  <h1>SONG IDEAS</h1>
+  <div class="sub">METRO <b>·</b> LISTENING ROOM</div>
+  <canvas id="w"></canvas>
+</div>
+<script>
+const icon=location.search.includes('icon');document.body.classList.toggle('icon',icon);
+window.BG_MAXW=4000;window.BG_TIME=icon?260:140;
+// the strip along the bottom is a real song's waveform, with a loop marked on it in amber
+fetch('../../song-ideas/peaks/17.bin').then(r=>r.arrayBuffer()).then(b=>{
+  const p=new Uint8Array(b),c=document.getElementById('w'),d=2,r=c.getBoundingClientRect();
+  c.width=r.width*d;c.height=r.height*d;const g=c.getContext('2d'),W=c.width,H=c.height,N=180,bw=W/N;
+  const la=0.42,lb=0.58;
+  g.fillStyle='rgba(255,181,71,.16)';g.fillRect(W*la,0,W*(lb-la),H);
+  for(let k=0;k<N;k++){
+    let m=0;for(let j=Math.floor(k/N*p.length);j<Math.floor((k+1)/N*p.length);j++)m=Math.max(m,p[j]);
+    const y=Math.max(2,m/255*H*0.48),x=k*bw,f=k/N;
+    g.fillStyle=f<la?'#bdeeff':f<lb?'#ffd28a':'rgba(95,140,190,.75)';g.fillRect(x+1,H/2-y,bw-2,y*2);
+  }
+  g.fillStyle='#ffb547';g.fillRect(W*la-1.5*d,0,3*d,H);g.fillRect(W*lb-1.5*d,0,3*d,H);
+  document.body.dataset.ready=1;
+});
+if(icon)setTimeout(()=>document.body.dataset.ready=1,300);
+</script>
+<script src="../../song-ideas/bg.js"></script>
+</body></html>

@@ -73,7 +73,8 @@ void main(){mainImage(gl_FragColor,gl_FragCoord.xy);}`;
   const uRes=gl.getUniformLocation(prog,'iResolution'),uTime=gl.getUniformLocation(prog,'iTime');
 
   // drawing size: a phone gets fewer pixels than a desktop, and neither gets its full screen
-  const touch=matchMedia('(pointer:coarse)').matches,MAXW=touch?420:760;
+  // window.BG_MAXW / BG_TIME let tools/song-ideas/card.html render one sharp still for the link preview
+  const touch=matchMedia('(pointer:coarse)').matches,MAXW=window.BG_MAXW||(touch?420:760);
   function size(){
     const w=innerWidth,h=innerHeight,k=Math.min(1,MAXW/w);
     const W=Math.max(1,Math.round(w*k)),H=Math.max(1,Math.round(h*k));
@@ -84,7 +85,7 @@ void main(){mainImage(gl_FragColor,gl_FragCoord.xy);}`;
     requestAnimationFrame(frame);
     if(document.hidden||document.body.classList.contains('visbig')||now-last<32)return;
     last=now;size();
-    gl.uniform3f(uRes,cv.width,cv.height,1);gl.uniform1f(uTime,(now-t0)/1000);
+    gl.uniform3f(uRes,cv.width,cv.height,1);gl.uniform1f(uTime,window.BG_TIME??(now-t0)/1000);
     gl.drawArrays(gl.TRIANGLES,0,3);
   }
   requestAnimationFrame(frame);
