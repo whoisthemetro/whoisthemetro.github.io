@@ -66,7 +66,17 @@ const desk=(()=>{   // not "mixer": <div id="mixer"> already owns that global na
     shown=v;box.hidden=!v;player.classList.toggle('mixing',v);btn.classList.toggle('on',v);
     if(v)requestAnimationFrame(meter);
   }
-  btn.onclick=()=>{if(!on)enter();show(!shown)};
+  // STEMS is a switch: on swaps to the stems file and opens the mixer; off goes back to the plain
+  // stereo mp3 at the same moment, faders home — nothing you soloed or muted lingers unseen
+  function exit(){
+    if(!on)return;
+    const t=T(),playing=!a.paused;
+    on=false;loading=false;state=fresh();
+    a.src=tracks[i].url;pending=t;prevT=t;
+    route();levels();show(false);
+    if(playing)start();
+  }
+  btn.onclick=()=>{if(on)exit();else{enter();show(true)}};
 
   // the strips
   box.addEventListener('click',e=>{

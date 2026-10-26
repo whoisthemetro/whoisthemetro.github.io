@@ -4,6 +4,13 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-10-26 — song ideas: STEMS is a real switch
+
+- Tapping STEMS again used to just hide the mixer and leave the song playing
+  from the stems file — so a solo or mute you'd set kept going, unseen. Now
+  off means OFF: back to the stereo mp3 at the same moment, faders home.
+  STEMS lit = you're hearing the parts; unlit = the normal two-track.
+
 ## 2026-10-24 — song ideas: stems on all 55
 
 - The other 52 songs ran through `tools/song-ideas/stems.py --upload` in one
