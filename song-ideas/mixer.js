@@ -110,6 +110,9 @@ const desk=(()=>{   // not "mixer": <div id="mixer"> already owns that global na
     track(){
       const s=info();btn.hidden=!s;
       strips.forEach((st,k)=>st.classList.toggle('empty',!!s&&s.rms_db[NAMES[k].toLowerCase()]<EMPTY));
+      // on an 808 song the BASS strip carries everything under 120 Hz (stems.py's low split): say so
+      const sn=strips[1].querySelector('.sn');sn.textContent=s&&s.low_split?'LOW END':'BASS';
+      sn.title=s&&s.low_split?'the 808 and everything under 120 Hz':'';
     },
   };
 })();

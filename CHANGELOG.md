@@ -4,6 +4,23 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-10-28 — song ideas: stems, round 2 (clicks out, 808s found)
+
+- Clicks and pops: round 1 let demucs decode mp3 sources itself, and that
+  decode drifted (26 ms over 2.5 min on 42). The alignment check only looked
+  at the first 40 s, so it passed — and OTHER, rebuilt as mix minus the rest,
+  carried doubled hits from the drifted parts. Now every source is decoded
+  to a 44.1k float wav first, the lag is measured at the START and the END
+  (they must agree), and a song whose parts don't null the mix is held back.
+  All 55: lag 0 at both ends, nulls 9–24 dB (42 went 7.9 → 13.6).
+- Missing bass: htdemucs learned bass from live bands, so an 808 comes back
+  as DRUMS. Where the bass part holds <15% of the low end and drums hold
+  2.5x that, everything under 120 Hz moves from drums to bass (zero-phase,
+  complementary, so they still sum exactly) and the strip reads LOW END.
+  14 songs: 5 8 14 18 21 22 24 28 29 34 40 42 43 47.
+- `--shifts 2` on the separation; new files live in R2 under `stems/v2/`,
+  so the old set was never overwritten mid-run and nothing serves stale.
+
 ## 2026-10-26 — song ideas: STEMS is a real switch
 
 - Tapping STEMS again used to just hide the mixer and leave the song playing
