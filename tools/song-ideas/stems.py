@@ -37,7 +37,10 @@ def masters():
         rows = sqlite3.connect(db).execute(
             "select pt.position, t.path from playlist_tracks pt join playlists p on p.id=pt.playlist_id "
             "join tracks t on t.id=pt.track_id where p.name='Show Clients' order by pt.position").fetchall()
-    return {pos + 1: path for pos, path in rows}
+    return {pos + 1: path for pos, path in rows} | EXTRA
+
+# songs added to the page after the catalog playlist was copied over: order -> master
+EXTRA = {56: '/Volumes/McDumper/Mettybox/All Sessions/fartGOD/Too Good Project/Bounces/Too Good.wav'}
 
 def pcm(path, rate, ch):
     out = subprocess.run(['ffmpeg', '-v', 'error', '-i', path, '-ac', str(ch), '-ar', str(rate), '-f', 'f32le', '-'],

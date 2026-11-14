@@ -4,6 +4,16 @@ what changed in the room, newest first. every push to main goes
 straight to whoisthemetro.com, so each line here shipped the day
 it says it did.
 
+## 2026-11-13 — song ideas: "Too Good" (56)
+
+- New song at the end of the list, from Metro's own bounce (48k/24 WAV).
+  Its mp3 lives in R2 at `media.whoisthemetro.com/song-ideas/audio/56.mp3`
+  — no supabase write key on this machine — uploaded with a fixed
+  `Content-Disposition`, so DOWNLOAD still saves "Metro - Too Good.mp3".
+  tracks.js takes an optional 4th field (url) for songs hosted there.
+- Stems too (null 19.9 dB, real bass line, no 808 split). stems.py's
+  `EXTRA` maps added songs to their masters.
+
 ## 2026-10-28 — song ideas: stems, round 2 (clicks out, 808s found)
 
 - Clicks and pops: round 1 let demucs decode mp3 sources itself, and that
