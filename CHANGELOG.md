@@ -6,6 +6,10 @@ it says it did.
 
 ## 2026-11-13 — song ideas: "Too Good" (56)
 
+- Pinned to the TOP of the list (`TOP` in tracks.js) and is what the page
+  opens on. It keeps number 56 — a song's number is its id for files,
+  stems, saved loops and links — so `#NN` links now look a song up by
+  number instead of by list position.
 - New song at the end of the list, from Metro's own bounce (48k/24 WAV).
   Its mp3 lives in R2 at `media.whoisthemetro.com/song-ideas/audio/56.mp3`
   — no supabase write key on this machine — uploaded with a fixed

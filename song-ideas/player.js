@@ -327,6 +327,7 @@ function tick(){
   panel();
   drawWave();drawOver();
 }
-// a link can open on one song: …/song-ideas/#17 (handy for texting a client one particular idea)
-const deep=parseInt(location.hash.slice(1),10);
-setShuffle(shuffle);cue(deep>=1&&deep<=tracks.length?deep-1:shuffle?Math.floor(Math.random()*tracks.length):0,false);apply();frame();
+// a link can open on one song: …/song-ideas/#17 (handy for texting a client one particular idea).
+// it's the song's number, not its place in the list — pinning a song to the top mustn't move links
+const deep=tracks.findIndex(t=>t.order===parseInt(location.hash.slice(1),10));
+setShuffle(shuffle);cue(deep>=0?deep:shuffle?Math.floor(Math.random()*tracks.length):0,false);apply();frame();
